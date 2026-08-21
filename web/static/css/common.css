@@ -3415,22 +3415,39 @@ body.is-live-env .masthead h1 {
    ========================================================================== */
 
 .desk-footer {
-  margin-top: 3.5rem;
-  padding: 1.75rem 2rem 1.35rem;
-  background: linear-gradient(180deg, rgba(22, 31, 44, 0.75) 0%, rgba(12, 18, 25, 0.9) 100%);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 16px 36px -16px rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  margin-top: 4rem;
+  padding: 2.25rem 0.5rem 1.75rem;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
   position: relative;
   z-index: 10;
   animation: rise 0.7s ease both;
+}
+
+.desk-footer::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(63, 191, 143, 0.3) 25%,
+    rgba(212, 137, 76, 0.35) 50%,
+    rgba(63, 191, 143, 0.3) 75%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
 
 .desk-footer-inner {
@@ -3439,37 +3456,44 @@ body.is-live-env .masthead h1 {
   justify-content: space-between;
   gap: 1.5rem 2.5rem;
   flex-wrap: wrap;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .desk-footer-brand-wrap {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  min-width: 15rem;
+  gap: 0.65rem;
+  min-width: 14rem;
 }
 
 .desk-footer-brand {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  text-decoration: none;
+  color: inherit;
 }
 
 .desk-footer-logo-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   flex-shrink: 0;
   overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.desk-footer-brand:hover .desk-footer-logo-icon {
+  transform: scale(1.06);
 }
 
 .desk-footer-mark-img {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   display: block;
 }
 
@@ -3481,18 +3505,18 @@ body.is-live-env .masthead h1 {
 
 .desk-footer-logo {
   font-family: var(--display);
-  font-size: 1.15rem;
+  font-size: 1.12rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.1;
-  background: linear-gradient(135deg, #ffffff 40%, #dcd3c7 100%);
+  background: linear-gradient(135deg, #ffffff 40%, #e2dcd2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .desk-footer-tagline {
   font-family: var(--mono);
-  font-size: 0.65rem;
+  font-size: 0.64rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3503,12 +3527,18 @@ body.is-live-env .masthead h1 {
 .desk-footer-status {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.3rem 0.75rem;
+  gap: 0.5rem;
+  padding: 0.26rem 0.68rem;
   border-radius: 999px;
-  background: rgba(63, 191, 143, 0.08);
-  border: 1px solid rgba(63, 191, 143, 0.25);
+  background: rgba(63, 191, 143, 0.06);
+  border: 1px solid rgba(63, 191, 143, 0.18);
   width: fit-content;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.desk-footer-status:hover {
+  background: rgba(63, 191, 143, 0.1);
+  border-color: rgba(63, 191, 143, 0.3);
 }
 
 .status-beacon-green {
@@ -3555,7 +3585,7 @@ body.is-live-env .masthead h1 {
 
 .desk-footer-status-text {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--buy);
@@ -3566,7 +3596,7 @@ body.is-live-env .masthead h1 {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.45rem 0.85rem;
+  gap: 0.35rem 0.65rem;
   justify-content: center;
   flex: 1 1 24rem;
 }
@@ -3578,10 +3608,10 @@ body.is-live-env .masthead h1 {
   font-family: var(--mono);
   font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--muted);
   text-decoration: none;
-  padding: 0.4rem 0.65rem;
+  padding: 0.35rem 0.6rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
@@ -3590,8 +3620,8 @@ body.is-live-env .masthead h1 {
 
 .desk-footer-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .desk-footer-link.ext-link {
@@ -3600,8 +3630,8 @@ body.is-live-env .masthead h1 {
 
 .desk-footer-link.ext-link:hover {
   color: #e59f63;
-  background: rgba(212, 137, 76, 0.09);
-  border-color: rgba(212, 137, 76, 0.2);
+  background: rgba(212, 137, 76, 0.08);
+  border-color: rgba(212, 137, 76, 0.25);
 }
 
 .desk-footer-right {
@@ -3617,7 +3647,6 @@ body.is-live-env .masthead h1 {
   justify-content: space-between;
   gap: 1rem 1.5rem;
   flex-wrap: wrap;
-  padding-top: 0.25rem;
 }
 
 .desk-footer-copy {
@@ -3632,14 +3661,16 @@ body.is-live-env .masthead h1 {
 
 .desk-footer-copy-symbol {
   font-family: var(--mono);
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 500;
+  color: #8c9ba8;
   letter-spacing: 0.02em;
 }
 
 .desk-footer-disclaimer {
-  color: #7b8593;
+  color: #637282;
   font-size: 0.7rem;
+  font-family: var(--mono);
+  letter-spacing: 0.01em;
 }
 
 @media (max-width: 1024px) {
@@ -3661,20 +3692,20 @@ body.is-live-env .masthead h1 {
 
 @media (max-width: 640px) {
   .desk-footer {
-    padding: 1.25rem 1.2rem 1.1rem;
-    margin-top: 2.5rem;
+    padding: 1.75rem 0.25rem 1.25rem;
+    margin-top: 3rem;
   }
   .desk-footer-links {
-    gap: 0.35rem 0.5rem;
+    gap: 0.3rem 0.45rem;
   }
   .desk-footer-link {
     font-size: 0.68rem;
-    padding: 0.35rem 0.5rem;
+    padding: 0.3rem 0.45rem;
   }
   .desk-footer-bottom {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.65rem;
+    gap: 0.5rem;
   }
 }
 

@@ -85,3 +85,8 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.ai_risk_state.paper.json
+.backtest_history.json
+.dip_hunt_plans.live.json
+.followon_plans.live.json
+.reinvest_plans.live.json

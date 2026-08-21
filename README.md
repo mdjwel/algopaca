@@ -3,50 +3,136 @@
 </p>
 
 <p align="center">
-  <strong>Autonomous Algorithmic Paper &amp; Live Trading Desk</strong>
+  <strong>Autonomous Algorithmic Paper &amp; Live Trading Desk</strong><br>
+  <em>5 Algorithmic Engines • Multi-Modal AI Reasoning • Automated ATR Risk Guardrails • Interactive Backtesting • Modern Web Desk</em>
 </p>
 
 <p align="center">
+  <a href="https://x.com/ehjewelbd/status/2090871097986302052"><img src="https://img.shields.io/badge/𝕏_Post-Demo_%26_Announcement-black?logo=x&logoColor=white" alt="X Demo Post"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions">
   <img src="https://img.shields.io/badge/broker-Alpaca%20Markets-green.svg" alt="Alpaca Markets">
+  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Gemini-8A2BE2.svg" alt="AI Models">
   <img src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/status-open%20source-success.svg" alt="Open Source">
 </p>
 
+<p align="center">
+  <a href="#-watch-in-action-demo--walkthrough">Demo Video</a> •
+  <a href="#-key-features">Features</a> •
+  <a href="#-strategy-engines-overview">Strategies</a> •
+  <a href="#%EF%B8%8F-system-architecture">Architecture</a> •
+  <a href="#-quickstart">Quickstart</a> •
+  <a href="#-cli--terminal-execution">CLI Usage</a> •
+  <a href="#%EF%B8%8F-configuration-env">Configuration</a> •
+  <a href="#-risk-management--safety-guardrails">Risk Safety</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
+
 ---
 
-AlgoPaca is an open-source, full-stack quantitative trading application designed for [Alpaca Markets](https://alpaca.markets). It combines **5 algorithmic trading engines**, mechanical **risk guardrails**, an interactive **walk-forward backtesting suite**, and a clean, responsive **web trading desk**.
+AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets). It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, mechanical **risk guardrails**, an interactive **walk-forward backtesting suite**, and a clean, responsive **web trading desk**.
 
 ---
 
-## Key Features
+## 🎬 Watch in Action (Demo & Walkthrough)
+
+Check out the launch walkthrough video and feature demonstration on **𝕏 (Twitter)**:
+
+<p align="center">
+  <a href="https://x.com/ehjewelbd/status/2090871097986302052">
+    <img src="https://img.shields.io/badge/▶_Watch_Live_Demo_on_𝕏-000000?style=for-the-badge&logo=x&logoColor=white" alt="Watch AlgoPaca Demo on X" height="40">
+  </a>
+</p>
+
+> [!TIP]
+> 📺 **Launch Announcement & Video Walkthrough**:  
+> *"🚨 Introducing AlgoPaca — A fully autonomous AI Quantitative Trading Desk for @AlpacaMarkets 🦙🤖 Fuses Technicals + Live News + Nasdaq Earnings + Macro events with automated ATR risk guardrails."*  
+> 🔗 **Direct Link:** [https://x.com/ehjewelbd/status/2090871097986302052](https://x.com/ehjewelbd/status/2090871097986302052)
+
+---
+
+## 🌟 Why AlgoPaca?
+
+- 💸 **100% Free & Open Source**: No recurring monthly subscription tiers, no hidden platform fees, and zero vendor lock-in.
+- 🧠 **Multi-Factor AI Intelligence**: Leverages state-of-the-art LLMs (OpenAI GPT-4o / GPT-4o-mini and Google Gemini 2.0 Flash / Pro) to fuse quantitative technical indicators, financial news sentiment, earnings surprise history, and macroeconomic calendar events into reasoned trading decisions.
+- 🛡️ **Mechanical Risk Protection**: Removes emotional decision-making with strict volatility-based ATR position sizing, automatic trailing stops, profit scaling, spread checks, and daily drawdown circuit breakers.
+- ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, order execution, cycle audit history, and multi-language internationalization.
+- 🐳 **1-Click Deployment**: Get up and running in 60 seconds with Docker Compose or standard Python virtual environments.
+
+---
+
+## ✨ Key Features
 
 - 📈 **5 Algorithmic Trading Engines**:
-  1. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple presets.
+  1. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple proven presets (Golden Cross, Swing, Fibonacci, etc.).
   2. **Buy the Dip** — Oversold mean-reversion with RSI + lower Bollinger wash entries and recovery exits.
-  3. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g. QLD / QURL).
+  3. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
   4. **Regime Dual Momentum (L/S)** — Daily EMA + ADX regime gate with MACD histogram triggers and ATR-based risk sizing.
-  5. **AI Quantitative Desk** — Multi-modal LLM engine (OpenAI GPT-4o / Google Gemini 2.0) fusing technical analysis (RSI, MACD, SMA, Bollinger, ATR, ADX), Yahoo Finance news feeds, Nasdaq earnings calendar (EPS surprises), and Forex Factory USD macroeconomic events into autonomous trading decisions.
-- 🛡️ **Autonomous Mechanical Risk Engine**: Pre-execution risk gates that enforce position sizing (`equity × risk% ÷ ATR`), trailing stop-losses, take-profit scaling, max concurrent positions, daily drawdown circuit-breakers, spread checks, and post-loss cooldowns.
-- 🧪 **Interactive Backtest & Comparison Suite**: Walk-forward simulations on historical daily/minute bars with side-by-side run comparisons (metrics, equity curves, drawdown, win-rate, profit factor).
-- 🌐 **Modern Responsive Web Desk**: Fast, lightweight vanilla CSS/JS UI with real-time portfolio tracking, manual order ticketing, cycle audit logs, history analytics, and multi-language support (English, Bangla, Spanish, French, Hindi).
+  5. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
+- 🛡️ **Autonomous Mechanical Risk Engine**: Pre-execution risk gates enforcing position sizing (`equity × risk% ÷ ATR`), trailing stop-losses, take-profit scaling, max concurrent positions, daily drawdown circuit-breakers, spread checks, and post-loss cooldowns.
+- 🧪 **Interactive Backtest & Comparison Suite**: Walk-forward simulations on historical daily/minute bars with side-by-side run comparisons (CAGR, Sharpe Ratio, Max Drawdown, Win Rate, Profit Factor, Equity Curve visualization).
+- 🌐 **Modern Responsive Web Desk**: Real-time portfolio tracking, manual order ticketing with risk guards, cycle audit logs, history analytics, and multi-language support (English, Bengali, Spanish, French, Hindi).
+- 🔒 **Dual-Slot Paper & Live Trading Safety**: Strict separation of Paper and Live credentials with hard killswitches, context resets, and automatic fallback safeguards.
 
 ---
 
-## Strategy Engines Overview
+## 📊 Strategy Engines Overview
 
-| Mode | Core Logic | Highlights & Presets |
-|------|------------|----------------------|
-| **SMA** | Trend-following moving average crossovers | Classic (10/30), Short-term (5/20), Fibonacci (8/21), Swing (20/50), Golden Cross (50/200), or Custom. |
-| **Dip** | Oversold capitulation & mean-reversion | RSI threshold washouts + Bollinger lower band taps. Presets: Deep, Mild pullback, Washout, Custom. |
-| **Pair** | Regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
-| **LS** | Dual momentum long/short execution | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target. |
-| **AI Desk** | Multi-factor quantitative LLM analysis | TA + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: Balanced, Conservative, Momentum, Mean Reversion, PEAD, ORB, Custom. |
+| Engine | Strategy Type | Core Logic | Highlights & Presets |
+| :--- | :--- | :--- | :--- |
+| **SMA** | Trend Following | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**. |
+| **Dip** | Mean Reversion | Capitulation washouts & recovery bounces | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**. |
+| **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
+| **LS** | Dual Momentum | Trend strength momentum (Long/Short) | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target. |
+| **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
 
 ---
 
-## Quickstart
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph MarketData [Market Data Feeds]
+        A1[Alpaca Market Data API]
+        A2[Yahoo Finance News RSS]
+        A3[Nasdaq Earnings Calendar]
+        A4[Forex Factory Macro Events]
+    end
+
+    subgraph CoreBot [AlgoPaca Core Backend]
+        B1[Technical Analysis Engine\nRSI • MACD • BB • ATR • ADX]
+        B2[AI Quantitative Brain\nGPT-4o • Gemini 2.0 Flash/Pro]
+        B3[Mechanical Risk Engine\nATR Sizing • Stops • Circuit Breaker]
+        B4[Strategy Dispatcher\nSMA • Dip • Pair • LS • AI Desk]
+    end
+
+    subgraph Execution [Broker & Storage]
+        C1[Alpaca Paper / Live API]
+        C2[Local State & History Stores]
+    end
+
+    subgraph Interfaces [User Interfaces]
+        D1[FastAPI Web Server :8765]
+        D2[Responsive Web Trading Desk]
+        D3[Terminal CLI Runner]
+    end
+
+    MarketData --> CoreBot
+    B1 --> B4
+    B2 --> B4
+    B4 --> B3
+    B3 --> C1
+    B3 --> C2
+    C1 --> Interfaces
+    C2 --> Interfaces
+    Interfaces --> D2
+    Interfaces --> D3
+```
+
+---
+
+## 🚀 Quickstart
 
 ### Option 1: Run with Docker & Docker Compose (Recommended)
 
@@ -54,32 +140,37 @@ The easiest way to spin up AlgoPaca with zero manual Python environment configur
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/algopaca.git
+git clone https://github.com/mdjwel/algopaca.git
 cd algopaca
 
 # 2. Copy and configure environment variables
 cp .env.example .env
 
-# 3. Start AlgoPaca container
+# 3. Start AlgoPaca container in background
 docker compose up -d
 ```
 
 Open your browser at **[http://localhost:8765](http://localhost:8765)**.
+
+To stop the container:
+```bash
+docker compose down
+```
 
 ---
 
 ### Option 2: Local Python Setup (macOS / Linux / Windows)
 
 #### Prerequisites
-- Python 3.10, 3.11, or 3.12
-- Git
+- **Python 3.10, 3.11, or 3.12**
+- **Git**
 - Free [Alpaca Paper Trading Account](https://app.alpaca.markets/paper/dashboard/overview)
 
 #### macOS & Linux:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/algopaca.git
+git clone https://github.com/mdjwel/algopaca.git
 cd algopaca
 
 # 2. Create and activate virtual environment
@@ -100,7 +191,7 @@ cp .env.example .env
 
 ```cmd
 :: 1. Clone and navigate to folder
-git clone https://github.com/your-username/algopaca.git
+git clone https://github.com/mdjwel/algopaca.git
 cd algopaca
 
 :: 2. Launch web desk (automatically sets up .venv & dependencies)
@@ -111,15 +202,15 @@ Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** to access your trading d
 
 ---
 
-## CLI & Terminal Execution
+## 💻 CLI & Terminal Execution
 
-AlgoPaca also provides a full-featured terminal CLI for headless servers or automated cron loops:
+AlgoPaca provides a full-featured terminal CLI for headless servers, automated cron jobs, or scriptable executions:
 
 ```bash
-# Display connected account information
+# Display connected Alpaca account status and buying power
 ./run.sh --account
 
-# Run a single strategy cycle
+# Run a single strategy evaluation cycle
 ./run.sh --once --mode sma --sma-preset golden_cross
 ./run.sh --once --mode dip --dip-preset deep
 ./run.sh --once --mode pair
@@ -127,100 +218,159 @@ AlgoPaca also provides a full-featured terminal CLI for headless servers or auto
 ./run.sh --once --mode ai --provider openai --preset balanced
 ./run.sh --once --mode ai --provider gemini --preset momentum
 
-# Run continuous trading loop
-./run.sh --mode ai --provider gemini
+# Run continuous autonomous loop (polls at configured intervals)
+./run.sh --mode ai --provider gemini --preset balanced
+
+# Override symbols for a cycle
+./run.sh --once --mode sma --symbols AAPL,MSFT,NVDA,TSLA
 ```
 
-On Windows, replace `./run.sh` with `run.bat`.
+*(On Windows, replace `./run.sh` with `run.bat`)*
 
 ---
 
-## Configuration (`.env`)
+## ⚙️ Configuration (`.env`)
 
-AlgoPaca uses environment variables for default settings. All keys can also be configured directly in the Web UI under the **Configuration** page.
+AlgoPaca uses environment variables for default configuration. All settings can also be modified in real-time via the **Configuration** page in the Web Desk.
 
 ```env
-# --- Alpaca Paper Trading (Default) ---
+# ==========================================
+# Alpaca Paper Trading Credentials (Default)
+# ==========================================
 ALPACA_API_KEY=PK...
 ALPACA_SECRET_KEY=...
 ALPACA_PAPER=true
 
-# --- Alpaca Live Trading (Safety Guarded) ---
+# ==========================================
+# Alpaca Live Trading Credentials (Safety Guarded)
+# ==========================================
 ALPACA_LIVE_API_KEY=AK...
 ALPACA_LIVE_SECRET_KEY=...
 ALPACA_ALLOW_LIVE=false
 
-# --- AI Providers (OpenAI or Gemini) ---
+# ==========================================
+# AI Model Providers & Keys
+# ==========================================
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.0-flash
 AI_PROVIDER=openai
 
-# --- Strategy Defaults ---
+# ==========================================
+# Default Strategy Settings
+# ==========================================
 STRATEGY_MODE=sma
 SYMBOLS=AAPL,MSFT,NVDA,SPY,QQQ
 SMA_PRESET=classic
 DIP_PRESET=deep
 AI_PRESET=balanced
 
-# --- Mechanical Risk Engine ---
+# ==========================================
+# Mechanical Risk Engine
+# ==========================================
 AI_RISK_PCT=0.5             # Risk 0.5% equity per trade
-AI_ATR_STOP_MULT=1.8        # ATR14 trailing stop distance
-AI_TAKE_PROFIT_R=2.0        # Trim 50% at 2.0x initial risk
-AI_TRAIL_AFTER_R=1.0        # Breakeven & trail after 1.0x risk
+AI_ATR_STOP_MULT=1.8        # ATR(14) trailing stop distance multiplier
+AI_TAKE_PROFIT_R=2.0        # Take profit target (2.0x initial risk)
+AI_TRAIL_AFTER_R=1.0        # Move stop to breakeven & trail after 1.0x R
 AI_MAX_POSITIONS=3          # Max concurrent open positions
-AI_DAILY_LOSS_LIMIT_PCT=3.0 # Halt entries if day P&L <= -3%
-AI_COOLDOWN_MINUTES=60      # Cooldown before re-entering stopped ticker
+AI_DAILY_LOSS_LIMIT_PCT=3.0 # Circuit breaker: halt entries if daily P&L <= -3%
+AI_COOLDOWN_MINUTES=60      # Cooldown before re-entering a stopped ticker
+AI_MAX_ALLOC_PCT=25.0       # Max portfolio allocation per individual trade
 
-# --- Web Server ---
+# ==========================================
+# Web Server Configuration
+# ==========================================
 ALGOPACA_HOST=127.0.0.1
 ALGOPACA_PORT=8765
 ```
 
-See [.env.example](.env.example) for a complete list of configuration parameters.
+See [.env.example](.env.example) for the full list of options and default parameters.
 
 ---
 
-## Paper vs. Live Trading Safety
+## 🛡️ Risk Management & Safety Guardrails
 
-1. **Paper Trading is Default**: Every installation starts in Paper mode using simulated capital.
-2. **Dedicated Credential Slots**: Paper keys (`ALPACA_API_KEY`) and Live keys (`ALPACA_LIVE_API_KEY`) are stored in isolated slots to prevent accidental promotion.
-3. **Hard Killswitch**: Live trading requires `ALPACA_ALLOW_LIVE=true` and explicit user confirmation in the Configuration menu.
-4. **Context Reset on Switch**: Switching environments immediately stops active loops, cancels armed buy-back triggers, and resets portfolio caches.
-5. **Fail-Safe Fallback**: Any authorization failure on Live immediately reverts the desk back to Paper mode.
+AlgoPaca is architected from the ground up with mechanical risk controls that execute prior to every order:
+
+```
+[Signal Generated] 
+       │
+       ▼
+┌────────────────────────────────────────────────────────┐
+│             Pre-Execution Risk Guardrails              │
+├────────────────────────────────────────────────────────┤
+│  1. Daily Loss Circuit Breaker (Halt if Day P&L ≤ -X%) │
+│  2. Max Concurrent Open Positions Gate                 │
+│  3. Spread & Liquidity Sanity Check                    │
+│  4. Post-Loss Cooldown Gate (Anti-Revenge Trading)     │
+│  5. Volatility-Adjusted ATR Sizing:                    │
+│     Shares = (Equity × Risk%) / (ATR14 × Multiplier)   │
+│  6. Max Allocation Cap (e.g., max 25% portfolio)       │
+└────────────────────────────────────────────────────────┘
+       │
+       ▼
+ [Order Sent to Alpaca API]
+       │
+       ▼
+┌────────────────────────────────────────────────────────┐
+│             Active Position Management                 │
+├────────────────────────────────────────────────────────┤
+│  • Automatic ATR Trailing Stop-Loss                    │
+│  • Dynamic Breakeven Ratchet at +1.0R                  │
+│  • Partial Profit Scaling at +2.0R                     │
+└────────────────────────────────────────────────────────┘
+```
+
+### Paper vs. Live Safety Guarantees
+
+1. **Default Paper Mode**: Fresh installations always start in Paper mode using simulated capital.
+2. **Dedicated Credential Slots**: Paper keys (`ALPACA_API_KEY`) and Live keys (`ALPACA_LIVE_API_KEY`) are kept in separate slots to prevent accidental promotion.
+3. **Hard Killswitch**: Live trading requires setting `ALPACA_ALLOW_LIVE=true` and explicit user confirmation in the Configuration menu.
+4. **Environment Isolation**: Switching between Paper and Live immediately cancels armed triggers, stops active loops, and clears portfolio caches.
+5. **Fail-Safe Fallback**: Any authentication or permission error on Live immediately reverts the system back to Paper mode.
 
 ---
 
-## Project Structure
+## 🧪 Walk-Forward Backtesting
+
+The interactive Backtester enables testing strategies across historical daily and minute bar datasets:
+
+- **Metrics Computed**: Total Return (%), Buy & Hold Return (%), Benchmark Alpha, Sharpe Ratio, Max Drawdown (%), Win Rate (%), Profit Factor, Total Trades, and Average Trade Duration.
+- **Side-by-Side Comparison**: Save and compare multiple parameter runs side-by-side to eliminate curve-fitting.
+- **Visual Equity Curves**: Interactive charts depicting equity growth versus buy-and-hold benchmarks over time.
+
+---
+
+## 📁 Project Structure
 
 ```
 algopaca/
 ├── bot/                     # Core Python trading engines & backend
-│   ├── ai_brain.py          # AI decision making & market context builder
-│   ├── ai_models.py         # Supported LLM models & defaults
-│   ├── ai_presets.py        # Named AI strategy presets
-│   ├── ai_providers.py      # OpenAI & Gemini API clients
-│   ├── ai_risk.py           # Mechanical sizing & position risk rules
-│   ├── ai_trader.py         # AI execution controller
+│   ├── ai_brain.py          # AI prompt assembly & multi-modal context builder
+│   ├── ai_models.py         # Supported LLM model catalog
+│   ├── ai_presets.py        # Named AI strategy presets (Balanced, PEAD, etc.)
+│   ├── ai_providers.py      # OpenAI & Gemini client integrations
+│   ├── ai_risk.py           # Mechanical ATR sizing & risk rules
+│   ├── ai_trader.py         # AI execution & post-trade reflection controller
 │   ├── analysis.py          # Technical indicators (RSI, MACD, Bollinger, ATR, ADX)
-│   ├── backtest.py          # SMA & Buy-the-Dip walk-forward engine
-│   ├── backtest_store.py    # Backtest result persistence
+│   ├── backtest.py          # Walk-forward backtesting simulation engine
+│   ├── backtest_store.py    # Backtest results persistence
 │   ├── client.py            # Alpaca API client & market data wrapper
 │   ├── config.py            # Configuration loader & validator
-│   ├── desk_risk.py         # Shared multi-engine risk logic
+│   ├── desk_risk.py         # Multi-engine risk verification
 │   ├── dip_hunt.py          # Buy-the-dip engine
 │   ├── earnings.py          # Nasdaq earnings calendar & EPS surprise parser
-│   ├── econ_calendar.py     # Economic calendar reader
-│   ├── history_insights.py  # Performance attribution & trade review engine
+│   ├── econ_calendar.py     # Economic calendar reader (Forex Factory USD)
+│   ├── history_insights.py  # Trade history attribution & performance analytics
 │   ├── ls_strategy.py       # Regime Dual Momentum (L/S) engine
 │   ├── pair_strategy.py     # Long/Short pair rotation engine
 │   ├── strategy.py          # SMA crossover engine
 │   ├── trader.py            # Execution dispatcher
 │   └── webapp.py            # FastAPI web server
-├── web/                     # Web Trading Desk frontend (HTML, CSS, JS)
+├── web/                     # Web Trading Desk frontend
 │   ├── static/css/          # Responsive styling & dark theme
-│   ├── static/js/           # Client-side trading desk interactions
+│   ├── static/js/           # Client-side trading desk interactions & charts
 │   └── static/lang/         # i18n JSON language catalogs (EN, BN, ES, FR, HI)
 ├── tests/                   # Automated unit & integration test suite
 ├── scripts/                 # Analysis and strategy validation scripts
@@ -231,14 +381,17 @@ algopaca/
 ├── run.sh                   # macOS / Linux CLI runner
 ├── run.bat                  # Windows CLI runner
 ├── requirements.txt         # Python dependencies
+├── CONTRIBUTING.md          # Contribution guidelines
+├── CODE_OF_CONDUCT.md       # Community code of conduct
+├── SECURITY.md              # Security policy & reporting
 └── LICENSE                  # MIT License
 ```
 
 ---
 
-## Testing
+## 🧪 Testing
 
-AlgoPaca includes a comprehensive unit and integration test suite:
+AlgoPaca includes automated unit and integration tests:
 
 ```bash
 # Run all tests
@@ -250,21 +403,27 @@ python -m unittest tests.test_desk -v
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
-We welcome community contributions! Please review our [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a pull request.
+We welcome community contributions, bug fixes, strategy improvements, and feedback!
 
-To report a bug or request a feature, please use our [GitHub Issue Templates](.github/ISSUE_TEMPLATE/).
+1. Fork the repository on GitHub.
+2. Create a feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add amazing feature'`).
+4. Push to the branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
+
+Please review our [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting.
 
 ---
 
-## Security
+## 🔒 Security
 
-Security is critical for trading applications. If you discover a vulnerability, please consult our [Security Policy](SECURITY.md) to report it responsibly.
+Security is critical for trading applications. If you discover a security vulnerability, please consult our [Security Policy](SECURITY.md) to report it responsibly.
 
 ---
 
-## Financial & Legal Disclaimer
+## ⚖️ Financial & Legal Disclaimer
 
 > [!CAUTION]
 > **DISCLAIMER**: AlgoPaca is an open-source software project provided for educational, research, and technical evaluation purposes only. **Nothing contained in this software, documentation, or repository constitutes financial, investment, legal, or tax advice.**
@@ -275,6 +434,6 @@ Security is critical for trading applications. If you discover a vulnerability, 
 
 ---
 
-## License
+## 📄 License
 
-AlgoPaca is released under the [MIT License](LICENSE).
+AlgoPaca is open-source software licensed under the [MIT License](LICENSE).
