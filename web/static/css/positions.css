@@ -1,0 +1,1983 @@
+/* ── Positions Page Styles ────────────────────────────────────────── */
+
+.page-positions {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* `hidden` must beat the layout `display` these elements carry. */
+.pos-empty-state[hidden],
+.pos-cards-list[hidden],
+.pos-table-wrap[hidden],
+.pos-allocation-panel[hidden],
+.pos-winloss-pill[hidden],
+.pos-chg-pill[hidden],
+.pos-modal-backdrop[hidden] {
+  display: none !important;
+}
+
+/* The blotter tags every numeric cell `.mono`, but nothing ever defined the
+   class — the figures were rendering in the body face, unaligned. Tabular
+   figures matter here: columns of prices have to compare down the column. */
+.page-positions .mono,
+.pos-modal-card .mono {
+  font-family: var(--mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The three confirmation dialogs use `.check` outside any `.form`, where the
+   shared `.form .check` rule could never reach them. */
+.pos-modal-card .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.pos-modal-card .check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--copper, #d4894c);
+  cursor: pointer;
+}
+
+.pos-modal-card .check strong {
+  display: block;
+  font-weight: 700;
+}
+
+@keyframes pos-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 10px rgba(63, 191, 143, 0.9); }
+}
+
+/* ── Profit / loss tone ───────────────────────────────────────────────
+   Every P&L figure on this page is tagged `.pos` or `.neg` by setPnlTone or
+   by the row templates, but only two narrow rules ever consumed those
+   classes — so the KPI headline numbers, the table's P&L columns, the card
+   figures and the modal estimates all rendered in plain body text. One pair
+   of rules colours them all. `.pos` matches the whole class token, so the
+   many `pos-*` layout classes on this page are unaffected.
+
+   Declared before the badge rules below, which carry the same specificity
+   and need to win on source order to keep their own background tints. */
+.page-positions .pos,
+.pos-modal-card .pos {
+  color: var(--buy);
+}
+
+.page-positions .neg,
+.pos-modal-card .neg {
+  color: var(--sell);
+}
+
+/* The headline P&L tiles are the first thing read; give them the full weight
+   of the tone rather than the same tint as the small print. */
+.pos-kpi-val.pos,
+.pos-kpi-val.neg {
+  font-weight: 700;
+}
+
+.pos-chg-pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Flat 0.00% carries neither tone class, so the pill needs a neutral
+     resting state or it renders as bare floating text. */
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+
+.pos-chg-pill.pos {
+  background: rgba(63, 191, 143, 0.15);
+  color: var(--accent);
+}
+
+.pos-chg-pill.neg {
+  background: rgba(227, 93, 93, 0.15);
+  color: var(--danger);
+}
+
+.pos-weight-warn {
+  color: #e5a03c;
+  font-weight: 700;
+}
+
+.pos-alloc-weight {
+  color: var(--text-muted);
+  font-family: var(--mono, monospace);
+}
+
+.pos-summary-panel {
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+/* Equity is the number the desk is actually judged on, so it gets the
+   display face and its own panel; the five supporting readouts share one
+   bordered rail. Six identically-weighted cards gave the eye no entry
+   point — this splits the block into "headline" and "context". */
+.pos-kpi-grid {
+  display: grid;
+  grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.pos-kpi-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 1rem 1.15rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(212, 137, 76, 0.12), transparent 62%),
+    var(--surface-soft);
+}
+
+.pos-kpi-hero-val {
+  font-family: var(--display);
+  font-size: clamp(2rem, 3.2vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* How much of the equity is actually at risk — a bar reads faster than the
+   percentage alone, and it is the one figure here with a natural 0–100 scale. */
+.pos-invested {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  /* Capped so the fill stays readable as a proportion once the hero spans
+     the full panel on narrow screens. */
+  max-width: 26rem;
+}
+
+.pos-invested-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.pos-invested-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--copper), var(--buy));
+  transition: width 0.45s ease;
+}
+
+/* Sub-line and its disclosure share a baseline row: the percentage reads
+   left, the way into the breakdown sits at the far edge. */
+.pos-invested-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+
+/* Deliberately not a `.ghost` button — a boxed control inside the hero would
+   compete with the equity figure. This reads as a quiet disclosure link and
+   only firms up on hover/focus. */
+.pos-allocation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--copper, #d4894c);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.pos-allocation-toggle[hidden] {
+  display: none;
+}
+
+.pos-allocation-toggle:hover {
+  background: rgba(212, 137, 76, 0.12);
+}
+
+.pos-allocation-toggle:focus-visible {
+  outline: 2px solid var(--copper, #d4894c);
+  outline-offset: 2px;
+}
+
+.pos-allocation-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.pos-allocation-toggle[aria-expanded="true"] .pos-allocation-chevron {
+  transform: rotate(180deg);
+}
+
+.pos-kpi-rail {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--panel);
+}
+
+.pos-kpi-tile {
+  flex: 1 1 10.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.85rem 0.95rem 0.9rem;
+  /* Hairline rules between readouts. The negative margins slide each tile's
+     own leading borders under the rail's clipped edge, so a divider only
+     ever appears *between* two tiles, however the row wraps — and a short
+     final row leaves no empty cell, since the tiles carry the background. */
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  margin: -1px 0 0 -1px;
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 65%);
+  transition: background-color 0.2s ease;
+}
+
+.pos-kpi-tile:hover {
+  background-color: color-mix(in srgb, var(--panel) 92%, #fff);
+}
+
+.pos-kpi-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.pos-kpi-val {
+  font-family: var(--mono);
+  font-size: 1.12rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Figure and its change pill sit on one baseline, freeing the sub-line to
+   carry the yardstick label instead of a second copy of the percentage. */
+.pos-kpi-valrow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pos-kpi-sub {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* Below this the rail can no longer hold its five readouts on one line
+   beside the hero, so equity takes the full width and the rail follows. */
+@media (max-width: 1180px) {
+  .pos-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pos-kpi-hero {
+    padding-bottom: 0.95rem;
+  }
+}
+
+.pos-kpi-sub.pos {
+  color: var(--accent);
+}
+
+.pos-kpi-sub.neg {
+  color: var(--danger);
+}
+
+.pos-winloss-pill {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-self: flex-start;
+  margin-top: 0.05rem;
+}
+
+/* The counters double as the Winners / Losers filter, so they carry a
+   button's affordances rather than reading as static text. */
+.pos-winloss-btn {
+  font-family: var(--mono, monospace);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pos-winloss-btn.pos {
+  color: var(--accent, #3fbf8f);
+}
+
+.pos-winloss-btn.neg {
+  color: var(--danger, #e35d5d);
+}
+
+.pos-winloss-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pos-winloss-btn.pos.is-active {
+  border-color: var(--accent, #3fbf8f);
+  background: rgba(63, 191, 143, 0.16);
+}
+
+.pos-winloss-btn.neg.is-active {
+  border-color: var(--danger, #e35d5d);
+  background: rgba(227, 93, 93, 0.16);
+}
+
+/* Allocation Visualizer */
+.pos-allocation-panel {
+  padding: 1.15rem 1.25rem;
+}
+
+.pos-allocation-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.pos-allocation-bar {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.pos-alloc-segment {
+  height: 100%;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default;
+}
+
+/* Uninvested equity closes the bar to 100%; hatched so it never reads as a
+   holding, and not clickable because there is no row to filter to. */
+.pos-alloc-segment.is-cash {
+  cursor: default;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0 5px,
+    rgba(255, 255, 255, 0.03) 5px 10px
+  );
+}
+
+.pos-allocation-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.pos-alloc-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+
+button.pos-alloc-legend-item:hover {
+  border-color: rgba(212, 137, 76, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pos-alloc-legend-item.is-cash {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.pos-alloc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pos-alloc-dot.is-cash {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.pos-alloc-sym {
+  font-weight: 600;
+}
+
+/* Filters & Search Toolbar */
+.positions-panel .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.positions-panel .panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.positions-panel .panel-head-actions .ghost {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Two identical red buttons side by side gave no clue which one is the wider
+   blast radius. Close Selected is scoped to a selection and already names its
+   count, so it steps back and leaves full danger weight to Liquidate all. */
+#btn-liquidate-selected.ghost-danger {
+  color: color-mix(in srgb, var(--sell) 72%, var(--muted));
+  border-color: var(--line);
+}
+
+#btn-liquidate-selected.ghost-danger:hover,
+#btn-liquidate-selected.ghost-danger:focus-visible {
+  color: #ffd7d7;
+  border-color: color-mix(in srgb, var(--sell) 55%, var(--line));
+}
+
+#btn-liquidate-all.ghost-danger:not(:disabled) {
+  background: rgba(227, 93, 93, 0.08);
+}
+
+/* Keeps the destructive pair visually separate from Refresh / Export, which
+   otherwise sat in one undifferentiated row of ghost buttons. */
+.pos-actions-divider {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--line, rgba(255, 255, 255, 0.12));
+  margin: 0 0.15rem;
+}
+
+.pos-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+  height: 2rem;
+  box-sizing: border-box;
+}
+
+.pos-sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #3fbf8f);
+  box-shadow: 0 0 6px rgba(63, 191, 143, 0.7);
+  animation: pos-pulse 2s infinite ease-in-out;
+}
+
+/* A pulsing green dot claimed "Live" even when every poll was failing. */
+.pos-sync-status.is-error {
+  border-color: rgba(227, 93, 93, 0.45);
+  color: #ff9999;
+}
+
+.pos-sync-status.is-error .pos-sync-dot {
+  background: var(--danger, #e35d5d);
+  box-shadow: 0 0 6px rgba(227, 93, 93, 0.7);
+}
+
+.pos-sync-status.is-paused .pos-sync-dot {
+  background: var(--muted, rgba(255, 255, 255, 0.4));
+  box-shadow: none;
+  animation: none;
+}
+
+.pos-loop-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md, 8px);
+  background: rgba(212, 137, 76, 0.08);
+  border: 1px solid rgba(212, 137, 76, 0.28);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* `display: flex` outranks the UA sheet's `[hidden] { display: none }`, so the
+   notice stayed on screen with the loop stopped. Honour the attribute here. */
+.pos-loop-notice[hidden] {
+  display: none;
+}
+
+.pos-loop-notice a {
+  color: var(--copper, #d4894c);
+  white-space: nowrap;
+}
+
+.pos-sync-time {
+  font-family: var(--mono, monospace);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.pos-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(12, 18, 26, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md, 8px);
+  margin-bottom: 0.85rem;
+}
+
+.pos-search-wrap {
+  position: relative;
+  min-width: 170px;
+  flex: 1 1 200px;
+  max-width: 280px;
+}
+
+.pos-search-icon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  pointer-events: none;
+}
+
+.pos-search-input {
+  width: 100%;
+  padding-left: 2rem;
+  padding-right: 1.75rem;
+  height: 32px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text, #f0f4f8);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm, 6px);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.pos-search-input:focus-visible {
+  outline: none;
+  border-color: var(--copper, #d4894c);
+  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.2);
+}
+
+.pos-search-clear {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  cursor: pointer;
+  padding: 0.15rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.pos-search-clear:hover {
+  color: var(--text, #f0f4f8);
+}
+
+.pos-filter-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pos-seg-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pos-seg-label {
+  font-family: var(--mono, monospace);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  white-space: nowrap;
+}
+
+.pos-seg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+}
+
+.pos-seg-btn {
+  font-family: var(--mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted, rgba(255, 255, 255, 0.55));
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+  height: 26px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-seg-btn:hover:not(.is-active) {
+  color: var(--text, #f0f4f8);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* A solid copper fill made "All" — the default, information-free state — the
+   loudest mark on the page. A raised surface with copper text still reads as
+   selected without outshouting the P&L figures below. */
+.pos-seg-btn.is-active {
+  color: var(--copper, #d4894c);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid color-mix(in srgb, var(--copper) 32%, transparent);
+  padding: 0.25rem calc(0.55rem - 1px);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Left to nice-select2 so it matches the History filters rather than
+   inventing a third dropdown look. */
+.pos-sort-group {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.pos-reset-filters.ghost {
+  min-height: 30px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+}
+
+.pos-reset-filters:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Positions Table */
+.pos-table-wrap {
+  overflow: auto;
+  /* Caps a long book so the account summary above stays reachable, and gives
+     the sticky header a scroll container to stick to. Short books are
+     unaffected — the wrap still sizes to its rows. */
+  max-height: min(70vh, 42rem);
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: var(--panel, #121a24);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.pos-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.pos-table th {
+  padding: 0.6rem 0.7rem;
+  /* Sticky so the column names survive scrolling a long book; the solid ground
+     stops rows showing through as they pass beneath. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--panel) 92%, #fff 8%);
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Money and share counts read as a column of figures only when their decimals
+   line up, so every numeric cell is right-aligned with fixed-width digits. */
+.pos-th-num,
+.pos-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-th-num .pos-sort-btn {
+  justify-content: flex-end;
+}
+
+.pos-th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pos-th-sortable:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.pos-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pos-sort-icon {
+  font-size: 0.7rem;
+  opacity: 0.45;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pos-th-sortable[aria-sort="ascending"] .pos-sort-icon,
+.pos-th-sortable[aria-sort="descending"] .pos-sort-icon {
+  opacity: 1;
+  color: var(--copper, #d4894c);
+}
+
+.pos-th-check,
+.pos-cell-check {
+  width: 38px;
+  text-align: center;
+  padding-left: 0.75rem !important;
+  padding-right: 0.35rem !important;
+}
+
+.pos-check-input {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--copper, #d4894c);
+  vertical-align: middle;
+}
+
+.pos-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+  vertical-align: middle;
+  transition: background-color 0.4s ease;
+}
+
+.pos-table-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.pos-table-row.is-selected {
+  background: rgba(212, 137, 76, 0.06);
+}
+
+.pos-cell-sym {
+  white-space: nowrap;
+}
+
+/* A directional edge down the row makes long and short separable in peripheral
+   vision, before the badge is read. It rides the first cell so it lands on the
+   row's own left edge. */
+.pos-cell-check {
+  box-shadow: inset 2px 0 0 var(--hold);
+}
+
+.pos-table-row[data-side="long"] .pos-cell-check {
+  box-shadow: inset 2px 0 0 var(--buy);
+}
+
+.pos-table-row[data-side="short"] .pos-cell-check {
+  box-shadow: inset 2px 0 0 var(--sell);
+}
+
+.pos-sym-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pos-sym-link {
+  color: inherit;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--copper) 35%, transparent);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.pos-sym-group .pos-sym-link {
+  font-size: 0.9rem;
+}
+
+.pos-sym-link:hover,
+.pos-sym-link:focus-visible {
+  color: var(--copper);
+  border-bottom-color: var(--copper);
+}
+
+.pos-sym-link:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.pos-cell-qty strong {
+  display: block;
+}
+
+/* Secondary figures sit under their headline as a quiet second line — present
+   for the reader who wants them, never competing with the number above. */
+.pos-avail-note,
+.pos-cost-sub {
+  display: block;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.pos-cell-pnl strong {
+  display: block;
+}
+
+.pos-cell-pnl small {
+  display: block;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.75;
+}
+
+/* Protection Badges */
+.pos-cell-prot {
+  max-width: 15rem;
+}
+
+.pos-prot-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.pos-prot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.pos-prot-badge em {
+  font-style: normal;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+.pos-prot-badge.sl {
+  background: rgba(63, 191, 143, 0.12);
+  color: var(--accent, #3fbf8f);
+  border: 1px solid rgba(63, 191, 143, 0.3);
+}
+
+/* A stop within 2% is about to fire — that is a different situation from
+   "protected", and the badge should not read the same. */
+.pos-prot-badge.sl-tight {
+  background: rgba(227, 160, 60, 0.14);
+  color: #e5a03c;
+  border: 1px solid rgba(227, 160, 60, 0.35);
+}
+
+.pos-prot-badge.orders {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+a.pos-prot-badge.orders {
+  text-decoration: none;
+}
+
+a.pos-prot-badge.orders:hover,
+a.pos-prot-badge.orders:focus-visible {
+  color: var(--text);
+  border-color: var(--copper);
+}
+
+.pos-prot-badge.no-sl {
+  background: rgba(227, 160, 60, 0.12);
+  color: #e5a03c;
+  border: 1px solid rgba(227, 160, 60, 0.3);
+}
+
+.pos-prot-badge.tp {
+  background: rgba(100, 160, 255, 0.12);
+  color: #6ba6ff;
+  border: 1px solid rgba(100, 160, 255, 0.3);
+}
+
+/* Allocation High Risk / Concentration Warning */
+.pos-alloc-segment.high-risk {
+  filter: brightness(1.15);
+  outline: 2px solid rgba(227, 160, 60, 0.85);
+  outline-offset: -2px;
+}
+
+/* Header and buttons share one edge — previously the label sat right of the
+   controls it names. */
+.pos-th-actions,
+.pos-cell-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.pos-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+/* Three outlined buttons per row turned the right edge into noise louder than
+   the P&L. These read as quiet text until the row is hovered or one is
+   focused, so the eye lands on the numbers first. */
+.pos-act {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.pos-table-row:hover .pos-act {
+  color: var(--text);
+}
+
+.pos-act:hover,
+.pos-act:focus-visible {
+  color: var(--copper);
+  background: rgba(212, 137, 76, 0.1);
+  border-color: color-mix(in srgb, var(--copper) 35%, transparent);
+}
+
+/* Close is the one irreversible action here, so it keeps its own colour. */
+.pos-act-close {
+  color: color-mix(in srgb, var(--sell) 78%, var(--muted));
+}
+
+.pos-table-row:hover .pos-act-close {
+  color: var(--sell);
+}
+
+.pos-act-close:hover,
+.pos-act-close:focus-visible {
+  color: #ffd7d7;
+  background: rgba(227, 93, 93, 0.14);
+  border-color: color-mix(in srgb, var(--sell) 45%, transparent);
+}
+
+.pos-act:disabled,
+.pos-table-row:hover .pos-act:disabled {
+  color: var(--muted);
+  opacity: 0.35;
+  background: transparent;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+/* Direction belongs in the badge's colour, not only in its four letters. */
+.side-badge.long {
+  color: var(--buy);
+  border-color: color-mix(in srgb, var(--buy) 40%, var(--line));
+  background: rgba(63, 191, 143, 0.08);
+}
+
+.side-badge.short {
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 40%, var(--line));
+  background: rgba(227, 93, 93, 0.08);
+}
+
+/* Mobile Cards */
+.pos-cards-list {
+  display: none;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pos-card {
+  background: var(--panel, #121a24);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pos-card.is-selected {
+  border-color: rgba(212, 137, 76, 0.45);
+  background: rgba(212, 137, 76, 0.06);
+}
+
+.pos-card-prot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.pos-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+  padding-bottom: 0.65rem;
+}
+
+.pos-card-sym-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pos-card-sym {
+  font-size: 1.1rem;
+}
+
+.pos-card-mv {
+  text-align: right;
+}
+
+.pos-card-mv strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.pos-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 1rem;
+  font-size: 0.82rem;
+}
+
+.pos-card-grid div span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.15rem;
+}
+
+.pos-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+}
+
+.pos-card-actions .ghost {
+  text-align: center;
+  padding: 0.5rem;
+}
+
+/* Card actions share a 2-column grid: Close/Cover on the first row, Lots/History
+   on the second — same actions as the desktop blotter. */
+.pos-card-actions .btn-pos-lots,
+.pos-card-actions .btn-pos-trade {
+  grid-column: auto;
+}
+
+/* Empty State */
+.pos-empty-state {
+  text-align: center;
+  padding: 3.5rem 1.5rem;
+  background: var(--panel, #121a24);
+  border: 1px dashed var(--line, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md, 8px);
+}
+
+.pos-empty-icon {
+  margin-bottom: 0.85rem;
+  color: var(--text-muted);
+}
+
+.pos-empty-state h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.15rem;
+}
+
+.pos-empty-state p {
+  color: var(--text-muted);
+  max-width: 420px;
+  margin: 0 auto 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.pos-empty-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.pos-empty-actions a.button {
+  min-width: 8.75rem;
+}
+
+.pos-empty-state > button.ghost {
+  min-height: 44px;
+  padding: 0.7rem 0.95rem;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 480px) {
+  .pos-empty-actions {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 18rem;
+    margin-inline: auto;
+  }
+
+  .pos-empty-actions a.button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Same reason as .pos-loop-notice[hidden] — a filtered-empty blotter hides
+   these buttons via the attribute, which `display: flex` would otherwise win. */
+.pos-empty-actions[hidden] {
+  display: none;
+}
+
+/* Modals */
+.pos-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(6, 10, 15, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overscroll-behavior: contain;
+}
+
+.pos-modal-card {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 2rem);
+  background: var(--panel, #141e2a);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-modal-head {
+  padding: 1.15rem 1.25rem;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.pos-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pos-modal-head h3 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.pos-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem;
+  transition: color 0.2s;
+}
+
+.pos-modal-close:hover {
+  color: var(--text);
+}
+
+.pos-modal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pos-modal-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+  border-radius: var(--radius-md, 8px);
+  padding: 0.85rem 1rem;
+}
+
+.pos-modal-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pos-modal-meta-item span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pos-modal-meta-item strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: var(--mono, monospace);
+}
+
+.pos-symbol-badge {
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.danger-title {
+  color: #ff9999;
+}
+
+.danger-icon {
+  flex-shrink: 0;
+  color: var(--danger, #e35d5d);
+}
+
+.pos-danger-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.pos-danger-banner p {
+  margin: 0;
+}
+
+.pos-modal-sizing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pos-modal-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pos-pct-tag {
+  font-family: var(--mono, monospace);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--copper, #d4894c);
+  letter-spacing: 0;
+}
+
+.pos-modal-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.pos-slider {
+  width: 100%;
+  accent-color: var(--copper, #d4894c);
+  height: 6px;
+  cursor: pointer;
+}
+
+.pos-qty-unit {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.pos-preview-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pos-preview-row span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.pos-preview-row strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: var(--mono, monospace);
+}
+
+/* The confirm button on a liquidation dialog must not read as an ordinary
+   primary action — it was inheriting the plain primary styling. */
+button.primary.primary-danger {
+  background: var(--sell, #e35d5d);
+  border-color: var(--sell, #e35d5d);
+  color: #2a0d0d;
+}
+
+button.primary.primary-danger:hover:not(:disabled),
+button.primary.primary-danger:focus-visible {
+  background: #f07070;
+  border-color: #f07070;
+}
+
+.pos-pct-chips {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pos-pct-chips .chip {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  min-height: 2rem;
+}
+
+.pos-modal-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pos-qty-input {
+  width: 90px;
+  height: 36px;
+  font-size: 0.88rem;
+  padding: 0 0.5rem;
+  text-align: right;
+}
+
+/* "How much am I left holding" is the question a partial close raises. */
+.pos-remaining-note {
+  margin-left: auto;
+  font-family: var(--mono, monospace);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pos-modal-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  background: var(--surface-soft, rgba(255, 255, 255, 0.025));
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 8px);
+  padding: 0.85rem 1rem;
+}
+
+.pos-danger-banner {
+  background: rgba(227, 93, 93, 0.1);
+  border: 1px solid rgba(227, 93, 93, 0.25);
+  border-radius: var(--radius-md, 8px);
+  padding: 0.85rem 1rem;
+  color: #ff9999;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.pos-liquidate-preview {
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+  border-radius: var(--radius-md, 8px);
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pos-liquidate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.82rem;
+}
+
+.pos-liquidate-row span:not(:first-of-type) {
+  text-align: right;
+}
+
+/* What the whole batch costs — the number the confirmation is really about. */
+.pos-liquidate-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: -0.65rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md, 8px);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
+  font-size: 0.85rem;
+}
+
+.pos-liquidate-totals strong {
+  text-align: right;
+}
+
+.pos-modal-foot {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+/* An <a> styled as a button keeps the UA underline, so the one anchor in this
+   footer read as a link dropped inside a box beside two real buttons. */
+.pos-modal-foot a.ghost {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* Share lots — a five-column ledger needs more room than a confirmation
+   dialog, so this card runs wider than the close/liquidate ones. */
+.pos-lots-card {
+  max-width: 780px;
+}
+
+.pos-lots-body {
+  gap: 0.9rem;
+}
+
+.pos-lots-list-wrap[hidden],
+.pos-lots-loading[hidden],
+.pos-lots-empty[hidden],
+.pos-lots-note[hidden] {
+  display: none !important;
+}
+
+/* The figures the lot list is read against, on one hairline rail so the block
+   reads as a single instrument rather than five competing tiles. */
+.pos-lots-rail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 8px);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.pos-lots-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+}
+
+.pos-lots-stat:first-child {
+  border-left: none;
+}
+
+.pos-lots-stat span {
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pos-lots-stat strong {
+  font-family: var(--mono, monospace);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-lots-list-wrap {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+}
+
+/* Five grid tracks shared by the column head, every lot row, and the totals
+   line — one definition, so the columns cannot drift apart. */
+.pos-lots-colhead,
+.pos-lot {
+  display: grid;
+  grid-template-columns:
+    minmax(8.5rem, 1.4fr) minmax(5rem, 0.9fr)
+    minmax(7rem, 1.2fr) minmax(6.5rem, 1fr) minmax(7rem, 1.1fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pos-lots-colhead {
+  padding: 0.5rem 0.85rem;
+  background: color-mix(in srgb, var(--panel) 92%, #fff 8%);
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pos-lots-colhead span:nth-child(n + 2) {
+  text-align: right;
+}
+
+.pos-lots-colhead span:nth-child(3) {
+  text-align: left;
+}
+
+.pos-lots-list {
+  max-height: min(46vh, 24rem);
+  overflow-y: auto;
+}
+
+.pos-lot {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+  /* A hairline edge in the P&L colour makes a losing parcel findable before a
+     single figure is read — the same trick the blotter rows use for side. */
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background 0.15s ease;
+}
+
+.pos-lot:last-child {
+  border-bottom: none;
+}
+
+.pos-lot:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.pos-lot.is-pos {
+  box-shadow: inset 2px 0 0 var(--buy);
+}
+
+.pos-lot.is-neg {
+  box-shadow: inset 2px 0 0 var(--sell);
+}
+
+.pos-lot.is-flat {
+  box-shadow: inset 2px 0 0 var(--line, rgba(255, 255, 255, 0.15));
+}
+
+.pos-lot-when {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* Lot 1 is the oldest parcel and the first shares a sell would retire; the
+   ordinal carries that meaning, so it gets a chip rather than a bare digit. */
+.pos-lot-num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-family: var(--mono, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text, #e8eef5);
+}
+
+.pos-lot-when-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pos-lot-when-text strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pos-lot-when-text em,
+.pos-lot-entry em,
+.pos-lot-value em {
+  font-style: normal;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.pos-lot-entry,
+.pos-lot-value,
+.pos-lot-pnl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-lot-entry strong,
+.pos-lot-value strong,
+.pos-lot-pnl strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pos-lot-pnl .pos-chg-pill {
+  font-style: normal;
+}
+
+/* The bar is the fastest read of "how much of the holding is this parcel",
+   which no column of share counts gives you at a glance. */
+.pos-lot-size {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.pos-lot-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.pos-lot-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #d4894c);
+}
+
+.pos-lot.is-pos .pos-lot-bar span {
+  background: var(--buy);
+}
+
+.pos-lot.is-neg .pos-lot-bar span {
+  background: var(--sell);
+}
+
+.pos-lot-size-text {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Row-level labels belong to the stacked layout; the column head covers the
+   wide one, and repeating them there is noise. */
+.pos-lot-label {
+  display: none;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A reconstructed parcel is a guess, and a guess that looks identical to a
+   fill is the worst of both. */
+.pos-lot.is-estimated {
+  background: rgba(212, 137, 76, 0.05);
+}
+
+.pos-lot-tag {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0.02rem 0.32rem;
+  border: 1px dashed rgba(212, 137, 76, 0.5);
+  border-radius: 4px;
+  font-style: normal;
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  color: #d4894c;
+  cursor: help;
+}
+
+.pos-lots-totals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.85rem;
+  background: color-mix(in srgb, var(--panel) 92%, #fff 8%);
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pos-lots-totals strong {
+  font-size: 0.88rem;
+}
+
+.pos-lots-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 2px solid rgba(212, 137, 76, 0.55);
+  border-radius: 0 4px 4px 0;
+  background: rgba(212, 137, 76, 0.06);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pos-lots-legend {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pos-lots-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2.5rem 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.pos-lots-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent, #d4894c);
+  animation: pos-lots-spin 0.8s linear infinite;
+}
+
+@keyframes pos-lots-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-lots-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .pos-sym-link {
+    transition: none;
+  }
+}
+
+.pos-lots-empty {
+  padding: 2.25rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--line, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md, 8px);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Five columns do not survive a phone: the row stacks into label/value pairs,
+   which is why the labels live in the markup at all. */
+@media (max-width: 720px) {
+  .pos-lots-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-lots-stat:nth-child(odd) {
+    border-left: none;
+  }
+
+  .pos-lots-stat:nth-child(n + 3) {
+    border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+  }
+
+  .pos-lots-stat-pnl {
+    grid-column: 1 / -1;
+  }
+
+  .pos-lots-colhead {
+    display: none;
+  }
+
+  .pos-lot {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.75rem;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .pos-lot-when {
+    grid-column: 1 / -1;
+  }
+
+  .pos-lot-size {
+    grid-column: 1 / -1;
+    order: 5;
+  }
+
+  .pos-lot-entry,
+  .pos-lot-value,
+  .pos-lot-pnl {
+    align-items: flex-start;
+  }
+
+  .pos-lot-label {
+    display: block;
+  }
+}
+
+@media (max-width: 860px) {
+
+  .pos-table-wrap {
+    display: none;
+  }
+
+  /* `hidden` has to keep winning here — a class-level `display: flex` beats
+     the UA rule for [hidden], which left an empty list rendered over the
+     empty state. */
+  .pos-cards-list:not([hidden]) {
+    display: flex;
+  }
+
+  .pos-filters-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pos-search-wrap {
+    max-width: 100%;
+  }
+
+  .pos-filter-groups {
+    justify-content: space-between;
+  }
+
+  .positions-panel .panel-head-actions {
+    width: 100%;
+  }
+
+  .pos-actions-divider {
+    display: none;
+  }
+}
+
+/* The sort dropdown duplicates the table headers on wide screens; it earns its
+   place only once the table is gone. */
+@media (min-width: 861px) {
+  .pos-sort-group {
+    display: none;
+  }
+}

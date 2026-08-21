@@ -1,0 +1,1917 @@
+/* ── Manual Order Page Styles ──────────────────────────────────── */
+
+/* Ticket on the left, everything the desk knows on the right. The rail is
+   sticky so the mark, the size, and the last fill stay in view while the form
+   scrolls — on one column the rail simply follows the form. */
+.manual-layout {
+  display: grid;
+  gap: 1.15rem;
+  align-items: start;
+  max-width: 68rem;
+}
+
+@media (min-width: 62rem) {
+  .manual-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(19rem, 23rem);
+  }
+
+  .manual-rail {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+.manual-panel {
+  margin: 0;
+}
+
+.manual-rail {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.manual-rail > .panel {
+  padding: 1rem 1.1rem;
+}
+
+/* Secondary cards: a one-line copper header until you ask for the body. */
+.manual-rail > .panel.manual-fold {
+  padding: 0.35rem 0.75rem;
+}
+
+.manual-rail > .panel.manual-fold[open] {
+  padding: 0.55rem 0.9rem 0.9rem;
+}
+
+.manual-rail > .panel.manual-fold[hidden] {
+  display: none;
+}
+
+.manual-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.15rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--copper);
+}
+
+.manual-fold-head::-webkit-details-marker {
+  display: none;
+}
+
+.manual-fold-head::marker {
+  content: "";
+}
+
+.manual-fold-head:hover {
+  color: color-mix(in srgb, var(--copper) 70%, var(--text));
+}
+
+.manual-fold-head:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--copper) 45%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.manual-fold-head .manual-last-heading {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+
+.manual-fold-caret {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease;
+}
+
+.manual-fold[open] > .manual-fold-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.manual-fold[open] > .manual-fold-head .manual-fold-caret {
+  transform: rotate(45deg);
+}
+
+.manual-fold-body {
+  padding: 0.15rem 0 0.1rem;
+}
+
+.manual-fold-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 0.15rem;
+}
+
+.manual-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 55%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 14%, var(--panel));
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.manual-banner a {
+  color: var(--copper);
+  font-weight: 600;
+}
+
+/* Market context — a read-only ledger, so it reads as rows of label → value
+   rather than boxed cards competing with the ticket for attention. */
+.manual-context-block {
+  margin: 0;
+}
+
+.manual-context-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.manual-context-head h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--copper);
+}
+
+button.ghost.small,
+a.ghost.small {
+  padding: 0.28rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.manual-context {
+  margin: 0;
+  display: grid;
+  /* Two columns at most: a third squeezes "Bid / Ask" onto two lines and the
+     rows stop lining up across the grid. */
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+  gap: 0 1.5rem;
+}
+
+.manual-context div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.manual-context div:last-child {
+  border-bottom: none;
+}
+
+.manual-context dd.pos {
+  color: var(--buy);
+}
+
+.manual-context dd.neg {
+  color: var(--sell);
+}
+
+.manual-context dd.is-wide {
+  color: var(--copper);
+}
+
+.manual-ctx-orders {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--copper);
+  line-height: 1.4;
+}
+
+.manual-ctx-orders[hidden] {
+  display: none;
+}
+
+.manual-ctx-order {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+}
+
+.manual-context dt {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.manual-context dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.manual-ctx-meta {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(212, 137, 76, 0.2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+/* Form fieldgroup visual separation */
+.manual-form .field-group {
+  background: rgba(212, 137, 76, 0.04);
+  border-color: rgba(212, 137, 76, 0.25);
+}
+
+.manual-form #manual-risk-group {
+  background: rgba(139, 154, 171, 0.04);
+  border-color: rgba(139, 154, 171, 0.2);
+}
+
+/* The buy-back arms a *second* order, so it reads as its own instrument
+   rather than another row of the sell block. */
+.manual-form #manual-reinvest-group {
+  background: rgba(93, 168, 140, 0.05);
+  border-color: rgba(93, 168, 140, 0.22);
+}
+
+.manual-form #manual-followon-group {
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 28%, var(--line));
+}
+
+.manual-form #manual-reinvest-group > .check,
+.manual-form #manual-reinvest-fields,
+.manual-form #manual-followon-group > .check,
+.manual-form #manual-followon-fields {
+  grid-column: 1 / -1;
+}
+
+.manual-form #manual-reinvest-fields,
+.manual-form #manual-followon-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(93, 168, 140, 0.3);
+}
+
+.manual-form #manual-followon-fields {
+  border-top-color: color-mix(in srgb, var(--copper) 32%, transparent);
+}
+
+.manual-form #manual-reinvest-fields[hidden],
+.manual-form #manual-followon-fields[hidden] {
+  display: none;
+}
+
+.manual-form #manual-followon-price-row.is-market {
+  grid-template-columns: 1fr;
+}
+
+#manual-reinvest-summary:not(:empty),
+#manual-followon-summary:not(:empty) {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: rgba(93, 168, 140, 0.09);
+  border: 1px solid rgba(93, 168, 140, 0.24);
+}
+
+#manual-followon-summary:not(:empty) {
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 32%, transparent);
+}
+
+/* A buy-back priced above the sell is legal but almost never intended. */
+#manual-reinvest-summary.warn:not(:empty),
+#manual-followon-summary.warn:not(:empty) {
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 35%, transparent);
+}
+
+.manual-form #manual-dip-hunt-group {
+  background: rgba(93, 168, 140, 0.05);
+  border-color: rgba(93, 168, 140, 0.22);
+}
+
+.manual-form #manual-dip-hunt-group > .check,
+.manual-form #manual-dip-hunt-fields {
+  grid-column: 1 / -1;
+}
+
+.manual-form #manual-dip-hunt-fields {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(93, 168, 140, 0.3);
+}
+
+.manual-form #manual-dip-hunt-fields[hidden] {
+  display: none;
+}
+
+#manual-dip-hunt-summary:not(:empty) {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: rgba(93, 168, 140, 0.09);
+  border: 1px solid rgba(93, 168, 140, 0.24);
+}
+
+.manual-form .field-group[hidden] {
+  display: none;
+}
+
+.manual-form .field-group legend {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 0.5rem;
+}
+
+/* Color semantics: info is quiet, warning is amber, error is red. Copper is
+   reserved for the desk's own accent and "something is pending" states, so a
+   warning can no longer be mistaken for a heading. */
+.manual-form .field-help.info {
+  color: var(--muted);
+}
+
+.manual-form .field-help.warn,
+#manual-session-warn {
+  color: var(--warn);
+}
+
+/* `.field-group` is a two-column grid and `.form label` is `display: grid`,
+   so anything full-width has to claim both tracks and anything hideable has to
+   beat that display rule — otherwise `hidden` renders anyway. */
+.manual-form .field-group > .segmented-field,
+.manual-form .field-group > .segmented,
+.manual-form .field-group > .manual-limit-row,
+.manual-form .field-group > .manual-span,
+.manual-form .field-group > .manual-qty-field,
+.manual-form .field-group > details,
+.manual-form .field-group > p {
+  grid-column: 1 / -1;
+}
+
+/* Quantity: label + available + #/$ pill on one row, the amount below. */
+.manual-qty-field {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.manual-qty-field[hidden] {
+  display: none;
+}
+
+.qty-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.qty-field-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.manual-form .qty-field-label {
+  display: inline;
+  margin: 0;
+  font-family: var(--ui);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.qty-field-avail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ui);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.qty-field-avail.is-empty {
+  color: var(--warn);
+}
+
+.qty-unit-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.14rem;
+  gap: 0.08rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 70%, var(--panel));
+}
+
+.manual-form .qty-unit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  gap: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.manual-form .qty-unit input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.manual-form .qty-unit:hover {
+  color: var(--text);
+}
+
+.manual-form .qty-unit:has(input:checked) {
+  background: var(--copper);
+  color: var(--ink);
+}
+
+.manual-form .qty-unit:has(input:focus-visible) {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.manual-form .qty-unit.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.qty-field-input {
+  min-width: 0;
+}
+
+.qty-field-input[hidden] {
+  display: none;
+}
+
+.qty-fill-group .ghost.small.is-active {
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 18%, var(--panel));
+  color: var(--text);
+}
+
+#manual-sell-group > .field-help {
+  margin-top: 0.05rem;
+}
+
+/* Symbol + Side share one row; the side help stays full-width underneath. */
+.manual-symbol-side-row > .segmented-field {
+  min-width: 0;
+  align-self: start;
+}
+
+.manual-symbol-side-row .segmented {
+  margin: 0;
+}
+
+.manual-form label[hidden],
+.manual-form [hidden] {
+  display: none;
+}
+
+/* Side / order-type segmented controls — the side of a trade is the most
+   consequential choice on the page, so it reads as a switch, not a dropdown. */
+.segmented-field {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.segmented-field > legend {
+  padding: 0 0 0.35rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
+.segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.segment input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.segment:hover {
+  border-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+.segment:has(input:focus-visible) {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.segment:has(input:checked) {
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 16%, var(--panel));
+  color: var(--text);
+}
+
+.segment-session {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.session-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.session-label {
+  font-weight: 600;
+  text-align: center;
+}
+
+.session-hours {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.segment-session:has(input:checked) .session-hours {
+  color: color-mix(in srgb, var(--copper) 75%, var(--text));
+}
+
+.manual-tif-field .nice-select .current,
+.manual-tif-field .nice-select .option,
+.manual-type-field .nice-select .current,
+.manual-type-field .nice-select .option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  white-space: nowrap;
+}
+
+.manual-tif-field .nice-select .current,
+.manual-type-field .nice-select .current {
+  overflow: hidden;
+}
+
+.tif-name,
+.type-name {
+  flex: 0 0 auto;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.tif-hint,
+.type-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.manual-tif-field .nice-select .option.selected .tif-hint,
+.manual-tif-field .nice-select .option.disabled .tif-hint,
+.manual-type-field .nice-select .option.selected .type-hint,
+.manual-type-field .nice-select .option.disabled .type-hint {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.manual-tif-field.tif-day-gtc-only .nice-select .option.disabled,
+.manual-tif-field.tif-day-gtc-only .nice-select .option[hidden] {
+  display: none;
+}
+
+.segment-buy:has(input:checked) {
+  border-color: var(--buy);
+  background: color-mix(in srgb, var(--buy) 16%, var(--panel));
+  color: var(--buy);
+}
+
+.segment-sell:has(input:checked) {
+  border-color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 16%, var(--panel));
+  color: var(--sell);
+}
+
+.segment.is-disabled,
+.segment:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.segment.is-disabled > span:not(.segment-disabled-reason),
+.segment:has(input:disabled) > span:not(.segment-disabled-reason) {
+  opacity: 0.45;
+}
+
+.segment[aria-disabled="true"]:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* Disabled radios cannot receive pointer or keyboard events themselves. The
+   label remains interactive so its context-specific reason is still available. */
+.segment-disabled-reason {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.65rem);
+  z-index: 30;
+  display: block;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: 0 0.75rem 1.75rem rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(0.25rem);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+}
+
+.segment-disabled-reason::after {
+  content: "";
+  position: absolute;
+  right: 1.4rem;
+  top: 100%;
+  border: 0.35rem solid transparent;
+  border-top-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+/* `:focus` as well as `:focus-visible`: a disabled segment carries tabindex=0
+   precisely so it can be reached, and on a touch screen a tap focuses without
+   ever matching :focus-visible — which left the reason unreadable on phones,
+   the only explanation of why the action is greyed out. */
+.segment:hover > .segment-disabled-reason:not([hidden]),
+.segment:focus > .segment-disabled-reason:not([hidden]),
+.segment:focus-visible > .segment-disabled-reason:not([hidden]) {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.segmented .segment {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+/* Time in force + Limit price share one row; TIF stretches when Limit is hidden. */
+.manual-tif-limit-row {
+  align-items: start;
+}
+
+.manual-tif-limit-row:has(#manual-limit-row[hidden]) {
+  grid-template-columns: 1fr;
+}
+
+.manual-tif-col {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.manual-tif-col > .manual-tif-field,
+.manual-tif-col > .field-help {
+  margin: 0;
+}
+
+/* Limit / trigger price: Bid · Mark · Ask live inside the input shell. */
+.manual-limit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.manual-tif-limit-row > .manual-limit-row {
+  margin-bottom: 0;
+}
+
+.manual-limit-row[hidden] {
+  display: none;
+}
+
+.manual-limit-row > label {
+  margin: 0;
+}
+
+.manual-limit-row > .field-help,
+.manual-limit-row > .field-error {
+  margin: 0;
+}
+
+.manual-last-ticket {
+  margin: 0;
+}
+
+/* Armed buy-backs. Each row states the order that is waiting to be sent, so
+   the shares and the price come before the status word. */
+.manual-reinvest-panel {
+  margin: 0;
+}
+
+.manual-reinvest-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.manual-reinvest-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
+  border-left: 3px solid var(--copper);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+}
+
+.manual-reinvest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.manual-reinvest-head {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.manual-reinvest-note {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* A waiting plan is live money that has not moved yet — copper, like every
+   other "the desk is about to do something" state on the page. */
+.manual-reinvest-item[data-kind="waiting"] {
+  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
+  border-left-color: var(--copper);
+  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.manual-reinvest-item[data-kind="waiting"] .manual-reinvest-note {
+  color: var(--copper);
+}
+
+.manual-reinvest-item[data-kind="ok"] {
+  border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
+  border-left-color: var(--buy);
+  background: linear-gradient(135deg, rgba(63, 191, 143, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.manual-reinvest-item[data-kind="ok"] .manual-reinvest-note {
+  color: var(--buy);
+}
+
+.manual-reinvest-item[data-kind="error"],
+.manual-reinvest-item[data-kind="warn"] {
+  border-color: color-mix(in srgb, var(--sell) 35%, var(--line));
+  border-left-color: var(--sell);
+  background: linear-gradient(135deg, rgba(227, 93, 93, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.manual-reinvest-item[data-kind="error"] .manual-reinvest-note,
+.manual-reinvest-item[data-kind="warn"] .manual-reinvest-note {
+  color: var(--sell);
+}
+
+.manual-last-heading {
+  margin: 0 0 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--copper);
+}
+
+.manual-last-summary {
+  margin: 0 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+/* What the broker did with it — acceptance, fill, or refusal. */
+.manual-last-status {
+  margin: 0 0 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.manual-last-status[hidden] {
+  display: none;
+}
+
+.manual-last-status[data-kind="ok"] {
+  color: var(--buy);
+}
+
+.manual-last-status[data-kind="warn"] {
+  color: var(--warn);
+}
+
+.manual-last-status[data-kind="error"] {
+  color: var(--error);
+}
+
+.manual-last-details {
+  margin: 0 0 0.55rem;
+}
+
+.manual-last-link {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.manual-last-link a {
+  color: var(--copper);
+}
+
+.manual-form .field-group {
+  margin-bottom: 0.85rem;
+}
+
+/* Order preview — the ticket's headline number, so it outranks the inputs. */
+.size-estimate {
+  background: color-mix(in srgb, var(--buy) 8%, var(--panel));
+  border-color: color-mix(in srgb, var(--buy) 30%, var(--line));
+  display: grid;
+  gap: 0.55rem;
+}
+
+.manual-layout[data-side="sell"] .size-estimate,
+.manual-layout[data-side="short"] .size-estimate {
+  background: color-mix(in srgb, var(--sell) 8%, var(--panel));
+  border-color: color-mix(in srgb, var(--sell) 30%, var(--line));
+}
+
+.size-estimate-label {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.size-estimate-value {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--buy);
+}
+
+.manual-layout[data-side="sell"] .size-estimate-value,
+.manual-layout[data-side="short"] .size-estimate-value {
+  color: var(--sell);
+}
+
+.size-estimate-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.size-estimate-grid[hidden] {
+  display: none;
+}
+
+.size-estimate-grid dt {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.size-estimate-grid dd {
+  margin: 0.1rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.size-estimate-note {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.size-estimate-note.warn {
+  color: var(--warn);
+}
+
+.size-estimate-note:empty {
+  display: none;
+}
+
+/* Field-level validation errors */
+.field-error {
+  margin: 0.35rem 0 0;
+  padding-left: 0.55rem;
+  border-left: 2px solid var(--error);
+  font-size: 0.8rem;
+  color: var(--error);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.field-error[hidden] {
+  display: none;
+}
+
+.manual-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.manual-actions .primary {
+  flex: 1 1 auto;
+}
+
+#btn-manual-submit[data-side="sell"],
+#btn-manual-submit[data-side="short"] {
+  background: var(--sell);
+  border-color: var(--sell);
+}
+
+.manual-last-warnings {
+  margin: 0 0 0.6rem;
+  padding-left: 1.1rem;
+  color: var(--warn);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.manual-last-warnings[hidden] {
+  display: none;
+}
+
+.manual-last-summary[data-side="sell"] {
+  color: var(--sell);
+}
+
+.manual-last-summary[data-side="buy"] {
+  color: var(--buy);
+}
+
+.manual-last-link {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Order Confirmation Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modal-fade-in 0.2s ease;
+}
+
+.modal[hidden] {
+  display: none !important;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: -1;
+}
+
+.modal-content {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  max-width: 32rem;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: modal-slide-in 0.3s ease;
+}
+
+@keyframes modal-slide-in {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content h3 {
+  margin: 0 0 1rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.confirm-summary {
+  margin: 0 0 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 1rem;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.confirm-row dt {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.confirm-row dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.confirm-row dd.value-buy {
+  color: var(--buy);
+}
+
+.confirm-row dd.value-sell {
+  color: var(--sell);
+}
+
+.confirm-row dd.value-warn {
+  color: var(--warn);
+}
+
+.confirm-note {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  color: var(--copper);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.confirm-note[hidden] {
+  display: none;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.modal-actions button {
+  flex: 0 0 auto;
+}
+
+/* Mobile modal adjustments */
+@media (max-width: 520px) {
+  .modal-content {
+    width: 95%;
+    padding: 1.25rem;
+  }
+
+  .confirm-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Manual Order upgrades — four actions, richer context, position management
+   ========================================================================== */
+
+/* Four actions do not fit the two-column grid the buy/sell pair used. */
+.segmented-actions {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 520px) {
+  .segmented-actions {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .session-hours {
+    white-space: normal;
+  }
+
+  .manual-tif-field .nice-select .current,
+  .manual-tif-field .nice-select .option,
+  .manual-type-field .nice-select .current,
+  .manual-type-field .nice-select .option {
+    white-space: normal;
+  }
+}
+
+/* Short is a sell that opens risk, cover a buy that closes it — they borrow
+   the buy/sell palette so direction stays readable at a glance. */
+.segment-short:has(input:checked) {
+  border-color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 16%, var(--panel));
+  color: var(--sell);
+}
+
+.segment-cover:has(input:checked) {
+  border-color: var(--buy);
+  background: color-mix(in srgb, var(--buy) 16%, var(--panel));
+  color: var(--buy);
+}
+
+/* --------------------------------------------------- day range indicator -- */
+
+.manual-day-range {
+  margin: 0.15rem 0 0.6rem;
+}
+
+.manual-day-range-track {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sell) 45%, transparent),
+    color-mix(in srgb, var(--hold) 35%, transparent) 50%,
+    color-mix(in srgb, var(--buy) 45%, transparent)
+  );
+}
+
+.manual-day-range-marker {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 12px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--text);
+  transform: translateY(-50%);
+  transition: left 0.25s ease;
+}
+
+.manual-day-range-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.manual-day-range-label {
+  font-family: var(--ui);
+  letter-spacing: 0.01em;
+}
+
+/* ------------------------------------------------------------ asset flags -- */
+
+.manual-asset-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0.6rem;
+  padding: 0;
+  list-style: none;
+}
+
+.manual-flag {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.manual-flag[data-on="yes"] {
+  border-color: color-mix(in srgb, var(--buy) 45%, var(--line));
+  color: color-mix(in srgb, var(--buy) 80%, var(--text));
+}
+
+/* A "no" is the informative state here — it is what blocks a ticket. */
+.manual-flag[data-on="no"] {
+  border-color: color-mix(in srgb, var(--sell) 30%, var(--line));
+  color: color-mix(in srgb, var(--sell) 60%, var(--muted));
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* -------------------------------------------------------- portfolio heat -- */
+
+.manual-heat-value {
+  margin: 0.1rem 0 0.45rem;
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.manual-heat-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+  overflow: hidden;
+}
+
+.manual-heat-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--buy);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.manual-heat-fill[data-level="high"] {
+  background: var(--copper);
+}
+
+.manual-heat-fill[data-level="over"] {
+  background: var(--sell);
+}
+
+.manual-heat-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.manual-heat-note.warn {
+  color: var(--error);
+}
+
+/* --------------------------------------------------- position management -- */
+
+.manual-manage-summary {
+  margin: 0.1rem 0 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.manual-manage-summary.warn {
+  color: var(--warn);
+}
+
+.manual-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.manual-manage-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.manual-manage-row input {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.manual-manage-unit {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------- risk breaches -- */
+
+.manual-breaches {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.75rem 0.6rem 1.6rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+  list-style: disc;
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.manual-breaches li + li {
+  margin-top: 0.3rem;
+}
+
+.confirm-breaches {
+  margin: 0.6rem 0;
+  padding: 0.65rem 0.8rem 0.65rem 1.7rem;
+  border: 1px solid color-mix(in srgb, var(--sell) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--sell) 10%, transparent);
+  list-style: disc;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--sell) 60%, var(--text));
+}
+
+.confirm-breaches li + li {
+  margin-top: 0.3rem;
+}
+
+.confirm-question {
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Live and paper must never look the same at the moment of commitment. */
+.confirm-live-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--sell);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--sell) 18%, transparent);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sell) 75%, var(--text));
+}
+
+.modal-content[data-env="live"] {
+  border-color: var(--sell);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sell) 40%, transparent);
+}
+
+/* ---------------------------------------------------------- recent tickets */
+
+.manual-recent-list {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manual-recent-item {
+  display: block;
+  border-top: 1px solid var(--line-soft);
+}
+
+.manual-recent-item:first-child {
+  border-top: none;
+}
+
+.manual-recent-head {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.manual-recent-item[data-side="buy"] .manual-recent-head,
+.manual-recent-item[data-side="cover"] .manual-recent-head {
+  color: var(--buy);
+}
+
+.manual-recent-item[data-side="sell"] .manual-recent-head,
+.manual-recent-item[data-side="short"] .manual-recent-head {
+  color: var(--sell);
+}
+
+.manual-recent-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------- estimate source --
+   `data-source` was published on the panel and then never styled. A local
+   mirror is provisional — the desk re-sizes on submit — so it reads as a
+   dashed edge rather than another sentence of copy. */
+
+.size-estimate[data-source="local"] {
+  border-style: dashed;
+}
+
+.size-estimate[data-source="desk"] {
+  border-style: solid;
+}
+
+/* ------------------------------------------------------- invalid fields -- */
+
+/* `aria-invalid` was set on every failing field and had no styling at all, so
+   four price fields could fail with nothing visible on screen. */
+.manual-form input[aria-invalid="true"] {
+  border-color: var(--error);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
+}
+
+/* Tickers are upper-case at the broker; waiting for blur to say so made every
+   keystroke look like it might not be accepted. */
+#manual-symbol,
+#manual-followon-symbol {
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------- price fillers -- */
+
+/* Bid / Mark / Ask sit inside the price field, not beside it. */
+.price-input-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #101823;
+  overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.price-input-shell:hover {
+  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
+}
+
+.price-input-shell:focus-within {
+  border-color: var(--copper);
+  box-shadow: 0 0 0 3px rgba(212, 137, 76, 0.16);
+}
+
+.price-input-shell:has(input[aria-invalid="true"]) {
+  border-color: var(--error);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
+}
+
+.price-input-shell:has(input:disabled) {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.price-input-shell input[type="number"]:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.price-input-shell input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.55rem 0.55rem 0.55rem 0.7rem;
+  appearance: textfield;
+}
+
+.price-input-shell input[type="number"]:focus,
+.price-input-shell input[type="number"]:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.price-input-shell input[type="number"]::-webkit-inner-spin-button,
+.price-input-shell input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.price-fill-group {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.28rem 0.3rem 0.28rem 0.4rem;
+  margin: 0.28rem 0.28rem 0.28rem 0;
+  border-left: 1px solid var(--line);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.price-fill-group .ghost.small {
+  min-height: 0;
+  padding: 0.18rem 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------- presets ---- */
+
+.manual-preset-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.manual-preset-field > label {
+  margin: 0;
+  min-width: 0;
+}
+
+.manual-preset-field > .ghost.small[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------ advanced folds ---- */
+
+/* Cushion % and the absolute sell limit are expert controls that most tickets
+   never touch — the dip-hunt and buy-back blocks already hide behind a
+   toggle, so these fold too rather than sitting open beside them. */
+.manual-advanced {
+  margin: 0.25rem 0 0.35rem;
+  border-top: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  padding-top: 0.5rem;
+}
+
+.manual-advanced-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.15rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.manual-advanced-head::-webkit-details-marker {
+  display: none;
+}
+
+.manual-advanced-head::marker {
+  content: "";
+}
+
+.manual-advanced-head:hover {
+  color: var(--text);
+}
+
+.manual-advanced-head:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.manual-advanced[open] > .manual-advanced-head .manual-fold-caret {
+  transform: rotate(45deg);
+}
+
+.manual-advanced-body {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+/* ------------------------------------------------- estimate head + toggle -- */
+
+.size-estimate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+/* Only the fixed mobile bar needs a way to expand; the rail shows it all. */
+.size-estimate-toggle {
+  display: none;
+}
+
+/* ------------------------------------------------------- resting orders --- */
+
+.manual-ctx-order {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.manual-ctx-order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.manual-ctx-order-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+/* Moving a stop by cancel-then-replace leaves the position naked in between;
+   Alpaca replaces in one call and the desk already exposes it. */
+.manual-ctx-order-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.manual-ctx-order-edit[hidden] {
+  display: none;
+}
+
+.manual-ctx-order-edit input {
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+/* ------------------------------------------------------- recent tickets --- */
+
+/* Re-sending a ticket you just sent is the commonest thing on a manual desk,
+   and the list was inert text. */
+.manual-recent-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.45rem 0.4rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.manual-recent-btn:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.manual-recent-btn:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: -2px;
+}
+
+/* ------------------------------------------------------- confirm prompt --- */
+
+.confirm-prompt {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+}
+
+.confirm-prompt[hidden] {
+  display: none;
+}
+
+.confirm-prompt label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.confirm-prompt input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+.confirm-prompt input:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 1px;
+}
+
+/* --------------------------------------------- mobile: pinned order preview
+   In one column the rail follows the whole form, so the shares, the risk and
+   the stop were invisible for the entire time you were choosing them. The
+   preview pins to the bottom of the viewport instead and opens on demand. */
+
+@media (max-width: 61.99rem) {
+  #manual-size-estimate {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    margin: 0;
+    gap: 0.35rem;
+    padding: 0.6rem 0.9rem calc(0.6rem + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.45);
+  }
+
+  #manual-size-estimate.is-expanded {
+    max-height: 70vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  #manual-size-estimate:not(.is-expanded) .size-estimate-grid,
+  #manual-size-estimate:not(.is-expanded) .size-estimate-note {
+    display: none;
+  }
+
+  #manual-size-estimate.is-expanded .size-estimate-grid:not([hidden]) {
+    display: grid;
+  }
+
+  .size-estimate-value {
+    font-size: 1.05rem;
+  }
+
+  .size-estimate-toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  /* Room for the bar so it never covers the last control on the form. */
+  body[data-page="manual-order"] {
+    padding-bottom: 7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .modal-content {
+    animation: none;
+  }
+
+  .manual-day-range-marker,
+  .manual-heat-fill,
+  .manual-fold-caret,
+  .qty-unit {
+    transition: none;
+  }
+}

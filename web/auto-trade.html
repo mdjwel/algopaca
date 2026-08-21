@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Auto Trade · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/auto-trade.css" />
+</head>
+<body data-page="auto-trade">
+  <a class="skip-link" href="#signal-wall" data-i18n="skip_to_signal">Skip to last signal</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_auto_trade">Design an engine and watchlist, run a signal, then loop on paper or live.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-auto-trade" class="page layout" data-page="auto-trade">
+        <div class="desk-left">
+          <section class="signal-wall" id="signal-wall" aria-labelledby="signal-heading" aria-live="polite">
+            <div class="wall-top">
+              <h2 id="signal-heading" class="wall-label" data-i18n="signal_wall_heading">Last signal</h2>
+              <div class="wall-top-meta">
+                <span id="side-badge" class="side-badge" data-i18n="long_only">Long only</span>
+                <span id="mode-badge" class="mode-badge armed" data-i18n="paper_trading">Paper trading</span>
+              </div>
+            </div>
+            <p id="signal" class="signal hold">—</p>
+            <p id="price" class="price">$—</p>
+            <p id="price-meta" class="price-meta" data-i18n="waiting_for_quote">Waiting for live quote…</p>
+            <div class="metrics">
+              <div>
+                <span id="metric-a-label" data-i18n="fast_sma">Fast SMA</span>
+                <strong id="fast">—</strong>
+              </div>
+              <div>
+                <span id="metric-b-label" data-i18n="slow_sma">Slow SMA</span>
+                <strong id="slow">—</strong>
+              </div>
+              <div>
+                <span data-i18n="position">Position</span>
+                <strong id="position">—</strong>
+              </div>
+            </div>
+            <p id="ai-meta" class="ai-meta" hidden></p>
+            <p id="reason" class="reason" data-i18n="reason_initial">Configure the strategy, then Run once to see a signal.</p>
+            <div id="ai-watchlist" class="ai-watchlist" role="table" aria-label="Watchlist signals" data-i18n-aria-label="watchlist_signals" hidden></div>
+          </section>
+
+          <section class="panel account-panel">
+            <div class="panel-head">
+              <h2 data-i18n="account">Account</h2>
+              <button type="button" id="btn-refresh" class="ghost" data-i18n="refresh">Refresh</button>
+            </div>
+            <dl class="stats">
+              <div><dt data-i18n="status">Status</dt><dd id="acct-status">—</dd></div>
+              <div><dt data-i18n="equity">Equity</dt><dd id="acct-equity">—</dd></div>
+              <div><dt data-i18n="cash">Cash</dt><dd id="acct-cash">—</dd></div>
+              <div><dt data-i18n="buying_power">Buying power</dt><dd id="acct-bp">—</dd></div>
+            </dl>
+            <p id="ai-keys" class="ai-keys">AI keys: checking…</p>
+            <p id="alpaca-keys-line" class="ai-keys">Alpaca: checking…</p>
+          </section>
+        </div>
+
+        <aside class="console">
+          <section class="panel strategy-panel is-open" id="strategy-panel" aria-labelledby="strategy-heading">
+            <div class="panel-head">
+              <h2 id="strategy-heading" data-i18n="strategy">Strategy</h2>
+              <div class="panel-head-actions">
+                <p id="strategy-hint" class="panel-hint" data-state="ready" aria-live="polite" data-i18n="ready">Ready</p>
+              </div>
+            </div>
+
+            <div id="strategy-body" class="strategy-body">
+            <form id="settings" class="form" novalidate>
+              <p class="field-help strategy-intro" data-i18n="strategy_intro">Pick an engine, set the symbols to evaluate, then Run once. Buy/sell signals place paper or live orders.</p>
+              <fieldset class="field-group">
+                <legend data-i18n="engine">Engine</legend>
+                <label for="field-mode" class="stack"><span data-i18n="mode">Mode</span>
+                  <select id="field-mode" name="strategy_mode" aria-describedby="mode-hint engine-side">
+                    <option value="sma" data-i18n="mode_sma">SMA crossover</option>
+                    <option value="dip" data-i18n="mode_dip">Buy the dip</option>
+                    <option value="pair" data-i18n="mode_pair">Long &amp; Short Pair</option>
+                    <option value="ls" data-i18n="mode_ls">Regime Dual Momentum (L/S)</option>
+                    <option value="ai" data-i18n="mode_ai">AI trader</option>
+                  </select>
+                </label>
+                <p id="engine-side" class="engine-side">
+                  <span id="engine-side-pill" class="engine-side-pill" data-i18n="long_only">Long only</span>
+                  <span id="engine-side-note" data-i18n="engine_side_note_long">Sell closes a long — no short from flat.</span>
+                </p>
+                <p id="mode-hint" class="field-help" data-i18n="mode_hint_sma">Classic crossover on the evaluate list — buy/sell when fast SMA crosses slow.</p>
+                <label for="field-provider" class="ai-only"><span data-i18n="ai_provider">AI provider</span>
+                  <select id="field-provider" name="ai_provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </label>
+                <label for="field-openai-model" class="ai-only provider-openai"><span data-i18n="model">Model</span>
+                  <select id="field-openai-model" name="openai_model">
+                    <option value="gpt-5.6-sol" data-i18n="model_gpt_5_6_sol">GPT-5.6 Sol (flagship)</option>
+                    <option value="gpt-5.6-terra" data-i18n="model_gpt_5_6_terra">GPT-5.6 Terra (balanced)</option>
+                    <option value="gpt-5.6-luna" selected data-i18n="model_gpt_5_6_luna">GPT-5.6 Luna (fast / low cost)</option>
+                    <option value="gpt-5.4" data-i18n="model_gpt_5_4">GPT-5.4</option>
+                    <option value="gpt-5.4-mini" data-i18n="model_gpt_5_4_mini">GPT-5.4 mini</option>
+                  </select>
+                </label>
+                <label for="field-gemini-model" class="ai-only provider-gemini" hidden><span data-i18n="model">Model</span>
+                  <select id="field-gemini-model" name="gemini_model">
+                    <option value="gemini-3.6-flash" data-i18n="model_gemini_3_6_flash">Gemini 3.6 Flash (latest)</option>
+                    <option value="gemini-3.5-flash" data-i18n="model_gemini_3_5_flash">Gemini 3.5 Flash</option>
+                    <option value="gemini-3.5-flash-lite" selected data-i18n="model_gemini_3_5_flash_lite">Gemini 3.5 Flash-Lite</option>
+                    <option value="gemini-3.1-pro-preview" data-i18n="model_gemini_3_1_pro_preview">Gemini 3.1 Pro (preview)</option>
+                    <option value="gemini-3.1-flash-lite" data-i18n="model_gemini_3_1_flash_lite">Gemini 3.1 Flash-Lite</option>
+                  </select>
+                </label>
+                <div class="field-pair-row ai-only">
+                  <label for="field-confidence"><span data-i18n="min_confidence">Min confidence</span>
+                    <input id="field-confidence" name="ai_min_confidence" type="number" value="0.55" min="0" max="1" step="0.05" inputmode="decimal" />
+                  </label>
+                  <label for="field-preset"><span data-i18n="ai_preset">AI preset</span>
+                    <select id="field-preset" name="ai_preset">
+                      <option value="balanced" data-i18n="preset_balanced">Balanced</option>
+                      <option value="conservative" data-i18n="preset_conservative">Conservative</option>
+                      <option value="momentum" data-i18n="preset_momentum">Momentum</option>
+                      <option value="mean_reversion" data-i18n="preset_mean_reversion">Mean reversion</option>
+                      <option value="news_aware" data-i18n="preset_news_aware">News-aware</option>
+                      <option value="trend_atr" data-i18n="preset_trend_atr">Trend + ATR trail</option>
+                      <option value="pead" data-i18n="preset_pead">Earnings drift (PEAD)</option>
+                      <option value="orb" data-i18n="preset_orb">Opening range breakout</option>
+                      <option value="custom" data-i18n="preset_custom">Custom</option>
+                    </select>
+                  </label>
+                </div>
+                <p id="preset-hint" class="field-help ai-only" data-i18n="preset_hint">Hold when mixed; respect calendar; no chase.</p>
+              </fieldset>
+
+              <fieldset class="field-group">
+                <legend data-i18n="market">Market</legend>
+                <label for="field-symbol"><span data-i18n="featured_symbol">Featured symbol</span>
+                  <input id="field-symbol" name="symbol" value="AAPL" autocomplete="off" spellcheck="false" inputmode="text" placeholder="e.g. AAPL" data-i18n-placeholder="placeholder_featured_symbol" />
+                </label>
+                <label for="field-timeframe"><span data-i18n="bar_timeframe">Bar timeframe</span>
+                  <select id="field-timeframe" name="bar_timeframe">
+                    <option value="1Min" data-i18n="tf_1min">1 minute</option>
+                    <option value="5Min" data-i18n="tf_5min">5 minutes</option>
+                    <option value="15Min" selected data-i18n="tf_15min">15 minutes</option>
+                    <option value="1Hour" data-i18n="tf_1hour">1 hour</option>
+                    <option value="1Day" data-i18n="tf_1day">1 day</option>
+                  </select>
+                </label>
+                <p id="symbol-hint" class="field-help" data-i18n="symbol_hint">Quote and last signal on the wall. Add it to the evaluate list to trade it.</p>
+                <label for="field-symbols" class="stack"><span data-i18n="symbols_to_evaluate">Symbols to evaluate</span>
+                  <textarea id="field-symbols" name="symbols" rows="3" autocomplete="off" spellcheck="false" placeholder="AAPL, MSFT, NVDA" data-i18n-placeholder="placeholder_eval_symbols">AAPL</textarea>
+                </label>
+                <div id="watch-chips" class="watch-chips" hidden></div>
+                <p id="featured-warn" class="field-help warn" hidden>
+                  <span id="featured-warn-text" data-i18n="featured_warn_text">Featured symbol is not on the evaluate list.</span>
+                  <button type="button" id="btn-include-featured" class="ghost" data-i18n="include">Include</button>
+                </p>
+                <p id="watchlist-hint" class="field-help" data-i18n="watchlist_hint">Each cycle evaluates this list. Featured is highlighted on the wall.</p>
+              </fieldset>
+
+              <fieldset class="field-group sma-only">
+                <legend data-i18n="sma_windows">SMA windows</legend>
+                <label for="field-sma-preset" class="stack"><span data-i18n="sma_preset">SMA preset</span>
+                  <select id="field-sma-preset" name="sma_preset">
+                    <option value="classic" data-i18n="preset_sma_classic">Classic 10/30</option>
+                    <option value="short_term" data-i18n="preset_sma_short_term">Short-term 5/20</option>
+                    <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
+                    <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
+                    <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="sma-preset-hint" class="field-help" data-i18n="sma_preset_hint">Default crossover — balanced signal frequency.</p>
+                <label for="field-fast"><span data-i18n="fast_sma">Fast SMA</span>
+                  <input id="field-fast" name="fast_sma" type="number" value="10" min="2" inputmode="numeric" />
+                </label>
+                <label for="field-slow"><span data-i18n="slow_sma">Slow SMA</span>
+                  <input id="field-slow" name="slow_sma" type="number" value="30" min="3" inputmode="numeric" />
+                </label>
+                <p id="sma-hint" class="field-help" data-i18n="sma_hint">Fast must be smaller than Slow (e.g. 10 &lt; 30).</p>
+              </fieldset>
+
+              <fieldset class="field-group dip-only">
+                <legend data-i18n="dip_thresholds">Dip thresholds</legend>
+                <label for="field-dip-preset" class="stack"><span data-i18n="dip_preset">Dip preset</span>
+                  <select id="field-dip-preset" name="dip_preset">
+                    <option value="deep" data-i18n="preset_dip_deep">Deep dip</option>
+                    <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
+                    <option value="washout" data-i18n="preset_dip_washout">Washout</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="dip-preset-hint" class="field-help" data-i18n="dip_preset_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
+                <label for="field-dip-buy"><span data-i18n="rsi_buy">RSI buy ≤</span>
+                  <input id="field-dip-buy" name="dip_rsi_buy" type="number" value="30" min="1" max="99" step="1" inputmode="decimal" />
+                </label>
+                <label for="field-dip-sell"><span data-i18n="rsi_sell">RSI sell ≥</span>
+                  <input id="field-dip-sell" name="dip_rsi_sell" type="number" value="60" min="1" max="99" step="1" inputmode="decimal" />
+                </label>
+                <label class="check stack" for="field-dip-skip-bearish">
+                  <input id="field-dip-skip-bearish" name="dip_skip_bearish" type="checkbox" checked />
+                  <span>
+                    <strong data-i18n="skip_bearish_trend">Skip bearish trend</strong>
+                    <span class="check-desc" data-i18n="skip_bearish_desc">Ignore dips when the SMA stack is bearish (fewer falling knives)</span>
+                  </span>
+                </label>
+                <p id="dip-hint" class="field-help" data-i18n="dip_hint">Deep / Mild also buy when price tags the lower Bollinger band; Washout requires RSI.</p>
+              </fieldset>
+
+              <fieldset class="field-group pair-only" hidden>
+                <legend data-i18n="pair_title">Long &amp; Short Pair</legend>
+                <label for="field-pair-preset" class="stack"><span data-i18n="pair_preset">Pair preset</span>
+                  <select id="field-pair-preset" name="pair_preset">
+                    <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
+                    <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
+                    <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="pair-preset-hint" class="field-help" data-i18n="bt_pair_hint">Long leg by default; short leg only on confirmed bear impulses below SMA.</p>
+                <div class="bt-pair-windows">
+                  <label for="field-pair-sma"><span data-i18n="sma_period">SMA period</span>
+                    <input id="field-pair-sma" name="pair_sma_period" type="number" min="2" value="50" inputmode="numeric" />
+                  </label>
+                  <label for="field-pair-lb"><span data-i18n="lookback_days">Lookback days</span>
+                    <input id="field-pair-lb" name="pair_lookback" type="number" min="1" value="7" inputmode="numeric" />
+                  </label>
+                  <label for="field-pair-imp"><span data-i18n="impulse_pct">Impulse % ≤−</span>
+                    <input id="field-pair-imp" name="pair_impulse_pct" type="number" min="0.1" max="99" step="0.1" value="5" inputmode="decimal" />
+                  </label>
+                  <label for="field-pair-weak"><span data-i18n="when_weak">When weak</span>
+                    <select id="field-pair-weak" name="pair_weak_side">
+                      <option value="LONG" selected data-i18n="stay_long">Stay long</option>
+                      <option value="CASH" data-i18n="cash">Cash</option>
+                    </select>
+                  </label>
+                </div>
+                <p id="pair-hint" class="field-help" data-i18n="pair_hint">Enter two symbols in the watchlist (long first, short second). Daily bars; deploys available cash into the active leg.</p>
+              </fieldset>
+
+              <fieldset class="field-group ls-only" hidden>
+                <legend data-i18n="ls_title">Regime Dual Momentum</legend>
+                <p id="ls-hint" class="field-help" data-i18n="bt_ls_hint">
+                  Long in bull EMA/ADX regimes; short in bear regimes on MACD histogram crosses.
+                  Holds through quiet bars; exits on flip, ATR stop, R:R target, or time stop. Daily bars.
+                </p>
+                <div class="bt-ls-windows">
+                  <label for="field-ls-fast"><span data-i18n="ema_fast">EMA fast</span>
+                    <input id="field-ls-fast" name="ls_ema_fast" type="number" min="2" value="21" inputmode="numeric" />
+                  </label>
+                  <label for="field-ls-slow"><span data-i18n="ema_slow">EMA slow</span>
+                    <input id="field-ls-slow" name="ls_ema_slow" type="number" min="3" value="55" inputmode="numeric" />
+                  </label>
+                  <label for="field-ls-adx"><span data-i18n="adx_min">ADX min</span>
+                    <input id="field-ls-adx" name="ls_adx_min" type="number" min="0" max="100" step="1" value="20" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-atr"><span data-i18n="atr_stop">ATR stop ×</span>
+                    <input id="field-ls-atr" name="ls_atr_stop_mult" type="number" min="0.1" max="10" step="0.1" value="1.5" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-risk"><span data-i18n="risk_pct_trade">Risk % / trade</span>
+                    <input id="field-ls-risk" name="ls_risk_pct" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-rr"><span data-i18n="reward_risk">Reward : risk</span>
+                    <input id="field-ls-rr" name="ls_rr" type="number" min="0.5" max="10" step="0.1" value="2" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-time"><span data-i18n="time_stop_bars">Time stop (bars)</span>
+                    <input id="field-ls-time" name="ls_time_stop_bars" type="number" min="1" max="60" value="15" inputmode="numeric" />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="field-group">
+                <legend data-i18n="size_and_cadence">Size &amp; cadence</legend>
+                <div class="size-control">
+                  <label class="size-field-label" id="size-field-label" for="field-qty" data-i18n="order_size">Order size</label>
+                  <div class="size-input-shell" role="group" aria-labelledby="size-field-label" data-size-mode="qty">
+                    <div class="size-input-values">
+                      <span class="size-unit-glyph" aria-hidden="true">
+                        <svg class="size-unit-ai-icon" viewBox="0 0 24 24" width="16" height="16" focusable="false">
+                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3v3M12 18v3M3 12h3M18 12h3M6.2 6.2l2.1 2.1M15.7 15.7l2.1 2.1M17.8 6.2l-2.1 2.1M8.3 15.7l-2.1 2.1"/>
+                        </svg>
+                      </span>
+                      <input id="field-qty" name="trade_qty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal" aria-label="Shares quantity" data-i18n-aria-label="shares_qty" />
+                      <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" hidden />
+                      <p id="size-ai-placeholder" class="size-ai-placeholder" hidden data-i18n="size_ai_placeholder">Model picks shares</p>
+                    </div>
+                    <div class="size-toggle" role="group" aria-label="Size unit" data-i18n-aria-label="size_and_cadence">
+                      <button type="button" id="size-mode-qty" class="size-toggle-btn is-active" data-size-mode="qty" aria-pressed="true" title="Shares" aria-label="Size by shares" data-i18n-title="shares_title" data-i18n-aria-label="shares_aria">
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>
+                        </svg>
+                        <span class="size-toggle-text" data-i18n="qty_short">Qty</span>
+                      </button>
+                      <button type="button" id="size-mode-notional" class="size-toggle-btn" data-size-mode="notional" aria-pressed="false" title="Dollars" aria-label="Size by dollars" data-i18n-title="dollars_title" data-i18n-aria-label="dollars_aria">
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 3 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3"/>
+                        </svg>
+                        <span class="size-toggle-text" data-i18n="usd_short">USD</span>
+                      </button>
+                      <button type="button" id="size-mode-ai" class="size-toggle-btn" data-size-mode="ai" aria-pressed="false" title="AI sizes from market conditions" aria-label="Let AI decide quantity" hidden data-i18n-title="size_ai_title" data-i18n-aria-label="size_ai_aria">
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3v3M12 18v3M3 12h3M18 12h3M6.2 6.2l2.1 2.1M15.7 15.7l2.1 2.1M17.8 6.2l-2.1 2.1M8.3 15.7l-2.1 2.1"/>
+                        </svg>
+                        <span class="size-toggle-text" data-i18n="ai_short">AI</span>
+                      </button>
+                    </div>
+                  </div>
+                  <input type="hidden" id="field-size-mode" name="size_mode" value="qty" />
+                </div>
+                <label for="field-poll"><span data-i18n="poll_interval_sec">Poll interval (sec)</span>
+                  <input id="field-poll" name="poll_seconds" type="number" value="20" min="10" inputmode="numeric" />
+                </label>
+                <p id="poll-hint" class="field-help" data-i18n="poll_hint">Loop checks the market every 20 seconds.</p>
+                <p id="size-hint" class="field-help" data-i18n="size_hint">Orders use share qty. Switch to dollars to size buys/sells in USD at the live mark.</p>
+              </fieldset>
+
+              <fieldset class="field-group risk-engine-panel">
+                <legend data-i18n="risk_engine">Risk engine</legend>
+                <p class="field-help" data-i18n="risk_engine_help">Position size, stop distance, and the guards that stop a bad day compounding. Applies to AI, SMA, dip, and pair (LS has its own ATR fields). Edit any value to override a preset.</p>
+                <div class="field-pair-row">
+                  <label for="field-ai-risk-pct"><span data-i18n="label_risk_per_trade">Risk per trade %</span>
+                    <input id="field-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0" max="10" step="0.05" inputmode="decimal" />
+                  </label>
+                  <label for="field-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
+                    <input id="field-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0" max="10" step="0.1" inputmode="decimal" />
+                  </label>
+                </div>
+                <p class="field-help" data-i18n="risk_size_help">Size is set so a stop-out costs that % of equity. Stop distance scales with volatility via ATR × (0 turns ATR stops off).</p>
+                <div class="field-pair-row">
+                  <label for="field-ai-tp-r"><span data-i18n="label_take_profit_r">Take profit at R</span>
+                    <input id="field-ai-tp-r" name="ai_take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" />
+                  </label>
+                  <label for="field-ai-trail-r"><span data-i18n="label_trail_after_r">Trail after R</span>
+                    <input id="field-ai-trail-r" name="ai_trail_after_r" type="number" value="1" min="0" max="20" step="0.1" inputmode="decimal" />
+                  </label>
+                </div>
+                <label for="field-stop-limit-offset"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
+                  <input id="field-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" />
+                </label>
+                <p class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit below.</p>
+                <p class="field-help" data-i18n="risk_rr_help">R is one unit of initial risk. Half the position is trimmed at the take-profit multiple (0 = never trim, let winners run). Past the trail multiple the stop moves to breakeven, then follows price.</p>
+                <div class="field-pair-row">
+                  <label for="field-ai-max-pos"><span data-i18n="label_max_open_pos">Max open positions</span>
+                    <input id="field-ai-max-pos" name="ai_max_positions" type="number" value="3" min="0" max="50" step="1" inputmode="numeric" />
+                  </label>
+                  <label for="field-ai-daily-loss"><span data-i18n="label_daily_loss_limit">Daily loss limit %</span>
+                    <input id="field-ai-daily-loss" name="ai_daily_loss_limit_pct" type="number" value="3" min="0" max="100" step="0.5" inputmode="decimal" />
+                  </label>
+                </div>
+                <p class="field-help" data-i18n="risk_caps_help">New entries stop once either cap is reached. Exits and covers are never blocked. 0 turns a cap off.</p>
+                <div class="field-pair-row">
+                  <label for="field-ai-min-hold"><span data-i18n="label_min_hold">Min hold (min)</span>
+                    <input id="field-ai-min-hold" name="ai_min_hold_minutes" type="number" value="15" min="0" max="1440" step="1" inputmode="numeric" />
+                  </label>
+                  <label for="field-ai-cooldown"><span data-i18n="label_cooldown_after_stop">Cooldown after stop (min)</span>
+                    <input id="field-ai-cooldown" name="ai_cooldown_minutes" type="number" value="60" min="0" max="1440" step="1" inputmode="numeric" />
+                  </label>
+                </div>
+                <label for="field-ai-spread"><span data-i18n="label_max_spread">Max spread (bps)</span>
+                  <input id="field-ai-spread" name="ai_max_spread_bps" type="number" value="25" min="0" max="1000" step="1" inputmode="numeric" />
+                </label>
+                <p class="field-help" data-i18n="risk_churn_help">Churn guards: a fresh position will not be flipped, a stopped-out symbol rests before re-entry, and wide spreads block new entries. The protective stop still works throughout.</p>
+              </fieldset>
+
+              <fieldset class="field-group ai-only">
+                <legend data-i18n="ai_instructions">AI instructions</legend>
+                <label for="field-instructions" class="stack">
+                  <span class="sr-only" data-i18n="ai_instructions">AI instructions</span>
+                  <textarea id="field-instructions" name="ai_instructions" rows="4" placeholder="Preset playbook loads here. Edit to switch to Custom." data-i18n-placeholder="ai_instructions_placeholder"></textarea>
+                </label>
+                <p class="field-help" data-i18n="ai_instructions_help">Sent to the model each cycle with TA, news, calendar, and earnings. Editing text switches the preset to Custom.</p>
+              </fieldset>
+
+              <p id="form-error" class="form-error" role="alert" hidden></p>
+
+              <div class="run-zone" id="run-zone">
+                <div class="run-zone-bar">
+                  <p id="loop-elapsed" class="loop-elapsed" hidden>0:00</p>
+                </div>
+                <div class="actions">
+                  <button type="button" id="btn-once" class="primary" title="Evaluate the strategy once" data-i18n="run_once" data-i18n-title="title_run_once">Run once</button>
+                  <button type="button" id="btn-loop" class="copper" aria-pressed="false" title="Poll on an interval" data-i18n="start_loop" data-i18n-title="title_start_loop">Start loop</button>
+                  <a href="/backtest" class="ghost run-backtest-link" id="link-backtest" title="Open Backtest with this watchlist (AI falls back to SMA)" data-i18n="test_on_history" data-i18n-title="title_test_history">Test on history</a>
+                </div>
+                <details class="run-notes" id="run-notes">
+                  <summary>
+                    <span class="run-notes-caret" aria-hidden="true"></span>
+                    <span id="loop-state" class="loop-state" data-i18n="idle_state_hint">Idle — edit strategy, then run once.</span>
+                  </summary>
+                  <div class="run-notes-body">
+                    <p class="check-desc" data-i18n="check_desc">Run once and Start loop place paper or live orders on buy/sell signals.</p>
+                  </div>
+                </details>
+              </div>
+            </form>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+  </div>
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/auto-trade.js"></script>
+</body>
+</html>

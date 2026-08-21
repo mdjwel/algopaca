@@ -1,0 +1,212 @@
+/* ── Configuration Page Styles ────────────────────────────────── */
+.page-config {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: none;
+}
+
+.config-keys-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  /* Panels hug their own content: the AI panel has roughly half the rows of
+     the Alpaca one, and stretching it to match left a tall empty box. */
+  align-items: start;
+}
+
+.config-keys-row > .panel {
+  min-width: 0;
+}
+
+/* Each credential is a label + its status line, kept together so the pair can
+   sit in one column of the two-column `.field-group` grid — key beside secret
+   instead of four stacked rows. */
+.key-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  align-content: start;
+}
+
+.key-field .field-help {
+  margin-bottom: 0;
+}
+
+.field-note {
+  margin-top: 0.1rem;
+}
+
+/* Between the one-column breakpoint and full width the panels are only ~half a
+   narrow viewport, which is too tight for two password fields side by side. */
+@media (max-width: 1200px) and (min-width: 861px) {
+  .config-keys-row .key-field {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Trading environment selector ─────────────────────────────── */
+/* `.form label` turns every label into a stacked, mono, uppercase field —
+   correct for text inputs, wrong for these cards, so each property it sets is
+   answered here with a selector that outranks it. */
+.env-toggle {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.65rem;
+}
+
+.form .env-option {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-family: var(--ui);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.form .env-option:hover {
+  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.form .env-option:focus-within {
+  border-color: var(--copper);
+}
+
+.form .env-option:has(input:checked) {
+  border-color: color-mix(in srgb, var(--copper) 55%, transparent);
+  background: rgba(212, 137, 76, 0.08);
+}
+
+.env-option-body {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.form .env-option strong {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+/* Native dark-mode radios read as disabled placeholders next to the copper
+   checkboxes the rest of the desk draws by hand — match them. */
+.form .env-option input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.15rem 0 0;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--text));
+  border-radius: 50%;
+  background: #101823;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.form .env-option input[type="radio"]:checked {
+  border-color: var(--copper);
+  box-shadow: inset 0 0 0 0.24rem var(--copper);
+}
+
+.form .env-option input[type="radio"]:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.form .env-option input[type="radio"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.env-option-live {
+  border-color: rgba(194, 59, 59, 0.35);
+}
+
+.form .env-option-live:hover,
+.form .env-option-live:focus-within {
+  border-color: rgba(226, 93, 93, 0.6);
+  background: rgba(90, 24, 24, 0.2);
+}
+
+.form .env-option-live:has(input:checked) {
+  background: rgba(90, 24, 24, 0.35);
+  border-color: rgba(194, 59, 59, 0.65);
+}
+
+.form .env-option-live input[type="radio"]:checked {
+  border-color: var(--sell);
+  box-shadow: inset 0 0 0 0.24rem var(--sell);
+}
+
+.form .env-option-live input[type="radio"]:focus-visible {
+  outline-color: var(--sell);
+}
+
+/* `.field-group` is `display: grid`, which outranks the `hidden` attribute's
+   UA `display: none` — without this the hidden slot still renders. */
+.form .field-group[hidden] {
+  display: none;
+}
+
+#env-pending-note {
+  margin-bottom: 0;
+}
+
+.cred-footer {
+  margin-top: 0;
+}
+
+#trading-mode-status {
+  margin-bottom: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+body[data-trading-mode="live"] #trading-mode-status {
+  color: #ffb4b4;
+}
+
+.danger-live {
+  background: #8b1e1e !important;
+  border-color: #c23b3b !important;
+  color: #fff5f5 !important;
+}
+
+.danger-live:hover:not(:disabled) {
+  background: #a12525 !important;
+}
+
+/* ── Connection summary ───────────────────────────────────────── */
+/* "AI providers" wrapped onto a second line in the 5.5rem label column and
+   pushed the two rows out of alignment. */
+.config-conn-item {
+  grid-template-columns: 7rem minmax(0, 1fr);
+}
+
+/* ── Status colouring ─────────────────────────────────────────── */
+.panel-hint[data-state="live"] {
+  color: #ffb4b4;
+}
+
+.config-conn-value[data-state="live"] {
+  color: #ffb4b4;
+}
+
+@media (max-width: 520px) {
+  .env-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

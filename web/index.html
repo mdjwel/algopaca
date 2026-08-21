@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <script>
+    (function () {
+      var map = {
+        "auto-trade": "/auto-trade",
+        auto: "/auto-trade",
+        trade: "/auto-trade",
+        backtest: "/backtest",
+        bt: "/backtest",
+        backtesting: "/backtest",
+        "backtest/history": "/backtest/history",
+        "backtest-history": "/backtest/history",
+        "backtest/compare": "/backtest/compare",
+        "backtest-compare": "/backtest/compare",
+        "manual-order": "/manual-order",
+        manual: "/manual-order",
+        order: "/manual-order",
+        positions: "/positions",
+        position: "/positions",
+        pos: "/positions",
+        holdings: "/positions",
+        orders: "/orders",
+        history: "/history",
+        configuration: "/configuration",
+        config: "/configuration",
+        settings: "/configuration",
+      };
+      var raw = (location.hash || "").replace(/^#\/?/, "").toLowerCase();
+      var path = map[raw] || "/auto-trade";
+      location.replace(path);
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0; url=/auto-trade" />
+</head>
+<body>
+  <p>Redirecting to <a href="/auto-trade">Auto Trade</a>…</p>
+</body>
+</html>

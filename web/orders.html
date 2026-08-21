@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0c121a" />
+  <title>Orders · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/positions.css" />
+  <link rel="stylesheet" href="/static/css/orders.css" />
+</head>
+<body data-page="orders">
+  <a class="skip-link" href="#orders-panel" data-i18n="skip_to_orders">Skip to orders</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_orders">Working tickets at the broker, plus buy-backs and next tickets the desk is still watching.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-orders" class="page page-orders" data-page="orders">
+
+        <section class="panel pos-summary-panel" aria-labelledby="ord-summary-heading">
+          <div class="panel-head">
+            <h2 id="ord-summary-heading" data-i18n="orders_heading">Orders</h2>
+            <div class="panel-head-meta">
+              <span id="ord-mode-badge" class="mode-badge armed" data-i18n="paper_trading">Paper trading</span>
+            </div>
+          </div>
+          <!-- Open is exactly Working + Conditional. Four equal tiles made a
+               total and its own two parts compete at the same weight, so the
+               parts now sit inside the figure they add up to. -->
+          <div id="ord-kpi-grid" class="pos-kpi-grid ord-kpi-grid" aria-live="polite">
+            <div class="pos-kpi-hero">
+              <div class="ord-kpi-hero-main">
+                <span class="pos-kpi-label" data-i18n="orders_open">Open</span>
+                <!-- The figure and what it counts are one sentence, so they sit
+                     on one baseline instead of stacking into two lines. -->
+                <p class="ord-kpi-openline">
+                  <strong id="ord-kpi-open" class="pos-kpi-hero-val">—</strong>
+                  <span id="ord-kpi-open-sub" class="pos-kpi-sub">—</span>
+                </p>
+              </div>
+              <ul class="ord-kpi-split">
+                <li>
+                  <button type="button" class="ord-kpi-split-btn" data-kpi-kind="working" aria-pressed="false">
+                    <span class="ord-kpi-split-label" data-i18n="orders_working">Working</span>
+                    <strong id="ord-kpi-working" class="ord-kpi-split-val">—</strong>
+                  </button>
+                  <span class="ord-kpi-split-hint" data-i18n="orders_working_hint">Entries and limit exits</span>
+                </li>
+                <li>
+                  <button type="button" class="ord-kpi-split-btn" data-kpi-kind="conditional" aria-pressed="false">
+                    <span class="ord-kpi-split-label" data-i18n="orders_conditional">Conditional</span>
+                    <strong id="ord-kpi-conditional" class="ord-kpi-split-val">—</strong>
+                  </button>
+                  <span class="ord-kpi-split-hint" data-i18n="orders_protective_hint">Stops and trails</span>
+                </li>
+              </ul>
+            </div>
+            <div class="pos-kpi-rail">
+              <!-- A count of tickets says nothing about exposure; one order can
+                   outweigh twenty. This is what the resting book is worth. -->
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="ord_committed">Committed</span>
+                <strong id="ord-kpi-committed" class="pos-kpi-val">—</strong>
+                <span id="ord-kpi-committed-sub" class="pos-kpi-sub">—</span>
+              </div>
+              <!-- Which single ticket is closest to going off, so nobody has to
+                   read every row's distance to find it. -->
+              <div class="pos-kpi-tile" id="ord-kpi-nearest-tile">
+                <span class="pos-kpi-label" data-i18n="ord_nearest_trigger">Nearest trigger</span>
+                <strong id="ord-kpi-nearest" class="pos-kpi-val">—</strong>
+                <span id="ord-kpi-nearest-sub" class="pos-kpi-sub" data-i18n="ord_nearest_trigger_hint">Closest resting ticket</span>
+              </div>
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="orders_partial">Partial fills</span>
+                <strong id="ord-kpi-partial" class="pos-kpi-val">—</strong>
+                <span class="pos-kpi-sub" data-i18n="orders_partial_hint">Still working after a fill</span>
+              </div>
+              <div class="pos-kpi-tile" id="ord-kpi-armed-tile">
+                <span class="pos-kpi-label" data-i18n="orders_armed">Armed</span>
+                <strong id="ord-kpi-armed" class="pos-kpi-val">—</strong>
+                <span class="pos-kpi-sub" data-i18n="orders_armed_hint">Buy-backs, next tickets, dip hunts</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel ord-desk-panel" id="ord-desk-panel" aria-labelledby="ord-desk-heading" hidden>
+          <div class="panel-head">
+            <div class="log-heading">
+              <h2 id="ord-desk-heading" data-i18n="orders_desk_queues">Desk queues</h2>
+              <span id="ord-desk-count" class="log-count" aria-live="polite" hidden>0</span>
+            </div>
+          </div>
+          <p class="field-help ord-desk-help" data-i18n="orders_desk_queues_help_v2">These fire after a fill — they are not resting at the broker until then. Only plans whose trigger ticket is missing from the blotter show here; the rest sit on their own row below.</p>
+          <div class="ord-desk-grid">
+            <div class="ord-queue" id="ord-queue-reinvest" hidden>
+              <h3 data-i18n="reinvest_queue">Re-investment queue</h3>
+              <ul id="ord-reinvest-list" class="ord-queue-list"></ul>
+            </div>
+            <div class="ord-queue" id="ord-queue-followon" hidden>
+              <details class="ord-queue-fold" id="ord-followon-fold">
+                <summary class="ord-plan-fold-head">
+                  <span class="ord-plan-fold-caret" aria-hidden="true"></span>
+                  <h3 data-i18n="followon_queue">Next-ticket queue</h3>
+                  <span id="ord-followon-count" class="log-count" hidden>0</span>
+                </summary>
+                <ul id="ord-followon-list" class="ord-queue-list"></ul>
+              </details>
+            </div>
+            <div class="ord-queue" id="ord-queue-dip-hunt" hidden>
+              <h3 data-i18n="dip_hunt_queue">Dip-hunt queue</h3>
+              <ul id="ord-dip-hunt-list" class="ord-queue-list"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel positions-panel" id="orders-panel" aria-labelledby="orders-list-heading">
+          <div class="panel-head">
+            <div class="log-heading">
+              <h2 id="orders-list-heading" data-i18n="orders_blotter">Blotter</h2>
+              <span id="ord-total-count" class="log-count" aria-live="polite">0</span>
+            </div>
+            <div class="panel-head-actions">
+              <div class="pos-sync-status" id="ord-sync-indicator" title="Live status" data-i18n-title="live_status">
+                <span class="pos-sync-dot" aria-hidden="true"></span>
+                <span id="ord-last-updated-text" class="pos-sync-time">Live</span>
+              </div>
+              <button type="button" id="btn-refresh-orders" class="ghost" title="Refresh orders" data-i18n-title="refresh_orders">
+                <span data-i18n="refresh">Refresh</span>
+              </button>
+              <button type="button" id="btn-export-orders" class="ghost" title="Download the rows shown as CSV" data-i18n-title="ord_export_hint">
+                <span data-i18n="ord_export_csv">Export CSV</span>
+              </button>
+              <span class="pos-actions-divider" aria-hidden="true"></span>
+              <!-- Selection is the scoped counterpart to Cancel all: it is the
+                   only cancel that honours what the operator can actually see. -->
+              <button type="button" id="btn-cancel-selected-orders" class="ghost ghost-danger" hidden title="Cancel the selected orders" data-i18n-title="ord_cancel_selected_hint">
+                <span id="btn-cancel-selected-text" data-i18n="ord_cancel_selected">Cancel selected</span>
+              </button>
+              <button type="button" id="btn-cancel-all-orders" class="ghost ghost-danger" disabled title="Cancel every open order" data-i18n-title="cancel_all_orders_hint">
+                <span id="btn-cancel-all-text" data-i18n="cancel_all_orders">Cancel all</span>
+              </button>
+            </div>
+          </div>
+
+          <p id="ord-loop-notice" class="pos-loop-notice" role="status" hidden>
+            <span data-i18n="ord_loop_locked">Auto Trade is running — cancel and replace are locked so the strategy and your clicks cannot fight over the same tickets. Stop the loop to manage orders.</span>
+            <a href="/auto-trade" data-i18n="nav_auto_trade">Auto Trade</a>
+          </p>
+
+          <div class="pos-filters-bar" role="group" aria-label="Orders filters" data-i18n-aria-label="filter_orders">
+            <div class="pos-search-wrap">
+              <svg class="pos-search-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <label for="ord-search" class="sr-only" data-i18n="search_symbols_placeholder">Search symbol</label>
+              <input type="text" id="ord-search" name="ord-search" autocomplete="off" spellcheck="false" placeholder="Search symbol…" data-i18n-placeholder="search_symbols_placeholder" class="pos-search-input" />
+              <button type="button" id="btn-clear-ord-search" class="pos-search-clear" aria-label="Clear search" data-i18n-aria-label="clear_search" hidden>&times;</button>
+            </div>
+
+            <div class="pos-filter-groups">
+              <div class="pos-seg-group" role="group" aria-label="Filter by status" data-i18n-aria-label="status">
+                <span class="pos-seg-label" data-i18n="status">Status</span>
+                <div class="pos-seg-pill">
+                  <button type="button" class="pos-seg-btn is-active" data-filter-status="open" aria-pressed="true" data-i18n="orders_open">Open</button>
+                  <button type="button" class="pos-seg-btn" data-filter-status="closed" aria-pressed="false" data-i18n="orders_closed">Closed</button>
+                </div>
+              </div>
+
+              <div class="pos-seg-group" role="group" aria-label="Filter by side" data-i18n-aria-label="side">
+                <span class="pos-seg-label" data-i18n="side">Side</span>
+                <div class="pos-seg-pill">
+                  <button type="button" class="pos-seg-btn is-active" data-filter-side="all" aria-pressed="true" data-i18n="filter_all">All</button>
+                  <button type="button" class="pos-seg-btn" data-filter-side="buy" aria-pressed="false" data-i18n="buy">Buy</button>
+                  <button type="button" class="pos-seg-btn" data-filter-side="sell" aria-pressed="false" data-i18n="sell">Sell</button>
+                </div>
+              </div>
+
+              <div class="pos-seg-group" role="group" aria-label="Filter by kind" data-i18n-aria-label="order_kind">
+                <span class="pos-seg-label" data-i18n="order_kind">Kind</span>
+                <div class="pos-seg-pill">
+                  <button type="button" class="pos-seg-btn is-active" data-filter-kind="all" aria-pressed="true" data-i18n="filter_all">All</button>
+                  <button type="button" class="pos-seg-btn" data-filter-kind="working" aria-pressed="false" data-i18n="orders_working">Working</button>
+                  <button type="button" class="pos-seg-btn" data-filter-kind="conditional" aria-pressed="false" data-i18n="orders_conditional">Conditional</button>
+                  <button type="button" class="pos-seg-btn" data-filter-kind="attached" aria-pressed="false" data-i18n="orders_attached">Attached</button>
+                </div>
+              </div>
+
+              <div class="pos-seg-group pos-sort-group">
+                <label class="pos-seg-label" for="ord-type-select" data-i18n="order_type">Order type</label>
+                <select id="ord-type-select" name="order-type-filter" autocomplete="off" class="pos-sort-select" aria-label="Filter by order type" data-i18n-aria-label="order_type">
+                  <option value="all" data-i18n="filter_all">All</option>
+                  <option value="market" data-i18n="market">Market</option>
+                  <option value="limit" data-i18n="limit">Limit</option>
+                  <option value="stop" data-i18n="type_stop">Stop</option>
+                  <option value="stop_limit" data-i18n="type_stop_limit">Stop limit</option>
+                  <option value="trailing_stop" data-i18n="type_trailing_stop">Trailing stop</option>
+                </select>
+              </div>
+
+              <!-- The cards have no column headers to click, so the sort lives
+                   here too and drives both views from one state. -->
+              <div class="pos-seg-group pos-sort-group">
+                <label class="pos-seg-label" for="ord-sort-select" data-i18n="sort_by">Sort</label>
+                <select id="ord-sort-select" name="ord-sort" autocomplete="off" class="pos-sort-select" aria-label="Sort orders" data-i18n-aria-label="ord_sort_aria">
+                  <option value="submitted" data-i18n="submitted_at">Submitted</option>
+                  <option value="symbol" data-i18n="symbol">Symbol</option>
+                  <option value="side" data-i18n="side">Side</option>
+                  <option value="type" data-i18n="order_type">Order type</option>
+                  <option value="qty" data-i18n="shares_qty">Shares / Qty</option>
+                  <option value="price" data-i18n="order_price">Price</option>
+                  <option value="mark" data-i18n="current_price_label">Current Price</option>
+                  <option value="distance" data-i18n="ord_distance">Distance</option>
+                  <option value="status" data-i18n="status">Status</option>
+                </select>
+              </div>
+
+              <button type="button" id="btn-reset-ord-filters" class="ghost pos-reset-filters" disabled data-i18n="reset_filters">Reset filters</button>
+            </div>
+          </div>
+
+          <!-- Only Closed has a window to bound; an open ticket is open now. -->
+          <div class="ord-window" id="ord-window" hidden>
+            <div class="date-range" role="group" aria-label="Closed window" data-i18n-aria-label="ord_window">
+              <label class="date-field"><span data-i18n="from_date">From</span>
+                <span class="date-field-shell">
+                  <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                    <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                  </svg>
+                  <input id="ord-window-after" name="ord-window-after" type="date" autocomplete="off" aria-describedby="ord-window-hint" />
+                </span>
+              </label>
+              <span class="date-range-span" aria-hidden="true"></span>
+              <label class="date-field"><span data-i18n="to_date">To</span>
+                <span class="date-field-shell">
+                  <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                    <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                  </svg>
+                  <input id="ord-window-until" name="ord-window-until" type="date" autocomplete="off" aria-describedby="ord-window-hint" />
+                </span>
+              </label>
+              <button type="button" id="btn-apply-ord-window" class="ghost date-range-apply" data-i18n="apply_range">Apply range</button>
+            </div>
+            <p id="ord-window-hint" class="field-help" data-i18n="ord_window_hint">Leave both blank for the most recent closed tickets. Dates are whole days, New York time.</p>
+          </div>
+
+          <div id="ord-table-wrap" class="pos-table-wrap">
+            <table class="pos-table" id="ord-data-table" aria-labelledby="orders-list-heading">
+              <thead>
+                <tr>
+                  <th scope="col" class="pos-th-check">
+                    <input type="checkbox" id="ord-select-all" class="pos-check-input" aria-label="Select all cancelable orders" data-i18n-aria-label="ord_select_all" />
+                  </th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="symbol" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="symbol">Symbol</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="side" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="side">Side</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="type" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="order_type">Order type</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="qty" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="shares_qty">Shares / Qty</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="price" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="order_price">Price</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <!-- The ticket's own price means little without the price the
+                       market is actually at, so the two sit side by side. -->
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="mark" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="current_price_label">Current Price</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" data-i18n="time_in_force">Time in force</th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="status" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="status">Status</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-actions" data-i18n="actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ord-table-body"></tbody>
+            </table>
+          </div>
+
+          <div id="ord-cards-list" class="pos-cards-list" role="list"></div>
+
+          <div id="ord-empty-state" class="pos-empty-state" hidden>
+            <div class="pos-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+            </div>
+            <h3 id="ord-empty-title" data-i18n="no_open_orders">No open orders</h3>
+            <p id="ord-empty-desc" data-i18n="no_open_orders_desc">Nothing is resting at the broker. Buy-backs and next tickets wait in Desk queues above until they fire. Place a ticket on Manual Order, or switch to Closed to see recent fills and cancels.</p>
+            <div class="pos-empty-actions" id="ord-empty-actions">
+              <a href="/manual-order" class="button primary" data-i18n="nav_manual_order">Manual Order</a>
+              <a href="/positions" class="button ghost" data-i18n="nav_positions">Positions</a>
+            </div>
+            <button type="button" id="btn-empty-clear-ord-filters" class="ghost" hidden data-i18n="reset_filters">Reset filters</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <div id="ord-cancel-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ord-cancel-title" aria-describedby="ord-cancel-desc" hidden>
+    <div class="pos-modal-card">
+      <div class="pos-modal-head">
+        <h3 id="ord-cancel-title" class="danger-title" data-i18n="cancel_order_confirm_title">Cancel this order?</h3>
+        <button type="button" id="btn-cancel-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="pos-modal-body">
+        <p id="ord-cancel-live" class="confirm-live-banner" hidden data-i18n="confirm_live_cancel_banner">LIVE ACCOUNT — this cancellation affects your live brokerage account.</p>
+        <div class="pos-danger-banner">
+          <p id="ord-cancel-desc" data-i18n="cancel_order_confirm_body">Cancel this open order? Any shares already filled remain filled.</p>
+        </div>
+        <p id="ord-cancel-plan-note" class="field-help warn" hidden></p>
+        <p id="ord-cancel-summary" class="field-help mono"></p>
+      </div>
+      <div class="pos-modal-foot">
+        <button type="button" id="btn-cancel-dismiss" class="ghost" data-i18n="keep_order">Keep order</button>
+        <button type="button" id="btn-cancel-confirm" class="primary primary-danger" data-i18n="cancel_order_confirm_btn">Cancel order</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ord-cancel-all-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ord-cancel-all-title" aria-describedby="ord-cancel-all-desc" hidden>
+    <div class="pos-modal-card">
+      <div class="pos-modal-head">
+        <h3 id="ord-cancel-all-title" class="danger-title" data-i18n="cancel_all_confirm_title">Cancel every open order</h3>
+        <button type="button" id="btn-cancel-all-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="pos-modal-body">
+        <p id="ord-cancel-all-live" class="confirm-live-banner" hidden data-i18n="confirm_live_cancel_banner">LIVE ACCOUNT — this cancellation affects your live brokerage account.</p>
+        <div class="pos-danger-banner">
+          <p id="ord-cancel-all-desc" data-i18n="cancel_all_confirm_body">This cancels every resting ticket — entries, limits, stops, and trails. Buy-backs and next tickets waiting on those sells are dropped too. Positions stay open.</p>
+        </div>
+        <p id="ord-cancel-all-filtered" class="field-help warn" role="alert" hidden></p>
+        <p id="ord-cancel-all-count" class="field-help"></p>
+      </div>
+      <div class="pos-modal-foot">
+        <button type="button" id="btn-cancel-all-dismiss" class="ghost" data-i18n="cancel">Cancel</button>
+        <button type="button" id="btn-cancel-all-confirm" class="primary" data-i18n="cancel_all_confirm_btn">Cancel all orders</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ord-cancel-selected-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ord-cancel-selected-title" aria-describedby="ord-cancel-selected-desc" hidden>
+    <div class="pos-modal-card">
+      <div class="pos-modal-head">
+        <h3 id="ord-cancel-selected-title" class="danger-title" data-i18n="ord_cancel_selected_title">Cancel the selected orders</h3>
+        <button type="button" id="btn-cancel-selected-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="pos-modal-body">
+        <p id="ord-cancel-selected-live" class="confirm-live-banner" hidden data-i18n="confirm_live_cancel_banner">LIVE ACCOUNT — this cancellation affects your live brokerage account.</p>
+        <div class="pos-danger-banner">
+          <p id="ord-cancel-selected-desc" data-i18n="ord_cancel_selected_body">Only the tickets you ticked are cancelled. Buy-backs and next tickets waiting on them are dropped too. Positions stay open.</p>
+        </div>
+        <ul id="ord-cancel-selected-list" class="ord-confirm-list"></ul>
+      </div>
+      <div class="pos-modal-foot">
+        <button type="button" id="btn-cancel-selected-dismiss" class="ghost" data-i18n="cancel">Cancel</button>
+        <button type="button" id="btn-cancel-selected-confirm" class="primary primary-danger" data-i18n="ord_cancel_selected_confirm">Cancel selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ord-detail-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ord-detail-title" hidden>
+    <div class="pos-modal-card">
+      <div class="pos-modal-head">
+        <div class="pos-modal-title-wrap">
+          <h3 id="ord-detail-title" data-i18n="ord_details_title">Order details</h3>
+          <span id="ord-detail-symbol" class="pos-symbol-badge">—</span>
+        </div>
+        <button type="button" id="btn-detail-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="pos-modal-body">
+        <dl id="ord-detail-list" class="ord-detail-list"></dl>
+      </div>
+      <div class="pos-modal-foot">
+        <a id="ord-detail-position" class="ghost" href="/positions" data-i18n="nav_positions">Positions</a>
+        <button type="button" id="btn-detail-dismiss" class="primary" data-i18n="close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ord-replace-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ord-replace-title" aria-describedby="replace-order-help" hidden>
+    <div class="pos-modal-card">
+      <div class="pos-modal-head">
+        <div class="pos-modal-title-wrap">
+          <h3 id="ord-replace-title" data-i18n="edit_order_title">Edit order</h3>
+          <span id="ord-replace-symbol" class="pos-symbol-badge">—</span>
+        </div>
+        <button type="button" id="btn-replace-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="pos-modal-body">
+        <p id="ord-replace-live" class="confirm-live-banner" hidden data-i18n="confirm_live_banner">REAL MONEY — this order goes to your live brokerage account.</p>
+        <p id="ord-replace-summary" class="field-help"></p>
+        <p id="ord-replace-plan-note" class="field-help info" hidden></p>
+        <p id="replace-order-help" class="field-help" data-i18n="replace_order_help">Notional tickets and fractional quantities cannot be changed — cancel and submit a new ticket instead.</p>
+        <form id="ord-replace-form" class="form ord-replace-form" novalidate>
+          <label for="ord-replace-qty"><span data-i18n="label_shares">Shares</span>
+            <input id="ord-replace-qty" name="qty" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" />
+          </label>
+          <label for="ord-replace-limit" id="ord-replace-limit-label"><span data-i18n="limit_price">Limit price</span>
+            <input id="ord-replace-limit" name="limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" autocomplete="off" />
+          </label>
+          <label for="ord-replace-stop" id="ord-replace-stop-label"><span data-i18n="trigger_price">Trigger price</span>
+            <input id="ord-replace-stop" name="stop_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" autocomplete="off" />
+          </label>
+          <label for="ord-replace-trail" id="ord-replace-trail-label" hidden><span id="ord-replace-trail-text" data-i18n="trail_percent">Trail %</span>
+            <input id="ord-replace-trail" name="trail" type="number" min="0.01" step="0.01" inputmode="decimal" autocomplete="off" />
+          </label>
+          <label for="ord-replace-tif"><span data-i18n="time_in_force">Time in force</span>
+            <select id="ord-replace-tif" name="time_in_force" autocomplete="off">
+              <option value="day" data-i18n="tif_day">Day</option>
+              <option value="gtc" data-i18n="tif_gtc">GTC — until cancelled</option>
+              <option value="ioc" data-i18n="tif_ioc">IOC — fill now or drop</option>
+              <option value="fok" data-i18n="tif_fok">FOK — all now or none</option>
+              <option value="opg" data-i18n="tif_opg">OPG — at the open</option>
+              <option value="cls" data-i18n="tif_cls">CLS — at the close</option>
+            </select>
+          </label>
+        </form>
+        <p id="ord-replace-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      </div>
+      <div class="pos-modal-foot">
+        <button type="button" id="btn-replace-dismiss" class="ghost" data-i18n="cancel">Cancel</button>
+        <button type="submit" form="ord-replace-form" id="btn-replace-confirm" class="primary" data-i18n="save_order_changes">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/orders.js"></script>
+</body>
+</html>

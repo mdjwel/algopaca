@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 120" width="100%" height="100%">
+  <defs>
+    <linearGradient id="lhBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141C2B"/>
+      <stop offset="100%" stop-color="#090E17"/>
+    </linearGradient>
+    <linearGradient id="lhBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="lhGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF08A"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="lhCopper" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="lhGreen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="textGradPaca" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="textGradAlgo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Left Icon Mark (Centered in 120x120 area) -->
+  <g transform="translate(10, 10)">
+    <!-- Icon Container -->
+    <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#lhBgGrad)" stroke="url(#lhBorder)" stroke-width="1.8"/>
+    
+    <!-- Alpaca Mark in Mini Scale -->
+    <g transform="translate(4, 2) scale(0.18)">
+      <!-- Back Ear -->
+      <polygon points="195,190 190,95 235,160 230,205" fill="#78350F"/>
+      <!-- Front Ear -->
+      <polygon points="230,175 240,75 285,150 265,195" fill="#D97706"/>
+      <polygon points="240,75 285,150 256,165" fill="#FEF08A"/>
+      <polygon points="240,75 256,165 230,175" fill="#FBBF24"/>
+      <!-- Crown -->
+      <polygon points="195,190 230,175 265,195 250,225 205,220" fill="#FBBF24"/>
+      <!-- Forehead & Snout -->
+      <polygon points="265,195 335,215 285,250 250,225" fill="#FEF08A"/>
+      <polygon points="335,215 385,238 348,272 285,250" fill="#FBBF24"/>
+      <polygon points="385,238 410,256 385,282 348,272" fill="#92400E"/>
+      <!-- Eye -->
+      <polygon points="298,228 322,234 314,248 292,242" fill="#09131F"/>
+      <circle cx="308" cy="238" r="4.5" fill="#38BDF8"/>
+      <circle cx="308" cy="238" r="2" fill="#FFFFFF"/>
+      <!-- Jaw -->
+      <polygon points="385,282 348,272 315,310 350,318" fill="#451A03"/>
+      <polygon points="348,272 285,250 315,310" fill="#78350F"/>
+      <!-- Throat & Cheek -->
+      <polygon points="205,220 250,225 285,250 260,300 195,275" fill="#92400E"/>
+      <!-- Quantitative Pillars -->
+      <polygon points="260,300 315,310 295,415 240,415" fill="#10B981"/>
+      <polygon points="315,310 350,318 330,415 295,415" fill="#047857"/>
+      <polygon points="195,275 260,300 240,415 175,415" fill="#F59E0B"/>
+      <polygon points="150,320 195,275 175,415 130,415" fill="#78350F"/>
+      <!-- Ascending Trend -->
+      <path d="M 115 390 L 180 340 L 235 365 L 320 270 L 375 220 L 420 170" fill="none" stroke="#FDE047" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="420" cy="170" r="9" fill="#FEF08A" stroke="#B45309" stroke-width="2"/>
+    </g>
+  </g>
+
+  <!-- Typography: AlgoPaca -->
+  <g transform="translate(130, 0)">
+    <!-- Main Wordmark -->
+    <text x="0" y="66" font-family="'Schibsted Grotesk', 'Inter', -apple-system, sans-serif" font-size="44" font-weight="800" letter-spacing="-0.03em">
+      <tspan fill="url(#textGradAlgo)">Algo</tspan><tspan fill="url(#textGradPaca)">Paca</tspan>
+    </text>
+
+    <!-- Subtitle / Eyebrow Badge -->
+    <g transform="translate(2, 78)">
+      <!-- Terminal Tag -->
+      <text x="0" y="16" font-family="'IBM Plex Mono', 'Courier New', monospace" font-size="11" font-weight="600" letter-spacing="0.16em" fill="#94A3B8">
+        QUANTITATIVE TRADING DESK
+      </text>
+      
+      <!-- Live Status Pill Dot -->
+      <circle cx="218" cy="12" r="3.5" fill="#10B981"/>
+      <text x="228" y="15.5" font-family="'IBM Plex Mono', monospace" font-size="10" font-weight="600" letter-spacing="0.1em" fill="#34D399">ALPACA</text>
+    </g>
+  </g>
+</svg>

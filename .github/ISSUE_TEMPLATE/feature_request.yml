@@ -1,0 +1,30 @@
+name: 💡 Feature Request
+description: Propose a new feature, strategy preset, or improvement for AlgoPaca
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement for AlgoPaca!
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of what feature or strategy preset you would like to see added.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Motivation / Trading Use Case
+      description: Why would this be useful to you and other algorithmic traders?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Considered Alternatives
+      description: A description of any alternative solutions or workarounds you have considered.

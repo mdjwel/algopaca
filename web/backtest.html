@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Backtest · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/backtest.css" />
+</head>
+<body data-page="backtest" data-bt-sub="run">
+  <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_backtest">Walk-forward SMA, buy-the-dip, long/short pair, or Regime Dual Momentum on past bars — same presets as Auto Trade, no orders.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link is-active" aria-current="page" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+      <nav class="bt-subnav" aria-label="Backtest sections" data-i18n-aria-label="backtest_sections">
+        <a href="/backtest" data-bt-sub="run" class="bt-subnav-link is-active" aria-current="page" data-i18n="bt_subnav_run">Run</a>
+        <a href="/backtest/history" data-bt-sub="history" class="bt-subnav-link" data-i18n="bt_subnav_history">History</a>
+        <a href="/backtest/compare" data-bt-sub="compare" class="bt-subnav-link" data-i18n="bt_subnav_compare">Compare</a>
+      </nav>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-backtest" class="page page-backtest" data-page="backtest">
+<section class="panel backtest-panel is-open" id="backtest-panel" aria-labelledby="backtest-heading">
+          <div class="panel-head">
+            <h2 id="backtest-heading" data-i18n="backtest_heading">Backtest</h2>
+            <p class="panel-hint" data-state="ready" data-i18n="simulation">Simulation</p>
+          </div>
+          <p class="field-help backtest-intro" data-i18n="backtest_intro">
+            Walk-forward SMA, buy-the-dip, pair rotator, or Regime Dual Momentum on historical bars. Same presets as Auto Trade — no paper orders. Add multiple tickers to compare side-by-side or share one cash pool.
+          </p>
+
+          <div class="bt-layout">
+          <form id="backtest-form" class="form bt-form" novalidate>
+            <fieldset class="field-group">
+              <legend data-i18n="strategy">Strategy</legend>
+              <label for="bt-mode" class="stack"><span data-i18n="mode">Mode</span>
+                <select id="bt-mode" name="mode">
+                  <option value="sma" data-i18n="mode_sma">SMA crossover</option>
+                  <option value="dip" selected data-i18n="mode_dip">Buy the dip</option>
+                  <option value="pair" data-i18n="mode_pair">Long &amp; Short Pair</option>
+                  <option value="ls" data-i18n="mode_ls">Regime Dual Momentum (L/S)</option>
+                </select>
+              </label>
+              <p id="bt-mode-hint" class="field-help" data-i18n="bt_mode_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
+
+              <label for="bt-sma-preset" class="stack bt-sma-only" hidden><span data-i18n="sma_preset">SMA preset</span>
+                <select id="bt-sma-preset" name="sma_preset">
+                  <option value="classic" data-i18n="preset_sma_classic">Classic 10/30</option>
+                  <option value="short_term" data-i18n="preset_sma_short_term">Short-term 5/20</option>
+                  <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
+                  <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
+                  <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
+                  <option value="custom" data-i18n="preset_custom">Custom</option>
+                </select>
+              </label>
+              <p id="bt-sma-hint" class="field-help bt-sma-only" hidden data-i18n="sma_preset_hint">Default swing crossover — balanced signal frequency.</p>
+              <div class="bt-sma-windows bt-sma-only" hidden>
+                <label for="bt-fast"><span data-i18n="fast_sma">Fast SMA</span>
+                  <input id="bt-fast" name="fast_sma" type="number" min="2" value="10" inputmode="numeric" />
+                </label>
+                <label for="bt-slow"><span data-i18n="slow_sma">Slow SMA</span>
+                  <input id="bt-slow" name="slow_sma" type="number" min="3" value="30" inputmode="numeric" />
+                </label>
+              </div>
+
+              <label for="bt-dip-preset" class="stack bt-dip-only"><span data-i18n="dip_preset">Dip preset</span>
+                <select id="bt-dip-preset" name="dip_preset">
+                  <option value="deep" selected data-i18n="preset_dip_deep">Deep dip</option>
+                  <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
+                  <option value="washout" data-i18n="preset_dip_washout">Washout</option>
+                  <option value="custom" data-i18n="preset_custom">Custom</option>
+                </select>
+              </label>
+              <p id="bt-dip-hint" class="field-help bt-dip-only" data-i18n="dip_preset_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
+              <div class="bt-dip-windows bt-dip-only">
+                <label for="bt-dip-buy"><span data-i18n="rsi_buy">RSI buy ≤</span>
+                  <input id="bt-dip-buy" name="dip_rsi_buy" type="number" value="30" min="1" max="99" step="1" inputmode="decimal" />
+                </label>
+                <label for="bt-dip-sell"><span data-i18n="rsi_sell">RSI sell ≥</span>
+                  <input id="bt-dip-sell" name="dip_rsi_sell" type="number" value="60" min="1" max="99" step="1" inputmode="decimal" />
+                </label>
+              </div>
+              <label class="check stack bt-dip-only" for="bt-dip-skip">
+                <input id="bt-dip-skip" name="dip_skip_bearish" type="checkbox" checked />
+                <span>
+                  <strong data-i18n="skip_bearish_trend">Skip bearish trend</strong>
+                  <span class="check-desc" data-i18n="skip_bearish_desc">Ignore dips when the SMA stack is bearish</span>
+                </span>
+              </label>
+
+              <label for="bt-pair-preset" class="stack bt-pair-only" hidden><span data-i18n="pair_preset">Pair preset</span>
+                <select id="bt-pair-preset" name="pair_preset">
+                  <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
+                  <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
+                  <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
+                  <option value="custom" data-i18n="preset_custom">Custom</option>
+                </select>
+              </label>
+              <p id="bt-pair-hint" class="field-help bt-pair-only" hidden data-i18n="bt_pair_hint">
+                Long leg by default; short leg only on confirmed bear impulses below SMA.
+              </p>
+              <div class="bt-pair-windows bt-pair-only" hidden>
+                <label for="bt-pair-sma"><span data-i18n="sma_period">SMA period</span>
+                  <input id="bt-pair-sma" name="pair_sma_period" type="number" min="2" value="50" inputmode="numeric" />
+                </label>
+                <label for="bt-pair-lb"><span data-i18n="lookback_days">Lookback days</span>
+                  <input id="bt-pair-lb" name="pair_lookback" type="number" min="1" value="7" inputmode="numeric" />
+                </label>
+                <label for="bt-pair-imp"><span data-i18n="impulse_pct">Impulse % ≤−</span>
+                  <input id="bt-pair-imp" name="pair_impulse_pct" type="number" min="0.1" max="99" step="0.1" value="5" inputmode="decimal" />
+                </label>
+                <label for="bt-pair-weak"><span data-i18n="when_weak">When weak</span>
+                  <select id="bt-pair-weak" name="pair_weak_side">
+                    <option value="LONG" selected data-i18n="stay_long">Stay long</option>
+                    <option value="CASH" data-i18n="cash">Cash</option>
+                  </select>
+                </label>
+              </div>
+
+              <p id="bt-ls-hint" class="field-help bt-ls-only" hidden data-i18n="bt_ls_hint">
+                Bull regime → long; bear regime → short. EMA + ADX filter, MACD hist trigger, ATR stops.
+              </p>
+              <div class="bt-ls-windows bt-ls-only" hidden>
+                <label for="bt-ls-fast"><span data-i18n="ema_fast">EMA fast</span>
+                  <input id="bt-ls-fast" name="ls_ema_fast" type="number" min="2" value="21" inputmode="numeric" />
+                </label>
+                <label for="bt-ls-slow"><span data-i18n="ema_slow">EMA slow</span>
+                  <input id="bt-ls-slow" name="ls_ema_slow" type="number" min="3" value="55" inputmode="numeric" />
+                </label>
+                <label for="bt-ls-adx"><span data-i18n="adx_min">ADX min</span>
+                  <input id="bt-ls-adx" name="ls_adx_min" type="number" min="0" max="100" step="1" value="20" inputmode="decimal" />
+                </label>
+                <label for="bt-ls-atr"><span data-i18n="atr_stop">ATR stop ×</span>
+                  <input id="bt-ls-atr" name="ls_atr_stop_mult" type="number" min="0.1" max="10" step="0.1" value="1.5" inputmode="decimal" />
+                </label>
+                <label for="bt-ls-risk"><span data-i18n="risk_pct_trade">Risk % / trade</span>
+                  <input id="bt-ls-risk" name="ls_risk_pct" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" />
+                </label>
+                <label for="bt-ls-rr"><span data-i18n="reward_risk">Reward : risk</span>
+                  <input id="bt-ls-rr" name="ls_rr" type="number" min="0.5" max="10" step="0.1" value="2" inputmode="decimal" />
+                </label>
+                <label for="bt-ls-time"><span data-i18n="time_stop_bars">Time stop (bars)</span>
+                  <input id="bt-ls-time" name="ls_time_stop_bars" type="number" min="1" max="60" value="15" inputmode="numeric" />
+                </label>
+                <label for="bt-ls-slip"><span data-i18n="slippage_pct">Slippage %</span>
+                  <input id="bt-ls-slip" name="ls_slippage_pct" type="number" min="0" max="1" step="0.01" value="0.02" inputmode="decimal" />
+                </label>
+                <label for="bt-ls-comm"><span data-i18n="commission_pct">Commission %</span>
+                  <input id="bt-ls-comm" name="ls_commission_pct" type="number" min="0" max="1" step="0.01" value="0.05" inputmode="decimal" />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset class="field-group">
+              <legend data-i18n="market">Market</legend>
+              <label for="bt-symbols" class="stack"><span data-i18n="symbols">Symbols</span>
+                <textarea id="bt-symbols" name="symbols" rows="2" autocomplete="off" spellcheck="false" placeholder="AAPL, MSFT… — or long, short for pair" data-i18n-placeholder="placeholder_bt_symbols" aria-describedby="bt-symbols-hint bt-symbols-count">AAPL</textarea>
+              </label>
+              <div class="bt-symbols-meta">
+                <p id="bt-symbols-hint" class="field-help" data-i18n="symbols_hint">Comma, space, or newline separated. Same strategy applies to each ticker.</p>
+                <p id="bt-symbols-count" class="bt-symbols-count" aria-live="polite">1 / 10</p>
+              </div>
+              <div id="bt-run-kind-wrap" class="bt-run-kind-wrap" hidden>
+                <div class="bt-run-kind-top">
+                  <span class="bt-run-kind-label" id="bt-run-kind-label" data-i18n="multi_symbol_run">Multi-symbol run</span>
+                  <div class="bt-run-kind-chips" role="radiogroup" aria-labelledby="bt-run-kind-label">
+                    <button type="button" class="bt-run-kind-btn is-active" data-bt-run-kind="per_symbol" aria-pressed="true" data-i18n="compare">Compare</button>
+                    <button type="button" class="bt-run-kind-btn" data-bt-run-kind="portfolio" aria-pressed="false" data-i18n="portfolio">Portfolio</button>
+                  </div>
+                </div>
+                <input type="hidden" id="bt-run-kind" name="run_kind" value="per_symbol" />
+                <p id="bt-run-kind-hint" class="field-help" data-i18n="multi_symbol_hint">Each symbol gets its own cash and equity curve for side-by-side comparison.</p>
+              </div>
+              <label for="bt-days" class="stack"><span data-i18n="lookback">Lookback</span>
+                <select id="bt-days" name="days">
+                  <option value="30" data-i18n="days_30">30 days</option>
+                  <option value="60" data-i18n="days_60">60 days</option>
+                  <option value="90" data-i18n="days_90">90 days</option>
+                  <option value="180" data-i18n="days_180">180 days</option>
+                  <option value="365" selected data-i18n="days_365">1 year</option>
+                  <option value="730" data-i18n="days_730">2 years</option>
+                </select>
+              </label>
+              <label for="bt-tf" class="stack"><span data-i18n="bar_timeframe">Bar timeframe</span>
+                <select id="bt-tf" name="bar_timeframe">
+                  <option value="1Day" selected data-i18n="tf_1day">1 day</option>
+                  <option value="1Hour" data-i18n="tf_1hour">1 hour</option>
+                  <option value="15Min" data-i18n="tf_15min">15 minutes</option>
+                  <option value="5Min" data-i18n="tf_5min">5 minutes</option>
+                </select>
+              </label>
+              <p id="bt-market-hint" class="field-help" data-i18n="market_timeframe_hint">Daily bars support up to 2 years. Intraday is capped at 60 days.</p>
+            </fieldset>
+
+            <fieldset class="field-group">
+              <legend data-i18n="sizing_risk_legend">Sizing &amp; risk</legend>
+              <label for="bt-cash" class="stack"><span id="bt-cash-label" data-i18n="initial_cash">Initial cash ($)</span>
+                <input id="bt-cash" name="initial_cash" type="number" min="100" step="100" value="10000" inputmode="decimal" />
+              </label>
+              <p id="bt-cash-hint" class="field-help" data-i18n="cash_hint">Starting cash for this simulation.</p>
+              <label for="bt-qty" class="stack bt-shares-only"><span id="bt-qty-label" data-i18n="shares_per_trade">Shares per trade</span>
+                <input id="bt-qty" name="qty" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" />
+              </label>
+              <p id="bt-qty-hint" class="field-help bt-shares-only" data-i18n="qty_hint">Fixed share size on each buy signal.</p>
+              <label for="bt-slip" class="stack bt-pair-only" hidden><span id="bt-slip-label" data-i18n="slippage_bps">Slippage (bps / side)</span>
+                <input id="bt-slip" name="slip_bps" type="number" min="0" max="100" step="1" value="5" inputmode="numeric" />
+              </label>
+              <p id="bt-slip-hint" class="field-help bt-pair-only" hidden data-i18n="slip_hint">
+                Applied on each rotation leg. Pair backtest deploys full equity.
+              </p>
+              <p id="bt-ls-size-hint" class="field-help bt-ls-only" hidden data-i18n="ls_size_hint">
+                Position size from risk % ÷ ATR stop distance. Desk share qty is ignored. Frictions: 0.05% commission + slippage %.
+              </p>
+              <label class="check stack bt-stop-toggle" for="bt-stop-enabled">
+                <input id="bt-stop-enabled" name="stop_loss_enabled" type="checkbox" />
+                <span>
+                  <strong data-i18n="stop_loss_on_buys">Stop loss on buys</strong>
+                  <span class="check-desc" data-i18n="stop_loss_buys_desc">Exit if price falls this % below entry (bar-low approximation)</span>
+                </span>
+              </label>
+              <label for="bt-stop-pct" id="bt-stop-pct-label" hidden><span data-i18n="stop_loss_pct">Stop loss %</span>
+                <input id="bt-stop-pct" name="stop_loss_pct" type="number" value="2" min="0.1" max="50" step="0.1" inputmode="decimal" />
+              </label>
+            </fieldset>
+
+            <p id="bt-error" class="form-error" role="alert" hidden></p>
+            <div class="actions bt-actions">
+              <button type="submit" id="btn-backtest" class="primary" data-i18n="run_backtest_btn">Run backtest</button>
+              <button type="button" id="btn-bt-from-desk" class="ghost" data-i18n="use_desk_strategy">Use desk strategy</button>
+            </div>
+          </form>
+
+          <div id="bt-results" class="bt-results" hidden>
+            <div class="bt-results-head">
+              <h3 class="history-subhead bt-results-title" data-i18n="results_heading">Results</h3>
+              <p id="bt-alpha-line" class="bt-alpha-line" aria-live="polite"></p>
+            </div>
+            <div id="bt-multi-wrap" class="bt-multi-wrap" hidden>
+              <div class="bt-multi-head">
+                <div class="bt-multi-head-copy">
+                  <h3 class="history-subhead" data-i18n="by_symbol">By symbol</h3>
+                  <p id="bt-multi-hint" class="field-help bt-multi-hint" data-i18n="by_symbol_hint">Select a row to focus the summary, chart, and trades.</p>
+                </div>
+                <label for="bt-detail-symbol" class="bt-detail-pick">
+                  <span class="bt-detail-pick-label" data-i18n="inspect">Inspect</span>
+                  <select id="bt-detail-symbol" name="detail_symbol"></select>
+                </label>
+              </div>
+              <div id="bt-compare-symbols" class="bt-symbol-table-wrap"></div>
+            </div>
+            <div id="bt-summary" class="pnl-summary bt-summary" aria-live="polite">
+              <div>
+                <span data-i18n="strategy_return">Strategy return</span>
+                <strong id="bt-return">—</strong>
+              </div>
+              <div>
+                <span data-i18n="buy_hold">Buy &amp; hold</span>
+                <strong id="bt-buyhold">—</strong>
+              </div>
+              <div>
+                <span data-i18n="vs_buy_hold">vs buy &amp; hold</span>
+                <strong id="bt-alpha">—</strong>
+              </div>
+              <div>
+                <span data-i18n="max_drawdown">Max drawdown</span>
+                <strong id="bt-drawdown">—</strong>
+              </div>
+              <div>
+                <span data-i18n="final_equity">Final equity</span>
+                <strong id="bt-equity">—</strong>
+              </div>
+              <div>
+                <span data-i18n="realized_pnl">Realized P&amp;L</span>
+                <strong id="bt-realized">—</strong>
+              </div>
+              <div>
+                <span data-i18n="win_rate">Win rate</span>
+                <strong id="bt-winrate">—</strong>
+              </div>
+              <div>
+                <span data-i18n="round_trips">Round trips</span>
+                <strong id="bt-trades-n">—</strong>
+              </div>
+            </div>
+            <p id="bt-meta" class="field-help"></p>
+            <div class="bt-chart-block" id="bt-chart-block">
+              <div class="bt-chart-head">
+                <h3 class="history-subhead" data-i18n="equity_curve">Equity curve</h3>
+                <div class="bt-chart-controls">
+                  <div class="bt-chart-toggles range-chips" role="group" aria-label="Chart series" data-i18n-aria-label="chart_series">
+                    <button type="button" class="chip is-active" data-bt-series="strategy" aria-pressed="true" data-i18n="series_strategy">Strategy</button>
+                    <button type="button" class="chip is-active" data-bt-series="hold" aria-pressed="true" data-i18n="series_buyhold">Buy &amp; hold</button>
+                    <button type="button" class="chip" data-bt-series="drawdown" aria-pressed="false" data-i18n="series_drawdown">Drawdown</button>
+                    <button type="button" class="chip is-active" data-bt-series="trades" aria-pressed="true" data-i18n="series_trades">Trades</button>
+                  </div>
+                  <button type="button" id="btn-bt-chart-fs" class="ghost bt-chart-fs-btn" aria-pressed="false" title="Fullscreen chart" aria-label="Fullscreen equity curve" data-i18n-title="fs_chart_title" data-i18n-aria-label="fs_chart_aria">
+                    <svg class="bt-chart-fs-enter" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" d="M8 3H4v4M16 3h4v4M8 21H4v-4M16 21h4v-4"/>
+                    </svg>
+                    <svg class="bt-chart-fs-exit" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" hidden>
+                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="bt-equity-wrap">
+                <canvas id="bt-equity-chart" class="bt-equity-chart" aria-labelledby="bt-chart-caption" role="img"></canvas>
+              </div>
+              <p id="bt-chart-caption" class="field-help bt-chart-caption" data-i18n="chart_caption">Hover for date, equity, and price. Toggle series above.</p>
+            </div>
+            <h3 class="history-subhead" data-i18n="simulated_trades">Simulated trades</h3>
+            <div id="bt-trades" class="history-list trades-list" role="list" aria-label="Backtest trades" data-i18n-aria-label="simulated_trades"></div>
+          </div>
+          </div>
+          <p class="field-help bt-run-footer">
+            <span data-i18n="finished_runs_saved">Finished runs are saved automatically.</span>
+            <a href="/backtest/history" data-i18n="open_run_history">Open run history</a>
+            <span data-i18n="to_review_compare">to review or compare.</span>
+          </p>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+  </div>
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/backtest-shared.js"></script>
+  <script src="/static/js/backtest.js"></script>
+</body>
+</html>

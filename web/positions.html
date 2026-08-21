@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Positions · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/positions.css" />
+</head>
+<body data-page="positions">
+  <a class="skip-link" href="#positions-panel" data-i18n="skip_to_positions">Skip to positions</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_positions">Inspect active holdings, track unrealized gains, and manage partial or full liquidations.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-positions" class="page page-positions" data-page="positions">
+
+        <!-- Top Summary KPI Banner -->
+        <section class="panel pos-summary-panel" aria-labelledby="pos-summary-heading">
+          <div class="panel-head">
+            <h2 id="pos-summary-heading" data-i18n="account">Account</h2>
+            <div class="panel-head-meta">
+              <span id="pos-mode-badge" class="mode-badge armed" data-i18n="paper_trading">Paper trading</span>
+            </div>
+          </div>
+          <!-- Equity leads at display size; the five supporting readouts share
+               one hairline-divided rail so the block reads as a single
+               instrument instead of six tiles competing for the same weight. -->
+          <div id="pos-kpi-grid" class="pos-kpi-grid" aria-live="polite">
+            <div class="pos-kpi-hero">
+              <span class="pos-kpi-label" data-i18n="equity">Equity</span>
+              <strong id="pos-kpi-equity" class="pos-kpi-hero-val">—</strong>
+              <div class="pos-invested">
+                <div class="pos-invested-track" aria-hidden="true">
+                  <span id="pos-invested-fill" class="pos-invested-fill"></span>
+                </div>
+                <!-- The allocation bar is this line's own breakdown — what the
+                     invested share is actually spread across — so its toggle
+                     sits with the figure it expands, not on a far-off panel. -->
+                <div class="pos-invested-foot">
+                  <span id="pos-kpi-equity-sub" class="pos-kpi-sub">—</span>
+                  <button type="button" id="btn-toggle-allocation" class="pos-allocation-toggle" aria-expanded="false" aria-controls="pos-allocation-section" hidden>
+                    <span id="btn-toggle-allocation-text" data-i18n="show_allocation">Show allocation</span>
+                    <svg class="pos-allocation-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
+                      <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="pos-kpi-rail">
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="total_market_value">Market Value</span>
+                <strong id="pos-kpi-market-value" class="pos-kpi-val">—</strong>
+                <span id="pos-kpi-cost-basis" class="pos-kpi-sub">—</span>
+              </div>
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+                <div class="pos-kpi-valrow">
+                  <strong id="pos-kpi-unrealized" class="pos-kpi-val">—</strong>
+                  <span id="pos-kpi-unrealized-pct" class="pos-chg-pill" hidden></span>
+                </div>
+                <!-- The two P&L tiles often carry the same figure on a book
+                     opened today; the sub-label says which yardstick each uses. -->
+                <span class="pos-kpi-sub" data-i18n="pos_vs_cost_basis">vs cost basis</span>
+              </div>
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="intraday_pnl">Today's P&amp;L</span>
+                <div class="pos-kpi-valrow">
+                  <strong id="pos-kpi-intraday" class="pos-kpi-val">—</strong>
+                  <span id="pos-kpi-intraday-pct" class="pos-chg-pill" hidden></span>
+                </div>
+                <span class="pos-kpi-sub" data-i18n="pos_vs_prior_close">vs prior close</span>
+              </div>
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="buying_power">Buying power</span>
+                <strong id="pos-kpi-buying-power" class="pos-kpi-val">—</strong>
+                <span id="pos-kpi-cash" class="pos-kpi-sub">—</span>
+              </div>
+              <div class="pos-kpi-tile">
+                <span class="pos-kpi-label" data-i18n="total_positions">Positions</span>
+                <strong id="pos-kpi-count" class="pos-kpi-val">0</strong>
+                <div class="pos-winloss-pill" id="pos-kpi-winloss-pill" hidden>
+                  <button type="button" class="pos-winloss-btn pos" id="pos-kpi-wins" title="Show winners only" data-i18n-title="filter_winners">0W</button>
+                  <button type="button" class="pos-winloss-btn neg" id="pos-kpi-losses" title="Show losers only" data-i18n-title="filter_losers">0L</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Portfolio Allocation Bar -->
+        <section class="panel pos-allocation-panel" id="pos-allocation-section" hidden aria-labelledby="pos-allocation-heading">
+          <div class="panel-head">
+            <h2 id="pos-allocation-heading" data-i18n="portfolio_allocation">Portfolio Allocation</h2>
+            <span id="pos-allocation-count" class="log-count">0</span>
+          </div>
+          <div class="pos-allocation-wrap">
+            <div id="pos-allocation-bar" class="pos-allocation-bar" role="img" aria-label="Portfolio allocation weights" data-i18n-aria-label="portfolio_allocation"></div>
+            <div id="pos-allocation-legend" class="pos-allocation-legend"></div>
+          </div>
+        </section>
+
+        <!-- Main Positions Table / Management Section -->
+        <section class="panel positions-panel" id="positions-panel" aria-labelledby="positions-heading">
+          <div class="panel-head">
+            <div class="log-heading">
+              <h2 id="positions-heading" data-i18n="positions_heading">Positions</h2>
+              <span id="pos-total-count" class="log-count" aria-live="polite">0</span>
+            </div>
+            <div class="panel-head-actions">
+              <div class="pos-sync-status" id="pos-sync-indicator" title="Live status" data-i18n-title="live_status">
+                <span class="pos-sync-dot" aria-hidden="true"></span>
+                <span id="pos-last-updated-text" class="pos-sync-time">Live</span>
+              </div>
+              <button type="button" id="btn-refresh-positions" class="ghost" title="Refresh positions" data-i18n-title="refresh_positions">
+                <span data-i18n="refresh_positions">Refresh</span>
+              </button>
+              <span class="pos-actions-divider" aria-hidden="true"></span>
+              <button type="button" id="btn-liquidate-selected" class="ghost ghost-danger" hidden title="Liquidate selected positions" data-i18n-title="liquidate_selected">
+                <span id="btn-liquidate-selected-text" data-i18n="liquidate_selected">Close Selected</span>
+              </button>
+              <button type="button" id="btn-liquidate-all" class="ghost ghost-danger" disabled title="Liquidate all positions" data-i18n-title="liquidate_all">
+                <span data-i18n="liquidate_all">Liquidate all</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Explains why the close controls are locked while the loop owns the book -->
+          <p id="pos-loop-notice" class="pos-loop-notice" role="status" hidden>
+            <span data-i18n="pos_loop_locked">Auto Trade is running — manual closes are locked so the strategy and your clicks cannot fight over the same position. Stop the loop to close manually.</span>
+            <a href="/auto-trade" data-i18n="nav_auto_trade">Auto Trade</a>
+          </p>
+
+          <!-- Filter & Search Toolbar -->
+          <div class="pos-filters-bar" role="group" aria-label="Positions filters" data-i18n-aria-label="filter_positions">
+            <div class="pos-search-wrap">
+              <svg class="pos-search-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <label for="pos-search" class="sr-only" data-i18n="search_symbols_placeholder">Search symbol</label>
+              <input type="text" id="pos-search" name="pos-search" autocomplete="off" spellcheck="false" placeholder="Search symbol…" data-i18n-placeholder="search_symbols_placeholder" class="pos-search-input" />
+              <button type="button" id="btn-clear-pos-search" class="pos-search-clear" aria-label="Clear search" data-i18n-aria-label="clear_search" hidden>&times;</button>
+            </div>
+
+            <div class="pos-filter-groups">
+              <!-- Side Filter Segmented Group -->
+              <div class="pos-seg-group" role="group" aria-label="Filter by side" data-i18n-aria-label="side">
+                <span class="pos-seg-label" data-i18n="side">Side</span>
+                <div class="pos-seg-pill">
+                  <button type="button" class="pos-seg-btn is-active" data-filter-side="all" aria-pressed="true" data-i18n="filter_all">All</button>
+                  <button type="button" class="pos-seg-btn" data-filter-side="long" aria-pressed="false" data-i18n="filter_long">Long</button>
+                  <button type="button" class="pos-seg-btn" data-filter-side="short" aria-pressed="false" data-i18n="filter_short">Short</button>
+                </div>
+              </div>
+
+              <!-- Outcome / PnL Segmented Group -->
+              <div class="pos-seg-group" role="group" aria-label="Filter by outcome" data-i18n-aria-label="status">
+                <span class="pos-seg-label" data-i18n="status">Status</span>
+                <div class="pos-seg-pill">
+                  <button type="button" class="pos-seg-btn is-active" data-filter-pnl="all" aria-pressed="true" data-i18n="filter_all">All</button>
+                  <button type="button" class="pos-seg-btn" data-filter-pnl="winners" aria-pressed="false" data-i18n="filter_winners">Winners</button>
+                  <button type="button" class="pos-seg-btn" data-filter-pnl="losers" aria-pressed="false" data-i18n="filter_losers">Losers</button>
+                </div>
+              </div>
+
+              <!-- Sort control — the only way to sort once the table collapses to cards -->
+              <div class="pos-seg-group pos-sort-group">
+                <label class="pos-seg-label" for="pos-sort-select" data-i18n="sort_by">Sort</label>
+                <select id="pos-sort-select" class="pos-sort-select" aria-label="Sort positions" data-i18n-aria-label="sort_by">
+                  <option value="market_value" data-i18n="total_market_value">Market Value</option>
+                  <option value="unrealized_pl" data-i18n="unrealized_pnl">Unrealized P&amp;L</option>
+                  <option value="unrealized_pct" data-i18n="unrealized_pct_label">Unrealized %</option>
+                  <option value="unrealized_intraday_pl" data-i18n="intraday_pnl">Today's P&amp;L</option>
+                  <option value="symbol" data-i18n="symbol">Symbol</option>
+                </select>
+              </div>
+
+              <button type="button" id="btn-reset-pos-filters" class="ghost pos-reset-filters" disabled data-i18n="reset_filters">Reset filters</button>
+            </div>
+          </div>
+
+          <!-- Positions Table Container -->
+          <div id="pos-table-wrap" class="pos-table-wrap">
+            <table class="pos-table" id="pos-data-table" aria-labelledby="positions-heading">
+              <thead>
+                <tr>
+                  <th scope="col" class="pos-th-check">
+                    <input type="checkbox" id="pos-select-all" class="pos-check-input" aria-label="Select all positions" data-i18n-aria-label="select_all" />
+                  </th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="symbol" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="symbol">Symbol</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable" data-sort-col="side" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="side">Side</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="qty" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="shares_qty">Shares / Qty</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="current_price" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="current_price_label">Current Price</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="avg_entry_price" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="avg_entry_label">Avg Entry</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="market_value" aria-sort="descending">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="total_market_value">Market Value</span>
+                      <span class="pos-sort-icon">▼</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="unrealized_pl" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" class="pos-th-sortable pos-th-num" data-sort-col="unrealized_intraday_pl" aria-sort="none">
+                    <button type="button" class="pos-sort-btn">
+                      <span data-i18n="intraday_pnl">Today's P&amp;L</span>
+                      <span class="pos-sort-icon">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col" data-i18n="protection">Protection</th>
+                  <th scope="col" class="pos-th-actions" data-i18n="actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="pos-table-body">
+                <!-- Dynamically injected rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Responsive Card View for Mobile -->
+          <div id="pos-cards-list" class="pos-cards-list" role="list">
+            <!-- Dynamically injected cards -->
+          </div>
+
+          <!-- Empty State Container -->
+          <div id="pos-empty-state" class="pos-empty-state" hidden>
+            <div class="pos-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+              </svg>
+            </div>
+            <h3 id="pos-empty-title" data-i18n="no_open_positions">No open holdings</h3>
+            <p id="pos-empty-desc" data-i18n="no_open_positions_desc">You currently have no open holdings. Start a strategy loop or place a manual order to open positions.</p>
+            <div class="pos-empty-actions" id="pos-empty-actions">
+              <a href="/auto-trade" class="button primary" data-i18n="nav_auto_trade">Auto Trade</a>
+              <a href="/manual-order" class="button ghost" data-i18n="nav_manual_order">Manual Order</a>
+            </div>
+            <button type="button" id="btn-empty-clear-filters" class="ghost" hidden data-i18n="reset_filters">Reset filters</button>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+
+    <!-- Partial/Full Close Modal Dialog -->
+    <div id="pos-close-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-modal-title" hidden>
+      <div class="pos-modal-card">
+        <div class="pos-modal-head">
+          <div class="pos-modal-title-wrap">
+            <h3 id="pos-modal-title" data-i18n="confirm_close_title">Close position</h3>
+            <span id="pos-modal-symbol-badge" class="pos-symbol-badge">AAPL</span>
+            <span id="pos-modal-side-badge" class="side-badge long" data-i18n="filter_long">Long</span>
+          </div>
+          <button type="button" id="btn-close-modal-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body">
+          <div class="pos-modal-meta-grid">
+            <div class="pos-modal-meta-item">
+              <span data-i18n="shares_qty">Shares / Qty</span>
+              <strong id="pos-modal-held-qty">0</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="avg_entry_label">Avg entry</span>
+              <strong id="pos-modal-avg-entry">$0.00</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="current_price_label">Current price</span>
+              <strong id="pos-modal-curr-price">$0.00</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+              <strong id="pos-modal-unrealized-pnl">$0.00</strong>
+            </div>
+          </div>
+
+          <!-- Liquidation Sizing Controls -->
+          <div class="pos-modal-sizing">
+            <label class="pos-modal-label" for="pos-close-qty-input">
+              <span data-i18n="closing_shares">Shares to close</span>
+              <span id="pos-modal-pct-label" class="pos-pct-tag">100%</span>
+            </label>
+
+            <!-- Quick Percentage Chips -->
+            <div class="pos-pct-chips" role="group" aria-label="Quick percentage selection" data-i18n-aria-label="close_percent">
+              <button type="button" class="chip" data-pct="25" aria-pressed="false">25%</button>
+              <button type="button" class="chip" data-pct="50" aria-pressed="false">50%</button>
+              <button type="button" class="chip" data-pct="75" aria-pressed="false">75%</button>
+              <button type="button" class="chip is-active" data-pct="100" aria-pressed="true">100%</button>
+            </div>
+
+            <div class="pos-modal-inputs">
+              <input type="range" id="pos-close-slider" min="1" max="100" value="100" step="1" class="pos-slider" aria-label="Closing percentage slider" data-i18n-aria-label="close_percent" />
+              <div class="pos-modal-qty-row">
+                <input type="number" id="pos-close-qty-input" name="close_qty" min="0.000000001" step="any" value="1" autocomplete="off" class="pos-qty-input" aria-label="Shares to close" data-i18n-aria-label="closing_shares" />
+                <span class="pos-qty-unit" id="pos-modal-qty-unit" data-i18n="shares_unit">shares</span>
+                <span id="pos-modal-remaining" class="pos-remaining-note"></span>
+              </div>
+            </div>
+            <p id="pos-modal-size-hint" class="field-help" hidden></p>
+          </div>
+
+          <!-- Estimated Outcome Preview -->
+          <div class="pos-modal-preview">
+            <div class="pos-preview-row">
+              <span data-i18n="est_proceeds">Est. proceeds</span>
+              <strong id="pos-modal-est-proceeds">$0.00</strong>
+            </div>
+            <div class="pos-preview-row">
+              <span data-i18n="est_realized_pnl">Est. realized P&amp;L</span>
+              <strong id="pos-modal-est-pnl">$0.00</strong>
+            </div>
+          </div>
+
+          <label class="check stack" for="pos-cancel-single-orders-check">
+            <input id="pos-cancel-single-orders-check" type="checkbox" checked />
+            <span>
+              <strong data-i18n="cancel_resting_orders">Cancel resting open orders</strong>
+              <span class="check-desc" id="pos-cancel-single-orders-desc" data-i18n="cancel_resting_orders_desc">Also cancel any active stop loss or limit orders for these symbols.</span>
+            </span>
+          </label>
+
+          <p id="pos-modal-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <button type="button" id="btn-close-modal-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
+          <button type="button" id="btn-close-modal-submit" class="primary primary-danger" data-i18n="confirm_liquidation">Confirm liquidation</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Share Lots Modal Dialog — the individual parcels behind one holding -->
+    <div id="pos-lots-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-lots-title" hidden>
+      <div class="pos-modal-card pos-lots-card">
+        <div class="pos-modal-head">
+          <div class="pos-modal-title-wrap">
+            <h3 id="pos-lots-title" data-i18n="pos_lots_title">Share lots</h3>
+            <span id="pos-lots-symbol-badge" class="pos-symbol-badge">AAPL</span>
+            <span id="pos-lots-side-badge" class="side-badge long" data-i18n="filter_long">Long</span>
+          </div>
+          <button type="button" id="btn-lots-modal-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body pos-lots-body">
+          <!-- The four figures the lot list is read against sit on one hairline
+               rail, the same instrument vocabulary the page header uses. -->
+          <div class="pos-lots-rail">
+            <div class="pos-lots-stat">
+              <span data-i18n="pos_lots_count_label">Open lots</span>
+              <strong id="pos-lots-count">—</strong>
+            </div>
+            <div class="pos-lots-stat">
+              <span data-i18n="shares_qty">Shares / Qty</span>
+              <strong id="pos-lots-total-qty">—</strong>
+            </div>
+            <div class="pos-lots-stat">
+              <span data-i18n="avg_entry_label">Avg entry</span>
+              <strong id="pos-lots-avg-entry">—</strong>
+            </div>
+            <div class="pos-lots-stat">
+              <span data-i18n="current_price_label">Current price</span>
+              <strong id="pos-lots-curr-price">—</strong>
+            </div>
+            <div class="pos-lots-stat pos-lots-stat-pnl">
+              <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+              <strong id="pos-lots-total-pnl">—</strong>
+            </div>
+          </div>
+
+          <div id="pos-lots-loading" class="pos-lots-loading" hidden>
+            <span class="pos-lots-spinner" aria-hidden="true"></span>
+            <span data-i18n="pos_lots_loading">Rebuilding lots from your fills…</span>
+          </div>
+
+          <div id="pos-lots-list-wrap" class="pos-lots-list-wrap" hidden>
+            <!-- Column labels only make sense once the row is wide enough to
+                 keep its columns; below that the rows label themselves. -->
+            <div class="pos-lots-colhead" aria-hidden="true">
+              <span data-i18n="pos_lots_opened">Opened</span>
+              <span data-i18n="pos_lots_entry">Entry</span>
+              <span data-i18n="pos_lots_weight">Weight</span>
+              <span data-i18n="total_market_value">Market Value</span>
+              <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+            </div>
+            <div id="pos-lots-list" class="pos-lots-list" role="list"></div>
+            <div id="pos-lots-totals" class="pos-lots-totals"></div>
+          </div>
+
+          <p id="pos-lots-note" class="pos-lots-note" hidden></p>
+
+          <div id="pos-lots-empty" class="pos-lots-empty" hidden>
+            <strong data-i18n="pos_lots_empty">No entry fills for this symbol inside the lookback window.</strong>
+          </div>
+
+          <p id="pos-lots-error" class="form-error" role="alert" hidden></p>
+
+          <p class="pos-lots-legend" data-i18n="pos_lots_desc">Each parcel is an entry fill that no exit has retired yet, matched first-in first-out. The blended average hides which shares are actually in profit.</p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <a id="pos-lots-history-link" class="ghost" href="/history" data-i18n="pos_view_fills">View fills for this symbol</a>
+          <button type="button" id="btn-lots-modal-close" class="primary" data-i18n="pos_lots_done">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk Liquidate Selected Modal Dialog -->
+    <div id="pos-liquidate-selected-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-liquidate-selected-title" hidden>
+      <div class="pos-modal-card">
+        <div class="pos-modal-head">
+          <h3 id="pos-liquidate-selected-title" class="danger-title" data-i18n="confirm_close_selected_title">Liquidate selected positions</h3>
+          <button type="button" id="btn-liquidate-selected-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body">
+          <div class="pos-danger-banner">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" class="danger-icon">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <p id="pos-liquidate-selected-desc" data-i18n="confirm_close_selected_desc">This will submit market orders to close the selected positions immediately.</p>
+          </div>
+
+          <div id="pos-liquidate-selected-preview" class="pos-liquidate-preview">
+            <!-- List of selected positions to be liquidated -->
+          </div>
+          <div id="pos-liquidate-selected-totals" class="pos-liquidate-totals"></div>
+
+          <label class="check stack" for="pos-cancel-selected-orders-check">
+            <input id="pos-cancel-selected-orders-check" type="checkbox" checked />
+            <span>
+              <strong data-i18n="cancel_resting_orders">Cancel resting open orders</strong>
+              <span class="check-desc" data-i18n="cancel_resting_orders_desc">Also cancel any active stop loss or limit orders for these symbols.</span>
+            </span>
+          </label>
+
+          <p id="pos-liquidate-selected-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <button type="button" id="btn-liquidate-selected-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
+          <button type="button" id="btn-liquidate-selected-confirm" class="primary primary-danger" data-i18n="liquidate_selected">Close Selected</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk Liquidate All Modal Dialog -->
+    <div id="pos-liquidate-all-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-liquidate-all-title" hidden>
+      <div class="pos-modal-card">
+        <div class="pos-modal-head">
+          <h3 id="pos-liquidate-all-title" class="danger-title" data-i18n="confirm_close_all_title">Liquidate all positions</h3>
+          <button type="button" id="btn-liquidate-all-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body">
+          <div class="pos-danger-banner">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" class="danger-icon">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <p data-i18n="confirm_close_all_desc">This will submit market orders to close all open positions immediately.</p>
+          </div>
+
+          <div id="pos-liquidate-list-preview" class="pos-liquidate-preview">
+            <!-- List of positions to be liquidated -->
+          </div>
+          <div id="pos-liquidate-all-totals" class="pos-liquidate-totals"></div>
+
+          <label class="check stack" for="pos-cancel-orders-check">
+            <input id="pos-cancel-orders-check" type="checkbox" checked />
+            <span>
+              <strong data-i18n="cancel_resting_orders">Cancel resting open orders</strong>
+              <span class="check-desc" data-i18n="cancel_resting_orders_desc">Also cancel any active stop loss or limit orders for these symbols.</span>
+            </span>
+          </label>
+
+          <p id="pos-liquidate-all-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <button type="button" id="btn-liquidate-all-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
+          <button type="button" id="btn-liquidate-all-confirm" class="primary primary-danger" data-i18n="liquidate_all">Liquidate all</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/positions.js"></script>
+</body>
+</html>

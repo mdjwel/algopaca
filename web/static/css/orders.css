@@ -1,0 +1,1089 @@
+/* ── Orders blotter ────────────────────────────────────────────────── */
+
+.page-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-orders .mono {
+  font-family: var(--mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-orders .pos {
+  color: var(--buy);
+}
+
+.page-orders .neg {
+  color: var(--sell);
+}
+
+.ord-kpi-grid {
+  align-items: stretch;
+}
+
+/* Four readouts share the rail, so each needs room for a money figure without
+   wrapping mid-number; below that they fall to two per row rather than
+   squeezing to four thin columns. */
+.ord-kpi-grid .pos-kpi-tile {
+  flex: 1 1 12.5rem;
+}
+
+.ord-kpi-grid .pos-kpi-val {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A tile that acts is only styled as one while it has something to act on. */
+#ord-kpi-armed-tile.is-interactive,
+#ord-kpi-nearest-tile.is-interactive {
+  cursor: pointer;
+}
+
+#ord-kpi-armed-tile.is-interactive:focus-visible,
+#ord-kpi-nearest-tile.is-interactive:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: -2px;
+}
+
+/* Inside a percent of firing, this is the one figure on the rail worth
+   looking at — same copper the near-distance rows use. */
+#ord-kpi-nearest-tile.is-hot {
+  background-color: color-mix(in srgb, var(--copper) 9%, transparent);
+}
+
+#ord-kpi-nearest-tile.is-hot .pos-kpi-val,
+#ord-kpi-nearest-tile.is-hot .pos-kpi-label {
+  color: var(--copper);
+}
+
+/* Open is the only hero carrying a breakdown, which left this card standing
+   taller than the rail beside it. A smaller figure and tighter rules bring
+   it back level without dropping anything from the card. */
+.ord-kpi-grid .pos-kpi-hero {
+  gap: 0.25rem;
+  padding: 0.8rem 1rem 0.85rem;
+}
+
+.ord-kpi-grid .pos-kpi-hero-val {
+  font-size: clamp(1.65rem, 2.4vw, 2.05rem);
+}
+
+.ord-kpi-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ord-kpi-openline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  min-width: 0;
+}
+
+/* Working and Conditional are the two halves of Open, so they read as a
+   breakdown hanging off the hero figure rather than as peers of it. */
+.ord-kpi-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.ord-kpi-split li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+button.ord-kpi-split-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ord-kpi-split-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ord-kpi-split-val {
+  font-family: var(--mono);
+  font-size: 0.98rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+button.ord-kpi-split-btn:hover .ord-kpi-split-label,
+button.ord-kpi-split-btn:hover .ord-kpi-split-val {
+  color: var(--copper);
+}
+
+button.ord-kpi-split-btn:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-label,
+button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-val {
+  color: var(--copper);
+}
+
+.ord-kpi-split-hint {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+/* Once the hero spans the full panel it has width to spare and height to
+   save, so the breakdown moves beside the figure instead of under it —
+   that stacked block was where most of the extra height came from. */
+@media (min-width: 40rem) and (max-width: 1180px) {
+  .ord-kpi-grid .pos-kpi-hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1.4rem;
+  }
+
+  .ord-kpi-grid .ord-kpi-hero-main {
+    flex: 1 1 auto;
+  }
+
+  .ord-kpi-grid .ord-kpi-split {
+    flex: 0 1 auto;
+    align-self: stretch;
+    align-items: center;
+    margin: 0;
+    padding: 0 0 0 1.4rem;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+}
+
+.ord-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.ord-status.is-open {
+  color: var(--copper);
+  border-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+}
+
+.ord-status.is-partial {
+  color: #e5a03c;
+  border-color: rgba(227, 160, 60, 0.4);
+  background: rgba(227, 160, 60, 0.12);
+}
+
+.ord-status.is-filled {
+  color: var(--buy);
+  border-color: color-mix(in srgb, var(--buy) 40%, var(--line));
+  background: rgba(63, 191, 143, 0.1);
+}
+
+.ord-status.is-canceled,
+.ord-status.is-rejected,
+.ord-status.is-expired {
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 40%, var(--line));
+  background: rgba(227, 93, 93, 0.1);
+}
+
+.side-badge.buy {
+  color: var(--buy);
+  border-color: color-mix(in srgb, var(--buy) 40%, var(--line));
+  background: rgba(63, 191, 143, 0.08);
+}
+
+.side-badge.sell {
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 40%, var(--line));
+  background: rgba(227, 93, 93, 0.08);
+}
+
+/* Symbol, side, and status share the card head; the symbol keeps the left and
+   the two badges ride the right edge together. */
+.page-orders .pos-card-head {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.4rem;
+}
+
+.page-orders .pos-card-head .side-badge {
+  margin-left: auto;
+}
+
+/* Positions paints this edge from data-side="long|short"; a blotter row's side
+   is buy|sell, so the same signal needs its own mapping or every row would
+   fall back to the neutral hold colour. */
+.page-orders .pos-table-row[data-side="buy"] .pos-cell-check {
+  box-shadow: inset 2px 0 0 var(--buy);
+}
+
+.page-orders .pos-table-row[data-side="sell"] .pos-cell-check {
+  box-shadow: inset 2px 0 0 var(--sell);
+}
+
+.ord-kind-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ord-price-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  line-height: 1.25;
+}
+
+.ord-price-stack small:not(.pos-chg-pill) {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* `.page-orders .pos/.neg` would otherwise paint the pill in the raw buy/sell
+   colours and hide the tinted chip Positions uses for the day's move. */
+.page-orders .pos-chg-pill.pos {
+  color: var(--accent);
+}
+
+.page-orders .pos-chg-pill.neg {
+  color: var(--danger);
+}
+
+/* Distance to the trigger. Inside a percent the ticket is realistically in
+   play this session, so that case gets the copper the desk uses for "watch
+   this" everywhere else. */
+.ord-distance {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ord-distance.is-near {
+  color: var(--copper);
+  font-weight: 600;
+}
+
+/* The live mark. Out of hours it is the last print rather than a live one, so
+   it steps back to muted instead of claiming the same authority. */
+.ord-mark {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.ord-mark.is-stale {
+  color: var(--muted);
+}
+
+.ord-mark-empty {
+  color: var(--muted);
+}
+
+.ord-card-mark {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.65rem;
+  font-family: var(--mono);
+}
+
+.ord-card-mark .ord-price-stack {
+  align-items: flex-start;
+}
+
+.ord-card-mark-label {
+  font-family: var(--sans, inherit);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ord-fill-track {
+  display: block;
+  width: 100%;
+  min-width: 3.5rem;
+  height: 3px;
+  margin-top: 0.15rem;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.ord-fill-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--buy);
+}
+
+/* A ticket the broker has been told to drop, but has not confirmed yet. It is
+   dimmed rather than removed, so nothing appears to vanish unacknowledged. */
+.pos-table-row.is-canceling,
+.pos-card.is-canceling {
+  opacity: 0.55;
+}
+
+.pos-table-row.is-canceling .pos-act,
+.pos-card.is-canceling .ghost {
+  pointer-events: none;
+}
+
+.ord-qty-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.ord-qty-stack small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.ord-sym-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.32rem;
+}
+
+.ord-sym-cell strong,
+.ord-sym-cell .pos-sym-link {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.ord-time {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* The closed window is the one filter that only applies to one tab, so it sits
+   on its own line under the bar rather than shifting the bar's layout as the
+   Status segment is toggled. */
+.ord-window {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: -0.35rem 0 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ord-window[hidden] {
+  display: none;
+}
+
+.ord-window .field-help {
+  margin: 0;
+}
+
+.ord-confirm-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+
+.ord-confirm-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ord-confirm-note {
+  font-family: var(--sans, inherit);
+  font-size: 0.72rem;
+  color: var(--copper);
+}
+
+.ord-detail-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.ord-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ord-detail-row:last-child {
+  border-bottom: none;
+}
+
+.ord-detail-row dt {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ord-detail-row dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.8rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.ord-replace-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 0.9rem;
+  margin-top: 0.85rem;
+}
+
+.ord-replace-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.ord-replace-form input,
+.ord-replace-form select {
+  min-height: 36px;
+}
+
+.confirm-live-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--sell);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--sell) 18%, transparent);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sell) 75%, var(--text));
+}
+
+a.pos-prot-badge.orders {
+  text-decoration: none;
+}
+
+a.pos-prot-badge.orders:hover,
+a.pos-prot-badge.orders:focus-visible {
+  color: var(--text);
+  border-color: var(--copper);
+}
+
+/* Orphan desk plans (no parent on this blotter) stay above the table.
+   Plans that belong to a visible close sit on that row instead. */
+.ord-desk-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ord-desk-panel[hidden] {
+  display: none;
+}
+
+.ord-desk-help {
+  margin: -0.15rem 0 0;
+}
+
+
+.ord-desk-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.ord-queue h3 {
+  margin: 0 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--copper);
+}
+
+.ord-queue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ord-queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
+  border-left: 3px solid var(--copper);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+}
+
+.ord-queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.ord-plan-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.ord-plan-queue-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(212, 137, 76, 0.14);
+  color: var(--copper);
+  border: 1px solid rgba(212, 137, 76, 0.3);
+}
+
+.ord-plan-queue-tag.tag-reinvest {
+  background: rgba(63, 191, 143, 0.12);
+  color: var(--buy);
+  border-color: rgba(63, 191, 143, 0.3);
+}
+
+.ord-plan-queue-tag.tag-dip_hunt {
+  background: rgba(240, 198, 116, 0.12);
+  color: var(--warn);
+  border-color: rgba(240, 198, 116, 0.3);
+}
+
+.ord-plan-sym-text {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.ord-plan-spec-val {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.ord-plan-spec-val.is-market {
+  color: var(--copper);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.ord-plan-spec-muted,
+.ord-plan-dot-sep {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.ord-plan-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+}
+
+.ord-plan-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.73rem;
+  line-height: 1.3;
+}
+
+.ord-plan-status-pill.kind-waiting {
+  color: var(--copper);
+}
+
+.ord-plan-status-pill.kind-ok {
+  color: var(--buy);
+}
+
+.ord-plan-status-pill.kind-error,
+.ord-plan-status-pill.kind-warn {
+  color: var(--sell);
+}
+
+.ord-plan-pulse-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation: ordPulse 1.8s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.ord-queue-head {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ord-queue-note {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.ord-queue-item[data-kind="waiting"] {
+  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
+  border-left-color: var(--copper);
+  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.ord-queue-item[data-kind="ok"] {
+  border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
+  border-left-color: var(--buy);
+  background: linear-gradient(135deg, rgba(63, 191, 143, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.ord-queue-item[data-kind="error"],
+.ord-queue-item[data-kind="warn"] {
+  border-color: color-mix(in srgb, var(--sell) 35%, var(--line));
+  border-left-color: var(--sell);
+  background: linear-gradient(135deg, rgba(227, 93, 93, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+}
+
+.ord-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.ord-queue-actions .ghost {
+  min-height: 26px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+}
+
+.ord-plan-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 26px;
+  padding: 0.18rem 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #ff9999;
+  background: rgba(227, 93, 93, 0.08);
+  border: 1px solid rgba(227, 93, 93, 0.28);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ord-plan-btn-cancel:hover:not(:disabled) {
+  background: rgba(227, 93, 93, 0.22);
+  border-color: rgba(227, 93, 93, 0.55);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(227, 93, 93, 0.25);
+  transform: translateY(-1px);
+}
+
+.ord-plan-btn-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ord-plan-btn-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 26px;
+  padding: 0.18rem 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ord-plan-btn-jump:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: color-mix(in srgb, var(--copper) 40%, var(--line));
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.ord-plan-row td {
+  padding: 0 1rem 0.55rem 2.6rem;
+  border-top: none;
+  position: relative;
+}
+
+.ord-plan-row td::before {
+  content: "";
+  position: absolute;
+  left: 1.4rem;
+  top: -0.65rem;
+  width: 0.85rem;
+  height: 1.45rem;
+  border-left: 2px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  border-bottom: 2px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+
+.ord-plan-row .ord-inline-plan,
+.ord-plan-row .ord-plan-fold,
+.ord-card-plans .ord-inline-plan,
+.ord-card-plans .ord-plan-fold {
+  margin: 0 0 0.35rem;
+}
+
+.ord-plan-fold,
+.ord-queue-fold {
+  border: 1px solid color-mix(in srgb, var(--copper) 32%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 7%, transparent);
+}
+
+.ord-plan-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--copper);
+}
+
+.ord-plan-fold-head::-webkit-details-marker,
+.ord-plan-fold-head::marker {
+  display: none;
+  content: "";
+}
+
+.ord-plan-fold-head:hover {
+  color: color-mix(in srgb, var(--copper) 70%, var(--text));
+}
+
+.ord-plan-fold-head:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--copper) 45%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.ord-plan-fold-caret {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease;
+}
+
+.ord-plan-fold[open] > .ord-plan-fold-head .ord-plan-fold-caret,
+.ord-queue-fold[open] > .ord-plan-fold-head .ord-plan-fold-caret {
+  transform: rotate(45deg);
+}
+
+.ord-plan-fold .ord-inline-plan-label,
+.ord-queue-fold h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: inherit;
+}
+
+.ord-plan-fold-head .ord-inline-plan-label {
+  display: inline;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.ord-plan-fold-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.ord-plan-fold[open] > .ord-plan-fold-head .ord-plan-fold-preview {
+  display: none;
+}
+
+.ord-plan-fold > .ord-queue-item,
+.ord-queue-fold > .ord-queue-list {
+  margin: 0;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--copper) 22%, var(--line));
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: transparent;
+}
+
+.ord-queue-fold > .ord-queue-list {
+  padding: 0.45rem 0.5rem 0.5rem;
+}
+
+.ord-queue-fold .log-count {
+  margin-left: auto;
+}
+
+.ord-inline-plan-label {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--copper);
+}
+
+.ord-card-plans {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.ord-plan-fold-bound:not([open]),
+.ord-plan-row:has(.ord-plan-fold-bound:not([open])) {
+  display: none;
+}
+
+.ord-plan-pulse {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--copper);
+  box-shadow: 0 0 5px var(--copper);
+  animation: ordPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ordPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(212, 137, 76, 0.6);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.15);
+    box-shadow: 0 0 0 4px rgba(212, 137, 76, 0);
+  }
+}
+
+.ord-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  min-height: 19px;
+  height: 19px;
+  padding: 0 0.45rem;
+  border-radius: 4px;
+  background: rgba(212, 137, 76, 0.12);
+  border: 1px solid rgba(212, 137, 76, 0.3);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--copper);
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+button.ord-plan-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  min-height: 19px;
+  height: 19px;
+  padding: 0 0.45rem;
+  border: 1px solid rgba(212, 137, 76, 0.3);
+  border-radius: 4px;
+  background: rgba(212, 137, 76, 0.12);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--copper);
+  line-height: 1;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button.ord-plan-fold-toggle:hover,
+button.ord-plan-fold-toggle:focus-visible {
+  background: rgba(212, 137, 76, 0.22);
+  border-color: rgba(212, 137, 76, 0.55);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.2);
+  transform: translateY(-1px);
+}
+
+button.ord-plan-fold-toggle:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 1px;
+}
+
+button.ord-plan-fold-toggle .ord-plan-fold-caret {
+  display: inline-block;
+  width: 0.3rem;
+  height: 0.3rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-left: 0.08rem;
+}
+
+button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
+  transform: rotate(-135deg);
+}
+
+.ord-class-badge {
+  display: inline-block;
+  width: fit-content;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ord-sym-cell .ord-plan-badge {
+  margin-top: 0.15rem;
+}
+
+.ord-sym-cell .ord-plan-badge + .ord-class-badge,
+.ord-sym-cell .ord-kind-badge + .ord-plan-badge {
+  margin-top: 0.1rem;
+}
+
+.pos-table-row.is-highlighted,
+.ord-plan-row.is-highlighted,
+.pos-card.is-highlighted {
+  outline: 1px solid color-mix(in srgb, var(--copper) 55%, var(--line));
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+}
+
+#ord-cancel-plan-note:not([hidden]) {
+  margin: 0.65rem 0 0;
+  color: var(--copper);
+}
+
+@media (max-width: 1100px) {
+  .ord-desk-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .ord-replace-form {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>History · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/history.css" />
+</head>
+<body data-page="history">
+  <a class="skip-link" href="#history-panel" data-i18n="skip_to_history">Skip to history</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_history">Filter Alpaca fills and desk sessions, with account and FIFO realized P&amp;L by range.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-history" class="page page-history" data-page="history">
+       <div class="history-layout">
+        <section class="panel history-panel history-page-panel" id="history-panel" aria-labelledby="history-heading">
+          <div class="panel-head">
+            <div class="log-heading">
+              <h2 id="history-heading" data-i18n="history_heading">History</h2>
+              <span id="history-count" class="log-count" aria-live="polite" hidden>0</span>
+            </div>
+            <div class="panel-head-actions">
+              <button type="button" id="btn-export-history" class="ghost" disabled data-i18n="export_csv">Export CSV</button>
+              <button type="button" id="btn-clear-history" class="ghost ghost-danger" disabled title="Clear desk loop history" data-i18n="clear_desk" data-i18n-title="title_clear_desk">Clear desk</button>
+            </div>
+          </div>
+
+          <div class="history-filters" role="group" aria-label="History filters" data-i18n-aria-label="history_filters">
+            <div class="range-chips" role="group" aria-label="Time range" data-i18n-aria-label="time_range">
+              <button type="button" class="chip" data-range="day" aria-pressed="false" data-i18n="range_day">Day</button>
+              <button type="button" class="chip" data-range="week" aria-pressed="false" data-i18n="range_week">Week</button>
+              <button type="button" class="chip is-active" data-range="month" aria-pressed="true" data-i18n="range_month">Month</button>
+              <button type="button" class="chip" data-range="quarter" aria-pressed="false" data-i18n="range_quarter">Quarter</button>
+              <button type="button" class="chip" data-range="ytd" aria-pressed="false" data-i18n="range_ytd">YTD</button>
+              <button type="button" class="chip" data-range="all" data-i18n="range_all" aria-pressed="false">All</button>
+              <button type="button" class="chip chip-custom" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="history-custom-range" data-i18n="range_custom">Custom</button>
+            </div>
+            <div id="history-custom-range" class="history-custom-range form" hidden>
+              <div class="date-range" role="group">
+                <label class="date-field"><span data-i18n="from_date">From</span>
+                  <span class="date-field-shell">
+                    <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                      <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                    </svg>
+                    <input id="history-start" name="history-start" type="date" autocomplete="off" aria-describedby="history-custom-hint" />
+                  </span>
+                </label>
+                <span class="date-range-span" aria-hidden="true"></span>
+                <label class="date-field"><span data-i18n="to_date">To</span>
+                  <span class="date-field-shell">
+                    <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                      <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                    </svg>
+                    <input id="history-end" name="history-end" type="date" autocomplete="off" aria-describedby="history-custom-hint" />
+                  </span>
+                </label>
+                <button type="button" id="btn-apply-custom-range" class="ghost date-range-apply" data-i18n="apply_range">Apply range</button>
+              </div>
+              <p id="history-custom-hint" class="field-help history-custom-hint" data-i18n="custom_range_hint">Dates are whole market days, New York time.</p>
+            </div>
+            <div class="history-filter-fields form">
+              <label for="history-symbol"><span data-i18n="symbol">Symbol</span>
+                <input id="history-symbol" name="history-symbol" type="text" list="history-symbol-options" autocomplete="off" spellcheck="false" inputmode="text" placeholder="All" data-i18n-placeholder="all" />
+                <datalist id="history-symbol-options"></datalist>
+              </label>
+              <label for="history-side"><span data-i18n="side">Side</span>
+                <select id="history-side" name="history-side" autocomplete="off">
+                  <option value="" data-i18n="all">All</option>
+                  <option value="buy" data-i18n="buy">Buy</option>
+                  <option value="sell" data-i18n="sell">Sell</option>
+                </select>
+              </label>
+              <label for="history-source"><span data-i18n="source">Source</span>
+                <select id="history-source" name="history-source" autocomplete="off">
+                  <option value="alpaca" data-i18n="source_alpaca">Alpaca fills</option>
+                  <option value="desk" data-i18n="source_desk">Desk sessions</option>
+                  <option value="both" data-i18n="source_both">Both</option>
+                </select>
+              </label>
+              <label for="history-limit"><span data-i18n="load_fills">Load</span>
+                <select id="history-limit" name="history-limit" autocomplete="off">
+                  <option value="100">100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                  <option value="0" data-i18n="all">All</option>
+                </select>
+              </label>
+              <button type="button" id="btn-reset-history-filters" class="ghost history-reset" disabled data-i18n="reset_filters">Reset filters</button>
+            </div>
+            <div class="history-ai-query form" id="history-ai-query" hidden>
+              <label for="history-query"><span data-i18n="ai_query_label">Ask</span>
+                <input id="history-query" name="history-query" type="text" autocomplete="off" spellcheck="false" placeholder="AAPL sells that lost more than 50" data-i18n-placeholder="ai_query_placeholder" aria-describedby="history-query-note" />
+              </label>
+              <button type="button" id="btn-history-query" class="ghost" data-i18n="ai_query_run">Filter</button>
+              <button type="button" id="btn-history-query-clear" class="ghost" hidden data-i18n="ai_query_clear">Clear</button>
+              <p id="history-query-note" class="field-help history-query-note" data-i18n="ai_query_help">Plain language, turned into filters the page applies to fills it already loaded.</p>
+            </div>
+          </div>
+
+          <div id="pnl-summary" class="pnl-summary" aria-live="polite">
+            <div class="pnl-tile">
+              <span class="pnl-label" data-i18n="account_pnl">Account P&amp;L</span>
+              <strong id="pnl-account">—</strong>
+              <span id="pnl-account-sub" class="pnl-sub"></span>
+            </div>
+            <div class="pnl-tile">
+              <span id="pnl-realized-label" class="pnl-label" data-i18n="realized_fifo">Realized (FIFO)</span>
+              <strong id="pnl-realized">—</strong>
+              <span id="pnl-realized-sub" class="pnl-sub"></span>
+            </div>
+            <div class="pnl-tile">
+              <span id="pnl-fills-label" class="pnl-label" data-i18n="fills">Fills</span>
+              <strong id="pnl-fills">0</strong>
+              <span id="pnl-fills-sub" class="pnl-sub"></span>
+            </div>
+          </div>
+          <p id="pnl-note" class="field-help pnl-note" data-i18n="pnl_note">Account P&amp;L is the move in account equity across the range. Realized P&amp;L pairs buys→sells FIFO from fills in the range.</p>
+          <div id="history-warnings" class="history-warnings" role="status" aria-live="polite"></div>
+
+          <div id="history-equity-block" class="history-chart-block" hidden>
+            <h3 class="history-subhead" id="history-equity-heading" data-i18n="account_equity_heading">Account equity</h3>
+            <div class="history-chart-wrap">
+              <canvas id="history-equity-chart" aria-labelledby="history-equity-heading" role="img"></canvas>
+            </div>
+          </div>
+
+          <div id="history-stats-block" class="history-stats-block" hidden>
+            <h3 class="history-subhead" data-i18n="closed_trade_stats_heading">Closed trades</h3>
+            <div class="history-stats">
+              <div><span data-i18n="stat_closed">Closed</span><strong id="stat-closed">—</strong></div>
+              <div><span data-i18n="stat_win_rate">Win rate</span><strong id="stat-win-rate">—</strong></div>
+              <div><span data-i18n="stat_avg_win">Avg win</span><strong id="stat-avg-win">—</strong></div>
+              <div><span data-i18n="stat_avg_loss">Avg loss</span><strong id="stat-avg-loss">—</strong></div>
+              <div><span data-i18n="stat_best">Best</span><strong id="stat-best">—</strong></div>
+              <div><span data-i18n="stat_worst">Worst</span><strong id="stat-worst">—</strong></div>
+              <div><span data-i18n="stat_profit_factor">Profit factor</span><strong id="stat-profit-factor">—</strong></div>
+            </div>
+          </div>
+
+          <div id="history-review" class="history-review" hidden>
+            <div class="review-head">
+              <h3 class="history-subhead" id="history-review-heading" data-i18n="review_heading">Desk review</h3>
+              <div class="review-head-actions">
+                <span id="review-model" class="review-model" hidden></span>
+                <button type="button" id="btn-review-run" class="ghost" data-i18n="review_run">Explain this range</button>
+              </div>
+            </div>
+            <p class="field-help" data-i18n="review_help">Every figure below is computed from your fills. The written summary only explains those figures — it never calculates one.</p>
+
+            <div id="review-flags" class="review-flags" role="status" aria-live="polite"></div>
+
+            <div class="review-tabs range-chips" role="tablist" aria-label="Review scope" data-i18n-aria-label="review_scope">
+              <button type="button" class="chip is-active" role="tab" aria-selected="true" aria-controls="review-pane-debrief" data-review-scope="debrief" data-i18n="review_tab_debrief">Debrief</button>
+              <button type="button" class="chip" role="tab" aria-selected="false" aria-controls="review-pane-postmortem" data-review-scope="postmortem" data-i18n="review_tab_postmortem">Post-mortems</button>
+              <button type="button" class="chip" role="tab" aria-selected="false" aria-controls="review-pane-audit" data-review-scope="audit" data-i18n="review_tab_audit">Execution</button>
+            </div>
+
+            <div id="review-narrative" class="review-narrative" aria-live="polite"></div>
+
+            <div id="review-pane-debrief" class="review-pane" role="tabpanel">
+              <h4 class="strategy-pnl-label" id="review-calibration-heading" data-i18n="review_calibration_heading">Confidence calibration</h4>
+              <p class="field-help" data-i18n="review_calibration_help">Win rate of closed trades grouped by the confidence the engine had when it opened them. Flat or inverted bars mean the confidence dial is not earning its keep.</p>
+              <div class="history-chart-wrap review-chart-wrap">
+                <canvas id="review-calibration-chart" role="img" aria-labelledby="review-calibration-heading"></canvas>
+              </div>
+              <p id="review-calibration-empty" class="review-empty" hidden data-i18n="review_calibration_empty">No desk entries in this range carry a confidence score yet.</p>
+            </div>
+
+            <div id="review-pane-postmortem" class="review-pane" role="tabpanel" hidden>
+              <div id="review-postmortems" class="review-postmortems"></div>
+            </div>
+
+            <div id="review-pane-audit" class="review-pane" role="tabpanel" hidden>
+              <div id="review-audit" class="review-audit"></div>
+              <h4 class="strategy-pnl-label" id="review-hour-heading" data-i18n="review_hour_heading">Entries by hour</h4>
+              <div class="history-chart-wrap review-chart-wrap">
+                <canvas id="review-hour-chart" role="img" aria-labelledby="review-hour-heading"></canvas>
+              </div>
+            </div>
+
+            <div id="review-lessons-block" class="review-lessons-block" hidden>
+              <h4 class="strategy-pnl-label" data-i18n="review_lessons_heading">Suggested lessons</h4>
+              <p class="field-help" data-i18n="review_lessons_help">Saving a lesson adds it to the AI engine's playbook for future decisions. Nothing reaches the engine until you save it, and a lesson never overrides a risk rule.</p>
+              <div id="review-lessons" class="review-lessons"></div>
+            </div>
+
+            <div id="review-saved-block" class="review-saved-block" hidden>
+              <h4 class="strategy-pnl-label" data-i18n="review_saved_heading">Active playbook</h4>
+              <div id="review-saved" class="review-saved"></div>
+            </div>
+          </div>
+
+          <div id="history-strategy-block" class="history-strategy-block" hidden>
+            <h3 class="history-subhead" data-i18n="realized_by_strategy_heading">Realized by strategy</h3>
+            <p class="field-help" data-i18n="realized_by_strategy_help">P&amp;L is credited to the Auto Trade mode and preset that opened the position.</p>
+            <div class="strategy-pnl-group">
+              <h4 class="strategy-pnl-label" id="history-mode-heading" data-i18n="by_mode">By mode</h4>
+              <div id="history-mode-pnl" class="symbol-pnl" role="group" aria-labelledby="history-mode-heading"></div>
+            </div>
+            <div class="strategy-pnl-group">
+              <h4 class="strategy-pnl-label" id="history-preset-heading" data-i18n="by_preset">By preset</h4>
+              <div id="history-preset-pnl" class="symbol-pnl" role="group" aria-labelledby="history-preset-heading"></div>
+            </div>
+          </div>
+
+          <div id="history-symbol-block" class="history-symbol-block" hidden>
+            <h3 class="history-subhead" id="history-symbol-heading" data-i18n="realized_by_symbol_heading">Realized by symbol</h3>
+            <div id="history-symbol-pnl" class="symbol-pnl" role="group" aria-labelledby="history-symbol-heading"></div>
+          </div>
+
+          <h3 class="history-subhead" id="desk-history-heading" hidden data-i18n="desk_sessions_heading">Desk sessions</h3>
+          <div id="history-notes" class="history-list-notes"></div>
+          <div id="history" class="history-list" role="list" aria-labelledby="desk-history-heading" hidden></div>
+        </section>
+
+        <aside class="history-console" id="fills-console" aria-labelledby="alpaca-fills-heading">
+          <section class="panel fills-panel" id="fills-panel">
+            <div class="panel-head">
+              <div class="log-heading">
+                <h2 id="alpaca-fills-heading" data-i18n="alpaca_fills_heading">Alpaca fills</h2>
+                <span id="fills-count" class="log-count" aria-live="polite">0</span>
+              </div>
+              <div class="panel-head-actions">
+                <button type="button" id="btn-refresh-trades" class="ghost" title="Reload Alpaca fills" data-i18n="refresh_fills" data-i18n-title="title_reload_fills">Refresh fills</button>
+              </div>
+            </div>
+            <div id="alpaca-trades-notes" class="history-list-notes"></div>
+            <div id="alpaca-trades" class="history-list trades-list" role="list" aria-labelledby="alpaca-fills-heading"></div>
+          </section>
+        </aside>
+       </div>
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+  </div>
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/history.js"></script>
+  <script src="/static/js/history-review.js"></script>
+</body>
+</html>

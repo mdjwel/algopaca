@@ -1,0 +1,16 @@
+services:
+  algopaca:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algopaca
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file:
+      - .env
+    environment:
+      - ALGOPACA_HOST=0.0.0.0
+      - ALGOPACA_PORT=8765
+    volumes:
+      - ./data:/app/data

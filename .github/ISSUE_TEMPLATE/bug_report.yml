@@ -1,0 +1,81 @@
+name: 🐛 Bug Report
+description: Report an issue or unexpected behavior in AlgoPaca
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible to help us reproduce and fix it.
+        **CRITICAL:** Never post real API keys, secrets, or account numbers.
+
+  - type: input
+    id: version
+    attributes:
+      label: AlgoPaca Version or Git Commit
+      placeholder: e.g. 1.0.0 or commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Operating System & Execution Method
+      options:
+        - macOS (Native)
+        - Linux (Ubuntu/Debian/Arch)
+        - Windows (WSL)
+        - Windows (Native / CMD)
+        - Docker / Docker Compose
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Trading Mode / Strategy
+      options:
+        - SMA Crossover
+        - Buy the Dip
+        - Long/Short Pair
+        - Regime Dual Momentum (L/S)
+        - AI Desk
+        - Backtesting / Compare
+        - Web Desk / Configuration
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: What steps did you take to trigger the bug?
+      placeholder: |
+        1. Start desk with `./launch_web.sh`
+        2. Go to '...'
+        3. Click on '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / Terminal Logs
+      description: Paste any error messages or stack traces (strip API keys first).
+      render: shell

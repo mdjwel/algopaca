@@ -1,0 +1,935 @@
+/* ── Trade History Page Styles ────────────────────────────────── */
+.page-history {
+  width: 100%;
+  max-width: none;
+}
+
+.history-console {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  max-height: calc(100vh - 2rem);
+  display: grid;
+  min-height: 0;
+}
+
+.fills-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  max-height: calc(100vh - 2rem);
+}
+
+/* Only the tape scrolls; the panel head and notes stay put. */
+.fills-panel .history-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  padding-right: 0.35rem;
+}
+
+/* The column is too narrow for a four-column table: the row falls back to the
+   compact stacked form, so the header row would only mislead. */
+.fills-panel .history-list-head {
+  display: none;
+}
+
+.fills-panel .history-row-top {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.fills-panel .history-time {
+  grid-column: 1 / -1;
+  white-space: normal;
+}
+
+.history-page-panel .panel-head {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.history-filters {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.history-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.chip-custom {
+  border-style: dashed;
+}
+
+.history-custom-range {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem 1.05rem 0.9rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(12, 18, 25, 0.4);
+  container-type: inline-size;
+  container-name: date-range;
+}
+
+.history-custom-range[hidden] {
+  display: none;
+}
+
+.date-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 0.55rem 0.7rem;
+  align-items: end;
+}
+
+.date-range .date-field {
+  min-width: 0;
+}
+
+/* Hairline with a copper tick — reads as a session span, not two
+   disconnected date boxes. */
+.date-range-span {
+  align-self: end;
+  position: relative;
+  width: 1.05rem;
+  height: 2.25rem;
+}
+
+.date-range-span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+.date-range-span::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--copper);
+}
+
+.date-range.is-complete .date-range-span::before {
+  background: var(--copper);
+}
+
+.history-custom-hint {
+  margin: 0;
+}
+
+@container date-range (max-width: 36rem) {
+  .date-range {
+    grid-template-columns: 1fr;
+  }
+
+  .date-range-span {
+    display: none;
+  }
+
+  .date-range-apply {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+.history-filter-fields label {
+  position: relative;
+}
+
+.history-filter-fields.form {
+  gap: 0.75rem;
+}
+
+.history-reset {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 2.5rem;
+}
+
+.history-panel.is-loading .history-list,
+.history-panel.is-loading .history-subhead,
+.fills-panel.is-loading .history-list,
+.fills-panel.is-loading .history-list-notes {
+  opacity: 0.62;
+}
+
+.history-cap-note {
+  margin: 0 0 0.5rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.history-list-notes[hidden] {
+  display: none;
+}
+
+.pnl-tile {
+  display: grid;
+  align-content: start;
+  /* Reserve the caveat row so tiles never jump as filters change. */
+  grid-template-rows: auto auto 1.1rem;
+  min-width: 0;
+}
+
+.pnl-summary .pnl-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.pnl-summary strong.is-na {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.pnl-sub {
+  display: block;
+  margin-top: 0.28rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pnl-sub[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+.pnl-summary.is-desk-only {
+  opacity: 0.92;
+}
+
+.pnl-note {
+  margin: 0 0 0.6rem;
+  /* Two lines' worth, always — the sentence swaps without shifting the page. */
+  min-height: 2.4em;
+}
+
+/* ── History warnings ─────────────────────────────────────────────── */
+
+.history-warnings {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.9rem;
+}
+
+.history-warnings[hidden] {
+  display: none;
+}
+
+.history-warning {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 2px solid var(--hold);
+  border-radius: var(--radius-sm);
+  background: rgba(12, 18, 25, 0.5);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.history-warning[data-tone="warn"] {
+  border-left-color: var(--copper);
+  color: var(--text);
+  background: rgba(212, 137, 76, 0.08);
+}
+
+/* ── Closed-trade stats ───────────────────────────────────────────── */
+
+.history-stats-block[hidden],
+.history-symbol-block[hidden],
+.history-chart-block[hidden] {
+  display: none;
+}
+
+.history-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.65rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(12, 18, 25, 0.4);
+}
+
+.history-stats > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.history-stats span {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.history-stats strong {
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-stats strong.pos { color: var(--buy); }
+
+.history-stats strong.neg { color: var(--sell); }
+
+/* ── Realized by symbol ───────────────────────────────────────────── */
+
+.symbol-pnl {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  align-content: center;
+  gap: 0.4rem;
+}
+
+.symbol-pnl-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  line-height: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+/* Strategy chips are read-only spans — no hover affordance on something that
+   does not respond to a click. */
+.symbol-pnl-chip:not(.is-static):hover {
+  border-color: rgba(212, 137, 76, 0.45);
+}
+
+.symbol-pnl-chip.is-active {
+  border-color: var(--copper);
+  background: rgba(212, 137, 76, 0.12);
+}
+
+.symbol-pnl-sym {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.symbol-pnl-chip.is-static {
+  cursor: default;
+}
+
+.symbol-pnl-count {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+/* ── Realized by strategy ─────────────────────────────────────────── */
+
+.history-strategy-block[hidden] {
+  display: none;
+}
+
+.strategy-pnl-group {
+  margin-top: 0.6rem;
+}
+
+.strategy-pnl-label {
+  margin: 0 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Account equity chart ─────────────────────────────────────────── */
+
+.history-chart-wrap {
+  position: relative;
+  height: 13rem;
+  padding: 0.6rem 0.5rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(12, 18, 25, 0.4);
+}
+
+/* ── Day grouping (accordion) ───────────────────────────────────── */
+
+.history-day {
+  display: grid;
+  gap: 0;
+  border: 1px solid rgba(42, 56, 76, 0.55);
+  border-radius: var(--radius-md);
+}
+
+.history-day-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid transparent;
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+  background: var(--slate);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+}
+
+.history-day-head::-webkit-details-marker {
+  display: none;
+}
+
+.history-day-head::marker {
+  content: "";
+}
+
+.history-day[open] > .history-day-head {
+  border-bottom-color: rgba(42, 56, 76, 0.55);
+  color: var(--text);
+}
+
+.history-day-head:hover {
+  color: var(--text);
+}
+
+.history-day-head:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(212, 137, 76, 0.35);
+}
+
+.history-day-caret {
+  display: block;
+  width: 0.4rem;
+  height: 0.4rem;
+  flex-shrink: 0;
+  align-self: center;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease;
+}
+
+.history-day[open] > .history-day-head .history-day-caret {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-day-caret {
+    transition: none;
+  }
+}
+
+.history-day-label {
+  color: inherit;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.history-day[open] > .history-day-head .history-day-label {
+  color: var(--text);
+}
+
+.history-day-meta {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.history-day-body {
+  display: grid;
+  gap: 0;
+}
+
+.history-day .history-row {
+  margin-bottom: 0;
+}
+
+/* ── Fill row extras ──────────────────────────────────────────────── */
+
+.history-source-badge {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.history-source-badge[data-source="desk"] {
+  color: var(--copper);
+  border-color: rgba(212, 137, 76, 0.4);
+}
+
+.history-source-badge[data-source="stop"] {
+  color: var(--sell);
+  border-color: rgba(227, 93, 93, 0.4);
+}
+
+.history-source-badge[data-source="target"] {
+  color: var(--buy);
+  border-color: rgba(63, 191, 143, 0.4);
+}
+
+.history-notional {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-flag {
+  color: var(--copper);
+  cursor: help;
+  border-bottom: 1px dotted rgba(212, 137, 76, 0.5);
+}
+
+.linklike {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--copper);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.linklike:hover {
+  color: var(--copper-deep);
+}
+
+/* ── Desk review (AI) ─────────────────────────────────────────────── */
+
+.history-review {
+  margin: 1.1rem 0 0;
+  padding: 0.95rem 1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  /* Tinted apart from the plain P&L blocks: everything inside is a reading of
+     the numbers above it, not another number. */
+  background: linear-gradient(
+    180deg,
+    rgba(212, 137, 76, 0.05),
+    rgba(12, 18, 25, 0.4)
+  );
+}
+
+.history-review[hidden] {
+  display: none;
+}
+
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 0.9rem;
+}
+
+.review-head .history-subhead {
+  margin: 0;
+}
+
+.review-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.review-model {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.review-model[hidden] {
+  display: none;
+}
+
+/* ── Flags ───────────────────────────────────────────────────────── */
+
+.review-flags {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.7rem 0 0;
+}
+
+.review-flags:empty {
+  display: none;
+}
+
+.review-flag {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-left: 2px solid var(--hold);
+  border-radius: var(--radius-sm);
+  background: rgba(12, 18, 25, 0.55);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.review-flag[data-severity="warn"] {
+  border-left-color: var(--copper);
+  color: var(--text);
+}
+
+.review-flag[data-severity="risk"] {
+  border-left-color: var(--sell);
+  color: var(--text);
+}
+
+/* ── Scope tabs ──────────────────────────────────────────────────── */
+
+.review-tabs {
+  margin: 0.85rem 0 0.6rem;
+}
+
+.review-pane[hidden] {
+  display: none;
+}
+
+.review-chart-wrap {
+  margin-bottom: 0.6rem;
+}
+
+.review-chart-wrap[hidden] {
+  display: none;
+}
+
+.review-empty {
+  margin: 0.2rem 0 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.review-empty[hidden] {
+  display: none;
+}
+
+/* ── Narrative ───────────────────────────────────────────────────── */
+
+.review-narrative {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.review-narrative:empty {
+  display: none;
+}
+
+.review-narrative.is-filled {
+  margin: 0 0 0.9rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(212, 137, 76, 0.28);
+  border-radius: var(--radius-md);
+  background: rgba(12, 18, 25, 0.55);
+}
+
+.review-narrative p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.review-headline {
+  font-family: var(--display);
+  font-size: 1rem !important;
+  line-height: 1.4 !important;
+  color: var(--text);
+}
+
+.review-disclaimer {
+  font-family: var(--mono);
+  font-size: 0.66rem !important;
+  line-height: 1.5 !important;
+  color: var(--muted) !important;
+}
+
+/* ── Post-mortems ────────────────────────────────────────────────── */
+
+.review-postmortems {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.review-pm {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  /* The outcome rail lets a reader scan winners from losers without reading
+     a single number. */
+  border-left: 3px solid var(--hold);
+  border-radius: var(--radius-sm);
+  background: rgba(12, 18, 25, 0.45);
+}
+
+.review-pm[data-outcome="win"] { border-left-color: var(--buy); }
+
+.review-pm[data-outcome="loss"] { border-left-color: var(--sell); }
+
+.review-pm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.7rem;
+}
+
+.review-pm-symbol {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.review-pm-pnl {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-pm-pnl.pos { color: var(--buy); }
+
+.review-pm-pnl.neg { color: var(--sell); }
+
+.review-pm-meta,
+.review-pm-conf {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.review-pm-conf {
+  margin-left: auto;
+}
+
+.review-pm-thesis,
+.review-pm-risks,
+.review-pm-managed {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.review-pm-managed {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.review-pm-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review-pm-conds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.review-cond {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+}
+
+.review-cond-key {
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.58rem;
+}
+
+/* ── Execution audit ─────────────────────────────────────────────── */
+
+.review-stats {
+  margin-bottom: 0.7rem;
+}
+
+.review-audit-group {
+  margin-bottom: 0.65rem;
+}
+
+.review-audit-title {
+  margin: 0 0 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Lessons ─────────────────────────────────────────────────────── */
+
+.review-lessons-block,
+.review-saved-block {
+  margin-top: 0.95rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.review-lessons-block[hidden],
+.review-saved-block[hidden] {
+  display: none;
+}
+
+.review-lessons,
+.review-saved {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.review-lesson {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.8rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(12, 18, 25, 0.45);
+}
+
+.review-lesson.is-saved {
+  border-color: rgba(63, 191, 143, 0.3);
+}
+
+/* A paused lesson still reaches no prompt — say so visually rather than
+   hiding it, so the reader knows the rule exists but is off. */
+.review-lesson.is-saved[data-enabled="false"] {
+  border-color: var(--line);
+  opacity: 0.6;
+}
+
+.review-lesson-body {
+  flex: 1 1 16rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.review-lesson-body p {
+  margin: 0;
+  font-size: 0.79rem;
+  line-height: 1.6;
+}
+
+.review-lesson-scope {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--copper);
+}
+
+.review-lesson-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+/* ── Natural-language query ──────────────────────────────────────── */
+
+.history-ai-query {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.7rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--line);
+}
+
+.history-ai-query[hidden] {
+  display: none;
+}
+
+.history-ai-query label {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.history-query-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.history-query-note.is-active {
+  color: var(--copper);
+}
+
+.history-query-note.is-error {
+  color: var(--sell);
+}
+
+@media (max-width: 640px) {
+  .review-pm-conf {
+    margin-left: 0;
+  }
+
+  .review-lesson {
+    align-items: stretch;
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "alpaca-broker-account-onboarding": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/account-onboarding/SKILL.md",
+      "computedHash": "ed22c6f63760cbc2da892cbe152a96f72f9261f4ddb5b42316cafc6ccac8695b"
+    },
+    "alpaca-broker-funding-transfers": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/funding-transfers/SKILL.md",
+      "computedHash": "da87a49987b4814af1cabd06e7d1425aebdfee1edf86e07f36456169bfc92d20"
+    },
+    "alpaca-broker-integration": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/integration/SKILL.md",
+      "computedHash": "cfc56dd6f5ca649bd6764d27caa3ee886bd2e678564afd88a009070d49ae6320"
+    },
+    "alpaca-broker-journals": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/journals/SKILL.md",
+      "computedHash": "9870f2fc7acd95294e3ab89f8f7f46fffcf01fdc72b0e931e35ab56fefc930fa"
+    },
+    "alpaca-broker-market-data": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/market-data/SKILL.md",
+      "computedHash": "289daa7168f41f527457cca39dafde898dfff59170603f0e61536591a0eca996"
+    },
+    "alpaca-broker-money-precision": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/money-precision/SKILL.md",
+      "computedHash": "559ea4d32fd2523d5891ed7de7f6b81d848087e1deaa9b267b520df2f998e9b9"
+    },
+    "alpaca-broker-rate-limits-resilience": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/rate-limits-resilience/SKILL.md",
+      "computedHash": "605dbb074c4565a24b48a2efe3a586394a365cac91dad7b3f38656acf20cda8d"
+    },
+    "alpaca-broker-reconciliation-idempotency": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/reconciliation-idempotency/SKILL.md",
+      "computedHash": "b4a2fa56376cea0a7113305ed142b7bb0f267ad6814e5772871467bbaf3b8101"
+    },
+    "alpaca-broker-sse-events": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/sse-events/SKILL.md",
+      "computedHash": "1182cba974e88d926c5c0c6747ccbc9c930ccc64f26aa335a064520b7ba3b05d"
+    },
+    "alpaca-broker-trading-orders": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api/trading-orders/SKILL.md",
+      "computedHash": "9158551f28f950289fa20ba616dcfa5222db6301554a10b0130c9832d15e69e6"
+    },
+    "alpaca-trading-backtest": {
+      "source": "alpacahq/alpaca-skills",
+      "sourceType": "github",
+      "skillPath": "skills/trading-api/backtest/SKILL.md",
+      "computedHash": "a0fca148b3a08dab9e3d4c491737a5d98c6f0b133e743482e79ba5cf881c5fbe"
+    }
+  }
+}

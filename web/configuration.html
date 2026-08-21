@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Configuration · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/configuration.css" />
+</head>
+<body data-page="configuration">
+  <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <p class="eyebrow" data-i18n="eyebrow">Alpaca · Simulated</p>
+              <h1 data-i18n="app_title">AlgoPaca</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_configuration">Connect Alpaca paper keys and AI providers. Strategy controls live on Auto Trade.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Manual Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+            <a href="/configuration" data-page="configuration" class="desk-nav-link is-active" aria-current="page" data-i18n="nav_configuration">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-configuration" class="page page-config" data-page="configuration">
+        <section class="panel config-status-panel" aria-labelledby="config-status-heading">
+          <div class="panel-head">
+            <h2 id="config-status-heading" data-i18n="connection_heading">Connection</h2>
+            <p id="config-status-hint" class="panel-hint" data-state="ready" data-i18n="status_label">Status</p>
+          </div>
+          <div id="config-connection" class="config-connection" aria-live="polite">
+            <div class="config-conn-item">
+              <span class="config-conn-label" data-i18n="alpaca_api">Alpaca</span>
+              <span class="config-conn-value" id="config-conn-alpaca" data-i18n="checking">Checking…</span>
+            </div>
+            <div class="config-conn-item">
+              <span class="config-conn-label" data-i18n="ai_providers">AI</span>
+              <span class="config-conn-value" id="config-conn-ai" data-i18n="checking">Checking…</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="config-keys-row">
+        <section class="panel" aria-labelledby="alpaca-config-heading">
+          <div class="panel-head">
+            <h2 id="alpaca-config-heading" data-i18n="alpaca_api_title">Alpaca API</h2>
+            <p id="alpaca-config-hint" class="panel-hint" data-state="ready" data-i18n="trading_env_hint">Paper / Live</p>
+          </div>
+          <form id="alpaca-config" class="form" novalidate>
+            <fieldset class="field-group">
+              <legend data-i18n="trading_environment">Trading environment</legend>
+              <div class="env-toggle" role="radiogroup" aria-label="Trading environment" data-i18n-aria-label="trading_environment">
+                <label class="env-option" for="field-mode-paper">
+                  <input id="field-mode-paper" name="trading_mode" type="radio" value="paper" checked />
+                  <span class="env-option-body">
+                    <strong data-i18n="paper_trading">Paper trading</strong>
+                    <span class="check-desc" data-i18n="paper_mode_desc">Simulated account — default and safest</span>
+                  </span>
+                </label>
+                <label class="env-option env-option-live" for="field-mode-live">
+                  <input id="field-mode-live" name="trading_mode" type="radio" value="live" />
+                  <span class="env-option-body">
+                    <strong data-i18n="live_trading">Live trading</strong>
+                    <span class="check-desc" data-i18n="live_mode_desc">Real money — requires distinct live keys</span>
+                  </span>
+                </label>
+              </div>
+              <p id="trading-mode-status" class="field-help" data-i18n="mode_status_paper">Active: Paper</p>
+              <p id="env-pending-note" class="field-help warn" hidden></p>
+              <div class="manual-actions key-actions">
+                <button type="button" id="btn-apply-mode" class="ghost" data-i18n="apply_trading_mode">Apply environment</button>
+              </div>
+            </fieldset>
+
+            <!-- Only the slot matching the selected environment is shown; the
+                 other is hidden by `syncCredentialVisibility()`. -->
+            <fieldset class="field-group" id="paper-credentials">
+              <legend data-i18n="paper_credentials_legend">Paper credentials</legend>
+              <div class="key-field">
+                <label for="field-alpaca-key"><span data-i18n="api_key_label">API key</span>
+                  <input id="field-alpaca-key" name="alpaca_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="PK… paste here" data-i18n-placeholder="placeholder_pk" aria-describedby="alpaca-key-hint" />
+                </label>
+                <p id="alpaca-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <div class="key-field">
+                <label for="field-alpaca-secret"><span data-i18n="secret_key_label">Secret key</span>
+                  <input id="field-alpaca-secret" name="alpaca_secret_key" type="password" autocomplete="off" spellcheck="false" placeholder="Secret… paste here" data-i18n-placeholder="placeholder_secret" aria-describedby="alpaca-secret-hint" />
+                </label>
+                <p id="alpaca-secret-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <div class="manual-actions key-actions">
+                <button type="submit" id="btn-save-alpaca" class="primary" data-i18n="save_paper_keys_btn">Save paper keys</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="field-group" id="live-credentials" hidden>
+              <legend data-i18n="live_credentials_legend">Live credentials</legend>
+              <div class="key-field">
+                <label for="field-live-key"><span data-i18n="api_key_label">API key</span>
+                  <input id="field-live-key" name="alpaca_live_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="AK… paste here" data-i18n-placeholder="placeholder_live_pk" aria-describedby="live-key-hint" />
+                </label>
+                <p id="live-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <div class="key-field">
+                <label for="field-live-secret"><span data-i18n="secret_key_label">Secret key</span>
+                  <input id="field-live-secret" name="alpaca_live_secret_key" type="password" autocomplete="off" spellcheck="false" placeholder="Secret… paste here" data-i18n-placeholder="placeholder_secret" aria-describedby="live-secret-hint" />
+                </label>
+                <p id="live-secret-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <p class="field-help field-note" data-i18n="live_keys_help">Use live keys from the Alpaca live dashboard — never reuse paper keys.</p>
+              <div class="manual-actions key-actions">
+                <button type="button" id="btn-save-live" class="primary danger-live" data-i18n="save_live_keys_btn">Save live keys</button>
+              </div>
+            </fieldset>
+
+            <!-- Clears both slots, so it sits outside the two that hide. -->
+            <div class="manual-actions key-actions cred-footer">
+              <button type="button" id="btn-clear-alpaca" class="ghost danger-text" data-i18n="clear_alpaca_keys_btn">Clear Alpaca keys</button>
+            </div>
+            <p id="alpaca-config-error" class="form-error" role="alert" hidden></p>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="ai-config-heading">
+          <div class="panel-head">
+            <h2 id="ai-config-heading" data-i18n="ai_integration_heading">AI integration</h2>
+            <p id="ai-config-hint" class="panel-hint" data-state="ready" data-i18n="keys_hint">Keys</p>
+          </div>
+          <form id="ai-config" class="form" novalidate>
+            <fieldset class="field-group">
+              <legend data-i18n="api_keys_legend">API keys</legend>
+              <div class="key-field">
+                <label for="field-openai-key"><span data-i18n="openai_key_label">OpenAI key</span>
+                  <input id="field-openai-key" name="openai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… paste here" data-i18n-placeholder="placeholder_openai" aria-describedby="openai-key-hint" />
+                </label>
+                <p id="openai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <div class="key-field">
+                <label for="field-gemini-key"><span data-i18n="gemini_key_label">Gemini key</span>
+                  <input id="field-gemini-key" name="gemini_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… paste here" data-i18n-placeholder="placeholder_gemini" aria-describedby="gemini-key-hint" />
+                </label>
+                <p id="gemini-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <label class="check stack" for="field-save-keys">
+                <input id="field-save-keys" name="save_keys_to_env" type="checkbox" checked />
+                <span>
+                  <strong data-i18n="save_key_env">Save key to .env</strong>
+                  <span class="check-desc" data-i18n="save_key_env_desc">Checked writes to disk; unchecked keeps the key for this session only. Leave fields blank to keep the current key.</span>
+                </span>
+              </label>
+            </fieldset>
+            <p id="ai-config-error" class="form-error" role="alert" hidden></p>
+            <div class="manual-actions key-actions">
+              <button type="submit" id="btn-save-keys" class="primary" data-i18n="save_ai_keys_btn">Save AI keys</button>
+              <button type="button" id="btn-clear-openai" class="ghost danger-text" data-i18n="clear_openai">Clear OpenAI</button>
+              <button type="button" id="btn-clear-gemini" class="ghost danger-text" data-i18n="clear_gemini">Clear Gemini</button>
+            </div>
+          </form>
+        </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- Desk Footer -->
+    <footer class="desk-footer" role="contentinfo">
+      <div class="desk-footer-inner">
+        <div class="desk-footer-brand-wrap">
+          <div class="desk-footer-brand">
+            <div class="desk-footer-logo-icon" aria-hidden="true">
+              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+            </div>
+            <div class="desk-footer-brand-meta">
+              <span class="desk-footer-logo">AlgoPaca</span>
+              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            </div>
+          </div>
+          <div class="desk-footer-status" title="Trading desk systems operational">
+            <span class="status-beacon-green" aria-hidden="true">
+              <span class="beacon-core"></span>
+              <span class="beacon-ring"></span>
+            </span>
+            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
+          </div>
+        </div>
+
+        <nav class="desk-footer-links" aria-label="Footer navigation">
+          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
+          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Manual Order</a>
+          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
+          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
+          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
+          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
+          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
+        </nav>
+
+        <div class="desk-footer-right">
+          <div class="lang-switcher">
+            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
+            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language" data-native-select="true">
+              <option value="en" data-i18n="language_english">English</option>
+              <option value="bn" data-i18n="language_bangla">বাংলা</option>
+              <option value="es" data-i18n="language_spanish">Español</option>
+              <option value="fr" data-i18n="language_french">Français</option>
+              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="desk-footer-bottom">
+        <p class="desk-footer-copy">
+          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
+          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/configuration.js"></script>
+</body>
+</html>

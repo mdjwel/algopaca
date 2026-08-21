@@ -1,0 +1,133 @@
+/* ── Auto Trade (Desk) Page Styles ─────────────────────────────── */
+.run-zone {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 0.85rem;
+  padding: 0.45rem 0.7rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel) 88%, #0c1219);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.run-zone.is-paper {
+  border-color: color-mix(in srgb, var(--copper) 55%, var(--line));
+  background: color-mix(in srgb, var(--copper) 10%, var(--panel));
+}
+
+.run-zone-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.run-zone-bar .loop-elapsed {
+  flex-shrink: 0;
+}
+
+.run-zone .actions {
+  margin-top: 0.1rem;
+}
+
+.run-notes {
+  margin-top: 0.35rem;
+  padding-top: 0.1rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.run-notes:not([open]) {
+  overflow: hidden;
+}
+
+.run-notes summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+}
+
+.run-notes summary::-webkit-details-marker {
+  display: none;
+}
+
+.run-notes summary::marker {
+  content: "";
+}
+
+.run-notes summary:hover {
+  color: var(--text);
+}
+
+.run-notes summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.35);
+  border-radius: var(--radius-sm);
+}
+
+.run-notes-caret {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease;
+}
+
+.run-notes[open] .run-notes-caret {
+  transform: rotate(45deg);
+}
+
+.run-notes .loop-state {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-notes[open] .loop-state {
+  white-space: normal;
+}
+
+.run-notes-body {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0 0 0.35rem 1.05rem;
+}
+
+.run-zone.is-paper .run-notes summary,
+.run-notes.is-paper summary {
+  color: var(--copper);
+}
+
+.run-zone.is-paper .run-notes summary:hover,
+.run-notes.is-paper summary:hover {
+  color: var(--copper);
+}
+
+.run-backtest-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  margin-left: auto;
+}
