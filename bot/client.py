@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
@@ -16,14 +17,24 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderClass, OrderSide, OrderType, QueryOrderStatus, TimeInForce
+from alpaca.trading.enums import (
+    AssetStatus,
+    ContractType,
+    OrderClass,
+    OrderSide,
+    OrderType,
+    QueryOrderStatus,
+    TimeInForce,
+)
 from alpaca.trading.requests import (
     ClosePositionRequest,
+    GetOptionContractsRequest,
     GetOrderByIdRequest,
     GetOrdersRequest,
     GetPortfolioHistoryRequest,
     LimitOrderRequest,
     MarketOrderRequest,
+    OptionLegRequest,
     ReplaceOrderRequest,
     StopLimitOrderRequest,
     StopLossRequest,
@@ -34,6 +45,9 @@ from alpaca.trading.requests import (
 
 from bot.config import Config
 from bot.live_quote import fetch_live_mark
+from bot.options_chain import is_occ_symbol, occ_root, option_label, parse_occ
+
+logger = logging.getLogger(__name__)
 
 _TIMEFRAME_MAP = {
     "1Min": TimeFrame.Minute,
@@ -261,6 +275,7 @@ class AlpacaService:
             paper=config.paper,
         )
         self.data = StockHistoricalDataClient(config.api_key, config.secret_key)
+        self._option_data = None
         self._mark_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def account_summary(self) -> dict:
@@ -1052,8 +1067,218 @@ class AlpacaService:
                 ),
                 "qty_available": abs(qty_avail) if qty_avail is not None else abs(raw_qty),
             }
+            self._enrich_option_fields(item)
             result.append(item)
         return result
+
+    @staticmethod
+    def _enrich_option_fields(item: dict[str, Any]) -> dict[str, Any]:
+        """Tag OCC / us_option rows so the desk can label strikes and expiries."""
+        symbol = str(item.get("symbol") or "")
+        asset_class = str(item.get("asset_class") or "").lower()
+        parsed = parse_occ(symbol)
+        is_opt = bool(parsed) or "option" in asset_class or is_occ_symbol(symbol)
+        item["is_option"] = is_opt
+        if parsed:
+            item["option_root"] = parsed["root"]
+            item["option_type"] = parsed["type"]
+            item["option_strike"] = parsed["strike"]
+            item["option_expiration"] = parsed["expiration"].isoformat()
+            item["option_label"] = option_label(symbol)
+        elif is_opt:
+            item["option_label"] = symbol
+        return item
+
+    def _option_data_client(self):
+        """Lazy OptionHistoricalDataClient — not every desk cycle needs quotes."""
+        if self._option_data is None:
+            try:
+                from alpaca.data.historical import OptionHistoricalDataClient
+            except ImportError:  # pragma: no cover - SDK layout fallback
+                from alpaca.data.historical.option import OptionHistoricalDataClient
+            self._option_data = OptionHistoricalDataClient(
+                self.config.api_key, self.config.secret_key
+            )
+        return self._option_data
+
+    def list_option_contracts(
+        self,
+        underlying: str,
+        *,
+        expiration_gte: date | None = None,
+        expiration_lte: date | None = None,
+        option_type: str | None = None,
+        limit: int = 2500,
+    ) -> list[dict[str, Any]]:
+        """Active option contracts for ``underlying`` inside an expiry window."""
+        root = str(underlying or "").strip().upper()
+        if not root:
+            return []
+        kind = str(option_type or "").strip().lower()
+        type_enum = None
+        if kind in {"call", "c"}:
+            type_enum = ContractType.CALL
+        elif kind in {"put", "p"}:
+            type_enum = ContractType.PUT
+        rows: list[dict[str, Any]] = []
+        page_token: str | None = None
+        max_rows = max(1, min(int(limit or 2500), 5000))
+        while len(rows) < max_rows:
+            req = GetOptionContractsRequest(
+                underlying_symbols=[root],
+                status=AssetStatus.ACTIVE,
+                expiration_date_gte=expiration_gte,
+                expiration_date_lte=expiration_lte,
+                type=type_enum,
+                limit=min(1000, max_rows - len(rows)),
+                page_token=page_token,
+            )
+            res = self.trading.get_option_contracts(req)
+            batch = getattr(res, "option_contracts", None) or []
+            for raw in batch:
+                parsed = self._normalize_option_contract(raw)
+                if parsed:
+                    rows.append(parsed)
+                    if len(rows) >= max_rows:
+                        break
+            page_token = getattr(res, "next_page_token", None) or None
+            if not page_token or not batch:
+                break
+        return rows[:max_rows]
+
+    @staticmethod
+    def _normalize_option_contract(raw: Any) -> dict[str, Any] | None:
+        symbol = str(getattr(raw, "symbol", "") or "").upper()
+        if not symbol:
+            return None
+        parsed = parse_occ(symbol)
+        strike = getattr(raw, "strike_price", None)
+        try:
+            strike_f = float(strike) if strike is not None else (
+                float(parsed["strike"]) if parsed else 0.0
+            )
+        except (TypeError, ValueError):
+            strike_f = float(parsed["strike"]) if parsed else 0.0
+        exp = getattr(raw, "expiration_date", None)
+        if hasattr(exp, "isoformat") and not isinstance(exp, str):
+            expiration = exp.isoformat()[:10]
+        else:
+            expiration = str(exp or "").strip()[:10]
+        if not expiration and parsed:
+            expiration = parsed["expiration"].isoformat()
+        raw_type = getattr(raw, "type", None)
+        kind = str(getattr(raw_type, "value", raw_type) or "").lower().rsplit(".", 1)[-1]
+        if kind not in {"call", "put"} and parsed:
+            kind = parsed["type"]
+        try:
+            oi = int(getattr(raw, "open_interest", None) or 0)
+        except (TypeError, ValueError):
+            oi = 0
+        try:
+            close = getattr(raw, "close_price", None)
+            close_f = float(close) if close is not None else None
+        except (TypeError, ValueError):
+            close_f = None
+        if getattr(raw, "tradable", True) is False:
+            return None
+        root = (parsed or {}).get("root") or str(getattr(raw, "root_symbol", "") or "")
+        return {
+            "symbol": symbol,
+            "root": root.upper(),
+            "type": kind if kind in {"call", "put"} else "call",
+            "strike": strike_f,
+            "expiration": expiration,
+            "open_interest": oi,
+            "close_price": close_f,
+        }
+
+    def option_quote_mid(self, occ_symbol: str) -> float | None:
+        """Bid/ask mid for one OCC symbol, falling back to the contract close."""
+        occ = str(occ_symbol or "").strip().upper()
+        if not occ:
+            return None
+        try:
+            from alpaca.data.requests import OptionLatestQuoteRequest
+
+            quotes = self._option_data_client().get_option_latest_quote(
+                OptionLatestQuoteRequest(symbol_or_symbols=occ)
+            )
+        except Exception as exc:
+            logger.debug("option quote failed for %s: %s", occ, exc)
+            quotes = None
+        snap = None
+        if isinstance(quotes, dict):
+            snap = quotes.get(occ) or quotes.get(occ_symbol)
+        else:
+            snap = getattr(quotes, occ, None) if quotes is not None else None
+            if snap is None and quotes is not None:
+                try:
+                    snap = list(quotes.values())[0] if quotes else None
+                except Exception:
+                    snap = None
+        quote = getattr(snap, "quote", snap) if snap is not None else None
+        bid = getattr(quote, "bid_price", None) if quote is not None else None
+        ask = getattr(quote, "ask_price", None) if quote is not None else None
+        try:
+            bid_f = float(bid or 0)
+            ask_f = float(ask or 0)
+        except (TypeError, ValueError):
+            bid_f = ask_f = 0.0
+        if bid_f > 0 and ask_f > 0:
+            return round((bid_f + ask_f) / 2.0, 4)
+        if ask_f > 0:
+            return ask_f
+        if bid_f > 0:
+            return bid_f
+        return None
+
+    def submit_option_order(self, symbol: str, qty: int, side: str):
+        """Single-leg option market order (DAY)."""
+        occ = str(symbol or "").strip().upper()
+        contracts = int(qty or 0)
+        if not occ or contracts <= 0:
+            raise ValueError("Option order needs a contract symbol and qty >= 1")
+        side_enum = OrderSide.BUY if str(side).lower() in {"buy", "buy_to_open"} else OrderSide.SELL
+        req = MarketOrderRequest(
+            symbol=occ,
+            qty=contracts,
+            side=side_enum,
+            type=OrderType.MARKET,
+            time_in_force=TimeInForce.DAY,
+        )
+        return self.trading.submit_order(req)
+
+    def submit_option_spread(self, long_symbol: str, short_symbol: str, qty: int = 1):
+        """Debit vertical: buy ``long_symbol``, sell ``short_symbol`` as MLEG."""
+        long_occ = str(long_symbol or "").strip().upper()
+        short_occ = str(short_symbol or "").strip().upper()
+        contracts = int(qty or 0)
+        if not long_occ or not short_occ or contracts <= 0:
+            raise ValueError("Spread needs two OCC symbols and qty >= 1")
+        req = MarketOrderRequest(
+            qty=contracts,
+            order_class=OrderClass.MLEG,
+            time_in_force=TimeInForce.DAY,
+            legs=[
+                OptionLegRequest(symbol=long_occ, side=OrderSide.BUY, ratio_qty=1),
+                OptionLegRequest(symbol=short_occ, side=OrderSide.SELL, ratio_qty=1),
+            ],
+        )
+        return self.trading.submit_order(req)
+
+    def option_positions_for_underlying(self, underlying: str) -> list[dict[str, Any]]:
+        root = occ_root(underlying)
+        if not root:
+            return []
+        out: list[dict[str, Any]] = []
+        for pos in self.get_all_positions():
+            parsed = parse_occ(pos.get("symbol"))
+            if not pos.get("is_option") and not parsed:
+                continue
+            pos_root = occ_root(pos.get("option_root") or (parsed or {}).get("root"))
+            if pos_root == root:
+                out.append(pos)
+        return out
 
     def close_position(
         self,

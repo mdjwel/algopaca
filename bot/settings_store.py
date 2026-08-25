@@ -75,6 +75,13 @@ _DEFAULTS: dict[str, Any] = {
     "ai_max_spread_bps": 25.0,
     "stop_limit_offset_pct": 0.0,
     "lang": "en",
+    "options_enabled": True,
+    "options_style": "vertical",
+    "options_dte_min": 21,
+    "options_dte_max": 45,
+    "options_otm_pct": 5.0,
+    "options_max_contracts": 1,
+    "options_max_premium_pct": 1.0,
 }
 
 

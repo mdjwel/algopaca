@@ -18,6 +18,7 @@ from bot.desk_risk import (
 )
 from bot.pair_presets import get_preset, normalize_weak_side
 from bot.pair_strategy import PairTarget, SoxRegimeImpulseStrategy, parse_pair_symbols
+from bot.options_overlay import apply_pair_options_overlay
 from bot.strategy import Signal, StrategyResult
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ class PairTradingBot:
             price_source = mark.get("source")
             price_asof = mark.get("asof")
         except Exception:
+            mark = {}
             display_price = decision.price
             session = "?"
             price_source = None
@@ -105,6 +107,7 @@ class PairTradingBot:
             "price": display_price,
             "bar_close": decision.price,
             "session": session,
+            "is_open": mark.get("is_open"),
             "price_source": price_source,
             "price_asof": price_asof,
             "fast_sma": decision.lookback_return_pct,
@@ -128,6 +131,7 @@ class PairTradingBot:
             primary["position"] = (
                 self.service.get_position_qty(target_sym) if target_sym else 0.0
             )
+            apply_pair_options_overlay(self.config, self.service, primary)
             return {"primary": primary, "results": [primary]}
 
         # Flatten legs that are not the target.
@@ -152,6 +156,7 @@ class PairTradingBot:
                 primary["reason"] += f" | close {sym} failed: {exc}"
                 primary["error"] = str(exc)
                 primary["actions"] = actions
+                apply_pair_options_overlay(self.config, self.service, primary)
                 return {"primary": primary, "results": [primary]}
 
         # Open target if flat (after flatten cash is available).
@@ -183,6 +188,7 @@ class PairTradingBot:
         # Risk-engine ATR stop (or flat % fallback) on the live long leg.
         if target_sym and primary["position"] > 0:
             self._protect_long(target_sym, primary)
+        apply_pair_options_overlay(self.config, self.service, primary)
         return {"primary": primary, "results": [primary]}
 
     @staticmethod

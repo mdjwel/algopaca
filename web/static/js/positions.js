@@ -672,10 +672,11 @@ function pnlPctSuffix(pct) {
   return text ? ` <small class="${Number(pct) >= 0 ? "pos" : "neg"}">(${text})</small>` : "";
 }
 
-function symbolManualOrderLink(symbol, extraClass = "") {
+function symbolManualOrderLink(symbol, extraClass = "", label = "") {
   const sym = String(symbol || "");
+  const text = String(label || sym);
   const classes = ["pos-sym-link", extraClass].filter(Boolean).join(" ");
-  return `<a href="${pagePath("manual-order")}?symbol=${encodeURIComponent(sym)}" class="${classes}" title="${escapeHtml(tx("trade_symbol", "Trade this symbol"))}">${escapeHtml(sym)}</a>`;
+  return `<a href="${pagePath("manual-order")}?symbol=${encodeURIComponent(sym)}" class="${classes}" title="${escapeHtml(tx("trade_symbol", "Trade this symbol"))}">${escapeHtml(text)}</a>`;
 }
 
 function renderPositionsTable(positions) {
@@ -703,7 +704,8 @@ function renderPositionsTable(positions) {
         </td>
         <td class="pos-cell-sym">
           <div class="pos-sym-group">
-            ${symbolManualOrderLink(sym)}
+            ${symbolManualOrderLink(sym, "", pos.option_label || "")}
+            ${pos.is_option ? `<small class="pos-option-tag">${escapeHtml(tx("option_contract", "Option"))}</small>` : ""}
           </div>
         </td>
         <td>
@@ -793,7 +795,8 @@ function renderPositionsCards(positions) {
         <div class="pos-card-head">
           <div class="pos-card-sym-wrap">
             <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} ${loopRunning ? "disabled" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
-            ${symbolManualOrderLink(sym, "pos-card-sym")}
+            ${symbolManualOrderLink(sym, "pos-card-sym", pos.option_label || "")}
+            ${pos.is_option ? `<small class="pos-option-tag">${escapeHtml(tx("option_contract", "Option"))}</small>` : ""}
             <span class="side-badge ${side}">${escapeHtml(positionSideLabel(side))}</span>
           </div>
           <div class="pos-card-mv mono">

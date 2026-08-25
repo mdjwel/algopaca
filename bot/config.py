@@ -33,6 +33,7 @@ from bot.sma_presets import (
     match_preset_id,
     resolve_preset_id as resolve_sma_preset_id,
 )
+from bot.options_chain import normalize_options_style
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -205,6 +206,14 @@ class Config:
     # the trigger so the exit refuses a worse print (long: below stop; short: above).
     stop_limit_offset_pct: float = 0.0
     lang: str = DEFAULT_LANG  # desk language; the AI writes thesis / risks in it
+    # Options overlay — every strategy cycle maps its equity view onto Alpaca options.
+    options_enabled: bool = True
+    options_style: str = "vertical"  # vertical | long_option | hedge
+    options_dte_min: int = 21
+    options_dte_max: int = 45
+    options_otm_pct: float = 5.0
+    options_max_contracts: int = 1
+    options_max_premium_pct: float = 1.0
 
     def primary_symbols(self) -> tuple[str, ...]:
         """Symbols to evaluate this cycle.
@@ -326,6 +335,13 @@ class Config:
         openai_api_key: str | None = None,
         gemini_api_key: str | None = None,
         lang: str | None = None,
+        options_enabled: bool | None = None,
+        options_style: str | None = None,
+        options_dte_min: int | None = None,
+        options_dte_max: int | None = None,
+        options_otm_pct: float | None = None,
+        options_max_contracts: int | None = None,
+        options_max_premium_pct: float | None = None,
     ) -> Config:
         sma_preset_id = resolve_sma_preset_id(
             self.sma_preset if sma_preset is None else sma_preset
@@ -572,6 +588,10 @@ class Config:
         stop_limit_offset = _num(
             self.stop_limit_offset_pct, stop_limit_offset_pct, 0.0, 50.0
         )
+        dte_lo = int(_num(self.options_dte_min, options_dte_min, 1, 180))
+        dte_hi = int(_num(self.options_dte_max, options_dte_max, 1, 365))
+        if dte_lo > dte_hi:
+            dte_lo, dte_hi = dte_hi, dte_lo
 
         preset = resolve_preset_id(
             self.ai_preset if ai_preset is None else ai_preset
@@ -645,6 +665,21 @@ class Config:
                 self.gemini_api_key if gemini_api_key is None else gemini_api_key.strip()
             ),
             lang=normalize_lang(self.lang if lang is None else lang),
+            options_enabled=(
+                self.options_enabled if options_enabled is None else bool(options_enabled)
+            ),
+            options_style=normalize_options_style(
+                self.options_style if options_style is None else options_style
+            ),
+            options_dte_min=dte_lo,
+            options_dte_max=dte_hi,
+            options_otm_pct=_num(self.options_otm_pct, options_otm_pct, 0.5, 25.0),
+            options_max_contracts=int(
+                _num(self.options_max_contracts, options_max_contracts, 1, 20)
+            ),
+            options_max_premium_pct=_num(
+                self.options_max_premium_pct, options_max_premium_pct, 0.0, 10.0
+            ),
         )
 
     @classmethod
@@ -826,6 +861,11 @@ class Config:
         if mode in {"pair", "ls"}:
             bar_tf = "1Day"
 
+        options_dte_min = max(1, min(180, int(_e("OPTIONS_DTE_MIN", "21") or 21)))
+        options_dte_max = max(1, min(365, int(_e("OPTIONS_DTE_MAX", "45") or 45)))
+        if options_dte_min > options_dte_max:
+            options_dte_min, options_dte_max = options_dte_max, options_dte_min
+
         return cls(
             api_key=api_key,
             secret_key=secret_key,
@@ -900,4 +940,17 @@ class Config:
                 0.0, min(1.0, float(_e("AI_REVERSAL_CONF_BUMP", "0.15")))
             ),
             lang=normalize_lang(_e("LANG_CODE", DEFAULT_LANG)),
+            options_enabled=env_flag("OPTIONS_ENABLED", True),
+            options_style=normalize_options_style(_e("OPTIONS_STYLE", "vertical")),
+            options_dte_min=options_dte_min,
+            options_dte_max=options_dte_max,
+            options_otm_pct=max(
+                0.5, min(25.0, float(_e("OPTIONS_OTM_PCT", "5.0") or 5.0))
+            ),
+            options_max_contracts=max(
+                1, min(20, int(_e("OPTIONS_MAX_CONTRACTS", "1") or 1))
+            ),
+            options_max_premium_pct=max(
+                0.0, min(10.0, float(_e("OPTIONS_MAX_PREMIUM_PCT", "1.0") or 1.0))
+            ),
         )

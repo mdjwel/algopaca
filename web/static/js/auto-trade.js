@@ -145,6 +145,13 @@ function formPayload() {
     ai_cooldown_minutes: numField("ai_cooldown_minutes", 60),
     ai_max_spread_bps: numField("ai_max_spread_bps", 25),
     stop_limit_offset_pct: numField("stop_limit_offset_pct", 0),
+    options_enabled: !!$("field-options-enabled")?.checked,
+    options_style: String(formValue("options_style", "vertical") || "vertical"),
+    options_dte_min: numField("options_dte_min", 21),
+    options_dte_max: numField("options_dte_max", 45),
+    options_otm_pct: numField("options_otm_pct", 5),
+    options_max_contracts: numField("options_max_contracts", 1),
+    options_max_premium_pct: numField("options_max_premium_pct", 1),
     openai_model: String(
       formValue("openai_model", aiModels.defaults?.openai || FALLBACK_OPENAI_MODEL) ||
         FALLBACK_OPENAI_MODEL
@@ -1211,6 +1218,21 @@ function applySettings(settings, { force = false } = {}) {
   }
   for (const [name, fallback] of AI_RISK_FIELDS) {
     if (form[name]) form[name].value = settings[name] ?? fallback;
+  }
+  if (form.options_enabled) {
+    form.options_enabled.checked = settings.options_enabled !== false;
+  }
+  if (form.options_style) {
+    form.options_style.value = settings.options_style || "vertical";
+  }
+  if (form.options_dte_min) form.options_dte_min.value = settings.options_dte_min ?? 21;
+  if (form.options_dte_max) form.options_dte_max.value = settings.options_dte_max ?? 45;
+  if (form.options_otm_pct) form.options_otm_pct.value = settings.options_otm_pct ?? 5;
+  if (form.options_max_contracts) {
+    form.options_max_contracts.value = settings.options_max_contracts ?? 1;
+  }
+  if (form.options_max_premium_pct) {
+    form.options_max_premium_pct.value = settings.options_max_premium_pct ?? 1;
   }
   if (form.openai_model) {
     fillModelSelect(

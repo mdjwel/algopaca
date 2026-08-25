@@ -66,6 +66,7 @@ from bot.client import (
     normalize_stop_exit_limit,
     whole_qty_for_attached_stop,
 )
+from bot.options_chain import normalize_options_style
 from bot.config import (
     Config,
     DEFAULT_LANG,
@@ -173,6 +174,13 @@ class RunSettings:
     # Desk language. Drives the UI strings and the language the AI writes
     # its thesis / risks in — see bot.config.LANGUAGES.
     lang: str = DEFAULT_LANG
+    options_enabled: bool = True
+    options_style: str = "vertical"
+    options_dte_min: int = 21
+    options_dte_max: int = 45
+    options_otm_pct: float = 5.0
+    options_max_contracts: int = 1
+    options_max_premium_pct: float = 1.0
 
 
 ALLOWED_TIMEFRAMES = ("1Min", "5Min", "15Min", "1Hour", "1Day")
@@ -1048,6 +1056,17 @@ class AppState:
                 "AI_MAX_SPREAD_BPS": str(payload.get("ai_max_spread_bps", 25.0)),
                 # Not "LANG" — that is a standard POSIX shell variable.
                 "LANG_CODE": str(payload.get("lang") or DEFAULT_LANG),
+                "OPTIONS_ENABLED": (
+                    "true" if payload.get("options_enabled", True) else "false"
+                ),
+                "OPTIONS_STYLE": str(payload.get("options_style") or "vertical"),
+                "OPTIONS_DTE_MIN": str(payload.get("options_dte_min", 21)),
+                "OPTIONS_DTE_MAX": str(payload.get("options_dte_max", 45)),
+                "OPTIONS_OTM_PCT": str(payload.get("options_otm_pct", 5.0)),
+                "OPTIONS_MAX_CONTRACTS": str(payload.get("options_max_contracts", 1)),
+                "OPTIONS_MAX_PREMIUM_PCT": str(
+                    payload.get("options_max_premium_pct", 1.0)
+                ),
             }
         )
 
@@ -1250,6 +1269,69 @@ class AppState:
                 self.settings.lang if data.get("lang") is None else data["lang"]
             )
 
+            if data.get("options_enabled") is None:
+                options_enabled = bool(self.settings.options_enabled)
+            else:
+                raw_opt = data.get("options_enabled")
+                if isinstance(raw_opt, str):
+                    options_enabled = raw_opt.strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    }
+                else:
+                    options_enabled = bool(raw_opt)
+            options_style = normalize_options_style(
+                self.settings.options_style
+                if data.get("options_style") is None
+                else data.get("options_style")
+            )
+            options_dte_min = int(
+                data.get("options_dte_min", self.settings.options_dte_min) or 21
+            )
+            options_dte_max = int(
+                data.get("options_dte_max", self.settings.options_dte_max) or 45
+            )
+            options_dte_min = max(1, min(180, options_dte_min))
+            options_dte_max = max(1, min(365, options_dte_max))
+            if options_dte_min > options_dte_max:
+                options_dte_min, options_dte_max = options_dte_max, options_dte_min
+            options_otm_pct = max(
+                0.5,
+                min(
+                    25.0,
+                    float(
+                        data.get("options_otm_pct", self.settings.options_otm_pct) or 5.0
+                    ),
+                ),
+            )
+            options_max_contracts = max(
+                1,
+                min(
+                    20,
+                    int(
+                        data.get(
+                            "options_max_contracts", self.settings.options_max_contracts
+                        )
+                        or 1
+                    ),
+                ),
+            )
+            options_max_premium_pct = max(
+                0.0,
+                min(
+                    10.0,
+                    float(
+                        data.get(
+                            "options_max_premium_pct",
+                            self.settings.options_max_premium_pct,
+                        )
+                        or 0.0
+                    ),
+                ),
+            )
+
             size_mode = resolve_size_mode(
                 data.get("size_mode", self.settings.size_mode), mode
             )
@@ -1319,6 +1401,13 @@ class AppState:
                 ai_max_spread_bps=ai_max_spread_bps,
                 stop_limit_offset_pct=stop_limit_offset,
                 lang=lang,
+                options_enabled=options_enabled,
+                options_style=options_style,
+                options_dte_min=options_dte_min,
+                options_dte_max=options_dte_max,
+                options_otm_pct=options_otm_pct,
+                options_max_contracts=options_max_contracts,
+                options_max_premium_pct=options_max_premium_pct,
             )
             if self.settings.fast_sma >= self.settings.slow_sma:
                 raise ValueError("Fast SMA must be smaller than Slow SMA")
@@ -1395,6 +1484,13 @@ class AppState:
                     "ai_max_spread_bps": env.ai_max_spread_bps,
                     "stop_limit_offset_pct": env.stop_limit_offset_pct,
                     "lang": env.lang,
+                    "options_enabled": env.options_enabled,
+                    "options_style": env.options_style,
+                    "options_dte_min": env.options_dte_min,
+                    "options_dte_max": env.options_dte_max,
+                    "options_otm_pct": env.options_otm_pct,
+                    "options_max_contracts": env.options_max_contracts,
+                    "options_max_premium_pct": env.options_max_premium_pct,
                 }
             except Exception:
                 pass
@@ -1469,6 +1565,13 @@ class AppState:
             openai_api_key=openai_key,
             gemini_api_key=gemini_key,
             lang=s.lang,
+            options_enabled=s.options_enabled,
+            options_style=s.options_style,
+            options_dte_min=s.options_dte_min,
+            options_dte_max=s.options_dte_max,
+            options_otm_pct=s.options_otm_pct,
+            options_max_contracts=s.options_max_contracts,
+            options_max_premium_pct=s.options_max_premium_pct,
         )
 
     def _build_algo_bot(self) -> TradingBot:

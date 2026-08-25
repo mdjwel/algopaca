@@ -56,6 +56,8 @@ class DeskWebappTestCase(unittest.TestCase):
         self.assertIn("alpaca_key_status", data)
         self.assertIn("ai_key_status", data)
         self.assertNotIn("saas", data)
+        self.assertIn("options_enabled", data["settings"])
+        self.assertTrue(data["settings"]["options_enabled"])
 
     def test_api_settings_update(self):
         res = self.client.post("/api/settings", json={"sma_preset": "custom", "fast_sma": 12, "slow_sma": 26})

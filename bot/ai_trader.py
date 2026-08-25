@@ -19,6 +19,7 @@ from bot.ai_risk import (
 )
 from bot.client import AlpacaService
 from bot.config import Config, normalize_lang
+from bot.options_overlay import apply_options_overlays
 from bot.strategy import Signal, StrategyResult
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,9 @@ class AiTradingBot:
                     }
                 )
         primary = results[0] if results else self._empty_bundle()["primary"]
+        apply_options_overlays(self.config, self.service, results)
+        if results:
+            primary = results[0]
         return {"primary": primary, "results": results}
 
     def _empty_bundle(self) -> dict[str, Any]:
@@ -186,6 +190,7 @@ class AiTradingBot:
             "price": price,
             "bar_close": context.get("technicals", {}).get("price"),
             "session": session,
+            "is_open": mark.get("is_open"),
             "price_source": mark.get("source"),
             "price_asof": mark.get("asof"),
             "fast_sma": (context.get("technicals") or {}).get("sma", {}).get("10") or 0,

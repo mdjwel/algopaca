@@ -417,6 +417,45 @@
                 <p class="field-help" data-i18n="risk_churn_help">Churn guards: a fresh position will not be flipped, a stopped-out symbol rests before re-entry, and wide spreads block new entries. The protective stop still works throughout.</p>
               </fieldset>
 
+              <fieldset class="field-group options-overlay-panel">
+                <legend data-i18n="options_overlay">Options overlay</legend>
+                <p class="field-help" data-i18n="options_overlay_help">Every strategy cycle also trades Alpaca options on the same view. Default is a defined-risk vertical (bull call on longs, bear put on shorts).</p>
+                <label class="check stack" for="field-options-enabled">
+                  <input id="field-options-enabled" name="options_enabled" type="checkbox" checked />
+                  <span>
+                    <strong data-i18n="options_enabled">Trade options on every strategy</strong>
+                    <span class="check-desc" data-i18n="options_enabled_desc">Maps each SMA, dip, pair, LS, and AI signal onto Alpaca options</span>
+                  </span>
+                </label>
+                <label for="field-options-style"><span data-i18n="options_style">Structure</span>
+                  <select id="field-options-style" name="options_style">
+                    <option value="vertical" data-i18n="options_style_vertical" selected>Vertical debit spread</option>
+                    <option value="long_option" data-i18n="options_style_long">Long ATM call / put</option>
+                    <option value="hedge" data-i18n="options_style_hedge">Protective hedge (+ covered call)</option>
+                  </select>
+                </label>
+                <div class="field-pair-row">
+                  <label for="field-options-dte-min"><span data-i18n="options_dte_min">Min DTE</span>
+                    <input id="field-options-dte-min" name="options_dte_min" type="number" value="21" min="1" max="180" step="1" inputmode="numeric" />
+                  </label>
+                  <label for="field-options-dte-max"><span data-i18n="options_dte_max">Max DTE</span>
+                    <input id="field-options-dte-max" name="options_dte_max" type="number" value="45" min="1" max="365" step="1" inputmode="numeric" />
+                  </label>
+                </div>
+                <div class="field-pair-row">
+                  <label for="field-options-otm"><span data-i18n="options_otm_pct">OTM %</span>
+                    <input id="field-options-otm" name="options_otm_pct" type="number" value="5" min="0.5" max="25" step="0.5" inputmode="decimal" />
+                  </label>
+                  <label for="field-options-contracts"><span data-i18n="options_max_contracts">Max contracts</span>
+                    <input id="field-options-contracts" name="options_max_contracts" type="number" value="1" min="1" max="20" step="1" inputmode="numeric" />
+                  </label>
+                </div>
+                <label for="field-options-premium"><span data-i18n="options_max_premium">Max premium % of equity</span>
+                  <input id="field-options-premium" name="options_max_premium_pct" type="number" value="1" min="0" max="10" step="0.1" inputmode="decimal" />
+                </label>
+                <p class="field-help" data-i18n="options_overlay_help_detail">0 premium cap turns the budget check off. Overlay errors never block the equity engine.</p>
+              </fieldset>
+
               <fieldset class="field-group ai-only">
                 <legend data-i18n="ai_instructions">AI instructions</legend>
                 <label for="field-instructions" class="stack">

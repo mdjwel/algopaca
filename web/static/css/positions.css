@@ -885,6 +885,14 @@ button.pos-alloc-legend-item:hover {
   font-size: 0.9rem;
 }
 
+.pos-option-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .pos-sym-link:hover,
 .pos-sym-link:focus-visible {
   color: var(--copper);

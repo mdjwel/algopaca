@@ -13,6 +13,7 @@ from bot.client import AlpacaService
 from bot.config import Config
 from bot.ls_backtest import LSRiskParams, _position_qty, _stop_distance
 from bot.ls_strategy import LSSide, LongShortRegimeStrategy
+from bot.options_overlay import apply_options_overlays
 from bot.strategy import Signal, StrategyResult
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,9 @@ class LsTradingBot:
             "engine": self._engine,
             "ls_side": LSSide.FLAT.value,
         }
+        apply_options_overlays(self.config, self.service, results)
+        if results:
+            primary = results[0]
         return {"primary": primary, "results": results}
 
     def as_strategy_result(self, primary: dict[str, Any]) -> StrategyResult:
@@ -233,6 +237,7 @@ class LsTradingBot:
             price_source = mark.get("source")
             price_asof = mark.get("asof")
         except Exception:
+            mark = {}
             display_price = decision.price
             session = "?"
             price_source = None
@@ -256,6 +261,7 @@ class LsTradingBot:
             "price": display_price,
             "bar_close": decision.price,
             "session": session,
+            "is_open": mark.get("is_open"),
             "price_source": price_source,
             "price_asof": price_asof,
             "fast_sma": decision.ema_fast,

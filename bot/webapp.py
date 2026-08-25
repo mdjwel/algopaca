@@ -103,6 +103,13 @@ class SettingsIn(BaseModel):
     stop_limit_offset_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
     # Omit / null keeps the stored language rather than resetting to English.
     lang: Optional[str] = None
+    options_enabled: Optional[bool] = None
+    options_style: Optional[str] = None
+    options_dte_min: Optional[int] = Field(None, ge=1, le=180)
+    options_dte_max: Optional[int] = Field(None, ge=1, le=365)
+    options_otm_pct: Optional[float] = Field(None, ge=0.5, le=25.0)
+    options_max_contracts: Optional[int] = Field(None, ge=1, le=20)
+    options_max_premium_pct: Optional[float] = Field(None, ge=0.0, le=10.0)
 
 
 class LangIn(BaseModel):

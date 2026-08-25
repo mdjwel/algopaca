@@ -18,6 +18,7 @@ from bot.desk_risk import (
     stop_distance_for,
 )
 from bot.dip_presets import get_preset as get_dip_preset
+from bot.options_overlay import apply_options_overlays
 from bot.strategy import BuyTheDipStrategy, Signal, SmaCrossoverStrategy, StrategyResult
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,9 @@ class TradingBot:
             "position": 0.0,
             "engine": self._engine,
         }
+        apply_options_overlays(self.config, self.service, results)
+        if results:
+            primary = results[0]
         return {"primary": primary, "results": results}
 
     def _bars_needed(self) -> int:
@@ -186,6 +190,7 @@ class TradingBot:
             "price": display_price,
             "bar_close": result.price,
             "session": session,
+            "is_open": mark.get("is_open"),
             "price_source": price_source,
             "price_asof": price_asof,
             "fast_sma": result.fast_sma,
