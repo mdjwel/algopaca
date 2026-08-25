@@ -1,5 +1,5 @@
 /**
- * Manual Order Page JavaScript for AlgoPaca
+ * Advanced Order Page JavaScript for AlgoPaca
  * Order form validation, symbol quote/position context, cost estimation, and order submission.
  *
  * Sizing has two layers on purpose. `calculateSizeEstimate` is a local mirror
@@ -2654,7 +2654,7 @@ function manualSideDisabledReason(action, signedPosition) {
   if (loopRunning) {
     return tx(
       "manual_loop_locked",
-      "Strategy loop is running — Manual Order is locked."
+      "Strategy loop is running — Advanced Order is locked."
     );
   }
   if (busy) {
@@ -3705,7 +3705,7 @@ function syncManualUi() {
   syncPresetDeleteButton();
 }
 
-/** Helper to render a structured queue item in manual order panels */
+/** Helper to render a structured queue item in advanced order panels */
 function renderManualPlanItem(queue, plan, view, cancelBtnHtml) {
   const queueKey = queue === "followon" ? "followon" : queue === "reinvest" ? "reinvest" : "dip_hunt";
   const queueTitleMap = {
@@ -5945,7 +5945,7 @@ function onDeskStatusInterval() {
 
 function onDeskLanguageChange() {
   // Strings rendered from JS are not covered by translateDOM.
-  document.title = `${tx("manual_order_heading", "Manual Order")} · ${tx(
+  document.title = `${tx("manual_order_heading", "Advanced Order")} · ${tx(
     "app_title",
     "AlgoPaca"
   )}`;

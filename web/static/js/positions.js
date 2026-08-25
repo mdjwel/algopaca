@@ -390,7 +390,7 @@ function renderPositionsPage() {
     if (emptyDesc) {
       emptyDesc.textContent = filtered_out
         ? tx("pos_no_match_hint", "No holding matches the current search, side, or status filter.")
-        : tx("no_open_positions_desc", "You currently have no open holdings. Start a strategy loop or place a manual order to open positions.");
+        : tx("no_open_positions_desc", "You currently have no open holdings. Start a strategy loop or place an advanced order to open positions.");
     }
     // A filtered-empty blotter needs a way back, not a pitch to open trades.
     if (emptyActions) emptyActions.hidden = filtered_out;

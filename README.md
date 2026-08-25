@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/ehjewelbd/status/2090871097986302052"><img src="https://img.shields.io/badge/𝕏_Post-Demo_%26_Announcement-black?logo=x&logoColor=white" alt="X Demo Post"></a>
+  <a href="https://x.com/ehjewelbd/status/2090872372731711646"><img src="https://img.shields.io/badge/𝕏_Post-Demo_%26_Announcement-black?logo=x&logoColor=white" alt="X Demo Post"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions">
   <img src="https://img.shields.io/badge/broker-Alpaca%20Markets-green.svg" alt="Alpaca Markets">
@@ -40,15 +40,15 @@ AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** 
 Check out the launch walkthrough video and feature demonstration on **𝕏 (Twitter)**:
 
 <p align="center">
-  <a href="https://x.com/ehjewelbd/status/2090871097986302052">
+  <a href="https://x.com/ehjewelbd/status/2090872372731711646">
     <img src="https://img.shields.io/badge/▶_Watch_Live_Demo_on_𝕏-000000?style=for-the-badge&logo=x&logoColor=white" alt="Watch AlgoPaca Demo on X" height="40">
   </a>
 </p>
 
 > [!TIP]
 > 📺 **Launch Announcement & Video Walkthrough**:  
-> *"🚨 Introducing AlgoPaca — A fully autonomous AI Quantitative Trading Desk for @AlpacaMarkets 🦙🤖 Fuses Technicals + Live News + Nasdaq Earnings + Macro events with automated ATR risk guardrails."*  
-> 🔗 **Direct Link:** [https://x.com/ehjewelbd/status/2090871097986302052](https://x.com/ehjewelbd/status/2090871097986302052)
+> _"🚨 Introducing AlgoPaca — A fully autonomous AI Quantitative Trading Desk for @AlpacaMarkets 🦙🤖 Fuses Technicals + Live News + Nasdaq Earnings + Macro events with automated ATR risk guardrails."_  
+> 🔗 **Direct Link:** [https://x.com/ehjewelbd/status/2090872372731711646](https://x.com/ehjewelbd/status/2090872372731711646)
 
 ---
 
@@ -72,20 +72,20 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
   5. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
 - 🛡️ **Autonomous Mechanical Risk Engine**: Pre-execution risk gates enforcing position sizing (`equity × risk% ÷ ATR`), trailing stop-losses, take-profit scaling, max concurrent positions, daily drawdown circuit-breakers, spread checks, and post-loss cooldowns.
 - 🧪 **Interactive Backtest & Comparison Suite**: Walk-forward simulations on historical daily/minute bars with side-by-side run comparisons (CAGR, Sharpe Ratio, Max Drawdown, Win Rate, Profit Factor, Equity Curve visualization).
-- 🌐 **Modern Responsive Web Desk**: Real-time portfolio tracking, manual order ticketing with risk guards, cycle audit logs, history analytics, and multi-language support (English, Bengali, Spanish, French, Hindi).
+- 🌐 **Modern Responsive Web Desk**: Real-time portfolio tracking, advanced order ticketing with risk guards, cycle audit logs, history analytics, and multi-language support (English, Bengali, Spanish, French, Hindi).
 - 🔒 **Dual-Slot Paper & Live Trading Safety**: Strict separation of Paper and Live credentials with hard killswitches, context resets, and automatic fallback safeguards.
 
 ---
 
 ## 📊 Strategy Engines Overview
 
-| Engine | Strategy Type | Core Logic | Highlights & Presets |
-| :--- | :--- | :--- | :--- |
-| **SMA** | Trend Following | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**. |
-| **Dip** | Mean Reversion | Capitulation washouts & recovery bounces | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**. |
-| **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
-| **LS** | Dual Momentum | Trend strength momentum (Long/Short) | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target. |
-| **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
+| Engine      | Strategy Type      | Core Logic                                        | Highlights & Presets                                                                                                                                                                                         |
+| :---------- | :----------------- | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SMA**     | Trend Following    | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**.                                                                               |
+| **Dip**     | Mean Reversion     | Capitulation washouts & recovery bounces          | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**.                                                                                           |
+| **Pair**    | Regime Rotation    | Dynamic regime-impulse rotation across 2 symbols  | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA).                                                                                         |
+| **LS**      | Dual Momentum      | Trend strength momentum (Long/Short)              | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target.                                                                                                  |
+| **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning      | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
 
 ---
 
@@ -153,6 +153,7 @@ docker compose up -d
 Open your browser at **[http://localhost:8765](http://localhost:8765)**.
 
 To stop the container:
+
 ```bash
 docker compose down
 ```
@@ -162,6 +163,7 @@ docker compose down
 ### Option 2: Local Python Setup (macOS / Linux / Windows)
 
 #### Prerequisites
+
 - **Python 3.10, 3.11, or 3.12**
 - **Git**
 - Free [Alpaca Paper Trading Account](https://app.alpaca.markets/paper/dashboard/overview)
@@ -225,7 +227,7 @@ AlgoPaca provides a full-featured terminal CLI for headless servers, automated c
 ./run.sh --once --mode sma --symbols AAPL,MSFT,NVDA,TSLA
 ```
 
-*(On Windows, replace `./run.sh` with `run.bat`)*
+_(On Windows, replace `./run.sh` with `run.bat`)_
 
 ---
 
@@ -294,7 +296,7 @@ See [.env.example](.env.example) for the full list of options and default parame
 AlgoPaca is architected from the ground up with mechanical risk controls that execute prior to every order:
 
 ```
-[Signal Generated] 
+[Signal Generated]
        │
        ▼
 ┌────────────────────────────────────────────────────────┐

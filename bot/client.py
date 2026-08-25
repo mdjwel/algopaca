@@ -269,14 +269,48 @@ def bar_session_date(ts: Any) -> date | None:
 class AlpacaService:
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.trading = TradingClient(
-            config.api_key,
-            config.secret_key,
-            paper=config.paper,
-        )
-        self.data = StockHistoricalDataClient(config.api_key, config.secret_key)
+        has_creds = bool((config.api_key or "").strip() and (config.secret_key or "").strip())
+        if has_creds:
+            self._trading: TradingClient | None = TradingClient(
+                config.api_key.strip(),
+                config.secret_key.strip(),
+                paper=config.paper,
+            )
+            self._data: StockHistoricalDataClient | None = StockHistoricalDataClient(
+                config.api_key.strip(),
+                config.secret_key.strip(),
+            )
+        else:
+            self._trading = None
+            self._data = None
         self._option_data = None
         self._mark_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    @property
+    def trading(self) -> TradingClient:
+        if self._trading is None:
+            raise ValueError(
+                "Alpaca API credentials are not configured for this account. "
+                "Please go to Configuration to connect your Alpaca API Key and Secret Key."
+            )
+        return self._trading
+
+    @trading.setter
+    def trading(self, value: TradingClient | None) -> None:
+        self._trading = value
+
+    @property
+    def data(self) -> StockHistoricalDataClient:
+        if self._data is None:
+            raise ValueError(
+                "Alpaca API credentials are not configured for this account. "
+                "Please go to Configuration to connect your Alpaca API Key and Secret Key."
+            )
+        return self._data
+
+    @data.setter
+    def data(self, value: StockHistoricalDataClient | None) -> None:
+        self._data = value
 
     def account_summary(self) -> dict:
         account = self.trading.get_account()

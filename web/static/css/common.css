@@ -454,7 +454,7 @@ body {
 
 .lang-switcher {
   position: relative;
-  z-index: 1;
+  z-index: 100;
   display: inline-flex;
   align-items: center;
 }
@@ -462,23 +462,26 @@ body {
 .lang-switcher::before {
   content: "";
   position: absolute;
-  left: 0.55rem;
-  width: 0.78rem;
-  height: 0.78rem;
+  left: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.8rem;
+  height: 0.8rem;
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
   /* Line-art globe, so the control reads as UI chrome instead of an emoji
      that each platform renders in its own colour. */
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa8b8' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18'/%3E%3C/svg%3E") no-repeat center / contain;
   transition: opacity 0.2s ease;
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .lang-switcher:hover::before {
   opacity: 1;
 }
 
-.lang-select {
+/* Fallback native select if NiceSelect is not active */
+select.lang-select {
   font-family: var(--mono);
   font-size: 0.64rem;
   letter-spacing: 0.03em;
@@ -487,7 +490,7 @@ body {
   border-radius: var(--radius-md);
   /* A secondary control, so it sits smaller than the nav rail rather than
      matching its height — it is set once and rarely touched again. */
-  padding: 0.42rem 1.35rem 0.42rem 1.6rem;
+  padding: 0.42rem 1.35rem 0.42rem 1.65rem;
   cursor: pointer;
   outline: none;
   appearance: none;
@@ -507,8 +510,8 @@ body {
   transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.lang-select:hover,
-.lang-select:focus {
+select.lang-select:hover,
+select.lang-select:focus {
   color: var(--text);
   border-color: var(--copper);
   box-shadow:
@@ -516,10 +519,335 @@ body {
     0 0 0 2px rgba(212, 137, 85, 0.2);
 }
 
-.lang-select option {
+select.lang-select option {
   background: #151d28;
   color: var(--text);
   padding: 0.4rem;
+}
+
+/* Hide native select completely once NiceSelect is bound so it doesn't take flex space */
+.lang-switcher select.hidden-select,
+select.lang-select.hidden-select {
+  display: none !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+}
+
+/* ── NiceSelect Language Switcher Customization ────────────── */
+.lang-switcher .nice-select {
+  float: none;
+  clear: none;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-width: 6.8rem;
+  height: 2.15rem;
+  line-height: 2.15rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding-left: 1.75rem;
+  padding-right: 1.45rem;
+  background-color: rgba(20, 28, 39, 0.85);
+  background-image: none !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.lang-switcher .nice-select:hover,
+.lang-switcher .nice-select:focus,
+.lang-switcher .nice-select.open {
+  color: var(--text);
+  border-color: var(--copper);
+  background-color: #151e2b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 2px rgba(212, 137, 85, 0.2);
+}
+
+.lang-switcher .nice-select:after {
+  border-bottom: 2px solid var(--muted);
+  border-right: 2px solid var(--muted);
+  right: 0.55rem;
+  width: 5px;
+  height: 5px;
+  margin-top: -4px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.lang-switcher .nice-select:hover:after,
+.lang-switcher .nice-select:focus:after,
+.lang-switcher .nice-select.open:after {
+  border-bottom-color: var(--copper);
+  border-right-color: var(--copper);
+}
+
+.lang-switcher .nice-select .current {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: normal;
+}
+
+.lang-switcher .nice-select .nice-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-height: min(16rem, 50vh);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background-color: #121a26;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  margin-top: 0;
+}
+
+/* Desk footer language dropdown opens upwards */
+.desk-footer .lang-switcher .nice-select .nice-select-dropdown {
+  bottom: calc(100% + 4px);
+  top: auto;
+  transform-origin: bottom center;
+}
+
+.lang-switcher .nice-select .list {
+  padding: 0.25rem 0;
+  margin: 0;
+  list-style: none;
+}
+
+.lang-switcher .nice-select .option {
+  min-height: 1.95rem;
+  line-height: 1.95rem;
+  padding: 0 0.85rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.lang-switcher .nice-select .option:hover,
+.lang-switcher .nice-select .option.focus,
+.lang-switcher .nice-select .option.selected.focus {
+  background-color: rgba(212, 137, 76, 0.16);
+}
+
+.lang-switcher .nice-select .option.selected {
+  font-weight: 600;
+  color: var(--copper);
+  background-color: rgba(212, 137, 76, 0.08);
+}
+
+/* ── Masthead Auth & User Widget ───────────────────────────── */
+.masthead-auth-widget {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 105;
+}
+
+.masthead-guest-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.masthead-auth-link {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0.38rem 0.75rem;
+  border-radius: var(--radius-md);
+  transition: all 0.15s ease;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.masthead-auth-link.is-login {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: rgba(20, 28, 39, 0.6);
+}
+
+.masthead-auth-link.is-login:hover {
+  color: var(--text);
+  border-color: var(--copper);
+  background: rgba(212, 137, 76, 0.1);
+}
+
+.masthead-auth-link.is-signup {
+  background: var(--copper);
+  color: #120b05;
+  font-weight: 700;
+  border: 1px solid var(--copper);
+}
+
+.masthead-auth-link.is-signup:hover {
+  background: var(--copper-deep);
+  border-color: var(--copper-deep);
+  transform: translateY(-1px);
+}
+
+.masthead-user-widget {
+  position: relative;
+}
+
+.masthead-user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.65rem 0.3rem 0.35rem;
+  background: rgba(20, 28, 39, 0.85);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 34px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  font-family: var(--mono);
+}
+
+.masthead-user-trigger:hover,
+.masthead-user-trigger[aria-expanded="true"] {
+  border-color: var(--copper);
+  background: rgba(30, 41, 58, 0.95);
+}
+
+.masthead-user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--copper) 0%, var(--copper-deep) 100%);
+  color: #120b05;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  box-shadow: 0 0 8px rgba(212, 137, 76, 0.3);
+}
+
+.masthead-user-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.masthead-user-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.masthead-user-trigger[aria-expanded="true"] .masthead-user-chevron {
+  transform: rotate(180deg);
+}
+
+.masthead-user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 220px;
+  background: rgba(16, 24, 35, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.6rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 137, 76, 0.08);
+  display: grid;
+  gap: 0.4rem;
+  z-index: 200;
+  animation: authFadeIn 0.15s ease-out;
+}
+
+.masthead-user-menu[hidden] {
+  display: none;
+}
+
+.masthead-user-info {
+  padding: 0.35rem 0.5rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.masthead-info-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.15rem;
+  word-break: break-all;
+}
+
+.masthead-info-role {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--copper);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.masthead-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.82rem;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: auto;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.masthead-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: none;
+}
+
+.masthead-menu-item.is-logout {
+  color: var(--sell);
+}
+
+.masthead-menu-item.is-logout:hover {
+  background: rgba(227, 93, 93, 0.12);
+  color: #ffd7d7;
+}
+
+.masthead-menu-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .bt-subnav {

@@ -213,7 +213,7 @@ function historyEmptyMarkup(kind) {
       `<p class="history-empty-lead">${escapeHtml(tx("history_empty_alpaca", "No Alpaca fills in this range."))}</p>` +
       `<p>${escapeHtml(tx("history_empty_alpaca_hint", "Place a paper order, then refresh fills."))}</p>` +
       `<div class="history-empty-actions">` +
-      `<a href="${pagePath("manual-order")}">${escapeHtml(tx("place_manual_order", "Place a manual order"))}</a>` +
+      `<a href="${pagePath("manual-order")}">${escapeHtml(tx("place_manual_order", "Place an advanced order"))}</a>` +
       `<a href="${pagePath("auto-trade")}">${escapeHtml(tx("run_auto_trade", "Run Auto Trade"))}</a>` +
       `</div></div>`
     );

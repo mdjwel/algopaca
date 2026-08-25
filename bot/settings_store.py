@@ -85,9 +85,9 @@ _DEFAULTS: dict[str, Any] = {
 }
 
 
-def load_settings() -> dict[str, Any]:
+def load_settings(path: Path | None = None) -> dict[str, Any]:
     data = dict(_DEFAULTS)
-    target = _path()
+    target = _path(path)
     if not target.exists():
         return data
     try:

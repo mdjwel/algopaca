@@ -17,7 +17,9 @@ function initNiceSelects(root = document) {
   root.querySelectorAll("select").forEach((el) => {
     if (el._niceSelect) return;
     if (el.hasAttribute("data-native-select")) return;
-    el.classList.add("wide");
+    if (!el.classList.contains("lang-select")) {
+      el.classList.add("wide");
+    }
     const placeholder = niceSelectPlaceholder(el);
     NiceSelect.bind(el, {
       searchable: false,
@@ -80,7 +82,9 @@ function ensureNiceSelect(el) {
     refreshNiceSelect(el);
     return;
   }
-  el.classList.add("wide");
+  if (!el.classList.contains("lang-select")) {
+    el.classList.add("wide");
+  }
   NiceSelect.bind(el, { searchable: false });
   refreshNiceSelect(el);
   el.addEventListener("focus", () => {
@@ -155,7 +159,14 @@ function normalizePage(raw) {
   ) {
     return "backtest-compare";
   }
-  if (p === "manual-order" || p === "manual" || p === "order") return "manual-order";
+  if (
+    p === "manual-order" ||
+    p === "manual" ||
+    p === "order" ||
+    p === "advanced-order" ||
+    p === "advanced"
+  )
+    return "manual-order";
   if (p === "positions" || p === "position" || p === "pos" || p === "holdings")
     return "positions";
   if (p === "orders") return "orders";
@@ -571,6 +582,18 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
+  if (res.status === 401) {
+    if (
+      !window.location.pathname.startsWith("/login") &&
+      !window.location.pathname.startsWith("/signup")
+    ) {
+      const next = encodeURIComponent(
+        window.location.pathname + window.location.search
+      );
+      window.location.href = `/login?next=${next}`;
+      return new Promise(() => {}); // Halt execution while navigating
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data.detail;
@@ -1315,16 +1338,136 @@ window.addEventListener("languageChange", () => {
   }
 });
 
+/** User Authentication Status & Masthead Integration */
+let currentUser = null;
+
+async function checkAuthStatus() {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.ok && data.authenticated && data.user) {
+      currentUser = data.user;
+      return data.user;
+    }
+  } catch (err) {
+    console.warn("Auth check failed:", err);
+  }
+  currentUser = null;
+  return null;
+}
+
+async function handleUserLogout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (e) {}
+  window.location.href = "/login";
+}
+
+async function initUserAuthStatus() {
+  const mastheadRight = document.querySelector(".masthead-right");
+  if (!mastheadRight) return;
+
+  const user = await checkAuthStatus();
+
+  if (!user) {
+    const path = window.location.pathname;
+    if (!path.startsWith("/login") && !path.startsWith("/signup")) {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
+      return;
+    }
+  }
+
+  // Remove any existing widget if re-initializing
+  const existing = mastheadRight.querySelector(".masthead-auth-widget");
+  if (existing) existing.remove();
+
+  const widget = document.createElement("div");
+  widget.className = "masthead-auth-widget";
+
+  if (user) {
+    const initials = (user.display_name || user.username || "T")
+      .slice(0, 2)
+      .toUpperCase();
+    const displayName = user.display_name || user.username;
+    const role = user.role || "trader";
+
+    widget.innerHTML = `
+      <div class="masthead-user-widget">
+        <button type="button" class="masthead-user-trigger" id="masthead-user-trigger" aria-haspopup="true" aria-expanded="false" aria-label="User Account">
+          <span class="masthead-user-avatar">${initials}</span>
+          <span class="masthead-user-name">${displayName}</span>
+          <svg class="masthead-user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div class="masthead-user-menu" id="masthead-user-menu" aria-labelledby="masthead-user-trigger" hidden>
+          <div class="masthead-user-info">
+            <div class="masthead-info-name">${displayName}</div>
+            <span class="masthead-info-role">${role}</span>
+          </div>
+          <button type="button" class="masthead-menu-item is-logout" id="btn-masthead-logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const trigger = widget.querySelector("#masthead-user-trigger");
+    const menu = widget.querySelector("#masthead-user-menu");
+    const logoutBtn = widget.querySelector("#btn-masthead-logout");
+
+    trigger?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = !menu.hidden;
+      menu.hidden = isOpen;
+      trigger.setAttribute("aria-expanded", (!isOpen).toString());
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!widget.contains(e.target) && menu && !menu.hidden) {
+        menu.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    logoutBtn?.addEventListener("click", handleUserLogout);
+  } else {
+    const currentPath = window.location.pathname + window.location.search;
+    const nextParam =
+      currentPath && currentPath !== "/login" && currentPath !== "/signup"
+        ? `?next=${encodeURIComponent(currentPath)}`
+        : "";
+    widget.innerHTML = `
+      <div class="masthead-guest-actions">
+        <a href="/login${nextParam}" class="masthead-auth-link is-login" data-i18n="nav_sign_in">Sign In</a>
+        <a href="/signup${nextParam}" class="masthead-auth-link is-signup" data-i18n="nav_sign_up">Sign Up</a>
+      </div>
+    `;
+  }
+
+  mastheadRight.appendChild(widget);
+
+}
+
 // Auto-run common routing & UI sync on load
 document.addEventListener("DOMContentLoaded", () => {
   initRouting();
   initDeskNav();
   initNiceSelects();
   initDateFields();
+  initUserAuthStatus();
 });
 if (document.readyState === "interactive" || document.readyState === "complete") {
   initRouting();
   initDeskNav();
   initNiceSelects();
   initDateFields();
+  initUserAuthStatus();
 }

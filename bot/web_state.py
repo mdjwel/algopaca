@@ -18,6 +18,7 @@ from alpaca.trading.enums import OrderSide
 
 logger = logging.getLogger(__name__)
 
+from bot.auth import AUTH_STORE, DB_DIR
 from bot.ai_models import (
     DEFAULT_GEMINI_MODEL,
     DEFAULT_OPENAI_MODEL,
@@ -284,7 +285,19 @@ def _blotter_window_bound(
 
 
 class AppState:
-    def __init__(self) -> None:
+    def __init__(self, user_id: int = 1, workspace_dir: Path | None = None) -> None:
+        self.user_id = user_id
+        self.workspace_dir = workspace_dir or (DB_DIR / "workspaces" / f"user_{user_id}")
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self._settings_path = self.workspace_dir / ".desk_settings.json"
+        self._backtest_path = self.workspace_dir / ".backtest_history.json"
+        self._lessons_path = self.workspace_dir / ".desk_lessons.json"
+        self._reinvest_path_paper = self.workspace_dir / ".reinvest_plans.paper.json"
+        self._reinvest_path_live = self.workspace_dir / ".reinvest_plans.live.json"
+        self._followon_path_paper = self.workspace_dir / ".followon_plans.paper.json"
+        self._followon_path_live = self.workspace_dir / ".followon_plans.live.json"
+        self._dip_hunt_path_paper = self.workspace_dir / ".dip_hunt_plans.paper.json"
+        self._dip_hunt_path_live = self.workspace_dir / ".dip_hunt_plans.live.json"
         self.lock = threading.Lock()
         self.settings = RunSettings()
         self.loop_running = False
@@ -358,8 +371,10 @@ class AppState:
         self._gemini_api_key: str | None = None
         self._openai_key_source: str = "none"  # none | env | ui
         self._gemini_key_source: str = "none"
-        # True while the desk is in Live mode (set on switch / startup).
-        self._live_session_authorized: bool = not paper_mode_from_env()
+        # User credentials from DB
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        self._live_session_authorized: bool = bool(creds.get("live_authorized"))
+        self.bootstrap_settings()
 
     def _bound_worker(self, fn):
         return fn
@@ -453,28 +468,14 @@ class AppState:
             }
 
     def _key_status_locked(self) -> dict[str, Any]:
-        try:
-            env = Config.from_env()
-            env_openai = env.openai_api_key
-            env_gemini = env.gemini_api_key
-        except Exception:
-            env_openai = ""
-            env_gemini = ""
-        openai = self._openai_api_key or env_openai
-        gemini = self._gemini_api_key or env_gemini
-        # Prefer env when the key is present on disk / in process env.
-        if env_openai:
-            openai_source = "env"
-        elif self._openai_api_key:
-            openai_source = "ui"
-        else:
-            openai_source = "none"
-        if env_gemini:
-            gemini_source = "env"
-        elif self._gemini_api_key:
-            gemini_source = "ui"
-        else:
-            gemini_source = "none"
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        saved_openai = creds.get("openai_api_key", "")
+        saved_gemini = creds.get("gemini_api_key", "")
+        openai = self._openai_api_key or saved_openai
+        gemini = self._gemini_api_key or saved_gemini
+        
+        openai_source = "ui" if self._openai_api_key else ("saved" if saved_openai else "none")
+        gemini_source = "ui" if self._gemini_api_key else ("saved" if saved_gemini else "none")
         self._openai_key_source = openai_source
         self._gemini_key_source = gemini_source
         self.ai_ready = {"openai": bool(openai), "gemini": bool(gemini)}
@@ -492,9 +493,29 @@ class AppState:
         }
 
     def _alpaca_key_status_locked(self) -> dict[str, Any]:
-        paper_slot = alpaca_slot_status(paper=True)
-        live_slot = alpaca_slot_status(paper=False)
-        paper = paper_mode_from_env()
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper_key = creds.get("alpaca_paper_api_key", "")
+        paper_secret = creds.get("alpaca_paper_secret_key", "")
+        live_key = creds.get("alpaca_live_api_key", "")
+        live_secret = creds.get("alpaca_live_secret_key", "")
+        trading_mode = creds.get("trading_mode", "paper")
+        paper = trading_mode != "live"
+        allow_live = bool(creds.get("allow_live", False))
+
+        paper_slot = {
+            "set": bool(paper_key and paper_secret),
+            "api_key_set": bool(paper_key),
+            "secret_set": bool(paper_secret),
+            "api_key_hint": mask_secret(paper_key) if paper_key else "",
+            "secret_hint": mask_secret(paper_secret) if paper_secret else "",
+        }
+        live_slot = {
+            "set": bool(live_key and live_secret),
+            "api_key_set": bool(live_key),
+            "secret_set": bool(live_secret),
+            "api_key_hint": mask_secret(live_key) if live_key else "",
+            "secret_hint": mask_secret(live_secret) if live_secret else "",
+        }
         active = paper_slot if paper else live_slot
         return {
             "set": bool(active.get("set")),
@@ -504,18 +525,20 @@ class AppState:
             "secret_hint": active.get("secret_hint") or "",
             "paper": paper,
             "trading_mode": "paper" if paper else "live",
-            "live_allowed": live_allowed_from_env(),
+            "live_allowed": allow_live,
             "live_authorized": bool(self._live_session_authorized) and not paper,
             "paper_keys": paper_slot,
             "live_keys": live_slot,
         }
 
     def _trading_mode_status_locked(self) -> dict[str, Any]:
-        paper = paper_mode_from_env()
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        allow_live = bool(creds.get("allow_live", False))
         return {
             "mode": "paper" if paper else "live",
             "paper": paper,
-            "live_allowed": live_allowed_from_env(),
+            "live_allowed": allow_live,
             "live_authorized": bool(self._live_session_authorized) and not paper,
         }
 
@@ -528,12 +551,8 @@ class AppState:
         environment: str | None = None,
         save_to_env: bool = True,
     ) -> dict[str, Any]:
-        """Save Alpaca credentials for the paper or live slot.
-
-        ``environment`` selects which key pair to write (``paper`` / ``live``).
-        Empty strings keep existing values for that slot. Saving live keys does
-        not switch the active mode — use ``set_trading_mode`` for that.
-        """
+        """Save Alpaca credentials for the user's paper or live slot."""
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
         if environment is not None:
             env_name = str(environment).strip().lower()
             if env_name not in {"paper", "live"}:
@@ -542,7 +561,7 @@ class AppState:
         elif paper is not None:
             target_paper = bool(paper)
         else:
-            target_paper = paper_mode_from_env()
+            target_paper = creds.get("trading_mode", "paper") != "live"
 
         with self.lock:
             current = (
@@ -574,33 +593,33 @@ class AppState:
                 f"({' and '.join(missing)} missing)."
             )
 
-        updates: dict[str, str] = {}
+        updates: dict[str, Any] = {}
         if target_paper:
             if key_in:
-                updates["ALPACA_API_KEY"] = key_in
+                updates["alpaca_paper_api_key"] = key_in
             if secret_in:
-                updates["ALPACA_SECRET_KEY"] = secret_in
+                updates["alpaca_paper_secret_key"] = secret_in
         else:
             if key_in:
-                updates["ALPACA_LIVE_API_KEY"] = key_in
+                updates["alpaca_live_api_key"] = key_in
             if secret_in:
-                updates["ALPACA_LIVE_SECRET_KEY"] = secret_in
+                updates["alpaca_live_secret_key"] = secret_in
 
-        if not save_to_env:
-            raise ValueError("Alpaca keys must be saved to .env to connect the desk.")
         if updates:
-            upsert_env_values(updates)
+            AUTH_STORE.save_user_credentials(self.user_id, updates)
 
         # Changing live credentials invalidates any prior Live session grant.
         if not target_paper and updates:
             with self.lock:
                 self._live_session_authorized = False
+            AUTH_STORE.save_user_credentials(self.user_id, {"live_authorized": False})
 
         with self.lock:
             status = self._alpaca_key_status_locked()
 
         # Only verify the account when the saved slot matches the active mode.
-        if target_paper == paper_mode_from_env():
+        is_active_mode = (target_paper == (creds.get("trading_mode", "paper") != "live"))
+        if is_active_mode:
             try:
                 account = self.refresh_account()
                 status = {
@@ -625,28 +644,12 @@ class AppState:
         env_name = (environment or "all").strip().lower()
         if env_name not in {"paper", "live", "all"}:
             raise ValueError("environment must be 'paper', 'live', or 'all'")
-        keys: list[str] = []
-        if env_name in {"paper", "all"}:
-            keys.extend(
-                [
-                    "ALPACA_API_KEY",
-                    "ALPACA_SECRET_KEY",
-                    "ALPACA_PAPER_API_KEY",
-                    "ALPACA_PAPER_SECRET_KEY",
-                ]
-            )
+        
+        AUTH_STORE.clear_user_credentials(self.user_id, env_name)
         if env_name in {"live", "all"}:
-            keys.extend(["ALPACA_LIVE_API_KEY", "ALPACA_LIVE_SECRET_KEY"])
             with self.lock:
                 self._live_session_authorized = False
-        remove_env_keys(keys)
-        # Wiping the live slot while Live is the active mode would leave the desk
-        # pointed at an environment it can no longer authenticate — every later
-        # Config.from_env() would raise. Fall back to paper and re-arm the
-        # kill-switch, which is also the safe default after wiping everything.
-        if env_name == "all" or (env_name == "live" and not paper_mode_from_env()):
-            self._reset_runtime_for_mode_switch()
-            upsert_env_values({"ALPACA_PAPER": "true", "ALPACA_ALLOW_LIVE": "false"})
+        self._reset_runtime_for_mode_switch()
         with self.lock:
             self.account = None
             self.error = None
@@ -659,38 +662,35 @@ class AppState:
         *,
         confirm: str | None = None,
     ) -> dict[str, Any]:
-        """Switch Paper/Live environment with safety resets.
-
-        ``confirm`` is accepted for API compatibility and ignored.
-        """
+        """Switch Paper/Live environment with safety resets."""
         target = str(mode or "").strip().lower()
         if target not in {"paper", "live"}:
             raise ValueError("mode must be 'paper' or 'live'")
         want_paper = target == "paper"
-        current_paper = paper_mode_from_env()
-        current_allow_live = live_allowed_from_env()
+
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        current_paper = creds.get("trading_mode", "paper") != "live"
+        current_allow_live = bool(creds.get("allow_live", False))
 
         if not want_paper:
-            live_keys = alpaca_slot_status(paper=False)
-            if not live_keys.get("set"):
+            live_key = creds.get("alpaca_live_api_key", "")
+            live_secret = creds.get("alpaca_live_secret_key", "")
+            if not (live_key and live_secret):
                 raise ValueError(
                     "Save distinct ALPACA_LIVE_API_KEY and ALPACA_LIVE_SECRET_KEY "
                     "before switching to Live."
                 )
 
-        updates: dict[str, str] = {
-            "ALPACA_PAPER": "true" if want_paper else "false",
-        }
-        if not want_paper:
-            updates["ALPACA_ALLOW_LIVE"] = "true"
-
-        # Stop automation and clear mode-sensitive runtime *before* the env
-        # flips — never leave a paper loop firing live orders, and let the
-        # re-investment ledger settle into the file for the account it belongs
-        # to rather than the one the desk is about to point at.
         self._reset_runtime_for_mode_switch()
 
-        upsert_env_values(updates)
+        AUTH_STORE.save_user_credentials(
+            self.user_id,
+            {
+                "trading_mode": "paper" if want_paper else "live",
+                "allow_live": not want_paper or current_allow_live,
+                "live_authorized": not want_paper,
+            },
+        )
 
         with self.lock:
             self._live_session_authorized = not want_paper
@@ -706,19 +706,18 @@ class AppState:
                 self.error = None
                 self._live_session_authorized = False
             if want_paper:
-                # A failed *paper* check is never a reason to keep the desk on
-                # Live — retreating to the safe environment is the whole point
-                # of the switch, so it stands even when the keys are bad.
                 raise ValueError(
                     "Paper account check failed — the desk is on Paper with "
                     f"unverified keys. {account_error}"
                 ) from exc
-            # A Live switch that cannot reach the account rolls all the way
-            # back, kill-switch included, so a half-applied Live never lingers.
-            revert = {"ALPACA_PAPER": "true" if current_paper else "false"}
-            if not current_allow_live:
-                revert["ALPACA_ALLOW_LIVE"] = "false"
-            upsert_env_values(revert)
+            AUTH_STORE.save_user_credentials(
+                self.user_id,
+                {
+                    "trading_mode": "paper" if current_paper else "live",
+                    "allow_live": current_allow_live,
+                    "live_authorized": False,
+                },
+            )
             raise ValueError(
                 f"Live account check failed — mode unchanged. {account_error}"
             ) from exc
@@ -894,29 +893,28 @@ class AppState:
         self._persist_dip_hunt_plans()
 
     def _require_live_execution(self) -> None:
-        """Block real Live orders unless ALPACA_ALLOW_LIVE is set."""
-        if paper_mode_from_env():
+        """Block real Live orders unless allow_live is set."""
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        if creds.get("trading_mode", "paper") != "live":
             return
-        if not live_allowed_from_env():
+        if not creds.get("allow_live"):
             raise ValueError(
-                "Live trading is blocked. Set ALPACA_ALLOW_LIVE=true on Configuration."
+                "Live trading is blocked. Enable Live Trading in Configuration."
             )
 
     def authorize_live_session(self, confirm: str | None = None) -> dict[str, Any]:
-        """Mark Live as authorized for this process (no typed phrase required).
-
-        ``confirm`` is accepted for API compatibility and ignored.
-        """
-        if paper_mode_from_env():
+        """Mark Live as authorized for this user session."""
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        if creds.get("trading_mode", "paper") != "live":
             raise ValueError("Desk is in Paper mode — switch to Live first.")
-        if not live_allowed_from_env():
-            upsert_env_values({"ALPACA_ALLOW_LIVE": "true"})
-        live_keys = alpaca_slot_status(paper=False)
-        if not live_keys.get("set"):
+        if not (creds.get("alpaca_live_api_key") and creds.get("alpaca_live_secret_key")):
             raise ValueError("Save live API credentials before authorizing Live.")
+        if not creds.get("allow_live"):
+            AUTH_STORE.save_user_credentials(self.user_id, {"allow_live": True})
         account = self.refresh_account()
         with self.lock:
             self._live_session_authorized = True
+            AUTH_STORE.save_user_credentials(self.user_id, {"live_authorized": True})
             mode_status = self._trading_mode_status_locked()
         return {
             "ok": True,
@@ -937,30 +935,20 @@ class AppState:
         gemini_api_key: str | None = None,
         save_to_env: bool = False,
     ) -> dict[str, Any]:
-        """Update session keys. Empty strings are ignored (keep existing).
-
-        When save_to_env is True, keys are written to `.env` and kept in memory
-        as a backup so status stays correct after reload quirks.
-        """
-        updates: dict[str, str] = {}
+        """Update user's AI keys."""
+        updates: dict[str, Any] = {}
         with self.lock:
             if openai_api_key is not None:
                 cleaned = openai_api_key.strip()
-                if cleaned:
-                    self._openai_api_key = cleaned
-                    updates["OPENAI_API_KEY"] = cleaned
+                self._openai_api_key = cleaned or None
+                updates["openai_api_key"] = cleaned
             if gemini_api_key is not None:
                 cleaned = gemini_api_key.strip()
-                if cleaned:
-                    self._gemini_api_key = cleaned
-                    updates["GEMINI_API_KEY"] = cleaned
+                self._gemini_api_key = cleaned or None
+                updates["gemini_api_key"] = cleaned
+            if updates:
+                AUTH_STORE.save_user_credentials(self.user_id, updates)
             status = self._key_status_locked()
-
-        if save_to_env and updates:
-            upsert_env_values(updates)
-            with self.lock:
-                # Keep memory copies; prefer reporting source=env when .env has them.
-                status = self._key_status_locked()
         return status
 
     def clear_api_keys(
@@ -970,105 +958,29 @@ class AppState:
         gemini: bool = False,
         clear_env: bool = True,
     ) -> dict[str, Any]:
-        """Clear session AI keys and optionally remove them from `.env`."""
+        """Clear user's AI keys."""
         if not openai and not gemini:
             raise ValueError("Choose OpenAI and/or Gemini to clear.")
-        to_remove: list[str] = []
+        updates: dict[str, Any] = {}
         with self.lock:
             if openai:
                 self._openai_api_key = None
-                to_remove.append("OPENAI_API_KEY")
+                updates["openai_api_key"] = ""
             if gemini:
                 self._gemini_api_key = None
-                to_remove.append("GEMINI_API_KEY")
-        if clear_env and to_remove:
-            remove_env_keys(to_remove)
-        with self.lock:
+                updates["gemini_api_key"] = ""
+            if updates:
+                AUTH_STORE.save_user_credentials(self.user_id, updates)
             return self._key_status_locked()
 
     def sync_key_sources_from_env(self) -> None:
-        """Refresh ready flags after process start / .env edits."""
+        """Refresh ready flags."""
         with self.lock:
-            try:
-                env = Config.from_env()
-            except Exception:
-                return
-            # Hydrate memory from .env so UI status survives process logic gaps.
-            if env.openai_api_key and not self._openai_api_key:
-                self._openai_api_key = env.openai_api_key
-            if env.gemini_api_key and not self._gemini_api_key:
-                self._gemini_api_key = env.gemini_api_key
             self._key_status_locked()
 
     def _persist_settings_locked(self) -> None:
         payload = asdict(self.settings)
-        save_settings(payload)
-        # Mirror strategy flags into .env so CLI and web stay aligned.
-        upsert_env_values(
-            {
-                "SYMBOL": payload["symbol"],
-                "SYMBOLS": payload["symbols"],
-                "FAST_SMA": str(payload["fast_sma"]),
-                "SLOW_SMA": str(payload["slow_sma"]),
-                "SMA_PRESET": payload["sma_preset"],
-                "DIP_PRESET": payload["dip_preset"],
-                "DIP_RSI_BUY": str(payload["dip_rsi_buy"]),
-                "DIP_RSI_SELL": str(payload["dip_rsi_sell"]),
-                "DIP_SKIP_BEARISH": "true" if payload["dip_skip_bearish"] else "false",
-                "TRADE_QTY": str(payload["trade_qty"]),
-                "SIZE_MODE": str(payload.get("size_mode") or "qty"),
-                "TRADE_NOTIONAL": str(payload.get("trade_notional") or 100),
-                "BAR_TIMEFRAME": payload["bar_timeframe"],
-                "POLL_SECONDS": str(payload["poll_seconds"]),
-                "STRATEGY_MODE": payload["strategy_mode"],
-                "PAIR_PRESET": payload.get("pair_preset", "research_max"),
-                "PAIR_SMA_PERIOD": str(payload.get("pair_sma_period", 50)),
-                "PAIR_LOOKBACK": str(payload.get("pair_lookback", 7)),
-                "PAIR_IMPULSE_PCT": str(payload.get("pair_impulse_pct", 5)),
-                "PAIR_WEAK_SIDE": payload.get("pair_weak_side", "LONG"),
-                "PAIR_LONG_SYMBOL": payload.get("pair_long_symbol", "") or "",
-                "PAIR_SHORT_SYMBOL": payload.get("pair_short_symbol", "") or "",
-                "LS_EMA_FAST": str(payload.get("ls_ema_fast", 21)),
-                "LS_EMA_SLOW": str(payload.get("ls_ema_slow", 55)),
-                "LS_ADX_MIN": str(payload.get("ls_adx_min", 20)),
-                "LS_ATR_STOP_MULT": str(payload.get("ls_atr_stop_mult", 1.5)),
-                "LS_RISK_PCT": str(payload.get("ls_risk_pct", 1.0)),
-                "LS_RR": str(payload.get("ls_rr", 2.0)),
-                "LS_TIME_STOP_BARS": str(payload.get("ls_time_stop_bars", 15)),
-                "AI_PROVIDER": payload["ai_provider"],
-                "AI_PRESET": payload["ai_preset"],
-                "AI_MIN_CONFIDENCE": str(payload["ai_min_confidence"]),
-                "AI_INSTRUCTIONS": payload["ai_instructions"],
-                "OPENAI_MODEL": payload["openai_model"],
-                "GEMINI_MODEL": payload["gemini_model"],
-                "STOP_LOSS_PCT": str(payload["stop_loss_pct"]),
-                "STOP_LIMIT_OFFSET_PCT": str(payload.get("stop_limit_offset_pct", 0.0)),
-                "AI_RISK_PCT": str(payload.get("ai_risk_pct", 0.5)),
-                "AI_ATR_STOP_MULT": str(payload.get("ai_atr_stop_mult", 1.8)),
-                "AI_TAKE_PROFIT_R": str(payload.get("ai_take_profit_r", 2.0)),
-                "AI_TRAIL_AFTER_R": str(payload.get("ai_trail_after_r", 1.0)),
-                "AI_MAX_POSITIONS": str(payload.get("ai_max_positions", 3)),
-                "AI_DAILY_LOSS_LIMIT_PCT": str(
-                    payload.get("ai_daily_loss_limit_pct", 3.0)
-                ),
-                "AI_MIN_HOLD_MINUTES": str(payload.get("ai_min_hold_minutes", 15)),
-                "AI_COOLDOWN_MINUTES": str(payload.get("ai_cooldown_minutes", 60)),
-                "AI_MAX_SPREAD_BPS": str(payload.get("ai_max_spread_bps", 25.0)),
-                # Not "LANG" — that is a standard POSIX shell variable.
-                "LANG_CODE": str(payload.get("lang") or DEFAULT_LANG),
-                "OPTIONS_ENABLED": (
-                    "true" if payload.get("options_enabled", True) else "false"
-                ),
-                "OPTIONS_STYLE": str(payload.get("options_style") or "vertical"),
-                "OPTIONS_DTE_MIN": str(payload.get("options_dte_min", 21)),
-                "OPTIONS_DTE_MAX": str(payload.get("options_dte_max", 45)),
-                "OPTIONS_OTM_PCT": str(payload.get("options_otm_pct", 5.0)),
-                "OPTIONS_MAX_CONTRACTS": str(payload.get("options_max_contracts", 1)),
-                "OPTIONS_MAX_PREMIUM_PCT": str(
-                    payload.get("options_max_premium_pct", 1.0)
-                ),
-            }
-        )
+        save_settings(payload, path=self._settings_path)
 
     def update_settings(self, data: dict[str, Any]) -> RunSettings:
         with self.lock:
@@ -1431,69 +1343,8 @@ class AppState:
             return self.settings
 
     def bootstrap_settings(self) -> RunSettings:
-        """Load last UI settings (JSON), falling back to .env defaults."""
-        persisted = load_settings()
-        if not SETTINGS_PATH.exists():
-            try:
-                env = Config.from_env()
-                persisted = {
-                    "symbol": env.symbol,
-                    "symbols": ",".join(env.symbols),
-                    "fast_sma": env.fast_sma,
-                    "slow_sma": env.slow_sma,
-                    "sma_preset": env.sma_preset,
-                    "dip_preset": env.dip_preset,
-                    "dip_rsi_buy": env.dip_rsi_buy,
-                    "dip_rsi_sell": env.dip_rsi_sell,
-                    "dip_skip_bearish": env.dip_skip_bearish,
-                    "trade_qty": env.trade_qty,
-                    "size_mode": env.size_mode,
-                    "trade_notional": env.trade_notional,
-                    "bar_timeframe": env.bar_timeframe,
-                    "poll_seconds": env.poll_seconds,
-                    "strategy_mode": env.strategy_mode,
-                    "pair_preset": env.pair_preset,
-                    "pair_sma_period": env.pair_sma_period,
-                    "pair_lookback": env.pair_lookback,
-                    "pair_impulse_pct": env.pair_impulse_pct,
-                    "pair_weak_side": env.pair_weak_side,
-                    "pair_long_symbol": env.pair_long_symbol,
-                    "pair_short_symbol": env.pair_short_symbol,
-                    "ls_ema_fast": env.ls_ema_fast,
-                    "ls_ema_slow": env.ls_ema_slow,
-                    "ls_adx_min": env.ls_adx_min,
-                    "ls_atr_stop_mult": env.ls_atr_stop_mult,
-                    "ls_risk_pct": env.ls_risk_pct,
-                    "ls_rr": env.ls_rr,
-                    "ls_time_stop_bars": env.ls_time_stop_bars,
-                    "ai_provider": env.ai_provider,
-                    "ai_preset": env.ai_preset,
-                    "ai_instructions": env.ai_instructions,
-                    "ai_min_confidence": env.ai_min_confidence,
-                    "openai_model": env.openai_model,
-                    "gemini_model": env.gemini_model,
-                    "stop_loss_pct": env.stop_loss_pct,
-                    "ai_risk_pct": env.ai_risk_pct,
-                    "ai_atr_stop_mult": env.ai_atr_stop_mult,
-                    "ai_take_profit_r": env.ai_take_profit_r,
-                    "ai_trail_after_r": env.ai_trail_after_r,
-                    "ai_max_positions": env.ai_max_positions,
-                    "ai_daily_loss_limit_pct": env.ai_daily_loss_limit_pct,
-                    "ai_min_hold_minutes": env.ai_min_hold_minutes,
-                    "ai_cooldown_minutes": env.ai_cooldown_minutes,
-                    "ai_max_spread_bps": env.ai_max_spread_bps,
-                    "stop_limit_offset_pct": env.stop_limit_offset_pct,
-                    "lang": env.lang,
-                    "options_enabled": env.options_enabled,
-                    "options_style": env.options_style,
-                    "options_dte_min": env.options_dte_min,
-                    "options_dte_max": env.options_dte_max,
-                    "options_otm_pct": env.options_otm_pct,
-                    "options_max_contracts": env.options_max_contracts,
-                    "options_max_premium_pct": env.options_max_premium_pct,
-                }
-            except Exception:
-                pass
+        """Load user's UI settings (JSON), falling back to defaults."""
+        persisted = load_settings(self._settings_path)
         try:
             return self.update_settings(persisted)
         except ValueError:
@@ -1504,20 +1355,41 @@ class AppState:
             raise
 
     def _base_config(self) -> Config:
-        base = Config.from_env()
-        # Live is allowed when ALPACA_ALLOW_LIVE is set and mode is live; real
-        # orders still need session authorization via _require_live_execution.
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper_mode = creds.get("trading_mode", "paper") != "live"
+        allow_live = bool(creds.get("allow_live", False))
+        
+        if paper_mode:
+            api_key = creds.get("alpaca_paper_api_key", "")
+            secret_key = creds.get("alpaca_paper_secret_key", "")
+        else:
+            api_key = creds.get("alpaca_live_api_key", "")
+            secret_key = creds.get("alpaca_live_secret_key", "")
+
+        openai_key = self._openai_api_key or creds.get("openai_api_key", "")
+        gemini_key = self._gemini_api_key or creds.get("gemini_api_key", "")
+
         with self.lock:
             s = self.settings
-            openai_key = self._openai_api_key or base.openai_api_key
-            gemini_key = self._gemini_api_key or base.gemini_api_key
             self.ai_ready = {
                 "openai": bool(openai_key),
                 "gemini": bool(gemini_key),
             }
-        return base.override(
-            symbol=s.symbol,
-            symbols=s.symbols,
+            
+        symbols_list = tuple(
+            part.strip().upper()
+            for part in (s.symbols or "").split(",")
+            if part.strip()
+        )
+        if not symbols_list:
+            symbols_list = ((s.symbol or "AAPL").upper().strip(),)
+
+        return Config.default(
+            api_key=api_key,
+            secret_key=secret_key,
+            paper=paper_mode,
+            symbol=(s.symbol or "AAPL").upper().strip(),
+            symbols=symbols_list,
             fast_sma=s.fast_sma,
             slow_sma=s.slow_sma,
             sma_preset=s.sma_preset,
@@ -2422,22 +2294,22 @@ class AppState:
 
     def save_backtest_result(self, result: dict[str, Any]) -> dict[str, Any]:
         """Persist a completed backtest and return the history entry."""
-        return backtest_store.append_result(result)
+        return backtest_store.append_result(result, path=self._backtest_path)
 
     def list_backtest_history(self) -> list[dict[str, Any]]:
-        return backtest_store.list_summaries()
+        return backtest_store.list_summaries(path=self._backtest_path)
 
     def get_backtest_history_entry(self, entry_id: int) -> dict[str, Any] | None:
-        return backtest_store.get_entry(entry_id)
+        return backtest_store.get_entry(entry_id, path=self._backtest_path)
 
     def delete_backtest_history_entry(self, entry_id: int) -> bool:
-        return backtest_store.delete_entry(entry_id)
+        return backtest_store.delete_entry(entry_id, path=self._backtest_path)
 
     def clear_backtest_history(self) -> None:
-        backtest_store.clear_all()
+        backtest_store.clear_all(path=self._backtest_path)
 
     def compare_backtests(self, ids: list[int]) -> list[dict[str, Any]]:
-        return backtest_store.compare_entries(ids)
+        return backtest_store.compare_entries(ids, path=self._backtest_path)
 
     @staticmethod
     def _parse_range_bound(value: str | None, *, end_of_day: bool) -> datetime | None:
@@ -2871,7 +2743,7 @@ class AppState:
                 provider=provider,
                 scope=scope,
                 lang=lang,
-                saved_lessons=lessons_store.list_lessons(),
+                saved_lessons=lessons_store.list_lessons(path=self._lessons_path),
             )
         except Exception as exc:
             logger.warning("history narration failed: %s", exc)
@@ -2921,16 +2793,16 @@ class AppState:
     # ── Approved lessons ────────────────────────────────────────────
 
     def list_lessons(self) -> list[dict[str, Any]]:
-        return lessons_store.list_lessons()
+        return lessons_store.list_lessons(path=self._lessons_path)
 
     def save_lesson(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return lessons_store.add_lesson(payload)
+        return lessons_store.add_lesson(payload, path=self._lessons_path)
 
     def set_lesson_enabled(self, lesson_id: int, enabled: bool) -> dict[str, Any]:
-        return lessons_store.set_enabled(lesson_id, enabled)
+        return lessons_store.set_enabled(lesson_id, enabled, path=self._lessons_path)
 
     def delete_lesson(self, lesson_id: int) -> bool:
-        return lessons_store.delete_lesson(lesson_id)
+        return lessons_store.delete_lesson(lesson_id, path=self._lessons_path)
 
     def refresh_account(self) -> dict[str, Any]:
         bot = self._build_algo_bot()
@@ -5347,22 +5219,20 @@ class AppState:
         with self.lock:
             snapshot = {pid: dict(p) for pid, p in self.reinvest_plans.items()}
         try:
-            reinvest_store.save_plans(snapshot, paper=paper_mode_from_env())
+            creds = AUTH_STORE.get_user_credentials(self.user_id)
+            paper = creds.get("trading_mode", "paper") != "live"
+            path = self._reinvest_path_paper if paper else self._reinvest_path_live
+            reinvest_store.save_plans(snapshot, paper=paper, path=path)
         except Exception as exc:  # pragma: no cover - disk issues are non-fatal
             logger.warning("could not persist re-investment plans: %s", exc)
 
     def bootstrap_reinvest_plans(self) -> int:
-        """Reload plans left behind by a previous run and resume watching them.
-
-        Called once at startup. A plan that was still ``waiting`` is picked up
-        where it left off — the sell order id is a broker fact that outlived
-        the process, so the watcher can simply ask again whether it filled.
-        An ``awaiting_fill`` plan is the same for the buy-back itself. A leftover
-        sell-watch deadline from an older build is cleared until the fill.
-        """
-        paper = paper_mode_from_env()
+        """Reload plans left behind by a previous run and resume watching them."""
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        path = self._reinvest_path_paper if paper else self._reinvest_path_live
         try:
-            stored = reinvest_store.load_plans(paper=paper)
+            stored = reinvest_store.load_plans(paper=paper, path=path)
         except Exception as exc:
             logger.warning("could not load re-investment plans: %s", exc)
             return 0
@@ -6278,15 +6148,20 @@ class AppState:
         with self.lock:
             snapshot = {pid: dict(p) for pid, p in self.followon_plans.items()}
         try:
-            followon_store.save_plans(snapshot, paper=paper_mode_from_env())
+            creds = AUTH_STORE.get_user_credentials(self.user_id)
+            paper = creds.get("trading_mode", "paper") != "live"
+            path = self._followon_path_paper if paper else self._followon_path_live
+            followon_store.save_plans(snapshot, paper=paper, path=path)
         except Exception as exc:  # pragma: no cover - disk issues are non-fatal
             logger.warning("could not persist follow-on plans: %s", exc)
 
     def bootstrap_followon_plans(self) -> int:
         """Reload next tickets left behind by a previous run and resume them."""
-        paper = paper_mode_from_env()
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        path = self._followon_path_paper if paper else self._followon_path_live
         try:
-            stored = followon_store.load_plans(paper=paper)
+            stored = followon_store.load_plans(paper=paper, path=path)
         except Exception as exc:
             logger.warning("could not load follow-on plans: %s", exc)
             return 0
@@ -6958,15 +6833,20 @@ class AppState:
         with self.lock:
             snapshot = {pid: dict(p) for pid, p in self.dip_hunt_plans.items()}
         try:
-            dip_hunt_store.save_plans(snapshot, paper=paper_mode_from_env())
+            creds = AUTH_STORE.get_user_credentials(self.user_id)
+            paper = creds.get("trading_mode", "paper") != "live"
+            path = self._dip_hunt_path_paper if paper else self._dip_hunt_path_live
+            dip_hunt_store.save_plans(snapshot, paper=paper, path=path)
         except Exception as exc:  # pragma: no cover - disk issues are non-fatal
             logger.warning("could not persist dip-hunt plans: %s", exc)
 
     def bootstrap_dip_hunt_plans(self) -> int:
         """Reload hunts left behind by a previous run and resume watching them."""
-        paper = paper_mode_from_env()
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        path = self._dip_hunt_path_paper if paper else self._dip_hunt_path_live
         try:
-            stored = dip_hunt_store.load_plans(paper=paper)
+            stored = dip_hunt_store.load_plans(paper=paper, path=path)
         except Exception as exc:
             logger.warning("could not load dip-hunt plans: %s", exc)
             return 0
@@ -8269,3 +8149,29 @@ class AppState:
 
 
 STATE = AppState()
+
+
+class UserStateRegistry:
+    def __init__(self) -> None:
+        self._states: dict[int, AppState] = {}
+        self._lock = threading.Lock()
+
+    def get(self, user_id: int) -> AppState:
+        with self._lock:
+            if user_id not in self._states:
+                self._states[user_id] = AppState(user_id=user_id)
+            return self._states[user_id]
+
+    def remove(self, user_id: int) -> None:
+        with self._lock:
+            state = self._states.pop(user_id, None)
+            if state and state.loop_running:
+                state.stop_loop()
+
+
+USER_STATE_REGISTRY = UserStateRegistry()
+
+
+def get_user_state(user_id: int) -> AppState:
+    """Retrieve or initialize the active isolated AppState for a user."""
+    return USER_STATE_REGISTRY.get(user_id)

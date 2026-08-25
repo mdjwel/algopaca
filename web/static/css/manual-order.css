@@ -1,4 +1,4 @@
-/* ── Manual Order Page Styles ──────────────────────────────────── */
+/* ── Advanced Order Page Styles ──────────────────────────────────── */
 
 /* Ticket on the left, everything the desk knows on the right. The rail is
    sticky so the mark, the size, and the last fill stay in view while the form
@@ -1247,7 +1247,7 @@ body.modal-open {
 }
 
 /* ==========================================================================
-   Manual Order upgrades — four actions, richer context, position management
+   Advanced Order upgrades — four actions, richer context, position management
    ========================================================================== */
 
 /* Four actions do not fit the two-column grid the buy/sell pair used. */

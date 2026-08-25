@@ -122,6 +122,8 @@
       select.value = lang;
       if (typeof refreshNiceSelect === "function") {
         refreshNiceSelect(select);
+      } else if (select._niceSelect && typeof select._niceSelect.update === "function") {
+        select._niceSelect.update();
       }
     });
 
@@ -139,6 +141,11 @@
 
     selects.forEach((select) => {
       select.value = currentLang;
+      if (typeof refreshNiceSelect === "function") {
+        refreshNiceSelect(select);
+      } else if (select._niceSelect && typeof select._niceSelect.update === "function") {
+        select._niceSelect.update();
+      }
       select.addEventListener("change", (e) => {
         const chosen = e.target.value;
         setLanguage(chosen);

@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from bot.alpaca_errors import humanize_alpaca_error
+from bot.auth import AUTH_STORE
 from bot.backtest_store import summarize_entry
-from bot.web_state import AppState
+from bot.email_service import send_password_reset_email
+from bot.web_state import AppState, get_user_state
+
+log = logging.getLogger("algopaca-web")
 
 STATE = AppState()
 
@@ -407,7 +413,127 @@ class CloseAllPositionsIn(BaseModel):
     cancel_orders: bool = True
 
 
+class SignupIn(BaseModel):
+    username: str
+    email: str
+    password: str
+    display_name: Optional[str] = None
+
+
+class LoginIn(BaseModel):
+    identifier: str
+    password: str
+    remember_me: bool = False
+
+
+class ForgotPasswordIn(BaseModel):
+    identifier: str
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str
+
+
+SESSION_COOKIE_NAME = "algopaca_session"
+SESSION_DAYS_DEFAULT = 7
+SESSION_DAYS_REMEMBERED = 30
+
+# Set ALGOPACA_COOKIE_SECURE=1 when serving over HTTPS so the session cookie is
+# never sent in the clear. Off by default for local http:// development.
+COOKIE_SECURE = os.getenv("ALGOPACA_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+# Sign-in throttle: after this many consecutive failures for the same
+# (client, identifier) pair, further attempts are refused until the window ends.
+LOGIN_MAX_ATTEMPTS = 8
+LOGIN_LOCKOUT_SECONDS = 300
+_login_attempts: dict[tuple[str, str], tuple[int, float]] = {}
+
+
+def _client_key(request: Request) -> str:
+    return (request.client.host if request.client else "") or "unknown"
+
+
+def _login_retry_after(request: Request, identifier: str) -> int:
+    """Seconds the caller must wait, or 0 when the attempt is allowed."""
+    key = (_client_key(request), (identifier or "").strip().lower())
+    record = _login_attempts.get(key)
+    if not record:
+        return 0
+    count, first_failure_at = record
+    elapsed = time.monotonic() - first_failure_at
+    if elapsed >= LOGIN_LOCKOUT_SECONDS:
+        _login_attempts.pop(key, None)
+        return 0
+    if count < LOGIN_MAX_ATTEMPTS:
+        return 0
+    return max(1, int(LOGIN_LOCKOUT_SECONDS - elapsed))
+
+
+def _record_login_failure(request: Request, identifier: str) -> None:
+    key = (_client_key(request), (identifier or "").strip().lower())
+    now = time.monotonic()
+    count, first_failure_at = _login_attempts.get(key, (0, now))
+    if now - first_failure_at >= LOGIN_LOCKOUT_SECONDS:
+        count, first_failure_at = 0, now
+    _login_attempts[key] = (count + 1, first_failure_at)
+
+    # Opportunistic cleanup so the map cannot grow without bound.
+    if len(_login_attempts) > 1024:
+        stale = [k for k, (_, started) in _login_attempts.items() if now - started >= LOGIN_LOCKOUT_SECONDS]
+        for k in stale:
+            _login_attempts.pop(k, None)
+
+
+def _clear_login_failures(request: Request, identifier: str) -> None:
+    _login_attempts.pop((_client_key(request), (identifier or "").strip().lower()), None)
+
+
+def _set_session_cookie(response: Response, token: str, days: int) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=days * 86400,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _get_session_token(request: Request) -> Optional[str]:
+    cookie_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    return None
+
+
+def _get_current_user(request: Request) -> Optional[dict[str, Any]]:
+    token = _get_session_token(request)
+    if not token:
+        return None
+    return AUTH_STORE.get_user_by_session(token)
+
+
+def require_auth(request: Request) -> dict[str, Any]:
+    """Dependency: require an authenticated user session for API endpoints."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please sign in to access your portfolio.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
 PAGE_FILES = {
+    "login": "login.html",
+    "signup": "signup.html",
+    "reset-password": "reset-password.html",
     "auto-trade": "auto-trade.html",
     "backtest": "backtest.html",
     "backtest-history": "backtest-history.html",
@@ -430,60 +556,236 @@ def _page_response(name: str) -> FileResponse:
     return FileResponse(path)
 
 
+def _protected_page(request: Request, name: str) -> Response:
+    user = _get_current_user(request)
+    if not user:
+        from urllib.parse import quote
+        next_path = quote(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
+        return RedirectResponse(url=f"/login?next={next_path}", status_code=302)
+    return _page_response(name)
+
+
 @app.get("/")
-def index() -> RedirectResponse:
+def index(request: Request) -> RedirectResponse:
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
     return RedirectResponse(url="/auto-trade", status_code=302)
 
 
+@app.get("/login")
+def page_login(request: Request) -> Response:
+    user = _get_current_user(request)
+    if user:
+        next_url = request.query_params.get("next")
+        if next_url and next_url.startswith("/") and not next_url.startswith("//") and not next_url.startswith("/login"):
+            return RedirectResponse(url=next_url, status_code=302)
+        return RedirectResponse(url="/auto-trade", status_code=302)
+    return _page_response("login")
+
+
+@app.get("/signup")
+def page_signup(request: Request) -> Response:
+    user = _get_current_user(request)
+    if user:
+        next_url = request.query_params.get("next")
+        if next_url and next_url.startswith("/") and not next_url.startswith("//") and not next_url.startswith("/signup"):
+            return RedirectResponse(url=next_url, status_code=302)
+        return RedirectResponse(url="/auto-trade", status_code=302)
+    return _page_response("signup")
+
+
+@app.get("/reset-password")
+def page_reset_password(request: Request) -> Response:
+    return _page_response("reset-password")
+
+
 @app.get("/auto-trade")
-def page_auto_trade() -> FileResponse:
-    return _page_response("auto-trade")
+def page_auto_trade(request: Request) -> Response:
+    return _protected_page(request, "auto-trade")
 
 
 @app.get("/backtest")
-def page_backtest() -> FileResponse:
-    return _page_response("backtest")
+def page_backtest(request: Request) -> Response:
+    return _protected_page(request, "backtest")
 
 
 @app.get("/backtest/history")
-def page_backtest_history() -> FileResponse:
-    return _page_response("backtest-history")
+def page_backtest_history(request: Request) -> Response:
+    return _protected_page(request, "backtest-history")
 
 
 @app.get("/backtest/compare")
-def page_backtest_compare() -> FileResponse:
-    return _page_response("backtest-compare")
+def page_backtest_compare(request: Request) -> Response:
+    return _protected_page(request, "backtest-compare")
 
 
 @app.get("/manual-order")
-def page_manual_order() -> FileResponse:
-    return _page_response("manual-order")
+@app.get("/advanced-order")
+def page_manual_order(request: Request) -> Response:
+    return _protected_page(request, "manual-order")
 
 
 @app.get("/positions")
-def page_positions() -> FileResponse:
-    return _page_response("positions")
+def page_positions(request: Request) -> Response:
+    return _protected_page(request, "positions")
 
 
 @app.get("/orders")
-def page_orders() -> FileResponse:
-    return _page_response("orders")
+def page_orders(request: Request) -> Response:
+    return _protected_page(request, "orders")
 
 
 @app.get("/history")
-def page_history() -> FileResponse:
-    return _page_response("history")
+def page_history(request: Request) -> Response:
+    return _protected_page(request, "history")
 
 
 @app.get("/configuration")
-def page_configuration() -> FileResponse:
-    return _page_response("configuration")
+def page_configuration(request: Request) -> Response:
+    return _protected_page(request, "configuration")
+
+
+@app.post("/api/auth/signup")
+def api_auth_signup(body: SignupIn, request: Request, response: Response) -> dict:
+    try:
+        user = AUTH_STORE.register_user(
+            username=body.username,
+            email=body.email,
+            password=body.password,
+            display_name=body.display_name,
+        )
+        user_agent = request.headers.get("user-agent", "")
+        token, _ = AUTH_STORE.create_session(user["id"], remember_me=True, user_agent=user_agent)
+        _set_session_cookie(response, token, SESSION_DAYS_REMEMBERED)
+        return {"ok": True, "user": user, "token": token}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.") from exc
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: LoginIn, request: Request, response: Response) -> dict:
+    retry_after = _login_retry_after(request, body.identifier)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many sign-in attempts. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    try:
+        user = AUTH_STORE.authenticate_user(
+            identifier=body.identifier,
+            password=body.password,
+        )
+    except ValueError as exc:
+        _record_login_failure(request, body.identifier)
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Login failed. Please try again.") from exc
+
+    try:
+        _clear_login_failures(request, body.identifier)
+        user_agent = request.headers.get("user-agent", "")
+        token, _ = AUTH_STORE.create_session(
+            user["id"],
+            remember_me=body.remember_me,
+            user_agent=user_agent,
+        )
+        days = SESSION_DAYS_REMEMBERED if body.remember_me else SESSION_DAYS_DEFAULT
+        _set_session_cookie(response, token, days)
+        return {"ok": True, "user": user, "token": token}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Login failed. Please try again.") from exc
+
+
+@app.post("/api/auth/forgot-password")
+def api_auth_forgot_password(body: ForgotPasswordIn, request: Request) -> dict:
+    identifier = (body.identifier or "").strip()
+    if not identifier:
+        raise HTTPException(status_code=400, detail="Username or email is required.")
+
+    reset_data = AUTH_STORE.create_password_reset_token(identifier)
+    if reset_data:
+        base_url = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
+        if not base_url:
+            base_url = str(request.base_url).rstrip("/")
+        reset_url = f"{base_url}/reset-password?token={reset_data['token']}"
+        lang = request.cookies.get("algopaca_lang", "en")
+        try:
+            send_password_reset_email(
+                to_email=reset_data["email"],
+                username=reset_data["username"],
+                reset_url=reset_url,
+                lang=lang,
+            )
+        except Exception:
+            # Never surface the delivery failure: a 500 here only happens for
+            # identifiers that exist, which would turn this endpoint into an
+            # account-enumeration oracle. Log it and fall through to the same
+            # generic reply an unknown identifier gets.
+            log.exception("Password reset email could not be sent (check SMTP_* settings)")
+
+    return {
+        "ok": True,
+        "message": "If an account matches that username or email, instructions have been sent.",
+    }
+
+
+@app.post("/api/auth/reset-password")
+def api_auth_reset_password(body: ResetPasswordIn) -> dict:
+    try:
+        user = AUTH_STORE.verify_and_use_reset_token(body.token, body.password)
+        return {
+            "ok": True,
+            "message": "Password reset successful. You can now sign in with your new password.",
+            "user": user,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to reset password. Please try again.") from exc
+
+
+@app.post("/api/auth/demo")
+def api_auth_demo(request: Request, response: Response) -> dict:
+    raise HTTPException(
+        status_code=400,
+        detail="Shared demo mode is disabled. Please create an account or sign in to trade in your own private portfolio.",
+    )
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(request: Request, response: Response) -> dict:
+    token = _get_session_token(request)
+    if token:
+        AUTH_STORE.delete_session(token)
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+    )
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(request: Request) -> dict:
+    token = _get_session_token(request)
+    user = AUTH_STORE.get_user_by_session(token) if token else None
+    if user:
+        return {"ok": True, "authenticated": True, "user": user}
+    return {"ok": True, "authenticated": False, "user": None}
 
 
 @app.get("/api/positions")
-def api_positions() -> dict:
+def api_positions(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        data = STATE.positions_overview()
+        data = state.positions_overview()
         return {"ok": True, **data}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -491,10 +793,11 @@ def api_positions() -> dict:
 
 @app.get("/api/positions/{symbol}/lots")
 def api_position_lots(
-    symbol: str, lookback_days: int = Query(365, ge=1, le=1825)
+    symbol: str, lookback_days: int = Query(365, ge=1, le=1825), user: dict = Depends(require_auth)
 ) -> dict:
+    state = get_user_state(user["id"])
     try:
-        data = STATE.position_lots(symbol, lookback_days=lookback_days)
+        data = state.position_lots(symbol, lookback_days=lookback_days)
         return {"ok": True, **data}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -503,15 +806,18 @@ def api_position_lots(
 
 
 @app.post("/api/positions/{symbol}/close")
-def api_close_position(symbol: str, body: Optional[ClosePositionIn] = None) -> dict:
+def api_close_position(
+    symbol: str, body: Optional[ClosePositionIn] = None, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
         qty = body.qty if body else None
         pct = body.percentage if body else None
         cancel = body.cancel_orders if body else None
-        result = STATE.close_single_position(
+        result = state.close_single_position(
             symbol=symbol, qty=qty, percentage=pct, cancel_orders=cancel
         )
-        return {"ok": True, "result": result, "overview": STATE.positions_overview()}
+        return {"ok": True, "result": result, "overview": state.positions_overview()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -519,12 +825,15 @@ def api_close_position(symbol: str, body: Optional[ClosePositionIn] = None) -> d
 
 
 @app.post("/api/positions/close-batch")
-def api_close_batch_positions(body: CloseBatchPositionsIn) -> dict:
+def api_close_batch_positions(
+    body: CloseBatchPositionsIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.close_batch_positions(
+        result = state.close_batch_positions(
             symbols=body.symbols, cancel_orders=body.cancel_orders
         )
-        return {"ok": True, "result": result, "overview": STATE.positions_overview()}
+        return {"ok": True, "result": result, "overview": state.positions_overview()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -532,30 +841,35 @@ def api_close_batch_positions(body: CloseBatchPositionsIn) -> dict:
 
 
 @app.post("/api/positions/close-all")
-def api_close_all_positions(body: Optional[CloseAllPositionsIn] = None) -> dict:
+def api_close_all_positions(
+    body: Optional[CloseAllPositionsIn] = None, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
         cancel = body.cancel_orders if body else True
-        result = STATE.close_all_positions(cancel_orders=cancel)
-        return {"ok": True, "result": result, "overview": STATE.positions_overview()}
+        result = state.close_all_positions(cancel_orders=cancel)
+        return {"ok": True, "result": result, "overview": state.positions_overview()}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/status")
-def status() -> dict:
+def status(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        STATE.refresh_quote(force=False)
+        state.refresh_quote(force=False)
     except Exception:
         pass
-    return STATE.snapshot()
+    return state.snapshot()
 
 
 @app.get("/api/quote")
-def api_quote() -> dict:
+def api_quote(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        data = STATE.refresh_quote(force=True)
+        data = state.refresh_quote(force=True)
         if data is None:
-            raise HTTPException(status_code=502, detail=STATE.error or "No quote")
+            raise HTTPException(status_code=502, detail=state.error or "No quote")
         return {"ok": True, "quote": data}
     except HTTPException:
         raise
@@ -564,27 +878,24 @@ def api_quote() -> dict:
 
 
 @app.get("/api/quotes")
-def quotes(symbols: str = "") -> dict:
-    """Live marks for the watchlist.
-
-    `symbols` is an optional comma-separated list; empty means the desk's own
-    evaluate list. Marks are cached per symbol in the service layer, so polling
-    this is cheap between refreshes.
-    """
+def quotes(symbols: str = "", user: dict = Depends(require_auth)) -> dict:
+    """Live marks for the watchlist."""
+    state = get_user_state(user["id"])
     wanted = [part.strip().upper() for part in symbols.split(",") if part.strip()]
     if len(wanted) > 50:
         raise HTTPException(status_code=400, detail="Too many symbols (max 50)")
     try:
-        return {"ok": True, "quotes": STATE.watch_quotes(wanted)}
+        return {"ok": True, "quotes": state.watch_quotes(wanted)}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/manual-context")
-def manual_context(symbol: str = "AAPL") -> dict:
-    """Mark, session, position, and buying power for the Manual Order page."""
+def manual_context(symbol: str = "AAPL", user: dict = Depends(require_auth)) -> dict:
+    """Mark, session, position, and buying power for the Advanced Order page."""
+    state = get_user_state(user["id"])
     try:
-        return {"ok": True, **STATE.manual_ticket_context(symbol)}
+        return {"ok": True, **state.manual_ticket_context(symbol)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -592,14 +903,15 @@ def manual_context(symbol: str = "AAPL") -> dict:
 
 
 @app.post("/api/settings")
-def save_settings(body: SettingsIn) -> dict:
+def save_settings(body: SettingsIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        STATE.update_settings(body.model_dump())
+        state.update_settings(body.model_dump())
         return {
             "ok": True,
-            "settings": STATE.snapshot()["settings"],
-            "ai_key_status": STATE.snapshot()["ai_key_status"],
-            "alpaca_key_status": STATE.snapshot()["alpaca_key_status"],
+            "settings": state.snapshot()["settings"],
+            "ai_key_status": state.snapshot()["ai_key_status"],
+            "alpaca_key_status": state.snapshot()["alpaca_key_status"],
         }
     except HTTPException:
         raise
@@ -608,31 +920,28 @@ def save_settings(body: SettingsIn) -> dict:
 
 
 @app.post("/api/lang")
-def save_lang(body: LangIn) -> dict:
-    """Persist the desk language alone.
-
-    The switcher sits on every page, but only Auto Trade has the settings form
-    that POSTs /api/settings — without this the AI would keep writing in the
-    previously saved language. Unknown codes fall back to English.
-    """
+def save_lang(body: LangIn, user: dict = Depends(require_auth)) -> dict:
+    """Persist the desk language alone."""
+    state = get_user_state(user["id"])
     try:
-        settings = STATE.update_settings({"lang": body.lang})
+        settings = state.update_settings({"lang": body.lang})
         return {"ok": True, "lang": settings.lang}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/keys")
-def save_keys(body: ApiKeysIn) -> dict:
+def save_keys(body: ApiKeysIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
         if not body.openai_api_key.strip() and not body.gemini_api_key.strip():
             raise ValueError("Paste at least one API key to save.")
-        status = STATE.apply_api_keys(
+        status = state.apply_api_keys(
             openai_api_key=body.openai_api_key or None,
             gemini_api_key=body.gemini_api_key or None,
             save_to_env=body.save_to_env,
         )
-        return {"ok": True, "ai_key_status": status, "state": STATE.snapshot()}
+        return {"ok": True, "ai_key_status": status, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -640,16 +949,16 @@ def save_keys(body: ApiKeysIn) -> dict:
 
 
 @app.post("/api/alpaca-keys")
-def save_alpaca_keys(body: AlpacaKeysIn) -> dict:
+def save_alpaca_keys(body: AlpacaKeysIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        status = STATE.apply_alpaca_keys(
+        status = state.apply_alpaca_keys(
             alpaca_api_key=body.alpaca_api_key or None,
             alpaca_secret_key=body.alpaca_secret_key or None,
             environment=body.environment,
             save_to_env=body.save_to_env,
         )
         ok = bool(status.get("set")) and not status.get("account_error")
-        # Saving a non-active slot reports set=false for the active mode — still OK.
         if body.environment:
             env = str(body.environment).strip().lower()
             slot = status.get("paper_keys" if env == "paper" else "live_keys") or {}
@@ -657,8 +966,8 @@ def save_alpaca_keys(body: AlpacaKeysIn) -> dict:
         return {
             "ok": ok,
             "alpaca_key_status": status,
-            "trading_mode": STATE.snapshot().get("trading_mode"),
-            "state": STATE.snapshot(),
+            "trading_mode": state.snapshot().get("trading_mode"),
+            "state": state.snapshot(),
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -667,14 +976,17 @@ def save_alpaca_keys(body: AlpacaKeysIn) -> dict:
 
 
 @app.post("/api/alpaca-keys/clear")
-def clear_alpaca_keys(body: ClearAlpacaKeysIn = ClearAlpacaKeysIn()) -> dict:
+def clear_alpaca_keys(
+    body: ClearAlpacaKeysIn = ClearAlpacaKeysIn(), user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
         environment = body.environment or "all"
-        status = STATE.clear_alpaca_keys(environment=environment)
+        status = state.clear_alpaca_keys(environment=environment)
         return {
             "ok": True,
             "alpaca_key_status": status,
-            "state": STATE.snapshot(),
+            "state": state.snapshot(),
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -683,13 +995,14 @@ def clear_alpaca_keys(body: ClearAlpacaKeysIn = ClearAlpacaKeysIn()) -> dict:
 
 
 @app.post("/api/trading-mode")
-def set_trading_mode(body: TradingModeIn) -> dict:
+def set_trading_mode(body: TradingModeIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.set_trading_mode(body.mode, confirm=body.confirm)
+        result = state.set_trading_mode(body.mode, confirm=body.confirm)
         return {
             "ok": True,
             **result,
-            "state": STATE.snapshot(),
+            "state": state.snapshot(),
         }
     except HTTPException:
         raise
@@ -700,13 +1013,16 @@ def set_trading_mode(body: TradingModeIn) -> dict:
 
 
 @app.post("/api/trading-mode/authorize")
-def authorize_live_session(body: LiveAuthorizeIn) -> dict:
+def authorize_live_session(
+    body: LiveAuthorizeIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.authorize_live_session(confirm=body.confirm)
+        result = state.authorize_live_session(confirm=body.confirm)
         return {
             "ok": True,
             **result,
-            "state": STATE.snapshot(),
+            "state": state.snapshot(),
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -715,14 +1031,15 @@ def authorize_live_session(body: LiveAuthorizeIn) -> dict:
 
 
 @app.post("/api/keys/clear")
-def clear_keys(body: ClearAiKeysIn) -> dict:
+def clear_keys(body: ClearAiKeysIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        status = STATE.clear_api_keys(
+        status = state.clear_api_keys(
             openai=body.openai,
             gemini=body.gemini,
             clear_env=body.clear_env,
         )
-        return {"ok": True, "ai_key_status": status, "state": STATE.snapshot()}
+        return {"ok": True, "ai_key_status": status, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -737,9 +1054,11 @@ def trades(
     limit: int = 100,
     start: str = "",
     end: str = "",
+    user: dict = Depends(require_auth),
 ) -> dict:
+    state = get_user_state(user["id"])
     try:
-        data = STATE.trade_history(
+        data = state.trade_history(
             range_key=range,
             symbol=symbol or None,
             side=side or None,
@@ -794,9 +1113,12 @@ class LessonToggleIn(BaseModel):
 
 
 @app.post("/api/history/insights")
-def history_insights(body: HistoryInsightsIn) -> dict:
+def history_insights(
+    body: HistoryInsightsIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        data = STATE.history_insights(
+        data = state.history_insights(
             range_key=body.range,
             start=body.start or None,
             end=body.end or None,
@@ -816,11 +1138,12 @@ def history_insights(body: HistoryInsightsIn) -> dict:
 
 
 @app.post("/api/history/query")
-def history_query(body: HistoryQueryIn) -> dict:
+def history_query(body: HistoryQueryIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
         return {
             "ok": True,
-            "filter": STATE.history_query(
+            "filter": state.history_query(
                 body.text, symbols=body.symbols, lang=body.lang or None
             ),
         }
@@ -831,15 +1154,17 @@ def history_query(body: HistoryQueryIn) -> dict:
 
 
 @app.get("/api/history/lessons")
-def list_lessons() -> dict:
-    return {"ok": True, "lessons": STATE.list_lessons()}
+def list_lessons(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    return {"ok": True, "lessons": state.list_lessons()}
 
 
 @app.post("/api/history/lessons")
-def save_lesson(body: LessonIn) -> dict:
+def save_lesson(body: LessonIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        lesson = STATE.save_lesson(body.model_dump())
-        return {"ok": True, "lesson": lesson, "lessons": STATE.list_lessons()}
+        lesson = state.save_lesson(body.model_dump())
+        return {"ok": True, "lesson": lesson, "lessons": state.list_lessons()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -847,10 +1172,13 @@ def save_lesson(body: LessonIn) -> dict:
 
 
 @app.post("/api/history/lessons/{lesson_id}")
-def toggle_lesson(lesson_id: int, body: LessonToggleIn) -> dict:
+def toggle_lesson(
+    lesson_id: int, body: LessonToggleIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        STATE.set_lesson_enabled(lesson_id, body.enabled)
-        return {"ok": True, "lessons": STATE.list_lessons()}
+        state.set_lesson_enabled(lesson_id, body.enabled)
+        return {"ok": True, "lessons": state.list_lessons()}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -858,27 +1186,34 @@ def toggle_lesson(lesson_id: int, body: LessonToggleIn) -> dict:
 
 
 @app.delete("/api/history/lessons/{lesson_id}")
-def delete_lesson(lesson_id: int) -> dict:
-    if not STATE.delete_lesson(lesson_id):
+def delete_lesson(lesson_id: int, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    if not state.delete_lesson(lesson_id):
         raise HTTPException(status_code=404, detail=f"no lesson with id {lesson_id}")
-    return {"ok": True, "lessons": STATE.list_lessons()}
+    return {"ok": True, "lessons": state.list_lessons()}
 
 
 @app.post("/api/account")
-def account() -> dict:
+def account(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        return {"ok": True, "account": STATE.refresh_account()}
+        return {"ok": True, "account": state.refresh_account()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/run-once")
-def run_once(body: SettingsIn) -> dict:
+def run_once(
+    body: SettingsIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
         payload = body.model_dump()
-        STATE.update_settings(payload)
-        result = STATE.run_once()
-        return {"ok": True, "result": result, "state": STATE.snapshot()}
+        state.update_settings(payload)
+        result = state.run_once()
+        return {"ok": True, "result": result, "state": state.snapshot()}
     except HTTPException:
         raise
     except Exception as exc:
@@ -890,15 +1225,16 @@ class BacktestCompareIn(BaseModel):
 
 
 @app.post("/api/backtest")
-def backtest(body: BacktestIn) -> dict:
+def backtest(body: BacktestIn, user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.run_strategy_backtest(**body.model_dump())
-        entry = STATE.save_backtest_result(result)
+        result = state.run_strategy_backtest(**body.model_dump())
+        entry = state.save_backtest_result(result)
         return {
             "ok": True,
             "result": result,
             "history_id": entry.get("id"),
-            "history": STATE.list_backtest_history(),
+            "history": state.list_backtest_history(),
         }
     except HTTPException:
         raise
@@ -909,35 +1245,46 @@ def backtest(body: BacktestIn) -> dict:
 
 
 @app.get("/api/backtest/history")
-def backtest_history() -> dict:
-    return {"ok": True, "history": STATE.list_backtest_history()}
+def backtest_history(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    return {"ok": True, "history": state.list_backtest_history()}
 
 
 @app.get("/api/backtest/history/{entry_id}")
-def backtest_history_entry(entry_id: int) -> dict:
-    entry = STATE.get_backtest_history_entry(entry_id)
+def backtest_history_entry(
+    entry_id: int, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
+    entry = state.get_backtest_history_entry(entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Backtest run not found")
     return {"ok": True, "entry": entry}
 
 
 @app.delete("/api/backtest/history/{entry_id}")
-def delete_backtest_history_entry(entry_id: int) -> dict:
-    if not STATE.delete_backtest_history_entry(entry_id):
+def delete_backtest_history_entry(
+    entry_id: int, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
+    if not state.delete_backtest_history_entry(entry_id):
         raise HTTPException(status_code=404, detail="Backtest run not found")
-    return {"ok": True, "history": STATE.list_backtest_history()}
+    return {"ok": True, "history": state.list_backtest_history()}
 
 
 @app.delete("/api/backtest/history")
-def clear_backtest_history() -> dict:
-    STATE.clear_backtest_history()
+def clear_backtest_history(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    state.clear_backtest_history()
     return {"ok": True, "history": []}
 
 
 @app.post("/api/backtest/compare")
-def compare_backtests(body: BacktestCompareIn) -> dict:
+def compare_backtests(
+    body: BacktestCompareIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        entries = STATE.compare_backtests(body.ids)
+        entries = state.compare_backtests(body.ids)
         return {
             "ok": True,
             "runs": [
@@ -955,9 +1302,12 @@ def compare_backtests(body: BacktestCompareIn) -> dict:
 
 
 @app.post("/api/order")
-def place_order(body: ManualOrderIn) -> dict:
+def place_order(
+    body: ManualOrderIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.place_manual_order(
+        result = state.place_manual_order(
             symbol=body.symbol,
             side=body.side,
             order_type=body.order_type,
@@ -984,7 +1334,7 @@ def place_order(body: ManualOrderIn) -> dict:
             followon=body.followon.model_dump() if body.followon else None,
             dip_hunt=body.dip_hunt.model_dump() if body.dip_hunt else None,
         )
-        return {"ok": True, "result": result, "state": STATE.snapshot()}
+        return {"ok": True, "result": result, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -996,10 +1346,13 @@ def place_order(body: ManualOrderIn) -> dict:
 
 
 @app.post("/api/position/stop")
-def manage_position_stop(body: ManageStopIn) -> dict:
+def manage_position_stop(
+    body: ManageStopIn, user: dict = Depends(require_auth)
+) -> dict:
     """Move a position's protective stop — breakeven, a price, or a trail."""
+    state = get_user_state(user["id"])
     try:
-        result = STATE.manage_position_stop(
+        result = state.manage_position_stop(
             symbol=body.symbol,
             action=body.action,
             stop_price=body.stop_price,
@@ -1016,10 +1369,13 @@ def manage_position_stop(body: ManageStopIn) -> dict:
 
 
 @app.get("/api/order/status")
-def order_status(order_id: str = Query(..., min_length=1)) -> dict:
+def order_status(
+    order_id: str = Query(..., min_length=1), user: dict = Depends(require_auth)
+) -> dict:
     """Poll one submitted ticket — accepted, filled, rejected, or resting."""
+    state = get_user_state(user["id"])
     try:
-        return {"ok": True, "order": STATE.manual_order_status(order_id)}
+        return {"ok": True, "order": state.manual_order_status(order_id)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1036,15 +1392,12 @@ def list_orders(
     limit: int = Query(200, ge=1, le=500),
     after: str = Query("", pattern=r"^(\d{4}-\d{2}-\d{2})?$"),
     until: str = Query("", pattern=r"^(\d{4}-\d{2}-\d{2})?$"),
+    user: dict = Depends(require_auth),
 ) -> dict:
-    """Account-wide working or recently closed orders for the blotter.
-
-    Includes desk queues (buy-backs, next tickets, dip hunts) so the page
-    can show plans that are not yet resting at the broker. ``after``/``until``
-    bound the closed window; the KPI counts stay account-wide regardless.
-    """
+    """Account-wide working or recently closed orders for the blotter."""
+    state = get_user_state(user["id"])
     try:
-        data = STATE.list_orders(
+        data = state.list_orders(
             status=status,
             symbol=symbol,
             side=side,
@@ -1062,12 +1415,15 @@ def list_orders(
 
 
 @app.post("/api/order/cancel")
-def cancel_order(body: CancelOrderIn) -> dict:
+def cancel_order(
+    body: CancelOrderIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.cancel_manual_order(
+        result = state.cancel_manual_order(
             order_id=body.order_id or "", symbol=body.symbol or ""
         )
-        return {"ok": True, **result, "state": STATE.snapshot()}
+        return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1077,10 +1433,11 @@ def cancel_order(body: CancelOrderIn) -> dict:
 
 
 @app.post("/api/orders/cancel-all")
-def cancel_all_orders() -> dict:
+def cancel_all_orders(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.cancel_all_open_orders()
-        return {"ok": True, **result, "state": STATE.snapshot()}
+        result = state.cancel_all_open_orders()
+        return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1090,9 +1447,12 @@ def cancel_all_orders() -> dict:
 
 
 @app.post("/api/order/replace")
-def replace_order(body: ReplaceOrderIn) -> dict:
+def replace_order(
+    body: ReplaceOrderIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
-        result = STATE.replace_manual_order(
+        result = state.replace_manual_order(
             order_id=body.order_id,
             qty=body.qty,
             limit_price=body.limit_price,
@@ -1100,7 +1460,7 @@ def replace_order(body: ReplaceOrderIn) -> dict:
             time_in_force=body.time_in_force,
             trail=body.trail,
         )
-        return {"ok": True, **result, "state": STATE.snapshot()}
+        return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1110,60 +1470,75 @@ def replace_order(body: ReplaceOrderIn) -> dict:
 
 
 @app.get("/api/reinvest")
-def reinvest_plans(symbol: str = "") -> dict:
+def reinvest_plans(symbol: str = "", user: dict = Depends(require_auth)) -> dict:
     """Armed and settled buy-backs, newest first."""
-    return {"ok": True, "plans": STATE.reinvest_plans_payload(symbol)}
+    state = get_user_state(user["id"])
+    return {"ok": True, "plans": state.reinvest_plans_payload(symbol)}
 
 
 @app.post("/api/reinvest/cancel")
-def reinvest_cancel(body: CancelReinvestIn) -> dict:
+def reinvest_cancel(
+    body: CancelReinvestIn, user: dict = Depends(require_auth)
+) -> dict:
     """Disarm a waiting buy-back. The sell order itself is left alone."""
+    state = get_user_state(user["id"])
     try:
-        plan = STATE.cancel_reinvest_plan(body.plan_id)
-        return {"ok": True, "plan": plan, "plans": STATE.reinvest_plans_payload()}
+        plan = state.cancel_reinvest_plan(body.plan_id)
+        return {"ok": True, "plan": plan, "plans": state.reinvest_plans_payload()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/followon")
-def followon_plans(symbol: str = "") -> dict:
+def followon_plans(symbol: str = "", user: dict = Depends(require_auth)) -> dict:
     """Armed and settled next tickets, newest first."""
-    return {"ok": True, "plans": STATE.followon_plans_payload(symbol)}
+    state = get_user_state(user["id"])
+    return {"ok": True, "plans": state.followon_plans_payload(symbol)}
 
 
 @app.post("/api/followon/cancel")
-def followon_cancel(body: CancelReinvestIn) -> dict:
+def followon_cancel(
+    body: CancelReinvestIn, user: dict = Depends(require_auth)
+) -> dict:
     """Disarm a waiting next ticket. The close order itself is left alone."""
+    state = get_user_state(user["id"])
     try:
-        plan = STATE.cancel_followon_plan(body.plan_id)
-        return {"ok": True, "plan": plan, "plans": STATE.followon_plans_payload()}
+        plan = state.cancel_followon_plan(body.plan_id)
+        return {"ok": True, "plan": plan, "plans": state.followon_plans_payload()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/dip-hunt")
-def dip_hunt_plans(symbol: str = "") -> dict:
+def dip_hunt_plans(symbol: str = "", user: dict = Depends(require_auth)) -> dict:
     """Armed and settled dip hunts, newest first."""
-    return {"ok": True, "plans": STATE.dip_hunt_plans_payload(symbol)}
+    state = get_user_state(user["id"])
+    return {"ok": True, "plans": state.dip_hunt_plans_payload(symbol)}
 
 
 @app.post("/api/dip-hunt/cancel")
-def dip_hunt_cancel(body: CancelReinvestIn) -> dict:
+def dip_hunt_cancel(
+    body: CancelReinvestIn, user: dict = Depends(require_auth)
+) -> dict:
     """Disarm a live dip hunt. A parked cheaper-buy is cancelled; the stop is not."""
+    state = get_user_state(user["id"])
     try:
-        plan = STATE.cancel_dip_hunt_plan(body.plan_id)
-        return {"ok": True, "plan": plan, "plans": STATE.dip_hunt_plans_payload()}
+        plan = state.cancel_dip_hunt_plan(body.plan_id)
+        return {"ok": True, "plan": plan, "plans": state.dip_hunt_plans_payload()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/loop/start")
-def loop_start(body: SettingsIn) -> dict:
+def loop_start(
+    body: SettingsIn, user: dict = Depends(require_auth)
+) -> dict:
+    state = get_user_state(user["id"])
     try:
         payload = body.model_dump()
-        STATE.update_settings(payload)
-        STATE.start_loop()
-        return {"ok": True, "state": STATE.snapshot()}
+        state.update_settings(payload)
+        state.start_loop()
+        return {"ok": True, "state": state.snapshot()}
     except HTTPException:
         raise
     except Exception as exc:
@@ -1171,21 +1546,24 @@ def loop_start(body: SettingsIn) -> dict:
 
 
 @app.post("/api/loop/stop")
-def loop_stop() -> dict:
-    STATE.stop_loop()
-    return {"ok": True, "state": STATE.snapshot()}
+def loop_stop(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    state.stop_loop()
+    return {"ok": True, "state": state.snapshot()}
 
 
 @app.get("/api/loop/state")
-def loop_state() -> dict:
+def loop_state(user: dict = Depends(require_auth)) -> dict:
     """Cheap poll target while Stop drains the current cycle."""
-    return STATE.loop_state()
+    state = get_user_state(user["id"])
+    return state.loop_state()
 
 
 @app.post("/api/history/clear")
-def clear_history() -> dict:
-    STATE.clear_history()
-    return {"ok": True, "state": STATE.snapshot()}
+def clear_history(user: dict = Depends(require_auth)) -> dict:
+    state = get_user_state(user["id"])
+    state.clear_history()
+    return {"ok": True, "state": state.snapshot()}
 
 
 def main() -> None:

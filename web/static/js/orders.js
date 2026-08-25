@@ -1,6 +1,6 @@
 /**
  * Orders blotter — account-wide working and recently closed tickets.
- * Placement stays on Manual Order; this page lists, cancels, and replaces.
+ * Placement stays on Advanced Order; this page lists, cancels, and replaces.
  */
 
 const ORD_REFRESH_MS = 15000;
@@ -1029,7 +1029,7 @@ function renderEmpty(rows) {
       ? tx("no_matching_orders_desc", "Nothing matches the current search or filters.")
       : ordFilterStatus === "closed"
         ? tx("no_closed_orders_desc", "Canceled, expired, rejected, and filled tickets from the latest window will show here.")
-        : tx("no_open_orders_desc", "Nothing is resting at the broker. Buy-backs and next tickets wait in Desk queues above until they fire. Place a ticket on Manual Order, or switch to Closed to see recent fills and cancels.");
+        : tx("no_open_orders_desc", "Nothing is resting at the broker. Buy-backs and next tickets wait in Desk queues above until they fire. Place a ticket on Advanced Order, or switch to Closed to see recent fills and cancels.");
   }
 }
 

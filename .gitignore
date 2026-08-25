@@ -44,6 +44,7 @@ data/*.sqlite-shm
 data/*.sqlite-wal
 data/*.db
 data/*.sqlite3
+data/.secret_key
 data/workspaces/*
 !data/.gitkeep
 !data/workspaces/.gitkeep
