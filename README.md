@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://x.com/ehjewelbd/status/2090872372731711646"><img src="https://img.shields.io/badge/𝕏_Post-Demo_%26_Announcement-black?logo=x&logoColor=white" alt="X Demo Post"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/trading-100%25_free_%26_commission--free-success.svg" alt="100% Free & Commission-Free Trading">
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions">
   <img src="https://img.shields.io/badge/broker-Alpaca%20Markets-green.svg" alt="Alpaca Markets">
   <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Gemini-8A2BE2.svg" alt="AI Models">
@@ -31,7 +32,11 @@
 
 ---
 
-AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets). It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, mechanical **risk guardrails**, an interactive **walk-forward backtesting suite**, and a clean, responsive **web trading desk**.
+AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, mechanical **risk guardrails**, an interactive **walk-forward backtesting suite**, and a clean, responsive **web trading desk**.
+
+> [!NOTE]
+> 💸 **100% Free Platform & Commission-Free Trading**:
+> AlgoPaca is completely free & open source with **zero monthly subscription fees** and **zero paywalls**. Combined with Alpaca Markets' native API for US equities and ETFs, you get automated quant trading with **$0 platform costs and $0 brokerage commissions**.
 
 ---
 
@@ -54,7 +59,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 ## 🌟 Why AlgoPaca?
 
-- 💸 **100% Free & Open Source**: No recurring monthly subscription tiers, no hidden platform fees, and zero vendor lock-in.
+- 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
 - 🧠 **Multi-Factor AI Intelligence**: Leverages state-of-the-art LLMs (OpenAI GPT-4o / GPT-4o-mini and Google Gemini 2.0 Flash / Pro) to fuse quantitative technical indicators, financial news sentiment, earnings surprise history, and macroeconomic calendar events into reasoned trading decisions.
 - 🛡️ **Mechanical Risk Protection**: Removes emotional decision-making with strict volatility-based ATR position sizing, automatic trailing stops, profit scaling, spread checks, and daily drawdown circuit breakers.
 - ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, order execution, cycle audit history, and multi-language internationalization.
@@ -86,49 +91,6 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 | **Pair**    | Regime Rotation    | Dynamic regime-impulse rotation across 2 symbols  | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA).                                                                                         |
 | **LS**      | Dual Momentum      | Trend strength momentum (Long/Short)              | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target.                                                                                                  |
 | **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning      | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
-
----
-
-## 🏗️ System Architecture
-
-```mermaid
-flowchart TD
-    subgraph MarketData [Market Data Feeds]
-        A1[Alpaca Market Data API]
-        A2[Yahoo Finance News RSS]
-        A3[Nasdaq Earnings Calendar]
-        A4[Forex Factory Macro Events]
-    end
-
-    subgraph CoreBot [AlgoPaca Core Backend]
-        B1[Technical Analysis Engine\nRSI • MACD • BB • ATR • ADX]
-        B2[AI Quantitative Brain\nGPT-4o • Gemini 2.0 Flash/Pro]
-        B3[Mechanical Risk Engine\nATR Sizing • Stops • Circuit Breaker]
-        B4[Strategy Dispatcher\nSMA • Dip • Pair • LS • AI Desk]
-    end
-
-    subgraph Execution [Broker & Storage]
-        C1[Alpaca Paper / Live API]
-        C2[Local State & History Stores]
-    end
-
-    subgraph Interfaces [User Interfaces]
-        D1[FastAPI Web Server :8765]
-        D2[Responsive Web Trading Desk]
-        D3[Terminal CLI Runner]
-    end
-
-    MarketData --> CoreBot
-    B1 --> B4
-    B2 --> B4
-    B4 --> B3
-    B3 --> C1
-    B3 --> C2
-    C1 --> Interfaces
-    C2 --> Interfaces
-    Interfaces --> D2
-    Interfaces --> D3
-```
 
 ---
 

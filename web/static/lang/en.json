@@ -1590,8 +1590,9 @@
   "auth_showcase_docs_link": "Documentation & GitHub",
   "auth_showcase_alpaca_badge": "Alpaca Markets Native",
   "auth_showcase_sim_badge": "Paper mode by default",
-  "auth_security_encrypted": "Encrypted & Sandboxed",
-  "auth_security_encrypted_desc": "Zero-knowledge API keys & isolated multi-user state",
-  "auth_security_execution": "Sub-Second Execution",
-  "auth_security_execution_desc": "Direct Alpaca streaming & autonomous risk guardrails"
+  "auth_badge_free_tier": "100% Free · Zero Commission",
+  "auth_free_banner_title": "100% Free & Commission-Free Trading",
+  "auth_free_banner_desc": "AlgoPaca has zero platform fees, and Alpaca provides $0 commission stock & ETF trading. No credit card required.",
+  "auth_showcase_stat_commission": "0% Brokerage Commission",
+  "auth_showcase_free_badge": "100% Free & Commission-Free Trading"
 }

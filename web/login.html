@@ -41,7 +41,7 @@
         <img src="/static/img/algopaca-mark.svg" alt="" class="auth-brand-logo" width="32" height="32" />
         <div class="auth-brand-meta">
           <span class="auth-brand-title" translate="no" data-i18n="app_title">AlgoPaca</span>
-          <span class="auth-brand-badge" data-i18n="eyebrow">Simulated Desk</span>
+          <span class="auth-brand-badge" data-i18n="auth_badge_free_tier">100% Free · Zero Commission</span>
         </div>
       </div>
 
@@ -49,6 +49,18 @@
         <h1 data-i18n="auth_login_title">Sign in to your desk</h1>
         <p data-i18n="auth_login_subtitle">Sign in to access your private trading desk and personal portfolio.</p>
       </header>
+
+      <div class="auth-free-banner" role="note" aria-label="100% Free &amp; Commission-Free Trading">
+        <div class="auth-free-banner-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+        </div>
+        <div class="auth-free-banner-content">
+          <span class="auth-free-banner-title" data-i18n="auth_free_banner_title">100% Free &amp; Commission-Free Trading</span>
+          <p class="auth-free-banner-desc" data-i18n="auth_free_banner_desc">AlgoPaca has zero platform fees, and Alpaca provides $0 commission stock &amp; ETF trading. No credit card required.</p>
+        </div>
+      </div>
 
       <div id="auth-alert" class="auth-alert is-error" role="alert" aria-live="assertive" hidden>
         <svg class="auth-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -145,27 +157,6 @@
           <span id="login-submit-text" data-i18n="auth_sign_in_btn">Sign In</span>
         </button>
 
-        <div class="auth-security-strip" aria-label="Security and isolation assurances">
-          <div class="security-strip-item">
-            <svg class="security-strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-            <div class="security-strip-text">
-              <strong data-i18n="auth_security_encrypted">Encrypted &amp; Sandboxed</strong>
-              <span data-i18n="auth_security_encrypted_desc">Zero-knowledge API keys &amp; isolated multi-user state</span>
-            </div>
-          </div>
-          <div class="security-strip-item">
-            <svg class="security-strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
-            <div class="security-strip-text">
-              <strong data-i18n="auth_security_execution">Sub-Second Execution</strong>
-              <span data-i18n="auth_security_execution_desc">Direct Alpaca streaming &amp; autonomous risk guardrails</span>
-            </div>
-          </div>
-        </div>
-
         <div class="auth-switch">
           <span data-i18n="auth_no_account">Don't have an account?</span>
           <a href="/signup" id="link-to-signup" class="auth-text-link" data-i18n="auth_create_account_link">Sign Up</a>
@@ -211,6 +202,12 @@
             <polyline points="8 6 2 12 8 18"></polyline>
           </svg>
           <span data-i18n="auth_showcase_stat_open_source">100% Free &amp; Open Source</span>
+        </div>
+        <div class="stat-pill" role="listitem">
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span data-i18n="auth_showcase_stat_commission">0% Brokerage Commission</span>
         </div>
         <div class="stat-pill" role="listitem">
           <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -474,6 +471,10 @@
           <span class="trust-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
             <span data-i18n="auth_showcase_alpaca_badge">Alpaca Markets Native</span>
+          </span>
+          <span class="trust-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            <span data-i18n="auth_showcase_free_badge">100% Free &amp; Commission-Free Trading</span>
           </span>
           <span class="trust-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>

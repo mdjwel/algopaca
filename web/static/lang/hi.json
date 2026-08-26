@@ -1590,8 +1590,9 @@
   "auth_showcase_alpaca_badge": "अल्पाका मार्केट्स नेटिव",
   "auth_showcase_sim_badge": "डिफ़ॉल्ट रूप से पेपर मोड",
   "auth_brand_home_aria": "एल्गोपाका होम",
-  "auth_security_encrypted": "एन्क्रिप्टेड और सैंडबॉक्स",
-  "auth_security_encrypted_desc": "ज़ीरो-नॉलेज एपीआई कुंजियाँ और अलग मल्टी-यूज़र स्थिति",
-  "auth_security_execution": "सब-सेकंड निष्पादन",
-  "auth_security_execution_desc": "सीधा अल्पाका स्ट्रीमिंग और स्वायत्त जोखिम नियंत्रण"
+  "auth_badge_free_tier": "१००% मुफ्त · शून्य कमीशन",
+  "auth_free_banner_title": "१००% मुफ्त और कमीशन-मुक्त ट्रेडिंग",
+  "auth_free_banner_desc": "एल्गोपाका का कोई प्लेटफॉर्म शुल्क नहीं है, और अल्पाका $० कमीशन पर स्टॉक और ईटीएफ ट्रेडिंग प्रदान करता है। किसी क्रेडिट कार्ड की आवश्यकता नहीं।",
+  "auth_showcase_stat_commission": "०% ब्रोकरेज कमीशन",
+  "auth_showcase_free_badge": "१००% मुफ्त और कमीशन-मुक्त ट्रेडिंग"
 }

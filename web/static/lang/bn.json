@@ -1590,8 +1590,9 @@
   "auth_showcase_docs_link": "ডকুমেন্টেশন ও গিটহাব",
   "auth_showcase_alpaca_badge": "আলপাকা মার্কেটস নেটিভ",
   "auth_showcase_sim_badge": "ডিফল্টে পেপার মোড",
-  "auth_security_encrypted": "এনক্রিপ্ট করা ও স্যান্ডবক্সড",
-  "auth_security_encrypted_desc": "জিরো-নলেজ এপিআই কী ও বিচ্ছিন্ন মাল্টি-ইউজার স্টেট",
-  "auth_security_execution": "সাব-সেকেন্ড এক্সিকিউশন",
-  "auth_security_execution_desc": "সরাসরি আলপাকা স্ট্রিমিং ও স্বয়ংক্রিয় ঝুঁকি গার্ডরেল"
+  "auth_badge_free_tier": "১০০% ফ্রি · জিরো কমিশন",
+  "auth_free_banner_title": "১০০% ফ্রি ও কমিশন-মুক্ত ট্রেডিং",
+  "auth_free_banner_desc": "অ্যালগোপ্যাকায় কোনো প্ল্যাটফর্ম সাবস্ক্রিপশন ফি নেই এবং আলপাকা দিচ্ছে $০ কমিশনে স্টক ও ইটিএফ ট্রেডিং। কোনো ক্রেডিট কার্ডের প্রয়োজন নেই।",
+  "auth_showcase_stat_commission": "০% ব্রোকারেজ কমিশন",
+  "auth_showcase_free_badge": "১০০% ফ্রি ও কমিশন-মুক্ত ট্রেডিং"
 }

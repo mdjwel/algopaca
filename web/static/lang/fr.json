@@ -1590,8 +1590,9 @@
   "auth_showcase_alpaca_badge": "Natif pour Alpaca Markets",
   "auth_showcase_sim_badge": "Mode simulé par défaut",
   "auth_brand_home_aria": "Accueil AlgoPaca",
-  "auth_security_encrypted": "Chiffré & Isolé",
-  "auth_security_encrypted_desc": "Clés API sans connaissance et état multi-utilisateur isolé",
-  "auth_security_execution": "Exécution en Sous-Seconde",
-  "auth_security_execution_desc": "Flux direct Alpaca et garde-fous de risque autonomes"
+  "auth_badge_free_tier": "100 % Gratuit · 0 % Commission",
+  "auth_free_banner_title": "Trading 100 % Gratuit et Sans Commission",
+  "auth_free_banner_desc": "AlgoPaca n'a aucun frais de plateforme et Alpaca offre le trading d'actions et d'ETF à 0 $ de commission. Sans carte.",
+  "auth_showcase_stat_commission": "0 % Commission de Courtage",
+  "auth_showcase_free_badge": "Trading 100 % Gratuit & Sans Commission"
 }
