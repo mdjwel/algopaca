@@ -427,7 +427,17 @@ class TestAuthAPI(unittest.TestCase):
         from unittest.mock import patch
         from bot.email_service import send_password_reset_email, render_password_reset_email
 
-        with patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+        mock_config = {
+            "host": "smtp.example.com",
+            "port": 465,
+            "username": "no-reply@example.com",
+            "password": "secretpassword",
+            "from_email": "no-reply@example.com",
+            "use_ssl": True,
+            "configured": True,
+        }
+        with patch("bot.email_service.get_smtp_config", return_value=mock_config), \
+             patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
             mock_server = mock_smtp_ssl.return_value
             result = send_password_reset_email(
                 to_email="test@example.com",
