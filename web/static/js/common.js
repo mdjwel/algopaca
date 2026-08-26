@@ -3,6 +3,16 @@
  * Core utilities, state management, API client, NiceSelect, formatting, toasts, and status polling.
  */
 
+// Initialize global theme from localStorage if set
+(function initGlobalTheme() {
+  try {
+    const savedTheme = localStorage.getItem("algopaca_theme");
+    if (savedTheme && ["obsidian", "midnight", "emerald", "daylight"].includes(savedTheme)) {
+      document.documentElement.setAttribute("data-theme", savedTheme);
+    }
+  } catch (e) {}
+})();
+
 const $ = (id) => document.getElementById(id);
 
 /** Nice Select 2 helpers — keep custom dropdowns in sync with native <select>. */
@@ -118,6 +128,7 @@ const PAGES = [
   "orders",
   "history",
   "configuration",
+  "admin",
 ];
 
 const PAGE_PATHS = {
@@ -130,6 +141,7 @@ const PAGE_PATHS = {
   orders: "/orders",
   history: "/history",
   configuration: "/configuration",
+  admin: "/admin",
 };
 
 function isBacktestFamily(page = currentPage) {
@@ -541,6 +553,21 @@ function escapeHtml(s) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+/**
+ * Build avatar initials from a display name.
+ * Multi-word names use the first letter of the first two words ("Eh Jewel" -> "EJ");
+ * single words fall back to their first two letters ("algotrader" -> "AL").
+ */
+function computeInitials(name, fallback = "T") {
+  const words = String(name || "")
+    .trim()
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  if (words.length === 0) return fallback.slice(0, 2).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 function cssVar(name, fallback) {
@@ -1387,15 +1414,17 @@ async function initUserAuthStatus() {
   widget.className = "masthead-auth-widget";
 
   if (user) {
-    const initials = (user.display_name || user.username || "T")
-      .slice(0, 2)
-      .toUpperCase();
-    const displayName = user.display_name || user.username;
-    const role = user.role || "trader";
+    const displayName = escapeHtml(user.display_name || user.username || "Trader");
+    const role = escapeHtml(user.role || "trader");
+    const initials = computeInitials(user.display_name || user.username);
+    const roleLower = String(user.role || "trader").toLowerCase();
+    const isAdmin = roleLower === "admin" || roleLower === "owner";
+    const currentPath = window.location.pathname;
+    const isUserMenuActive = ["/settings", "/configuration", "/admin"].includes(currentPath);
 
     widget.innerHTML = `
       <div class="masthead-user-widget">
-        <button type="button" class="masthead-user-trigger" id="masthead-user-trigger" aria-haspopup="true" aria-expanded="false" aria-label="User Account">
+        <button type="button" class="masthead-user-trigger ${isUserMenuActive ? 'is-active-page' : ''}" id="masthead-user-trigger" aria-haspopup="true" aria-expanded="false" aria-label="User Account">
           <span class="masthead-user-avatar">${initials}</span>
           <span class="masthead-user-name">${displayName}</span>
           <svg class="masthead-user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1405,15 +1434,45 @@ async function initUserAuthStatus() {
         <div class="masthead-user-menu" id="masthead-user-menu" aria-labelledby="masthead-user-trigger" hidden>
           <div class="masthead-user-info">
             <div class="masthead-info-name">${displayName}</div>
-            <span class="masthead-info-role">${role}</span>
+            <span class="masthead-info-role ${isAdmin ? 'is-admin-role' : ''}">${role}</span>
           </div>
+          <a href="/settings" data-page="settings" class="masthead-menu-item ${currentPath === "/settings" ? "is-active" : ""}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span data-i18n="user_settings">User Settings</span>
+          </a>
+          <a href="/configuration" data-page="configuration" class="masthead-menu-item ${currentPath === "/configuration" ? "is-active" : ""}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
+            </svg>
+            <span data-i18n="nav_configuration">Configuration</span>
+          </a>
+          ${isAdmin ? `
+          <a href="/admin" data-page="admin" class="masthead-menu-item is-admin-link ${currentPath === "/admin" ? "is-active" : ""}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span data-i18n="admin_dashboard">Admin Dashboard</span>
+          </a>
+          ` : ''}
+          <div class="masthead-menu-divider" role="separator"></div>
           <button type="button" class="masthead-menu-item is-logout" id="btn-masthead-logout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
               <polyline points="16 17 21 12 16 7"></polyline>
               <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
-            <span>Sign Out</span>
+            <span data-i18n="sign_out">Sign Out</span>
           </button>
         </div>
       </div>
@@ -1437,6 +1496,14 @@ async function initUserAuthStatus() {
       }
     });
 
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && menu && !menu.hidden) {
+        menu.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.focus();
+      }
+    });
+
     logoutBtn?.addEventListener("click", handleUserLogout);
   } else {
     const currentPath = window.location.pathname + window.location.search;
@@ -1453,6 +1520,9 @@ async function initUserAuthStatus() {
   }
 
   mastheadRight.appendChild(widget);
+  if (typeof i18n !== "undefined" && i18n.translateDOM) {
+    i18n.translateDOM(widget);
+  }
 
 }
 

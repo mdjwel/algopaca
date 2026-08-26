@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>User Settings · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/settings.css" />
+</head>
+<body data-page="settings">
+  <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <div class="settings-badge-wrap">
+                <p class="eyebrow" data-i18n="eyebrow_settings">User Account · Preferences</p>
+                <span class="settings-user-tag" id="header-user-tag">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span id="header-user-role-text">SETTINGS</span>
+                </span>
+              </div>
+              <h1 data-i18n="settings_title">User Settings</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_settings">Personalize your trader profile, security preferences, appearance themes, and safety defaults.</p>
+        </div>
+        <div class="masthead-right">
+          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+            <div class="desk-nav-group" data-nav-group="trade">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Advanced Order</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="backtest">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+              </div>
+            </div>
+            <div class="desk-nav-group" data-nav-group="portfolio">
+              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+              </div>
+            </div>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <main id="main">
+      <div id="page-settings" class="page page-settings" data-page="settings">
+
+        <!-- Settings Primary Navigation Tabs -->
+        <div class="settings-tabs-nav" role="tablist" aria-label="Settings Sections" data-i18n-aria-label="settings_sections">
+          <button type="button" class="settings-tab-btn is-active" id="tab-btn-profile" role="tab" aria-selected="true" aria-controls="panel-profile" data-tab="profile">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span data-i18n="settings_tab_profile">Profile & Identity</span>
+          </button>
+
+          <button type="button" class="settings-tab-btn" id="tab-btn-security" role="tab" aria-selected="false" aria-controls="panel-security" data-tab="security">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span data-i18n="settings_tab_security">Security & Sessions</span>
+          </button>
+
+          <button type="button" class="settings-tab-btn" id="tab-btn-appearance" role="tab" aria-selected="false" aria-controls="panel-appearance" data-tab="appearance">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <circle cx="12" cy="12" r="5"></circle>
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+            </svg>
+            <span data-i18n="settings_tab_appearance">Appearance & Locale</span>
+          </button>
+
+          <button type="button" class="settings-tab-btn" id="tab-btn-trading" role="tab" aria-selected="false" aria-controls="panel-trading" data-tab="trading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
+            </svg>
+            <span data-i18n="settings_tab_trading">Trading Defaults</span>
+          </button>
+
+          <button type="button" class="settings-tab-btn" id="tab-btn-data" role="tab" aria-selected="false" aria-controls="panel-data" data-tab="data">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
+            <span data-i18n="settings_tab_data">Data & Account</span>
+          </button>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB 1: PROFILE & IDENTITY -->
+        <!-- ============================================================ -->
+        <section class="settings-panel is-active" id="panel-profile" role="tabpanel" aria-labelledby="tab-btn-profile" tabindex="-1">
+          <div class="settings-grid">
+            <!-- Profile Hero Card -->
+            <div class="panel profile-hero-panel is-loading" id="profile-hero-panel">
+              <div class="profile-hero-content">
+                <div class="profile-avatar-box">
+                  <div class="profile-avatar-badge" id="profile-avatar-wrap" aria-hidden="true">
+                    <img class="profile-avatar-img" id="profile-avatar-img" alt="" width="76" height="76" decoding="async" />
+                  </div>
+                  <div class="profile-role-pill" id="profile-role-pill"></div>
+                </div>
+                <div class="profile-meta-info">
+                  <h2 class="profile-display-title" id="profile-display-name-hero"></h2>
+                  <div class="profile-sub-tags">
+                    <button type="button" class="profile-user-tag copy-chip" id="profile-username-tag" data-copy-label="settings_copy_username" title="Copy username" data-i18n-title="settings_copy_username"></button>
+                    <button type="button" class="profile-id-tag copy-chip" id="profile-id-tag" data-copy-label="settings_copy_user_id" title="Copy account ID" data-i18n-title="settings_copy_user_id"></button>
+                    <span class="profile-status-pill" id="profile-status-pill" hidden></span>
+                  </div>
+                  <div class="profile-dates-strip">
+                    <div class="profile-date-item">
+                      <span class="date-label" data-i18n="settings_member_since">Member Since</span>
+                      <strong class="date-val" id="profile-member-since">—</strong>
+                    </div>
+                    <div class="profile-date-item">
+                      <span class="date-label" data-i18n="settings_last_login">Last Active</span>
+                      <strong class="date-val" id="profile-last-login">—</strong>
+                    </div>
+                    <div class="profile-date-item">
+                      <span class="date-label" data-i18n="settings_trading_mode_lbl">Trading Mode</span>
+                      <strong class="date-val" id="profile-trading-mode">—</strong>
+                    </div>
+                    <div class="profile-date-item">
+                      <span class="date-label" data-i18n="settings_active_sessions_lbl">Active Devices</span>
+                      <a class="date-val date-val-link" href="#security" id="profile-active-sessions-count">—</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="profile-hero-error" id="profile-hero-error" role="alert" hidden>
+                <span data-i18n="settings_profile_load_failed">Could not load your profile.</span>
+                <button type="button" class="btn-inline-retry" id="btn-retry-profile" data-i18n="retry">Retry</button>
+              </p>
+            </div>
+
+            <!-- Profile Edit Form Panel -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_profile_info_title">Personal Information</h3>
+                  <p class="panel-desc" data-i18n="settings_profile_info_desc">Update your display name and contact email for notifications and account alerts.</p>
+                </div>
+                <span class="unsaved-flag" id="profile-unsaved-flag" hidden>
+                  <span class="unsaved-dot" aria-hidden="true"></span>
+                  <span data-i18n="settings_unsaved_changes">Unsaved changes</span>
+                </span>
+              </div>
+              <form id="form-user-profile" class="form" novalidate>
+                <div class="settings-form-row">
+                  <div class="field-wrap">
+                    <div class="field-label-row">
+                      <label for="input-profile-name" data-i18n="settings_display_name">Display Name</label>
+                      <span class="field-counter" id="profile-name-counter" aria-hidden="true">0/50</span>
+                    </div>
+                    <input type="text" id="input-profile-name" name="display_name" class="field-input" maxlength="50" required autocomplete="name" aria-describedby="profile-name-hint" placeholder="Trader Name" data-i18n-placeholder="settings_display_name_placeholder" />
+                    <p class="field-error" id="profile-name-error" hidden></p>
+                    <p class="field-hint" id="profile-name-hint" data-i18n="settings_display_name_hint">The name displayed on your terminal masthead and audit logs.</p>
+                  </div>
+                  <div class="field-wrap">
+                    <label for="input-profile-email" data-i18n="settings_email_address">Email Address</label>
+                    <input type="email" id="input-profile-email" name="email" class="field-input" required autocomplete="email" inputmode="email" aria-describedby="profile-email-hint" placeholder="trader@domain.com" data-i18n-placeholder="settings_email_placeholder" />
+                    <p class="field-error" id="profile-email-error" hidden></p>
+                    <p class="field-hint" id="profile-email-hint" data-i18n="settings_email_hint">Used for password recovery and system alerts.</p>
+                  </div>
+                </div>
+
+                <div class="settings-form-row">
+                  <div class="field-wrap">
+                    <label for="input-profile-username" data-i18n="settings_username_label">Username</label>
+                    <div class="readonly-field-shell">
+                      <input type="text" id="input-profile-username" class="field-input is-readonly" readonly tabindex="-1" aria-describedby="profile-username-hint" />
+                      <svg class="readonly-lock-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                      </svg>
+                    </div>
+                    <p class="field-hint" id="profile-username-hint" data-i18n="settings_username_hint">Username cannot be changed once registered.</p>
+                  </div>
+                  <div class="field-wrap">
+                    <label for="input-profile-role" data-i18n="settings_account_role_label">Account Role</label>
+                    <div class="readonly-field-shell">
+                      <input type="text" id="input-profile-role" class="field-input is-readonly" readonly tabindex="-1" aria-describedby="profile-role-hint" />
+                      <svg class="readonly-lock-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                      </svg>
+                    </div>
+                    <p class="field-hint" id="profile-role-hint" data-i18n="settings_account_role_hint">Managed by system administrators.</p>
+                  </div>
+                </div>
+
+                <p class="field-notice" id="profile-email-notice" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <span data-i18n="settings_email_change_notice">Changing your email address also changes where password-reset links are delivered. Make sure you control the new inbox.</span>
+                </p>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="btn-save-profile" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    <span data-i18n="settings_save_profile">Save Profile Changes</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary" id="btn-reset-profile" hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                      <polyline points="1 4 1 10 7 10"></polyline>
+                      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                    </svg>
+                    <span data-i18n="settings_discard_changes">Discard Changes</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- TAB 2: SECURITY & SESSIONS -->
+        <!-- ============================================================ -->
+        <section class="settings-panel" id="panel-security" role="tabpanel" aria-labelledby="tab-btn-security" tabindex="-1" hidden>
+          <div class="settings-grid">
+            <!-- Password Change Panel -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_change_pw_title">Change Password</h3>
+                  <p class="panel-desc" data-i18n="settings_change_pw_desc">Ensure your account is protected with a strong, distinct password.</p>
+                </div>
+              </div>
+              <form id="form-change-password" class="form" novalidate>
+                <div class="field-wrap">
+                  <label for="pw-current" data-i18n="settings_current_pw">Current Password</label>
+                  <div class="password-input-shell">
+                    <input type="password" id="pw-current" name="current_password" class="field-input" required placeholder="••••••••" autocomplete="current-password" />
+                    <button type="button" class="btn-toggle-pw" aria-label="Toggle password visibility" data-target="pw-current">
+                      <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                      <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" hidden>
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="settings-form-row">
+                  <div class="field-wrap">
+                    <label for="pw-new" data-i18n="settings_new_pw">New Password</label>
+                    <div class="password-input-shell">
+                      <input type="password" id="pw-new" name="new_password" class="field-input" required minlength="8" placeholder="••••••••" autocomplete="new-password" />
+                      <button type="button" class="btn-toggle-pw" aria-label="Toggle password visibility" data-target="pw-new">
+                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" hidden>
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      </button>
+                    </div>
+                    <!-- Password Strength Meter -->
+                    <div class="pw-strength-box" id="pw-strength-box">
+                      <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill"></div></div>
+                      <span class="pw-strength-label" id="pw-strength-label" data-i18n="pw_strength_too_weak">Too weak</span>
+                    </div>
+                  </div>
+
+                  <div class="field-wrap">
+                    <label for="pw-confirm" data-i18n="settings_confirm_new_pw">Confirm New Password</label>
+                    <div class="password-input-shell">
+                      <input type="password" id="pw-confirm" name="confirm_password" class="field-input" required placeholder="••••••••" autocomplete="new-password" />
+                      <button type="button" class="btn-toggle-pw" aria-label="Toggle password visibility" data-target="pw-confirm">
+                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" hidden>
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      </button>
+                    </div>
+                    <p class="field-hint" id="pw-match-hint" data-i18n="settings_pw_min_length">Must be at least 8 characters long.</p>
+                  </div>
+                </div>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="btn-change-pw">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <span data-i18n="settings_update_password_btn">Update Password</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Multi-Device Sessions Manager -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_sessions_title">Active Sessions & Devices</h3>
+                  <p class="panel-desc" data-i18n="settings_sessions_desc">Manage browsers and devices currently signed into your AlgoPaca account.</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-terminate-other-sessions">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                    <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                    <line x1="12" y1="2" x2="12" y2="12"></line>
+                  </svg>
+                  <span data-i18n="settings_revoke_others">Sign Out All Other Devices</span>
+                </button>
+              </div>
+
+              <div class="sessions-list" id="sessions-container" aria-live="polite">
+                <!-- Session items rendered dynamically via JS -->
+                <div class="loading-state">
+                  <div class="spinner"></div>
+                  <span data-i18n="settings_loading_sessions">Loading active sessions…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- TAB 3: APPEARANCE & LOCALIZATION -->
+        <!-- ============================================================ -->
+        <section class="settings-panel" id="panel-appearance" role="tabpanel" aria-labelledby="tab-btn-appearance" tabindex="-1" hidden>
+          <div class="settings-grid">
+            <!-- Theme Selection Card -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_theme_title">Terminal Theme</h3>
+                  <p class="panel-desc" data-i18n="settings_theme_desc">Choose a color palette tailored for market analysis and focused algorithmic trading.</p>
+                </div>
+              </div>
+
+              <div class="theme-picker-grid" role="radiogroup" aria-label="Terminal Themes" data-i18n-aria-label="terminal_themes">
+                <!-- Theme Option: Obsidian -->
+                <label class="theme-card is-active" data-theme-val="obsidian">
+                  <input type="radio" name="ui_theme" value="obsidian" checked />
+                  <div class="theme-card-preview theme-preview-obsidian">
+                    <div class="preview-swatch swatch-bg"></div>
+                    <div class="preview-swatch swatch-panel"></div>
+                    <div class="preview-swatch swatch-accent"></div>
+                  </div>
+                  <div class="theme-card-info">
+                    <strong class="theme-name" data-i18n="theme_obsidian">Obsidian Night</strong>
+                    <span class="theme-sub" data-i18n="theme_obsidian_desc">Default obsidian desk with warm copper glow</span>
+                  </div>
+                  <div class="theme-card-check">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                </label>
+
+                <!-- Theme Option: Midnight Slate -->
+                <label class="theme-card" data-theme-val="midnight">
+                  <input type="radio" name="ui_theme" value="midnight" />
+                  <div class="theme-card-preview theme-preview-midnight">
+                    <div class="preview-swatch swatch-bg"></div>
+                    <div class="preview-swatch swatch-panel"></div>
+                    <div class="preview-swatch swatch-accent"></div>
+                  </div>
+                  <div class="theme-card-info">
+                    <strong class="theme-name" data-i18n="theme_midnight">Midnight Slate</strong>
+                    <span class="theme-sub" data-i18n="theme_midnight_desc">Deep navy slate with cyan electric glow</span>
+                  </div>
+                  <div class="theme-card-check">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                </label>
+
+                <!-- Theme Option: Emerald Forest -->
+                <label class="theme-card" data-theme-val="emerald">
+                  <input type="radio" name="ui_theme" value="emerald" />
+                  <div class="theme-card-preview theme-preview-emerald">
+                    <div class="preview-swatch swatch-bg"></div>
+                    <div class="preview-swatch swatch-panel"></div>
+                    <div class="preview-swatch swatch-accent"></div>
+                  </div>
+                  <div class="theme-card-info">
+                    <strong class="theme-name" data-i18n="theme_emerald">Emerald Forest</strong>
+                    <span class="theme-sub" data-i18n="theme_emerald_desc">Cyber terminal moss green & deep slate</span>
+                  </div>
+                  <div class="theme-card-check">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                </label>
+
+                <!-- Theme Option: Daylight Contrast -->
+                <label class="theme-card" data-theme-val="daylight">
+                  <input type="radio" name="ui_theme" value="daylight" />
+                  <div class="theme-card-preview theme-preview-daylight">
+                    <div class="preview-swatch swatch-bg"></div>
+                    <div class="preview-swatch swatch-panel"></div>
+                    <div class="preview-swatch swatch-accent"></div>
+                  </div>
+                  <div class="theme-card-info">
+                    <strong class="theme-name" data-i18n="theme_daylight">Daylight Desk</strong>
+                    <span class="theme-sub" data-i18n="theme_daylight_desc">Clean high-contrast light theme</span>
+                  </div>
+                  <div class="theme-card-check">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Localization & Display Card -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_locale_title">Localization & Interface Options</h3>
+                  <p class="panel-desc" data-i18n="settings_locale_desc">Configure regional language, clock display, and startup defaults.</p>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <div class="field-wrap">
+                  <label for="select-settings-lang" data-i18n="settings_language">Interface Language</label>
+                  <select id="select-settings-lang" class="field-select">
+                    <option value="en">English (US / UK)</option>
+                    <option value="es">Español (Spanish)</option>
+                    <option value="fr">Français (French)</option>
+                    <option value="bn">বাংলা (Bengali)</option>
+                    <option value="hi">हिन्दी (Hindi)</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_language_hint">Switches desk terminology and translations immediately.</p>
+                </div>
+
+                <div class="field-wrap">
+                  <label for="select-settings-timezone" data-i18n="settings_timezone_display">Timezone & Clock Display</label>
+                  <select id="select-settings-timezone" class="field-select">
+                    <option value="local" data-i18n="tz_local">Local Browser Time</option>
+                    <option value="exchange" data-i18n="tz_exchange">US Eastern (NYSE/NASDAQ Market Time)</option>
+                    <option value="utc" data-i18n="tz_utc">UTC / GMT</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_timezone_hint">Controls timestamps across orders, fills, and blotters.</p>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <div class="field-wrap">
+                  <label for="select-settings-default-page" data-i18n="settings_default_page">Default Landing Page</label>
+                  <select id="select-settings-default-page" class="field-select">
+                    <option value="auto-trade" data-i18n="nav_auto_trade">Auto Trade</option>
+                    <option value="manual-order" data-i18n="nav_manual_order">Advanced Order</option>
+                    <option value="positions" data-i18n="nav_positions">Positions</option>
+                    <option value="orders" data-i18n="nav_orders">Orders Blotter</option>
+                    <option value="history" data-i18n="nav_history">History Insights</option>
+                    <option value="backtest" data-i18n="nav_backtest">Backtest Desk</option>
+                    <option value="configuration" data-i18n="nav_configuration">Configuration</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_default_page_hint">The desk screen opened automatically upon signing in.</p>
+                </div>
+
+                <div class="field-wrap">
+                  <label for="select-settings-refresh" data-i18n="settings_chart_refresh">Blotter Refresh Polling Rate</label>
+                  <select id="select-settings-refresh" class="field-select">
+                    <option value="10">10 seconds (Ultra-Fast)</option>
+                    <option value="20" selected>20 seconds (Standard)</option>
+                    <option value="30">30 seconds (Balanced)</option>
+                    <option value="60">60 seconds (Conservative)</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_chart_refresh_hint">Background poll frequency for quotes and order blotters.</p>
+                </div>
+              </div>
+
+              <!-- Switch Toggles Row -->
+              <div class="settings-switches-grid">
+                <div class="switch-item">
+                  <div class="switch-item-text">
+                    <strong class="switch-title" data-i18n="settings_sound_alerts">Audio Alerts & Execution Chimes</strong>
+                    <span class="switch-desc" data-i18n="settings_sound_alerts_desc">Play audio tone when orders execute, dip hunts trigger, or risk limits hit.</span>
+                  </div>
+                  <div class="switch-item-actions">
+                    <button type="button" class="btn btn-secondary btn-xs" id="btn-test-sound">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                      </svg>
+                      <span data-i18n="settings_test_sound">Preview Chime</span>
+                    </button>
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="check-sound-alerts" checked />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="switch-item">
+                  <div class="switch-item-text">
+                    <strong class="switch-title" data-i18n="settings_compact_mode">Compact Blotter Density</strong>
+                    <span class="switch-desc" data-i18n="settings_compact_mode_desc">Reduces table row heights and paddings for maximum screen data density.</span>
+                  </div>
+                  <div class="switch-item-actions">
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="check-compact-mode" />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="btn-save-appearance">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span data-i18n="settings_save_preferences">Save Preferences</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- TAB 4: TRADING DEFAULTS & SAFETY -->
+        <!-- ============================================================ -->
+        <section class="settings-panel" id="panel-trading" role="tabpanel" aria-labelledby="tab-btn-trading" tabindex="-1" hidden>
+          <div class="settings-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_trading_defaults_title">Order Sizing & Execution Defaults</h3>
+                  <p class="panel-desc" data-i18n="settings_trading_defaults_desc">Pre-fill parameters for your Advanced Order desk and quick executions.</p>
+                </div>
+              </div>
+
+              <form id="form-trading-defaults" class="form" novalidate>
+                <div class="settings-form-row">
+                  <div class="field-wrap">
+                    <label for="select-default-size-mode" data-i18n="settings_default_size_mode">Default Order Sizing Mode</label>
+                    <select id="select-default-size-mode" class="field-select">
+                      <option value="qty" data-i18n="size_mode_shares">Share Quantity (Units)</option>
+                      <option value="notional" data-i18n="size_mode_dollars">Dollar Amount ($ Notional)</option>
+                    </select>
+                    <p class="field-hint" data-i18n="settings_size_mode_hint">Determines whether tickets open with share quantity or dollar amount focused.</p>
+                  </div>
+
+                  <div class="field-wrap" id="wrap-default-trade-qty">
+                    <label for="input-default-trade-qty" data-i18n="settings_default_trade_qty">Default Share Quantity</label>
+                    <input type="number" id="input-default-trade-qty" class="field-input" step="any" min="0.01" value="1.0" />
+                    <p class="field-hint" data-i18n="settings_trade_qty_hint">Standard number of shares pre-filled on order forms.</p>
+                  </div>
+
+                  <div class="field-wrap" id="wrap-default-trade-notional">
+                    <label for="input-default-trade-notional" data-i18n="settings_default_trade_notional">Default Dollar Notional ($)</label>
+                    <input type="number" id="input-default-trade-notional" class="field-input" step="10" min="1.0" value="100.0" />
+                    <p class="field-hint" data-i18n="settings_trade_notional_hint">Standard cash amount per trade when in Notional mode.</p>
+                  </div>
+                </div>
+
+                <div class="panel-divider"></div>
+
+                <div class="panel-head-sub">
+                  <h4 class="sub-heading" data-i18n="settings_safety_guardrails_heading">Safety Prompts & Guardrails</h4>
+                  <p class="sub-desc" data-i18n="settings_safety_guardrails_desc">Add verification checkpoints to avoid accidental misclicks during live sessions.</p>
+                </div>
+
+                <div class="settings-switches-grid">
+                  <div class="switch-item">
+                    <div class="switch-item-text">
+                      <strong class="switch-title" data-i18n="settings_confirm_manual">Require Confirmation for Manual Orders</strong>
+                      <span class="switch-desc" data-i18n="settings_confirm_manual_desc">Shows a review modal before dispatching buy, sell, short, or cover tickets.</span>
+                    </div>
+                    <div class="switch-item-actions">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="check-confirm-orders" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="switch-item">
+                    <div class="switch-item-text">
+                      <strong class="switch-title" data-i18n="settings_confirm_close_all">Double Confirmation on "Close All Positions"</strong>
+                      <span class="switch-desc" data-i18n="settings_confirm_close_all_desc">Requires explicit safety confirmation before liquidating all open positions simultaneously.</span>
+                    </div>
+                    <div class="switch-item-actions">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="check-confirm-close-all" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="btn-save-trading-defaults">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    <span data-i18n="settings_save_trading_defaults">Save Trading Defaults</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- TAB 5: DATA & ACCOUNT -->
+        <!-- ============================================================ -->
+        <section class="settings-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-btn-data" tabindex="-1" hidden>
+          <div class="settings-grid">
+            <!-- Connected Integrations Status Card -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_integrations_title">Connected Services & Keys</h3>
+                  <p class="panel-desc" data-i18n="settings_integrations_desc">Status of API broker credentials and AI models configured for your account.</p>
+                </div>
+                <a href="/configuration" class="btn btn-secondary btn-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span data-i18n="settings_manage_keys_btn">Manage API Keys</span>
+                </a>
+              </div>
+
+              <div class="integrations-status-grid">
+                <div class="integration-item">
+                  <div class="integration-icon-wrap">
+                    <span class="integration-icon-alpaca">ALP</span>
+                  </div>
+                  <div class="integration-info">
+                    <strong class="integration-name" data-i18n="settings_alpaca_paper">Alpaca Paper Trading</strong>
+                    <span class="integration-badge" id="badge-status-paper" data-status="checking">Checking…</span>
+                  </div>
+                </div>
+
+                <div class="integration-item">
+                  <div class="integration-icon-wrap">
+                    <span class="integration-icon-live">LIVE</span>
+                  </div>
+                  <div class="integration-info">
+                    <strong class="integration-name" data-i18n="settings_alpaca_live">Alpaca Live Trading</strong>
+                    <span class="integration-badge" id="badge-status-live" data-status="checking">Checking…</span>
+                  </div>
+                </div>
+
+                <div class="integration-item">
+                  <div class="integration-icon-wrap">
+                    <span class="integration-icon-ai">GPT</span>
+                  </div>
+                  <div class="integration-info">
+                    <strong class="integration-name" data-i18n="settings_openai_key">OpenAI Provider</strong>
+                    <span class="integration-badge" id="badge-status-openai" data-status="checking">Checking…</span>
+                  </div>
+                </div>
+
+                <div class="integration-item">
+                  <div class="integration-icon-wrap">
+                    <span class="integration-icon-gemini">GEM</span>
+                  </div>
+                  <div class="integration-info">
+                    <strong class="integration-name" data-i18n="settings_gemini_key">Google Gemini Provider</strong>
+                    <span class="integration-badge" id="badge-status-gemini" data-status="checking">Checking…</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Export Account Data Card -->
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_export_title">Export Account Data</h3>
+                  <p class="panel-desc" data-i18n="settings_export_desc">Download a complete JSON export of your user profile, active sessions, and configuration preferences.</p>
+                </div>
+              </div>
+
+              <div class="export-actions-strip">
+                <button type="button" class="btn btn-secondary" id="btn-export-data">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span data-i18n="settings_download_json">Download Account Data (JSON)</span>
+                </button>
+                <span class="export-note" data-i18n="settings_export_note">All sensitive API secrets remain encrypted and are excluded from the portable export.</span>
+              </div>
+            </div>
+
+            <!-- Danger Zone: Account Deletion -->
+            <div class="panel danger-panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title text-danger" data-i18n="settings_danger_title">Danger Zone</h3>
+                  <p class="panel-desc" data-i18n="settings_danger_desc">Irreversible actions regarding your AlgoPaca account and trading state.</p>
+                </div>
+              </div>
+
+              <div class="danger-row">
+                <div class="danger-info">
+                  <strong class="danger-title" data-i18n="settings_delete_account_title">Delete User Account</strong>
+                  <span class="danger-desc" data-i18n="settings_delete_account_desc">Permanently remove your account, active sessions, preferences, and trading memory state.</span>
+                </div>
+                <button type="button" class="btn btn-danger" id="btn-open-delete-modal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  <span data-i18n="settings_delete_account_btn">Delete Account</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Modal: Delete Account Confirmation -->
+    <div class="modal-backdrop" id="modal-delete-account" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title" hidden>
+      <div class="modal-card modal-card-danger">
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" class="modal-icon-danger">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h3 class="modal-title" id="modal-delete-title" data-i18n="settings_confirm_delete_title">Confirm Account Deletion</h3>
+          </div>
+          <button type="button" class="btn-modal-close" id="btn-close-delete-modal" aria-label="Close modal">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-warning-text" data-i18n="settings_confirm_delete_warning">
+            This action cannot be undone. All active sessions, trader preferences, and credential links will be permanently wiped.
+          </p>
+          <div class="field-wrap">
+            <label for="input-delete-password" data-i18n="settings_confirm_delete_pw_label">Enter your password to confirm:</label>
+            <input type="password" id="input-delete-password" class="field-input" placeholder="••••••••" required />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-delete" data-i18n="cancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="btn-confirm-delete">
+            <span data-i18n="settings_confirm_delete_btn">Permanently Delete Account</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/settings.js"></script>
+</body>
+</html>

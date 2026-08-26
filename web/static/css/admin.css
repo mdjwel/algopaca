@@ -1,0 +1,2076 @@
+/**
+ * Admin & Owner Dashboard Stylesheet for AlgoPaca
+ * Cyber-trading terminal dark theme with responsive tabs, KPI grids, NiceSelect controls, tables, and live consoles.
+ */
+
+.page-admin {
+  display: grid;
+  grid-template-columns: minmax(12.5rem, 15.5rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* Primary Sidebar Navigation */
+.admin-tabs-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  position: sticky;
+  top: 1rem;
+  margin: 0;
+  padding: 0.45rem;
+  background: rgba(16, 24, 35, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.admin-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: var(--ui);
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.admin-tab-btn:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.admin-tab-btn.is-active {
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
+  color: var(--copper);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--copper) 15%, transparent);
+}
+
+.admin-tab-btn svg {
+  flex-shrink: 0;
+}
+
+.admin-tab-btn span {
+  line-height: 1.25;
+}
+
+/* Admin Panels */
+.admin-panel {
+  display: none;
+  grid-column: 2;
+  min-width: 0;
+  animation: adminFadeIn 0.2s ease-out;
+}
+
+.admin-panel.is-active {
+  display: block;
+}
+
+@keyframes adminFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* KPI Cards Grid */
+.admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.admin-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-kpi-card:hover {
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+  transform: translateY(-2px);
+}
+
+.kpi-icon-pill {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.kpi-icon-pill.is-cyan {
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  color: var(--copper);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+}
+
+.kpi-icon-pill.is-emerald {
+  background: color-mix(in srgb, var(--buy) 12%, transparent);
+  color: var(--buy);
+  border: 1px solid color-mix(in srgb, var(--buy) 25%, transparent);
+}
+
+.kpi-icon-pill.is-amber {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
+}
+
+.kpi-icon-pill.is-purple {
+  background: color-mix(in srgb, var(--violet) 12%, transparent);
+  color: var(--violet);
+  border: 1px solid color-mix(in srgb, var(--violet) 25%, transparent);
+}
+
+.live-pulse-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--buy);
+  box-shadow: 0 0 8px var(--buy);
+  animation: liveBlink 1.8s infinite ease-in-out;
+}
+
+@keyframes liveBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.kpi-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kpi-label {
+  font-family: var(--ui);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-value {
+  font-family: var(--mono);
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.kpi-value-split {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.kpi-value-split .sep {
+  color: var(--line);
+}
+
+.kpi-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.highlight-cyan { color: var(--copper); }
+.highlight-emerald { color: var(--buy); }
+.highlight-gold { color: var(--warn); }
+.highlight-purple { color: var(--violet); }
+
+/* Analytics Charts & Integrations Row */
+.admin-analytics-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 980px) {
+  .admin-analytics-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-chart-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-canvas-wrap {
+  width: 100%;
+  height: 240px;
+  margin-top: 0.75rem;
+  position: relative;
+}
+
+.chart-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Integrations Panel */
+.integrations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.integration-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.integration-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.integration-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.integration-count {
+  font-family: var(--mono);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.progress-bar-fill.is-cyan { background: linear-gradient(90deg, var(--copper-deep), var(--copper)); }
+.progress-bar-fill.is-gold { background: linear-gradient(90deg, var(--warn), var(--warn)); }
+.progress-bar-fill.is-emerald { background: linear-gradient(90deg, var(--buy), var(--buy)); }
+.progress-bar-fill.is-purple { background: linear-gradient(90deg, var(--violet-deep), var(--violet)); }
+
+/* ==========================================================================
+   Users Management Panel & Table
+   ========================================================================== */
+.admin-users-table-panel {
+  padding: 0;
+  overflow: hidden;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.users-table-head {
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.users-search-wrap {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  max-width: 560px;
+}
+
+.search-input-shell {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.search-input-shell .field-input {
+  width: 100%;
+  height: 38px;
+  padding-left: 2.35rem;
+  padding-right: 2.2rem;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.84rem;
+  transition: all 0.18s ease;
+}
+
+.search-input-shell .field-input:focus {
+  border-color: var(--copper);
+  background: var(--input-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--copper) 20%, transparent);
+  outline: none;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%) !important;
+  width: 20px;
+  height: 20px;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  z-index: 2;
+}
+
+.search-clear-btn[hidden] {
+  display: none !important;
+}
+
+.search-clear-btn:hover,
+.search-clear-btn:focus,
+.search-clear-btn:active {
+  transform: translateY(-50%) !important;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  color: var(--text);
+}
+
+.filter-select-shell {
+  width: 145px;
+  min-width: 145px;
+  max-width: 145px;
+  flex-shrink: 0;
+  height: 38px;
+  position: relative;
+}
+
+/* Gated on .nice-bound, which admin.js only adds once NiceSelect has actually
+   replaced the control. Hiding these unconditionally meant a blocked or failed
+   vendor script left the role filter and the role picker as empty space. */
+.nice-bound.filter-select-shell select,
+.nice-bound.modal-select-shell select {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  pointer-events: none !important;
+}
+
+.users-meta-count {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* NiceSelect custom styling overrides within admin */
+.filter-select-shell .nice-select,
+.modal-select-shell .nice-select {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.84rem;
+  font-weight: 500;
+  height: 38px;
+  line-height: 36px;
+  border-radius: var(--radius-sm);
+  padding-left: 0.95rem;
+  padding-right: 2rem;
+  width: 100%;
+  transition: all 0.18s ease;
+  box-sizing: border-box;
+}
+
+.filter-select-shell .nice-select:hover,
+.modal-select-shell .nice-select:hover {
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.filter-select-shell .nice-select.open,
+.modal-select-shell .nice-select.open {
+  border-color: var(--copper);
+  background: var(--input-bg);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--copper) 20%, transparent);
+}
+
+.filter-select-shell .nice-select .nice-select-dropdown,
+.modal-select-shell .nice-select .nice-select-dropdown {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);
+  z-index: 100;
+  margin-top: 4px;
+}
+
+.filter-select-shell .nice-select .option,
+.modal-select-shell .nice-select .option {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 34px;
+  min-height: 34px;
+  padding-left: 0.95rem;
+  padding-right: 0.95rem;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.filter-select-shell .nice-select .option:hover,
+.filter-select-shell .nice-select .option.focus,
+.filter-select-shell .nice-select .option.selected.focus,
+.modal-select-shell .nice-select .option:hover,
+.modal-select-shell .nice-select .option.focus,
+.modal-select-shell .nice-select .option.selected.focus {
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  color: var(--copper);
+}
+
+.admin-table-container {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+  text-align: left;
+}
+
+.admin-table th {
+  padding: 0.85rem 1.15rem;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.admin-table th.th-actions {
+  text-align: right;
+}
+
+.admin-table td {
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--surface-soft);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.admin-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.admin-table tbody tr:hover {
+  background: var(--surface-soft);
+}
+
+/* User Table Cell Components */
+.user-cell-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-avatar-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--copper) 35%, transparent);
+  color: var(--copper);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-avatar-badge.is-owner {
+  background: color-mix(in srgb, var(--violet) 18%, transparent);
+  border-color: color-mix(in srgb, var(--violet) 45%, transparent);
+  color: var(--violet);
+}
+
+.user-avatar-badge.is-admin {
+  background: color-mix(in srgb, var(--copper) 18%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
+  color: var(--copper);
+}
+
+.user-avatar-badge.is-trader {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--text) 11%, transparent);
+  color: var(--text-muted);
+}
+
+.user-names {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.user-display-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.user-username-sub {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Role Pills */
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.role-pill.is-owner {
+  background: color-mix(in srgb, var(--violet) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--violet) 35%, transparent);
+  color: var(--violet);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--violet) 20%, transparent);
+}
+
+.role-pill.is-admin {
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 35%, transparent);
+  color: var(--copper);
+}
+
+.role-pill.is-trader {
+  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--text) 11%, transparent);
+  color: var(--text-muted);
+}
+
+/* Key indicators */
+.key-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.mini-badge {
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--text) 11%, transparent);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.mini-badge.is-active {
+  background: color-mix(in srgb, var(--buy) 12%, transparent);
+  border-color: color-mix(in srgb, var(--buy) 30%, transparent);
+  color: var(--buy);
+}
+
+.mini-badge.is-live {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn);
+}
+
+/* Manage User Action Button in Table */
+.btn-manage-user {
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  color: var(--copper);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+  min-height: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.btn-manage-user:hover {
+  background: color-mix(in srgb, var(--copper) 20%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 50%, transparent);
+  color: var(--text);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--copper) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+/* Pagination Bar */
+.admin-pagination-bar {
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.pagination-info {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 0.45rem;
+}
+
+/* ==========================================================================
+   SMTP Email Configuration & Diagnostics
+   ========================================================================== */
+.smtp-status-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.35rem;
+  margin-bottom: 1.25rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.status-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.status-banner-left h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.15rem;
+}
+
+.status-banner-left p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.status-indicator-orb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 6px var(--muted);
+  flex-shrink: 0;
+}
+
+.status-indicator-orb.is-connected {
+  background: var(--buy);
+  box-shadow: 0 0 12px var(--buy);
+}
+
+.status-indicator-orb.is-error {
+  background: var(--sell);
+  box-shadow: 0 0 12px var(--sell);
+}
+
+.admin-smtp-layout {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 1040px) {
+  .admin-smtp-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.smtp-form-panel,
+.smtp-diagnostics-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Scoped to this page: .panel-head and .panel-hint are shared components that
+   common.css already styles, and redefining them bare here leaked a different
+   alignment onto every panel head the desk renders. */
+.page-admin .panel-head {
+  align-items: flex-start;
+  margin-bottom: 1.1rem;
+}
+
+.page-admin .panel-head h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+
+.panel-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.page-admin .panel-hint {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  color: var(--copper);
+  white-space: nowrap;
+}
+
+/* Presets Strip */
+.smtp-presets-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--surface-soft);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+
+.presets-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.presets-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.btn-preset {
+  padding: 0.3rem 0.65rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-preset:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+  color: var(--text);
+}
+
+.btn-preset.is-active {
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 40%, transparent);
+  color: var(--copper);
+}
+
+/* Form Fields & Grids */
+.admin-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.field-grid-2.field-grid-host-port {
+  grid-template-columns: 2.4fr 1fr;
+}
+
+@media (max-width: 600px) {
+  .field-grid-2,
+  .field-grid-2.field-grid-host-port {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.field label,
+.field-label {
+  font-family: var(--ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  display: block;
+}
+
+.field-input,
+.field-select {
+  width: 100%;
+  height: 38px;
+  padding: 0 0.85rem;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.field-input.mono {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.field-input:focus,
+.field-select:focus {
+  border-color: var(--copper);
+  background: var(--input-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--copper) 20%, transparent);
+  outline: none;
+}
+
+.password-input-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-shell .field-input {
+  padding-right: 2.5rem;
+}
+
+.btn-toggle-pw {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.btn-toggle-pw:hover {
+  color: var(--text);
+}
+
+.checkbox-field {
+  margin: 0.75rem 0 1rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--copper);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.checkbox-label span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.form-actions {
+  margin-top: 0.5rem;
+}
+
+/* Diagnostic Tester Input Row */
+.test-email-form {
+  margin-bottom: 1rem;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+.input-with-button .field-input {
+  flex: 1;
+  height: 38px;
+}
+
+.input-with-button .btn {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 1.1rem;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+/* Diagnostic Terminal */
+.terminal-shell {
+  background: var(--console-bg);
+  border: 1px solid var(--console-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-header {
+  padding: 0.5rem 0.85rem;
+  background: var(--input-bg);
+  border-bottom: 1px solid var(--console-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.terminal-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--console-line);
+}
+
+.terminal-dots span:nth-child(1) { background: var(--sell); }
+.terminal-dots span:nth-child(2) { background: var(--warn); }
+.terminal-dots span:nth-child(3) { background: var(--buy); }
+
+.terminal-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-clear-logs {
+  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--text) 11%, transparent);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.15rem 0.45rem;
+  transition: all 0.15s ease;
+}
+
+.btn-clear-logs:hover {
+  background: color-mix(in srgb, var(--text) 11%, transparent);
+  color: var(--text);
+}
+
+.terminal-body {
+  padding: 0.85rem;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  line-height: 1.5;
+}
+
+.term-line {
+  margin: 0;
+  display: flex;
+  gap: 0.5rem;
+  word-break: break-word;
+}
+
+.term-line.is-ok { color: var(--buy); }
+.term-line.is-warn { color: var(--warn); }
+.term-line.is-error { color: var(--sell); }
+.term-line.is-info { color: var(--muted); }
+.term-line.is-muted { color: var(--muted); font-style: italic; }
+
+.term-time {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.term-tag {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   System & Database Maintenance Tab
+   ========================================================================== */
+.admin-system-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .admin-system-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.system-info-panel,
+.system-tools-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.sys-metrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.sys-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--surface-soft);
+  font-size: 0.82rem;
+}
+
+.sys-metric-row .label {
+  color: var(--text-muted);
+}
+
+.maintenance-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+@media (max-width: 600px) {
+  .maintenance-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.maint-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  transition: border-color 0.15s ease;
+}
+
+.maint-card:hover {
+  border-color: color-mix(in srgb, var(--text) 11%, transparent);
+}
+
+.maint-card-text h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.3rem;
+}
+
+.maint-card-text p {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.maint-output-box {
+  background: var(--console-bg);
+  border: 1px solid var(--console-line);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   Manage Trader Account Modal Dialog (Pixel-Perfect Hierarchy & Styling)
+   ========================================================================== */
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 13, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: modalBackdropFade 0.15s ease-out;
+}
+
+.admin-modal-backdrop[hidden] {
+  display: none;
+}
+
+@keyframes modalBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.admin-modal-window {
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg), 0 0 25px color-mix(in srgb, var(--copper) 8%, transparent);
+  width: 100%;
+  max-width: 520px;
+  /* Without a ceiling the dialog grew past the viewport once the reset link or
+     the session list expanded, putting Delete out of reach with nothing to scroll. */
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalPopIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.admin-modal-header {
+  padding: 1.1rem 1.35rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-soft);
+  flex-shrink: 0;
+}
+
+.admin-modal-header h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+
+.modal-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.modal-close-btn:hover {
+  background: color-mix(in srgb, var(--text) 11%, transparent);
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+  color: var(--text);
+}
+
+.admin-modal-body {
+  padding: 1.25rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.modal-user-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.modal-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--copper) 40%, transparent);
+  color: var(--copper);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.modal-user-summary h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-user-summary p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.modal-divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+.modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.modal-section h4 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 0.45rem;
+}
+
+.role-update-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.modal-select-shell {
+  flex: 1;
+}
+
+#btn-modal-save-role {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 1.15rem;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+/* Account Actions List with Clear Visual Hierarchy */
+.modal-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.modal-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-action-btn svg {
+  flex-shrink: 0;
+  color: var(--copper);
+  transition: color 0.15s ease;
+}
+
+.modal-action-btn:hover {
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 35%, transparent);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+/* Warning Action (Revoke Sessions) */
+.modal-action-btn.is-warn {
+  background: color-mix(in srgb, var(--warn) 3%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 20%, transparent);
+  color: var(--warn);
+}
+
+.modal-action-btn.is-warn svg {
+  color: var(--warn);
+}
+
+.modal-action-btn.is-warn:hover {
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+/* Destructive Danger Action (Delete Account) */
+.modal-action-btn.is-danger {
+  background: color-mix(in srgb, var(--sell) 4%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 25%, transparent);
+  color: var(--sell);
+}
+
+.modal-action-btn.is-danger svg {
+  color: var(--sell);
+}
+
+.modal-action-btn.is-danger:hover {
+  background: color-mix(in srgb, var(--sell) 15%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 55%, transparent);
+  color: var(--text);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--sell) 15%, transparent);
+  transform: translateY(-1px);
+}
+
+/* Generated Reset Link Display */
+.reset-link-display {
+  margin-top: 0.5rem;
+  padding: 0.75rem 0.95rem;
+  background: color-mix(in srgb, var(--copper) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.reset-link-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.reset-link-label {
+  font-size: 0.72rem;
+  color: var(--copper);
+  margin: 0;
+  font-weight: 600;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.btn-copy-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 30%, transparent);
+  border-radius: 4px;
+  color: var(--copper);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-copy-link:hover {
+  background: color-mix(in srgb, var(--copper) 25%, transparent);
+  color: var(--text);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Sortable table headers
+   ========================================================================== */
+.admin-table th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-table th.is-sortable:hover {
+  color: var(--text);
+}
+
+.admin-table th .sort-arrow {
+  display: inline-block;
+  margin-left: 0.3rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.admin-table th[aria-sort="ascending"],
+.admin-table th[aria-sort="descending"] {
+  color: var(--copper);
+}
+
+.admin-table th[aria-sort="ascending"] .sort-arrow,
+.admin-table th[aria-sort="descending"] .sort-arrow {
+  opacity: 1;
+}
+
+.admin-table th.is-sortable:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: -2px;
+}
+
+/* Suspended accounts read as dimmed without becoming unreadable. */
+.admin-table tr.is-suspended td:not(:last-child) {
+  opacity: 0.55;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--sell) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sell) 35%, transparent);
+  color: var(--sell);
+}
+
+/* ==========================================================================
+   Table loading / empty / error states
+   ========================================================================== */
+.admin-table-container {
+  position: relative;
+}
+
+.table-busy-veil {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--panel-bg) 62%, transparent);
+  backdrop-filter: blur(1px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4rem;
+  z-index: 3;
+}
+
+.table-busy-veil[hidden] { display: none; }
+
+.spinner-ring {
+  width: 22px;
+  height: 22px;
+  border: 2px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  border-top-color: var(--copper);
+  border-radius: 50%;
+  animation: adminSpin 0.7s linear infinite;
+}
+
+@keyframes adminSpin { to { transform: rotate(360deg); } }
+
+.table-state {
+  text-align: center;
+  padding: 3rem 1.25rem;
+  color: var(--text-muted);
+}
+
+.table-state strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.92rem;
+  margin-bottom: 0.35rem;
+}
+
+.table-state .btn {
+  margin-top: 0.85rem;
+}
+
+/* Chart empty / error overlay */
+.chart-canvas-wrap { display: flex; }
+
+.chart-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.chart-state[hidden] { display: none; }
+
+/* ==========================================================================
+   Pagination controls
+   ========================================================================== */
+.admin-pagination-bar {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pagination-left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.page-size-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.page-size-shell select {
+  height: 30px;
+  padding: 0 0.5rem;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.page-indicator {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding: 0 0.35rem;
+}
+
+/* ==========================================================================
+   Modal: detail grid, session list, invite form
+   ========================================================================== */
+.modal-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 1rem;
+}
+
+.modal-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.modal-detail-item .k {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.modal-detail-item .v {
+  font-size: 0.82rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.session-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-device {
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-when {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.btn-revoke-one {
+  flex-shrink: 0;
+  padding: 0.2rem 0.55rem;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 4px;
+  color: var(--warn);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-revoke-one:hover {
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--text);
+}
+
+.session-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Typed confirmation replaces the browser prompt() for deletion. */
+.danger-confirm {
+  margin-top: 0.6rem;
+  padding: 0.85rem;
+  background: color-mix(in srgb, var(--sell) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sell) 30%, transparent);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.danger-confirm[hidden] { display: none; }
+
+.danger-confirm p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.danger-confirm p b { color: var(--sell); }
+
+.danger-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-danger-final {
+  flex: 1;
+  height: 34px;
+  background: color-mix(in srgb, var(--sell) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sell) 45%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--sell);
+  font-family: var(--ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger-final:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-danger-final:not(:disabled):hover {
+  background: color-mix(in srgb, var(--sell) 32%, transparent);
+  color: var(--text);
+}
+
+/* ==========================================================================
+   Activity (audit) tab
+   ========================================================================== */
+.audit-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 10.5rem 1fr;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--line-soft);
+  align-items: start;
+}
+
+.audit-row:first-child { border-top: none; }
+
+.audit-when {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.audit-text b { color: var(--text); font-weight: 600; }
+
+.audit-action {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.45rem;
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 28%, transparent);
+  color: var(--copper);
+}
+
+.audit-action.is-danger {
+  background: color-mix(in srgb, var(--sell) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 32%, transparent);
+  color: var(--sell);
+}
+
+.audit-action.is-warn {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 32%, transparent);
+  color: var(--warn);
+}
+
+/* Email delivery log inside the SMTP tab */
+.email-log-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 230px;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+.email-log-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.78rem;
+}
+
+.email-log-row:first-child { border-top: none; }
+
+.email-log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--buy);
+}
+
+.email-log-dot.is-fail { background: var(--sell); }
+
+.email-log-to {
+  font-family: var(--mono);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.email-log-when {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 760px) {
+  .users-table-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .users-search-wrap {
+    flex-wrap: wrap;
+    max-width: none;
+  }
+
+  .filter-select-shell {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .users-meta-count {
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .modal-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .smtp-status-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .page-admin {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-tabs-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-md);
+  }
+
+  .admin-tabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-tab-btn {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .admin-panel {
+    grid-column: 1;
+  }
+}
+
+/* Keyboard focus must stay visible on every interactive control. */
+.admin-tab-btn:focus-visible,
+.btn-preset:focus-visible,
+.btn-manage-user:focus-visible,
+.modal-action-btn:focus-visible,
+.btn-clear-logs:focus-visible,
+.btn-copy-link:focus-visible,
+.btn-revoke-one:focus-visible,
+.search-clear-btn:focus-visible,
+.modal-close-btn:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-panel,
+  .admin-modal-backdrop,
+  .admin-modal-window,
+  .live-pulse-dot,
+  .spinner-ring {
+    animation: none !important;
+  }
+
+  .admin-kpi-card,
+  .btn-manage-user,
+  .modal-action-btn {
+    transition: none !important;
+  }
+
+  .admin-kpi-card:hover,
+  .btn-manage-user:hover,
+  .modal-action-btn:hover {
+    transform: none;
+  }
+}
+
+.field-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.field-hint[hidden] { display: none; }

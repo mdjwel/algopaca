@@ -146,7 +146,6 @@ class DeskWebappTestCase(unittest.TestCase):
 
     def test_removed_pages_return_404(self):
         removed = [
-            "/admin",
             "/pricing",
             "/forgot",
             "/reset",

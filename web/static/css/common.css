@@ -2,6 +2,16 @@
   --ink: #0c1219;
   --slate: #141c27;
   --panel: #1a2433;
+  --panel-bg: #101622;
+  --input-bg: #0d1322;
+  /* Terminal/console surfaces stay dark in every theme — a log readout is the
+     one place where the desk keeps its terminal character. */
+  --console-bg: #070b12;
+  --console-line: #1e293b;
+  /* Fourth semantic hue, used for the Owner role and the trading-engine metric
+     so neither borrows the buy/sell/warn meanings. */
+  --violet: #c084fc;
+  --violet-deep: #7c3aed;
   --line: #2a384c;
   --text: #f2ebe1;
   --muted: #8f949b;
@@ -32,14 +42,78 @@
   --radius-sm: 0.5rem;
   --radius-md: 0.85rem;
   --radius-lg: 1.15rem;
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 10px 25px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.7);
   --display: "Fraunces", Georgia, serif;
   --ui: "Schibsted Grotesk", "Avenir Next", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   color-scheme: dark;
 }
 
+/* Every theme must restate --panel-bg, --input-bg and --console-bg. They used
+   to be declared once in :root, so a page built on them (the Admin desk) kept
+   near-black panels and inputs after switching to daylight. */
+[data-theme="midnight"] {
+  --ink: #070d18;
+  --slate: #0d1728;
+  --panel: #132238;
+  --panel-bg: #0c1728;
+  --input-bg: #0a1424;
+  --console-bg: #050b14;
+  --line: #1e3556;
+  --copper: #38bdf8;
+  --copper-deep: #0284c7;
+  --glow: rgba(56, 189, 248, 0.2);
+}
+
+[data-theme="emerald"] {
+  --ink: #07130e;
+  --slate: #0d1f18;
+  --panel: #132d23;
+  --panel-bg: #0c1f17;
+  --input-bg: #091a13;
+  --console-bg: #04100b;
+  --line: #1c4536;
+  --copper: #3fbf8f;
+  --copper-deep: #22996d;
+  --glow: rgba(63, 191, 143, 0.22);
+}
+
+[data-theme="daylight"] {
+  --ink: #f8fafc;
+  --slate: #f1f5f9;
+  --panel: #ffffff;
+  --panel-bg: #ffffff;
+  --input-bg: #ffffff;
+  --console-bg: #0f172a;
+  --line: #cbd5e1;
+  --line-soft: rgba(15, 23, 42, 0.09);
+  --surface-soft: rgba(15, 23, 42, 0.03);
+  --text: #0f172a;
+  --muted: #64748b;
+  --copper: #2563eb;
+  --copper-deep: #1d4ed8;
+  --warn: #a16207;
+  --error: #b91c1c;
+  --error-soft: #7f1d1d;
+  --buy: #0f7a56;
+  --sell: #be3b3b;
+  --violet: #7c3aed;
+  --violet-deep: #5b21b6;
+  --glow: rgba(37, 99, 235, 0.15);
+  --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 10px 25px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 20px 40px rgba(15, 23, 42, 0.16);
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 html,
@@ -727,7 +801,8 @@ select.lang-select.hidden-select {
 }
 
 .masthead-user-trigger:hover,
-.masthead-user-trigger[aria-expanded="true"] {
+.masthead-user-trigger[aria-expanded="true"],
+.masthead-user-trigger.is-active-page {
   border-color: var(--copper);
   background: rgba(30, 41, 58, 0.95);
 }
@@ -814,6 +889,7 @@ select.lang-select.hidden-select {
 .masthead-menu-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.55rem;
   width: 100%;
   padding: 0.45rem 0.55rem;
@@ -823,6 +899,7 @@ select.lang-select.hidden-select {
   color: var(--text);
   font-family: var(--ui);
   font-size: 0.82rem;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
   min-height: auto;
@@ -835,6 +912,16 @@ select.lang-select.hidden-select {
   transform: none;
 }
 
+.masthead-menu-item.is-active {
+  background: rgba(212, 137, 76, 0.14);
+  color: var(--copper);
+  font-weight: 600;
+}
+
+.masthead-menu-item.is-active svg {
+  color: var(--copper);
+}
+
 .masthead-menu-item.is-logout {
   color: var(--sell);
 }
@@ -842,6 +929,37 @@ select.lang-select.hidden-select {
 .masthead-menu-item.is-logout:hover {
   background: rgba(227, 93, 93, 0.12);
   color: #ffd7d7;
+}
+
+.masthead-info-role.is-admin-role {
+  color: #38bdf8;
+  font-weight: 600;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.masthead-menu-item.is-admin-link {
+  color: #38bdf8;
+}
+
+.masthead-menu-item.is-admin-link:hover {
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+}
+
+.masthead-menu-item.is-admin-link.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.masthead-menu-item.is-admin-link.is-active svg {
+  color: #7dd3fc;
+}
+
+.masthead-menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0.2rem 0;
 }
 
 .masthead-menu-item svg {
@@ -911,6 +1029,7 @@ a.ghost.bt-link-btn {
 /* Nice Select 2 — match desk form fields */
 .form .nice-select,
 .history-filter-fields .nice-select,
+.page-settings .nice-select,
 .bt-detail-pick .nice-select {
   float: none;
   clear: none;
@@ -934,6 +1053,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select:hover,
 .history-filter-fields .nice-select:hover,
+.page-settings .nice-select:hover,
 .bt-detail-pick .nice-select:hover {
   border-color: #3a4d66;
 }
@@ -945,7 +1065,10 @@ a.ghost.bt-link-btn {
 .history-filter-fields .nice-select:focus,
 .history-filter-fields .nice-select.open,
 .bt-detail-pick .nice-select:active,
+.page-settings .nice-select:active,
 .bt-detail-pick .nice-select:focus,
+.page-settings .nice-select:focus,
+.page-settings .nice-select.open,
 .bt-detail-pick .nice-select.open {
   border-color: var(--copper);
   box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.35);
@@ -953,6 +1076,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select:after,
 .history-filter-fields .nice-select:after,
+.page-settings .nice-select:after,
 .bt-detail-pick .nice-select:after {
   border-bottom-color: var(--muted);
   border-right-color: var(--muted);
@@ -964,6 +1088,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select.disabled,
 .history-filter-fields .nice-select.disabled,
+.page-settings .nice-select.disabled,
 .bt-detail-pick .nice-select.disabled {
   opacity: 0.55;
   border-color: var(--line);
@@ -973,6 +1098,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select.disabled:after,
 .history-filter-fields .nice-select.disabled:after,
+.page-settings .nice-select.disabled:after,
 .bt-detail-pick .nice-select.disabled:after {
   border-bottom-color: #6a7788;
   border-right-color: #6a7788;
@@ -980,6 +1106,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .current,
 .history-filter-fields .nice-select .current,
+.page-settings .nice-select .current,
 .bt-detail-pick .nice-select .current {
   display: block;
   overflow: hidden;
@@ -990,6 +1117,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .nice-select-dropdown,
 .history-filter-fields .nice-select .nice-select-dropdown,
+.page-settings .nice-select .nice-select-dropdown,
 .bt-detail-pick .nice-select .nice-select-dropdown {
   top: calc(100% + 4px);
   margin-top: 0;
@@ -1006,6 +1134,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .list,
 .history-filter-fields .nice-select .list,
+.page-settings .nice-select .list,
 .bt-detail-pick .nice-select .list {
   margin: 0;
   padding: 0.25rem 0;
@@ -1013,6 +1142,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .option,
 .history-filter-fields .nice-select .option,
+.page-settings .nice-select .option,
 .bt-detail-pick .nice-select .option {
   min-height: 2.4rem;
   line-height: 1.3;
@@ -1030,13 +1160,17 @@ a.ghost.bt-link-btn {
 .history-filter-fields .nice-select .option.focus,
 .history-filter-fields .nice-select .option.selected.focus,
 .bt-detail-pick .nice-select .option:hover,
+.page-settings .nice-select .option:hover,
 .bt-detail-pick .nice-select .option.focus,
+.page-settings .nice-select .option.focus,
+.page-settings .nice-select .option.selected.focus,
 .bt-detail-pick .nice-select .option.selected.focus {
   background-color: rgba(212, 137, 76, 0.16);
 }
 
 .form .nice-select .option.selected,
 .history-filter-fields .nice-select .option.selected,
+.page-settings .nice-select .option.selected,
 .bt-detail-pick .nice-select .option.selected {
   font-weight: 600;
   color: var(--copper);
@@ -1044,6 +1178,7 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .option.disabled,
 .history-filter-fields .nice-select .option.disabled,
+.page-settings .nice-select .option.disabled,
 .bt-detail-pick .nice-select .option.disabled {
   color: #6a7788;
   cursor: not-allowed;
@@ -1051,18 +1186,21 @@ a.ghost.bt-link-btn {
 
 .form .nice-select .list::-webkit-scrollbar,
 .history-filter-fields .nice-select .list::-webkit-scrollbar,
+.page-settings .nice-select .list::-webkit-scrollbar,
 .bt-detail-pick .nice-select .list::-webkit-scrollbar {
   width: 6px;
 }
 
 .form .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .history-filter-fields .nice-select .nice-select-dropdown::-webkit-scrollbar,
+.page-settings .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .bt-detail-pick .nice-select .nice-select-dropdown::-webkit-scrollbar {
   width: 6px;
 }
 
 .form .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
 .history-filter-fields .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
+.page-settings .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
 .bt-detail-pick .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 999px;
@@ -1087,6 +1225,7 @@ a.button:focus-visible {
 
 .form select.hidden-select,
 .history-filter-fields select.hidden-select,
+.page-settings select.hidden-select,
 .bt-detail-pick select.hidden-select {
   position: absolute;
   width: 1px;
@@ -2108,23 +2247,34 @@ button.date-picker-today:hover:not(:disabled) {
 }
 
 button,
-a.button {
+a.button,
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   border: 0;
+  background: transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--ui);
   font-weight: 700;
-  font-size: 0.92rem;
-  min-height: 44px;
-  padding: 0.7rem 0.95rem;
-  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  font-size: 0.88rem;
+  min-height: 38px;
+  padding: 0.55rem 0.95rem;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  text-decoration: none;
+  box-sizing: border-box;
+  line-height: 1.2;
+  user-select: none;
 }
 
 /* Empty-state CTAs are anchors with button classes. Without this they keep
    the UA underline and miss the filled/outlined chrome that real <button>s get. */
-a.button {
+a.button,
+a.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2134,23 +2284,52 @@ a.button {
 }
 
 button:hover:not(:disabled),
-a.button:hover {
+a.button:hover,
+.btn:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-button:disabled {
+button:disabled,
+.btn:disabled,
+.btn.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
 }
 
 button.primary,
-a.button.primary {
-  background: var(--text);
-  color: var(--ink);
+a.button.primary,
+.btn-primary {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #070d18;
+  border: 1px solid #38bdf8;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
 }
 
-a.button.primary {
-  border: 1px solid var(--text);
+button.primary:hover:not(:disabled),
+a.button.primary:hover,
+a.button.primary:focus-visible,
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7dd3fc 0%, #0369a1 100%);
+  border-color: #7dd3fc;
+  color: #070d18;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);
+}
+
+button.secondary,
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+button.secondary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 button.copper {
@@ -2162,19 +2341,54 @@ button.copper:hover:not(:disabled) {
   background: var(--copper-deep);
 }
 
-button.danger {
-  background: var(--danger-bg);
-  color: #ffd7d7;
+button.danger,
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+button.danger:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
 }
 
 button.ghost,
-a.ghost {
+a.ghost,
+.btn-ghost {
   background: transparent;
-  color: var(--copper);
+  color: var(--text-muted);
   border: 1px solid var(--line);
   padding: 0.4rem 0.7rem;
   font-size: 0.8rem;
   min-height: 36px;
+}
+
+button.ghost:hover:not(:disabled),
+a.ghost:hover,
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text);
+}
+
+.btn-sm {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 0.75rem;
+  font-size: 0.78rem;
+  gap: 0.35rem;
+}
+
+.btn-xs {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 0.5rem;
+  font-size: 0.72rem;
+  gap: 0.25rem;
 }
 
 /* Compact `a.ghost` is for toolbar chips. `a.button.ghost` is a full-size
@@ -2193,12 +2407,6 @@ a.button.ghost:focus-visible {
   color: var(--text);
   border-color: var(--copper);
   background: color-mix(in srgb, var(--copper) 12%, transparent);
-}
-
-a.button.primary:hover,
-a.button.primary:focus-visible {
-  background: #fff;
-  color: var(--ink);
 }
 
 button.ghost.ghost-danger {
@@ -3306,6 +3514,50 @@ body.is-live-env .masthead h1 {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+}
+
+/* Status pill shared by the desk pages. Lives here rather than in a page
+   stylesheet because admin, settings and configuration all label state the
+   same way. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge.is-emerald {
+  background: color-mix(in srgb, var(--buy) 14%, transparent);
+  border-color: color-mix(in srgb, var(--buy) 40%, transparent);
+  color: var(--buy);
+}
+
+.badge.is-amber {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn);
+}
+
+.badge.is-rose {
+  background: color-mix(in srgb, var(--sell) 14%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 40%, transparent);
+  color: var(--sell);
+}
+
+/* Modal scroll lock. Previously only manual-order.css defined this, so every
+   other page added the class and got no effect. */
+body.modal-open {
+  overflow: hidden;
 }
 
 .panel-head {

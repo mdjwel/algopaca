@@ -2,22 +2,30 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
+import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from bot.alpaca_errors import humanize_alpaca_error
-from bot.auth import AUTH_STORE
+from bot.auth import AUTH_STORE, is_admin_or_owner
 from bot.backtest_store import summarize_entry
-from bot.email_service import send_password_reset_email
-from bot.web_state import AppState, get_user_state
+from bot.email_service import (
+    get_smtp_config,
+    save_smtp_config,
+    send_password_reset_email,
+    test_smtp_connection,
+)
+from bot.web_state import AppState, USER_STATE_REGISTRY, get_user_state
 
 log = logging.getLogger("algopaca-web")
 
@@ -435,6 +443,87 @@ class ResetPasswordIn(BaseModel):
     password: str
 
 
+class AdminRoleUpdateIn(BaseModel):
+    role: str = Field(..., pattern="(?i)^(owner|admin|trader)$")
+
+
+class AdminStatusUpdateIn(BaseModel):
+    status: str = Field(..., pattern="(?i)^(active|suspended)$")
+
+
+class AdminCreateUserIn(BaseModel):
+    username: str = Field(..., min_length=3, max_length=30)
+    email: str = Field(..., min_length=3, max_length=254)
+    role: str = Field("trader", pattern="(?i)^(owner|admin|trader)$")
+    display_name: Optional[str] = None
+
+
+class AdminSmtpConfigIn(BaseModel):
+    # A blank host used to save happily and then report "UNCONFIGURED" in the
+    # same breath, so the required fields are enforced here rather than only
+    # being marked required in the markup.
+    host: str = Field(..., min_length=1, max_length=253)
+    port: int = Field(587, ge=1, le=65535)
+    username: str = ""
+    password: Optional[str] = ""
+    from_email: str = ""
+    sender_name: str = "AlgoPaca"
+    use_ssl: bool = False
+
+    @field_validator("host")
+    @classmethod
+    def _host_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("SMTP host is required.")
+        return value
+
+
+class AdminSmtpTestIn(BaseModel):
+    to_email: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    sender_name: Optional[str] = None
+    use_ssl: Optional[bool] = None
+
+
+class UserProfileUpdateIn(BaseModel):
+    display_name: Optional[str] = Field(None, max_length=50)
+    email: Optional[str] = None
+
+
+class UserPasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UserPreferencesIn(BaseModel):
+    theme: Optional[str] = "obsidian"
+    language: Optional[str] = "en"
+    default_page: Optional[str] = "auto-trade"
+    sound_alerts: Optional[bool] = True
+    confirm_orders: Optional[bool] = True
+    confirm_close_all: Optional[bool] = True
+    chart_refresh_interval: Optional[int] = Field(20, ge=5, le=120)
+    compact_mode: Optional[bool] = False
+    timezone_display: Optional[str] = "local"
+    default_size_mode: Optional[str] = "qty"
+    default_trade_qty: Optional[float] = Field(1.0, gt=0)
+    default_trade_notional: Optional[float] = Field(100.0, gt=0)
+
+
+class UserTerminateSessionIn(BaseModel):
+    token: Optional[str] = None
+    terminate_others: Optional[bool] = False
+
+
+class UserDeleteAccountIn(BaseModel):
+    password: str
+
+
 SESSION_COOKIE_NAME = "algopaca_session"
 SESSION_DAYS_DEFAULT = 7
 SESSION_DAYS_REMEMBERED = 30
@@ -530,6 +619,17 @@ def require_auth(request: Request) -> dict[str, Any]:
     return user
 
 
+def require_admin(request: Request) -> dict[str, Any]:
+    """Dependency: require an admin or owner user session."""
+    user = require_auth(request)
+    if not is_admin_or_owner(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Administrator or Owner privileges required.",
+        )
+    return user
+
+
 PAGE_FILES = {
     "login": "login.html",
     "signup": "signup.html",
@@ -543,6 +643,8 @@ PAGE_FILES = {
     "orders": "orders.html",
     "history": "history.html",
     "configuration": "configuration.html",
+    "admin": "admin.html",
+    "settings": "settings.html",
 }
 
 
@@ -646,6 +748,29 @@ def page_configuration(request: Request) -> Response:
     return _protected_page(request, "configuration")
 
 
+@app.get("/settings")
+@app.get("/user-settings")
+def page_settings(request: Request) -> Response:
+    return _protected_page(request, "settings")
+
+
+@app.get("/admin")
+@app.get("/admin-dashboard")
+def page_admin(request: Request) -> Response:
+    user = _get_current_user(request)
+    if not user:
+        from urllib.parse import quote
+        next_path = quote(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
+        return RedirectResponse(url=f"/login?next={next_path}", status_code=302)
+    if not is_admin_or_owner(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. Administrator or Owner access required.",
+        )
+    return _page_response("admin")
+
+
+
 @app.post("/api/auth/signup")
 def api_auth_signup(body: SignupIn, request: Request, response: Response) -> dict:
     try:
@@ -709,24 +834,15 @@ def api_auth_forgot_password(body: ForgotPasswordIn, request: Request) -> dict:
 
     reset_data = AUTH_STORE.create_password_reset_token(identifier)
     if reset_data:
-        base_url = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
-        if not base_url:
-            base_url = str(request.base_url).rstrip("/")
-        reset_url = f"{base_url}/reset-password?token={reset_data['token']}"
+        reset_url = f"{_app_base_url(request)}/reset-password?token={reset_data['token']}"
         lang = request.cookies.get("algopaca_lang", "en")
-        try:
-            send_password_reset_email(
-                to_email=reset_data["email"],
-                username=reset_data["username"],
-                reset_url=reset_url,
-                lang=lang,
-            )
-        except Exception:
-            # Never surface the delivery failure: a 500 here only happens for
-            # identifiers that exist, which would turn this endpoint into an
-            # account-enumeration oracle. Log it and fall through to the same
-            # generic reply an unknown identifier gets.
-            log.exception("Password reset email could not be sent (check SMTP_* settings)")
+        # _dispatch_reset_email swallows delivery failures and records them in
+        # the email log instead. Surfacing one here would turn this endpoint
+        # into an account-enumeration oracle, since only real identifiers can
+        # ever reach a send attempt.
+        _dispatch_reset_email(
+            reset_data["email"], reset_data["username"], reset_url, lang
+        )
 
     return {
         "ok": True,
@@ -779,6 +895,118 @@ def api_auth_me(request: Request) -> dict:
     if user:
         return {"ok": True, "authenticated": True, "user": user}
     return {"ok": True, "authenticated": False, "user": None}
+
+
+# ---------------------------------------------------------------------------
+# User Settings & Profile API Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/user/profile")
+def api_user_profile(user: dict = Depends(require_auth)) -> dict:
+    """Retrieve full user profile and account metadata."""
+    profile = AUTH_STORE.get_user_by_id(user["id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"ok": True, "profile": profile}
+
+
+@app.put("/api/user/profile")
+def api_user_profile_update(body: UserProfileUpdateIn, user: dict = Depends(require_auth)) -> dict:
+    """Update display name and/or email for the authenticated user."""
+    try:
+        updated = AUTH_STORE.update_user_profile(
+            user_id=user["id"],
+            display_name=body.display_name,
+            email=body.email,
+        )
+        return {"ok": True, "profile": updated, "message": "Profile updated successfully."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/user/change-password")
+def api_user_change_password(body: UserPasswordChangeIn, user: dict = Depends(require_auth)) -> dict:
+    """Change password after validating current password."""
+    try:
+        result = AUTH_STORE.change_user_password(
+            user_id=user["id"],
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/user/preferences")
+def api_user_preferences_get(user: dict = Depends(require_auth)) -> dict:
+    """Retrieve UI themes, language, and trading defaults for current user."""
+    prefs = AUTH_STORE.get_user_preferences(user["id"])
+    return {"ok": True, "preferences": prefs}
+
+
+@app.put("/api/user/preferences")
+def api_user_preferences_save(body: UserPreferencesIn, user: dict = Depends(require_auth)) -> dict:
+    """Update UI themes, language, and trading defaults for current user."""
+    try:
+        saved = AUTH_STORE.save_user_preferences(user["id"], body.model_dump(exclude_unset=True))
+        return {"ok": True, "preferences": saved, "message": "Preferences saved successfully."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/user/sessions")
+def api_user_sessions_get(request: Request, user: dict = Depends(require_auth)) -> dict:
+    """List active user sessions across browsers and devices."""
+    current_token = _get_session_token(request)
+    sessions = AUTH_STORE.get_user_sessions(user["id"], current_token=current_token)
+    return {"ok": True, "sessions": sessions}
+
+
+@app.post("/api/user/sessions/terminate")
+def api_user_sessions_terminate(body: UserTerminateSessionIn, request: Request, user: dict = Depends(require_auth)) -> dict:
+    """Terminate a specific session or revoke all other sessions."""
+    current_token = _get_session_token(request)
+    if body.terminate_others:
+        if not current_token:
+            raise HTTPException(status_code=400, detail="Cannot identify current session.")
+        count = AUTH_STORE.terminate_other_sessions(user["id"], current_token)
+        return {"ok": True, "revoked_count": count, "message": f"Terminated {count} other session(s)."}
+    elif body.token:
+        success = AUTH_STORE.terminate_user_session(user["id"], body.token)
+        if not success:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        return {"ok": True, "message": "Session terminated."}
+    else:
+        raise HTTPException(status_code=400, detail="Must specify a session token or set terminate_others=True.")
+
+
+@app.get("/api/user/export")
+def api_user_export(user: dict = Depends(require_auth)) -> dict:
+    """Export account profile, preferences, and activity summary as JSON."""
+    try:
+        data = AUTH_STORE.export_user_account_data(user["id"])
+        return {"ok": True, "data": data}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/user/account")
+def api_user_delete_account(body: UserDeleteAccountIn, response: Response, user: dict = Depends(require_auth)) -> dict:
+    """Delete current user account with password verification."""
+    try:
+        AUTH_STORE.delete_user_account(user["id"], body.password)
+        USER_STATE_REGISTRY.remove(user["id"])
+        response.delete_cookie(
+            key=SESSION_COOKIE_NAME,
+            path="/",
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="lax",
+        )
+        return {"ok": True, "message": "Account successfully deleted."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/positions")
@@ -1564,6 +1792,388 @@ def clear_history(user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     state.clear_history()
     return {"ok": True, "state": state.snapshot()}
+
+
+# ---------------------------------------------------------------------------
+# Administrator & Owner API Endpoints
+# ---------------------------------------------------------------------------
+
+def _app_base_url(request: Request) -> str:
+    """Public base URL for links we email out, honouring an explicit override."""
+    base_url = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
+    return base_url or str(request.base_url).rstrip("/")
+
+
+def _dispatch_reset_email(
+    to_email: str, username: str, reset_url: str, lang: str, kind: str = "password_reset"
+) -> bool:
+    """Send a reset/setup link and record the attempt in the email log."""
+    error = ""
+    sent = False
+    try:
+        sent = send_password_reset_email(
+            to_email=to_email, username=username, reset_url=reset_url, lang=lang
+        )
+        if not sent:
+            error = "SMTP is not configured or the server rejected the message."
+    except Exception as exc:
+        error = str(exc)
+        log.warning("Could not dispatch %s email via SMTP: %s", kind, exc)
+
+    AUTH_STORE.record_email(to_email, kind, sent, error)
+    return sent
+
+@app.get("/api/admin/stats")
+def api_admin_stats(user: dict = Depends(require_admin)) -> dict:
+    """Return platform user analytics, runtime metrics, and database stats."""
+    analytics = AUTH_STORE.get_user_analytics()
+    # Deliberately get_db_stats and not admin_vacuum_db — this endpoint is read
+    # only and is hit on every tab switch, so it must not take a write lock.
+    db_stats = AUTH_STORE.get_db_stats()
+
+    active_loops = 0
+    with USER_STATE_REGISTRY._lock:
+        for st in USER_STATE_REGISTRY._states.values():
+            if st.loop_running:
+                active_loops += 1
+
+    return {
+        "ok": True,
+        "analytics": analytics,
+        "system": {
+            "active_loops": active_loops,
+            "db_path": db_stats.get("db_path", ""),
+            "db_size_mb": db_stats.get("file_size_mb", 0),
+            "python_version": sys.version.split()[0],
+            "server_time": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
+
+@app.get("/api/admin/users")
+def api_admin_users(
+    search: str = "",
+    role: str = "",
+    status: str = "",
+    sort: str = "created_at",
+    direction: str = "desc",
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Paginated list of users with credentials summary and active sessions."""
+    data = AUTH_STORE.list_users(
+        search=search,
+        role=role,
+        status=status,
+        sort=sort,
+        direction=direction,
+        limit=limit,
+        offset=offset,
+    )
+    return {"ok": True, **data}
+
+
+@app.get("/api/admin/users/{user_id}/sessions")
+def api_admin_user_sessions(user_id: int, user: dict = Depends(require_admin)) -> dict:
+    """Active sessions for one user, for the manage dialog's session inspector."""
+    target = AUTH_STORE.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"ok": True, "sessions": AUTH_STORE.list_user_sessions(user_id)}
+
+
+@app.delete("/api/admin/users/{user_id}/sessions/{session_id}")
+def api_admin_revoke_one_session(
+    user_id: int, session_id: str, user: dict = Depends(require_admin)
+) -> dict:
+    """Revoke a single session rather than every session for the user."""
+    target = AUTH_STORE.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if not AUTH_STORE.admin_revoke_session(user_id, session_id):
+        raise HTTPException(status_code=404, detail="Session not found or already expired.")
+    AUTH_STORE.record_audit(user, "session.revoke_one", target, f"session {session_id}")
+    return {"ok": True, "message": "Session revoked."}
+
+
+@app.put("/api/admin/users/{user_id}/status")
+def api_admin_update_status(
+    user_id: int,
+    body: AdminStatusUpdateIn,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Suspend or reinstate an account without destroying it."""
+    try:
+        result = AUTH_STORE.admin_set_user_status(user_id, body.status, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result["status"] == "suspended":
+        USER_STATE_REGISTRY.remove(user_id)
+    AUTH_STORE.record_audit(
+        user, f"user.{result['status']}", result, f"revoked {result['revoked_sessions']} session(s)"
+    )
+    message = (
+        f"@{result['username']} suspended and signed out of {result['revoked_sessions']} session(s)."
+        if result["status"] == "suspended"
+        else f"@{result['username']} reinstated."
+    )
+    return {"ok": True, "user": result, "message": message}
+
+
+@app.post("/api/admin/users")
+def api_admin_create_user(
+    body: AdminCreateUserIn,
+    request: Request,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Provision an account and hand back a setup link for the new trader."""
+    try:
+        created = AUTH_STORE.admin_create_user(
+            username=body.username,
+            email=body.email,
+            role=body.role,
+            acting_user=user,
+            display_name=body.display_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    reset_data = AUTH_STORE.create_password_reset_token(created["email"])
+    setup_url = ""
+    email_sent = False
+    if reset_data:
+        setup_url = f"{_app_base_url(request)}/reset-password?token={reset_data['token']}"
+        lang = request.cookies.get("algopaca_lang", "en")
+        email_sent = _dispatch_reset_email(
+            created["email"], created["username"], setup_url, lang, kind="invite"
+        )
+
+    AUTH_STORE.record_audit(user, "user.create", created, f"role={created['role']}")
+    return {
+        "ok": True,
+        "user": created,
+        "setup_url": setup_url,
+        "email_sent": email_sent,
+        "message": (
+            f"Invite sent to {created['email']}."
+            if email_sent
+            else "Account created. Share the setup link below — email dispatch is not configured."
+        ),
+    }
+
+
+@app.get("/api/admin/audit")
+def api_admin_audit(
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Paginated record of every administrative action taken on the desk."""
+    return {"ok": True, **AUTH_STORE.list_audit_log(limit=limit, offset=offset)}
+
+
+@app.get("/api/admin/email-log")
+def api_admin_email_log(
+    limit: int = Query(25, ge=1, le=200),
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Recent outbound email attempts, so 'I never got the link' is answerable."""
+    return {"ok": True, "entries": AUTH_STORE.list_email_log(limit=limit)}
+
+
+@app.get("/api/admin/users/{user_id}")
+def api_admin_user_detail(user_id: int, user: dict = Depends(require_admin)) -> dict:
+    """Retrieve detailed user metadata and connection status."""
+    target = AUTH_STORE.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"ok": True, "user": target}
+
+
+@app.put("/api/admin/users/{user_id}/role")
+def api_admin_update_role(
+    user_id: int,
+    body: AdminRoleUpdateIn,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Update role for a user (trader, admin, owner)."""
+    try:
+        previous = AUTH_STORE.get_user_by_id(user_id)
+        updated = AUTH_STORE.update_user_role(user_id, body.role, user)
+        AUTH_STORE.record_audit(
+            user,
+            "user.role_change",
+            updated,
+            f"{(previous or {}).get('role', '?')} → {updated['role']}",
+        )
+        return {
+            "ok": True,
+            "user": updated,
+            "message": f"User role updated to '{body.role}'.",
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/users/{user_id}/revoke-sessions")
+def api_admin_revoke_sessions(
+    user_id: int,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Terminate all active sessions for a user."""
+    target = AUTH_STORE.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    count = AUTH_STORE.admin_terminate_user_sessions(user_id)
+    AUTH_STORE.record_audit(user, "session.revoke_all", target, f"{count} session(s)")
+    return {
+        "ok": True,
+        "revoked_count": count,
+        "message": f"Terminated {count} active session(s).",
+    }
+
+
+@app.post("/api/admin/users/{user_id}/send-reset")
+def api_admin_send_reset(
+    user_id: int,
+    request: Request,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Generate a password reset link and attempt to dispatch via SMTP."""
+    target = AUTH_STORE.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    reset_data = AUTH_STORE.create_password_reset_token(target["email"])
+    if not reset_data:
+        raise HTTPException(status_code=400, detail="Failed to generate password reset token.")
+
+    reset_url = f"{_app_base_url(request)}/reset-password?token={reset_data['token']}"
+    lang = request.cookies.get("algopaca_lang", "en")
+
+    email_sent = _dispatch_reset_email(
+        target["email"], target["username"], reset_url, lang
+    )
+    AUTH_STORE.record_audit(
+        user, "user.password_reset", target, "emailed" if email_sent else "link generated"
+    )
+
+    return {
+        "ok": True,
+        "email_sent": email_sent,
+        "reset_url": reset_url,
+        "message": (
+            f"Reset instructions sent to {target['email']}."
+            if email_sent
+            else "Reset link generated (SMTP dispatch was not configured or failed)."
+        ),
+    }
+
+
+@app.delete("/api/admin/users/{user_id}")
+def api_admin_delete_user(
+    user_id: int,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Permanently delete user account, credentials, sessions, and memory state."""
+    try:
+        # Capture identity before the row is gone — the audit line outlives it.
+        target = AUTH_STORE.get_user_by_id(user_id)
+        AUTH_STORE.admin_delete_user(user_id, user)
+        USER_STATE_REGISTRY.remove(user_id)
+        AUTH_STORE.record_audit(
+            user, "user.delete", target, f"role={(target or {}).get('role', '?')}"
+        )
+        return {
+            "ok": True,
+            "message": "User account and all associated data permanently deleted.",
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/smtp")
+def api_admin_get_smtp(user: dict = Depends(require_admin)) -> dict:
+    """Retrieve current SMTP configuration with masked credentials."""
+    cfg = get_smtp_config(masked=True)
+    return {"ok": True, "smtp": cfg}
+
+
+@app.post("/api/admin/smtp")
+def api_admin_save_smtp(
+    body: AdminSmtpConfigIn,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Save SMTP configuration to environment."""
+    saved = save_smtp_config(body.model_dump())
+    AUTH_STORE.record_audit(
+        user, "smtp.save", None, f"{saved.get('host', '')}:{saved.get('port', '')}"
+    )
+    return {
+        "ok": True,
+        "smtp": saved,
+        "message": (
+            f"SMTP saved. Dispatching via {saved.get('host')}:{saved.get('port')}."
+            if saved.get("configured")
+            else "SMTP saved, but the configuration is still incomplete — add a username or use port 25."
+        ),
+    }
+
+
+@app.post("/api/admin/smtp/test")
+def api_admin_test_smtp(
+    body: AdminSmtpTestIn,
+    request: Request,
+    user: dict = Depends(require_admin),
+) -> dict:
+    """Run live diagnostic test of SMTP connection and send a test message."""
+    lang = request.cookies.get("algopaca_lang", "en")
+    custom_cfg = None
+    if body.host:
+        custom_cfg = {
+            "host": body.host,
+            "port": body.port or 587,
+            "username": body.username or "",
+            "password": body.password or "",
+            "from_email": body.from_email or body.username or "",
+            "sender_name": body.sender_name or "AlgoPaca",
+            "use_ssl": bool(body.use_ssl),
+        }
+    result = test_smtp_connection(
+        test_to_email=body.to_email,
+        custom_config=custom_cfg,
+        lang=lang,
+    )
+    AUTH_STORE.record_email(
+        body.to_email, "smtp_test", bool(result.get("ok")), str(result.get("error") or "")
+    )
+    return result
+
+
+@app.post("/api/admin/maintenance/purge-expired")
+def api_admin_purge_expired(user: dict = Depends(require_admin)) -> dict:
+    """Purge expired sessions and reset tokens."""
+    result = AUTH_STORE.admin_purge_expired_data()
+    AUTH_STORE.record_audit(
+        user,
+        "maintenance.purge",
+        None,
+        f"{result.get('purged_sessions', 0)} session(s), {result.get('purged_tokens', 0)} token(s)",
+    )
+    return {"ok": True, **result, "message": "Expired sessions and reset tokens purged."}
+
+
+@app.post("/api/admin/maintenance/vacuum")
+def api_admin_vacuum(user: dict = Depends(require_admin)) -> dict:
+    """Vacuum and optimize SQLite database."""
+    result = AUTH_STORE.admin_vacuum_db()
+    AUTH_STORE.record_audit(
+        user, "maintenance.vacuum", None, f"integrity={result.get('integrity', '?')}"
+    )
+    return {"ok": True, **result, "message": "Database vacuum and integrity check complete."}
+
 
 
 def main() -> None:

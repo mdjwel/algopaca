@@ -23,27 +23,73 @@ except ImportError:
     pass
 
 
-def get_smtp_config() -> dict[str, Any]:
+from bot.env_store import upsert_env_values
+
+
+def get_smtp_config(masked: bool = False) -> dict[str, Any]:
     """Retrieve SMTP configuration from environment."""
     host = os.getenv("SMTP_HOST", "").strip()
     port_raw = os.getenv("SMTP_PORT", "").strip()
     username = os.getenv("SMTP_USERNAME", "").strip()
     password = os.getenv("SMTP_PASSWORD", "").strip()
     from_email = os.getenv("SMTP_FROM_EMAIL", "").strip() or username
+    sender_name = os.getenv("SMTP_SENDER_NAME", "").strip() or "AlgoPaca"
     use_ssl_str = os.getenv("SMTP_USE_SSL", "").strip().lower()
 
     port = int(port_raw) if port_raw.isdigit() else 587
-    use_ssl = use_ssl_str in {"true", "1", "yes"} or port == 465
+    # An explicit saved choice always wins. Deriving it from the port would
+    # silently re-check the box every time someone unticks SSL on port 465.
+    if use_ssl_str:
+        use_ssl = use_ssl_str in {"true", "1", "yes"}
+    else:
+        use_ssl = port == 465
+    is_configured = bool(host and (username or port == 25))
+
+    masked_password = ("••••••••" if password else "") if masked else password
 
     return {
         "host": host,
         "port": port,
         "username": username,
-        "password": password,
+        "password": masked_password,
+        "has_password": bool(password),
         "from_email": from_email,
+        "sender_name": sender_name,
         "use_ssl": use_ssl,
-        "configured": bool(host and (username or port == 25)),
+        "configured": is_configured,
     }
+
+
+def save_smtp_config(updates: dict[str, Any]) -> dict[str, Any]:
+    """Save SMTP configuration updates to .env and sync process."""
+    current_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    new_pass = str(updates.get("password", "")).strip()
+
+    # If the new password is empty or was sent as mask, keep current
+    if not new_pass or new_pass.startswith("••••"):
+        final_pass = current_pass
+    else:
+        final_pass = new_pass
+
+    host = str(updates.get("host", "")).strip()
+    port = str(updates.get("port", "587")).strip()
+    username = str(updates.get("username", "")).strip()
+    from_email = str(updates.get("from_email", "")).strip() or username
+    sender_name = str(updates.get("sender_name", "")).strip() or "AlgoPaca"
+    use_ssl = bool(updates.get("use_ssl", False))
+
+    env_map = {
+        "SMTP_HOST": host,
+        "SMTP_PORT": port,
+        "SMTP_USERNAME": username,
+        "SMTP_PASSWORD": final_pass,
+        "SMTP_FROM_EMAIL": from_email,
+        "SMTP_SENDER_NAME": sender_name,
+        "SMTP_USE_SSL": "true" if use_ssl else "false",
+    }
+
+    upsert_env_values(env_map)
+    return get_smtp_config(masked=True)
 
 
 def send_email(
@@ -59,9 +105,10 @@ def send_email(
         logger.warning("SMTP is not configured. Email will not be sent.")
         raise ValueError("SMTP email server is not configured on this desk.")
 
+    sender_name = config.get("sender_name") or "AlgoPaca"
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"AlgoPaca <{config['from_email']}>"
+    msg["From"] = f"{sender_name} <{config['from_email']}>"
     msg["To"] = to_email
 
     # Plaintext fallback
@@ -90,7 +137,219 @@ def send_email(
         return True
     except Exception as exc:
         logger.error("Failed to send email to %s: %s", to_email, exc)
-        raise ValueError("Failed to send email. Please check your SMTP settings.") from exc
+        raise ValueError(f"Failed to send email: {exc}") from exc
+
+
+def render_test_email(to_email: str, host: str, lang: str = "en") -> tuple[str, str, str]:
+    """Generate subject, plain text, and HTML body for SMTP test message."""
+    is_bn = str(lang).strip().lower() == "bn"
+    timestamp = os.getenv("TZ", "") or "UTC"
+    import datetime as _dt
+    now_str = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    if is_bn:
+        subject = "AlgoPaca — SMTP টেস্ট ইমেইল সফল হয়েছে"
+        body_text = f"""নমস্কার,
+
+আপনার AlgoPaca ট্রেডিং ডেস্কে SMTP কনফিগারেশন সফলভাবে সম্পন্ন হয়েছে।
+
+টেস্ট রিপোর্ট:
+- রিসিভার: {to_email}
+- হোস্ট: {host}
+- সময়: {now_str}
+
+এই ইমেইলটি নির্দেশ করে যে আপনার সার্ভার স্বয়ংক্রিয় পাসওয়ার্ড রিসেট ও ট্রেডিং নোটিফিকেশন পাঠাতে সম্পূর্ণ প্রস্তুত।
+
+ধন্যবাদান্তে,
+AlgoPaca Trading Team
+"""
+        body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AlgoPaca SMTP Test</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f17; color: #e2e8f0; margin: 0; padding: 40px 20px;">
+  <div style="max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <div style="background: linear-gradient(135deg, #0d9488 0%, #2563eb 100%); padding: 24px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">AlgoPaca · SMTP টেস্ট সফল</h1>
+    </div>
+    <div style="padding: 28px;">
+      <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-top: 0;">
+        আপনার AlgoPaca ট্রেডিং ডেস্কে SMTP কনফিগারেশন সফলভাবে যাচাই করা হয়েছে।
+      </p>
+      <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 13px;">
+        <div style="color: #38bdf8; margin-bottom: 6px;"><strong>রিসিভার:</strong> {html.escape(to_email)}</div>
+        <div style="color: #38bdf8; margin-bottom: 6px;"><strong>এসএমটিপি হোস্ট:</strong> {html.escape(host)}</div>
+        <div style="color: #94a3b8;"><strong>সময়:</strong> {html.escape(now_str)}</div>
+      </div>
+      <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 0;">
+        স্বয়ংক্রিয় পাসওয়ার্ড রিসেট ও ট্রেডিং এলার্ট নোটিফিকেশন সফলভাবে কাজ করবে।
+      </p>
+    </div>
+    <div style="border-top: 1px solid #1e293b; padding: 14px 28px; font-size: 11px; color: #64748b; text-align: center;">
+      AlgoPaca Autonomous Algorithmic Trading Systems
+    </div>
+  </div>
+</body>
+</html>"""
+    else:
+        subject = "AlgoPaca — SMTP Test Connection Successful"
+        body_text = f"""Hello,
+
+This is a test email confirming that your AlgoPaca trading desk SMTP configuration is working correctly.
+
+Diagnostics:
+- Recipient: {to_email}
+- SMTP Host: {host}
+- Dispatched At: {now_str}
+
+Your AlgoPaca instance is now ready to dispatch automated security alerts and password reset notifications.
+
+Best regards,
+AlgoPaca Team
+"""
+        body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AlgoPaca SMTP Test</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f17; color: #e2e8f0; margin: 0; padding: 40px 20px;">
+  <div style="max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <div style="background: linear-gradient(135deg, #0d9488 0%, #2563eb 100%); padding: 24px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">AlgoPaca · SMTP Test Successful</h1>
+    </div>
+    <div style="padding: 28px;">
+      <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-top: 0;">
+        Your SMTP settings for the AlgoPaca trading desk have been successfully verified.
+      </p>
+      <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 13px;">
+        <div style="color: #38bdf8; margin-bottom: 6px;"><strong>Recipient:</strong> {html.escape(to_email)}</div>
+        <div style="color: #38bdf8; margin-bottom: 6px;"><strong>SMTP Host:</strong> {html.escape(host)}</div>
+        <div style="color: #94a3b8;"><strong>Timestamp:</strong> {html.escape(now_str)}</div>
+      </div>
+      <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 0;">
+        Your desk can now dispatch one-time password reset links and trading notifications securely.
+      </p>
+    </div>
+    <div style="border-top: 1px solid #1e293b; padding: 14px 28px; font-size: 11px; color: #64748b; text-align: center;">
+      AlgoPaca Autonomous Algorithmic Trading Systems
+    </div>
+  </div>
+</body>
+</html>"""
+
+    return subject, body_text, body_html
+
+
+def test_smtp_connection(
+    test_to_email: str,
+    custom_config: Optional[dict[str, Any]] = None,
+    lang: str = "en",
+    timeout: int = 12,
+) -> dict[str, Any]:
+    """Perform a step-by-step diagnostic test of SMTP connection and send a test message."""
+    logs: list[dict[str, Any]] = []
+
+    def _log(step: str, status: str, detail: str) -> None:
+        logs.append({"step": step, "status": status, "detail": detail})
+
+    config = get_smtp_config()
+    if custom_config:
+        # Merge custom params if provided
+        for k in ("host", "port", "username", "from_email", "sender_name", "use_ssl"):
+            if k in custom_config:
+                config[k] = custom_config[k]
+        if "password" in custom_config and custom_config["password"] and not custom_config["password"].startswith("••••"):
+            config["password"] = custom_config["password"]
+
+    host = config.get("host", "").strip()
+    port = int(config.get("port", 587))
+    use_ssl = bool(config.get("use_ssl", False))
+    username = config.get("username", "").strip()
+    password = config.get("password", "")
+    from_email = config.get("from_email", "").strip() or username
+    sender_name = config.get("sender_name", "") or "AlgoPaca"
+
+    _log("init", "info", f"Beginning SMTP diagnostics for host: {host or '(empty)'}:{port}")
+
+    if not host:
+        _log("validate", "error", "SMTP Host cannot be empty.")
+        return {"ok": False, "error": "SMTP Host is required.", "logs": logs}
+
+    if not test_to_email:
+        _log("validate", "error", "Test recipient email address is required.")
+        return {"ok": False, "error": "Recipient email is required.", "logs": logs}
+
+    server = None
+    try:
+        # Step 1: Connect
+        if use_ssl:
+            _log("connect", "info", f"Establishing SSL socket connection to {host}:{port}...")
+            server = smtplib.SMTP_SSL(host, port, timeout=timeout)
+            _log("connect", "ok", f"SSL connection established with {host}:{port}")
+        else:
+            _log("connect", "info", f"Connecting to {host}:{port}...")
+            server = smtplib.SMTP(host, port, timeout=timeout)
+            _log("connect", "ok", f"TCP socket connected to {host}:{port}")
+
+            _log("ehlo", "info", "Sending EHLO greeting...")
+            server.ehlo()
+            _log("ehlo", "ok", "EHLO greeting accepted")
+
+            if server.has_extn("STARTTLS"):
+                _log("tls", "info", "Server supports STARTTLS. Initiating TLS handshake...")
+                server.starttls()
+                server.ehlo()
+                _log("tls", "ok", "TLS encryption active")
+            else:
+                _log("tls", "warn", "Server does not advertise STARTTLS (plain connection).")
+
+        # Step 2: Authenticate
+        if username and password:
+            _log("auth", "info", f"Authenticating as {username}...")
+            server.login(username, password)
+            _log("auth", "ok", f"Authentication successful for user {username}")
+        elif username and not password:
+            _log("auth", "warn", f"Username specified ({username}) but no password provided.")
+        else:
+            _log("auth", "info", "No credentials provided. Proceeding without authentication.")
+
+        # Step 3: Dispatch Test Email
+        _log("send", "info", f"Rendering test message to {test_to_email}...")
+        subject, body_text, body_html = render_test_email(test_to_email, host, lang=lang)
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{sender_name} <{from_email}>"
+        msg["To"] = test_to_email
+        msg.attach(MIMEText(body_text, "plain", "utf-8"))
+        msg.attach(MIMEText(body_html, "html", "utf-8"))
+
+        _log("send", "info", f"Sending test envelope from {from_email} to {test_to_email}...")
+        server.sendmail(from_email, [test_to_email], msg.as_string())
+        _log("send", "ok", f"Message accepted for delivery by {host}")
+
+        server.quit()
+        _log("finish", "ok", "SMTP diagnostic test completed successfully!")
+        return {"ok": True, "message": "Test email sent successfully!", "logs": logs}
+
+    except smtplib.SMTPAuthenticationError as exc:
+        _log("auth", "error", f"Authentication failed: {exc.smtp_error.decode('utf-8', errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}")
+        return {"ok": False, "error": "SMTP Authentication Failed. Check username and password.", "logs": logs}
+    except smtplib.SMTPConnectError as exc:
+        _log("connect", "error", f"Connection error: {exc}")
+        return {"ok": False, "error": f"Failed to connect to SMTP server: {exc}", "logs": logs}
+    except smtplib.SMTPServerDisconnected as exc:
+        _log("disconnect", "error", f"Server disconnected unexpectedly: {exc}")
+        return {"ok": False, "error": "Server disconnected unexpectedly.", "logs": logs}
+    except Exception as exc:
+        _log("error", "error", f"SMTP error: {str(exc)}")
+        return {"ok": False, "error": f"SMTP test failed: {exc}", "logs": logs}
+    finally:
+        if server is not None:
+            try:
+                server.close()
+            except Exception:
+                pass
+
+
+test_smtp_connection.__test__ = False
 
 
 import html
