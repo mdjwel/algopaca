@@ -1862,18 +1862,18 @@ body.modal-open {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px));
     z-index: 40;
     margin: 0;
     gap: 0.35rem;
-    padding: 0.6rem 0.9rem calc(0.6rem + env(safe-area-inset-bottom));
+    padding: 0.6rem 0.9rem;
     border-width: 1px 0 0;
     border-radius: 0;
     box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.45);
   }
 
   #manual-size-estimate.is-expanded {
-    max-height: 70vh;
+    max-height: 60vh;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -1896,9 +1896,9 @@ body.modal-open {
     flex-shrink: 0;
   }
 
-  /* Room for the bar so it never covers the last control on the form. */
+  /* Room for the bar and bottom nav so it never covers the last control on the form. */
   body[data-page="manual-order"] {
-    padding-bottom: 7rem;
+    padding-bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px) + 8rem);
   }
 }
 

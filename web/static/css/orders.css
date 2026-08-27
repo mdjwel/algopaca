@@ -1087,3 +1087,147 @@ button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Mobile Filter Bar & Segmented Controls ─────────────────────── */
+.pos-filters-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.pos-search-wrap {
+  position: relative;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.pos-filter-groups {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pos-seg-group {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.pos-seg-btn {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pos-seg-btn:hover {
+  color: var(--text);
+}
+
+.pos-seg-btn.is-active {
+  background: color-mix(in srgb, var(--copper) 20%, transparent);
+  color: var(--copper);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Mobile Order Cards Layout ──────────────────────────────────── */
+.pos-cards-list {
+  display: none;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pos-card {
+  background: var(--panel, #121a24);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  position: relative;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.pos-card:hover {
+  border-color: color-mix(in srgb, var(--line) 70%, var(--copper));
+}
+
+.pos-card.is-selected {
+  border-color: rgba(212, 137, 76, 0.45);
+  background: rgba(212, 137, 76, 0.06);
+}
+
+.pos-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+  padding-bottom: 0.55rem;
+  gap: 0.5rem;
+}
+
+.pos-card-head strong {
+  font-size: 1.1rem;
+}
+
+.pos-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+}
+
+.pos-card-actions button,
+.pos-card-actions a {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  #ord-table-wrap {
+    display: none !important;
+  }
+
+  #ord-cards-list:not([hidden]) {
+    display: flex !important;
+  }
+
+  .pos-filters-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pos-search-wrap {
+    max-width: 100%;
+  }
+
+  .pos-filter-groups {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .pos-seg-group {
+    flex-shrink: 0;
+  }
+}
+

@@ -63,6 +63,8 @@ const POS_MODAL_IDS = [
 
 let activeLotsSymbol = null;
 let lotsRequestSeq = 0;
+let activeLotsData = null;
+const activeLotsSelectedIndices = new Set();
 
 /** True while any confirmation dialog is up. Background refreshes stand down
  *  then: re-rendering under an open dialog swaps the very numbers the user is
@@ -1158,6 +1160,7 @@ function setLotsModalState({ loading = false, hasRows = false, empty = false } =
  *  then serves the desktop columns and the stacked phone layout, so the two can
  *  never drift out of step the way a table and its card mirror do. */
 function renderLotsRows(data) {
+  activeLotsData = data;
   const list = $("pos-lots-list");
   const totals = $("pos-lots-totals");
   const lots = Array.isArray(data.lots) ? data.lots : [];
@@ -1174,6 +1177,7 @@ function renderLotsRows(data) {
         const pct = Number(lot.unrealized_pct);
         const entry = Number(lot.price || 0);
         const weight = Number(lot.weight_pct || 0);
+        const isSelected = activeLotsSelectedIndices.has(lot.index);
         const subLine = [formatLotTime(lot.opened_at), formatLotAge(lot.age_days)]
           .filter(Boolean)
           .join(" · ");
@@ -1188,8 +1192,9 @@ function renderLotsRows(data) {
             : "";
 
         return `
-        <div class="pos-lot ${lot.estimated ? "is-estimated" : ""} is-${tone}" role="listitem">
+        <div class="pos-lot ${lot.estimated ? "is-estimated" : ""} is-${tone} ${isSelected ? "is-selected" : ""}" data-lot-index="${lot.index}" role="listitem">
           <div class="pos-lot-when">
+            <input type="checkbox" class="pos-check-input pos-lot-check" data-lot-index="${lot.index}" ${isSelected ? "checked" : ""} aria-label="${escapeHtml(tx("pos_lots_select_lot", "Select lot {index}", { index: lot.index }))}" />
             <span class="pos-lot-num">${escapeHtml(String(lot.index))}</span>
             <span class="pos-lot-when-text">
               <strong>${escapeHtml(formatLotDate(lot.opened_at))}</strong>
@@ -1248,6 +1253,286 @@ function renderLotsRows(data) {
       <strong class="mono ${totalPl >= 0 ? "pos" : "neg"}">${formatPnl(totalPl)}</strong>
     `;
   }
+
+  updateLotsSelectionUI();
+}
+
+function updateLotsSelectionUI() {
+  const lots = Array.isArray(activeLotsData?.lots) ? activeLotsData.lots : [];
+  const selectedLots = lots.filter((l) => activeLotsSelectedIndices.has(l.index));
+  const selectedCount = selectedLots.length;
+  const selectAllCheck = $("pos-lots-select-all");
+  const selBar = $("pos-lots-selection-bar");
+  const closeBtn = $("btn-lots-close-selected");
+  const closeText = $("btn-lots-close-text");
+  const confirmPanel = $("pos-lots-confirm-panel");
+
+  // Update select all checkbox state
+  if (selectAllCheck) {
+    if (lots.length === 0 || selectedCount === 0) {
+      selectAllCheck.checked = false;
+      selectAllCheck.indeterminate = false;
+    } else if (selectedCount === lots.length) {
+      selectAllCheck.checked = true;
+      selectAllCheck.indeterminate = false;
+    } else {
+      selectAllCheck.checked = false;
+      selectAllCheck.indeterminate = true;
+    }
+  }
+
+  // Update rows styling and check inputs
+  document.querySelectorAll(".pos-lot").forEach((row) => {
+    const idx = Number(row.dataset.lotIndex);
+    const isSelected = activeLotsSelectedIndices.has(idx);
+    row.classList.toggle("is-selected", isSelected);
+    const check = row.querySelector(".pos-lot-check");
+    if (check) check.checked = isSelected;
+  });
+
+  if (selectedCount === 0) {
+    if (selBar) selBar.hidden = true;
+    if (closeBtn) closeBtn.hidden = true;
+    if (confirmPanel) confirmPanel.hidden = true;
+    return;
+  }
+
+  const selectedQty = selectedLots.reduce((acc, l) => acc + Number(l.qty || 0), 0);
+  const selectedCost = selectedLots.reduce((acc, l) => acc + Number(l.cost_basis || 0), 0);
+  const selectedUpl = selectedLots.reduce((acc, l) => acc + Number(l.unrealized_pl || 0), 0);
+  const selectedMv = selectedLots.reduce((acc, l) => acc + Number(l.market_value || 0), 0);
+
+  if (selBar) {
+    selBar.hidden = false;
+    const countEl = $("pos-lots-sel-count");
+    const qtyEl = $("pos-lots-sel-qty");
+    const costEl = $("pos-lots-sel-cost");
+    const pnlEl = $("pos-lots-sel-pnl");
+    if (countEl) countEl.textContent = String(selectedCount);
+    if (qtyEl) qtyEl.textContent = `${formatPositionQty(selectedQty)} ${tx("shares_unit", "shares")}`;
+    if (costEl) costEl.textContent = tx("cost_short", "Cost {value}", { value: money(selectedCost) });
+    if (pnlEl) {
+      pnlEl.textContent = formatPnl(selectedUpl);
+      pnlEl.className = `mono ${selectedUpl >= 0 ? "pos" : "neg"}`;
+    }
+  }
+
+  if (closeBtn) {
+    closeBtn.hidden = false;
+    if (closeText) {
+      closeText.textContent = tx(
+        "pos_lots_close_selected",
+        "Close selected ({count} lots · {qty} shares)",
+        { count: selectedCount, qty: formatPositionQty(selectedQty) }
+      );
+    }
+  }
+
+  // Update confirmation panel values if currently visible
+  if (confirmPanel && !confirmPanel.hidden) {
+    fillLotsConfirmPanel({
+      count: selectedCount,
+      qty: selectedQty,
+      proceeds: selectedMv,
+      pnl: selectedUpl,
+      lots: selectedLots,
+    });
+  }
+}
+
+function fillLotsConfirmPanel({ count, qty, proceeds, pnl, lots }) {
+  const titleEl = $("pos-lots-confirm-title");
+  const descEl = $("pos-lots-confirm-desc");
+  const procEl = $("pos-lots-confirm-proceeds");
+  const pnlEl = $("pos-lots-confirm-pnl");
+  const fifoEl = $("pos-lots-confirm-fifo-note");
+  const sym = activeLotsSymbol || "";
+
+  if (titleEl) {
+    titleEl.textContent = tx(
+      "pos_lots_confirm_title",
+      "Close {count} selected lots ({qty} shares) of {symbol}?",
+      { count, qty: formatPositionQty(qty), symbol: sym }
+    );
+  }
+  if (descEl) {
+    descEl.textContent = tx(
+      "pos_lots_confirm_desc",
+      "This will submit a market order to liquidate {qty} shares.",
+      { qty: formatPositionQty(qty) }
+    );
+  }
+  if (procEl) procEl.textContent = money(proceeds || 0);
+  if (pnlEl) {
+    pnlEl.textContent = formatPnl(pnl || 0);
+    pnlEl.className = `${pnl >= 0 ? "pos" : "neg"}`;
+  }
+  if (fifoEl) {
+    const isOldestPrefix = Array.isArray(lots) && lots.every((l, i) => l.index === i + 1);
+    fifoEl.hidden = isOldestPrefix;
+  }
+}
+
+function handleLotsSelectAllToggle(e) {
+  const lots = Array.isArray(activeLotsData?.lots) ? activeLotsData.lots : [];
+  if (e.target.checked) {
+    lots.forEach((l) => activeLotsSelectedIndices.add(l.index));
+  } else {
+    activeLotsSelectedIndices.clear();
+  }
+  updateLotsSelectionUI();
+}
+
+function handleLotsClearSelection() {
+  activeLotsSelectedIndices.clear();
+  updateLotsSelectionUI();
+}
+
+function handleLotsListClick(e) {
+  const row = e.target.closest(".pos-lot");
+  if (!row) return;
+  const idx = Number(row.dataset.lotIndex);
+  if (!idx) return;
+
+  if (e.target.matches(".pos-lot-check")) {
+    if (e.target.checked) {
+      activeLotsSelectedIndices.add(idx);
+    } else {
+      activeLotsSelectedIndices.delete(idx);
+    }
+  } else {
+    // Clicking anywhere on the row toggles selection
+    if (activeLotsSelectedIndices.has(idx)) {
+      activeLotsSelectedIndices.delete(idx);
+    } else {
+      activeLotsSelectedIndices.add(idx);
+    }
+  }
+  updateLotsSelectionUI();
+}
+
+function handleLotsCloseSelectedClick() {
+  if (loopRunning) {
+    showToast(tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually"), "error");
+    return;
+  }
+  const lots = Array.isArray(activeLotsData?.lots) ? activeLotsData.lots : [];
+  const selectedLots = lots.filter((l) => activeLotsSelectedIndices.has(l.index));
+  if (selectedLots.length === 0) return;
+
+  const selectedQty = selectedLots.reduce((acc, l) => acc + Number(l.qty || 0), 0);
+  const selectedUpl = selectedLots.reduce((acc, l) => acc + Number(l.unrealized_pl || 0), 0);
+  const selectedMv = selectedLots.reduce((acc, l) => acc + Number(l.market_value || 0), 0);
+
+  const confirmPanel = $("pos-lots-confirm-panel");
+  const errEl = $("pos-lots-confirm-error");
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+
+  fillLotsConfirmPanel({
+    count: selectedLots.length,
+    qty: selectedQty,
+    proceeds: selectedMv,
+    pnl: selectedUpl,
+    lots: selectedLots,
+  });
+
+  if (confirmPanel) {
+    confirmPanel.hidden = false;
+    confirmPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function handleLotsConfirmCancelClick() {
+  const confirmPanel = $("pos-lots-confirm-panel");
+  if (confirmPanel) confirmPanel.hidden = true;
+}
+
+async function submitCloseSelectedLots() {
+  if (loopRunning) {
+    showToast(tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually"), "error");
+    return;
+  }
+  const sym = activeLotsSymbol;
+  if (!sym) return;
+
+  const lots = Array.isArray(activeLotsData?.lots) ? activeLotsData.lots : [];
+  const selectedLots = lots.filter((l) => activeLotsSelectedIndices.has(l.index));
+  if (selectedLots.length === 0) return;
+
+  const selectedQty = selectedLots.reduce((acc, l) => acc + Number(l.qty || 0), 0);
+  const totalHeldQty = Number(activeLotsData?.qty || 0);
+  const cancelOrders = !!$("pos-lots-cancel-orders-check")?.checked;
+  const submitBtn = $("btn-lots-confirm-submit");
+  const errEl = $("pos-lots-confirm-error");
+
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = tx("liquidating", "Liquidating…");
+  }
+
+  try {
+    const payload = { cancel_orders: cancelOrders };
+    if (selectedQty > 0 && selectedQty < totalHeldQty) {
+      payload.qty = selectedQty;
+    }
+
+    const res = await fetch(`/api/positions/${encodeURIComponent(sym)}/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (closeResultFailed(data.result)) {
+      const status = String(data.result?.status || "rejected");
+      throw new Error(
+        tx(
+          "position_close_not_accepted",
+          "Close order was not accepted ({status}). Refresh the position and try again.",
+          { status }
+        )
+      );
+    }
+
+    showToast(
+      tx("position_closed_toast", "{symbol} close order submitted", { symbol: sym }),
+      "ok"
+    );
+
+    positionsData = data.overview;
+    renderPositionsPage();
+
+    if (selectedQty >= totalHeldQty || !findPositionBySymbol(sym)) {
+      closeLotsModal();
+    } else {
+      activeLotsSelectedIndices.clear();
+      const confirmPanel = $("pos-lots-confirm-panel");
+      if (confirmPanel) confirmPanel.hidden = true;
+      await openLotsModal(sym);
+    }
+  } catch (err) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = err.message || tx("error_close_position", "Failed to close position");
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = tx("confirm_liquidation", "Confirm liquidation");
+    }
+  }
 }
 
 /** Reconstruction caveats belong on screen: a lot list the user cannot trust
@@ -1277,6 +1562,8 @@ async function openLotsModal(symbol) {
   if (!sym) return;
   const pos = findPositionBySymbol(sym);
   activeLotsSymbol = sym;
+  activeLotsSelectedIndices.clear();
+  activeLotsData = null;
   const seq = (lotsRequestSeq += 1);
 
   const symBadge = $("pos-lots-symbol-badge");
@@ -1284,6 +1571,11 @@ async function openLotsModal(symbol) {
   const errEl = $("pos-lots-error");
   const noteEl = $("pos-lots-note");
   const historyLink = $("pos-lots-history-link");
+  const confirmPanel = $("pos-lots-confirm-panel");
+  const confirmErr = $("pos-lots-confirm-error");
+  const selBar = $("pos-lots-selection-bar");
+  const closeBtn = $("btn-lots-close-selected");
+  const selectAllCheck = $("pos-lots-select-all");
 
   if (symBadge) symBadge.textContent = sym;
   if (sideBadge) {
@@ -1297,6 +1589,17 @@ async function openLotsModal(symbol) {
     errEl.textContent = "";
   }
   if (noteEl) noteEl.hidden = true;
+  if (confirmPanel) confirmPanel.hidden = true;
+  if (confirmErr) {
+    confirmErr.hidden = true;
+    confirmErr.textContent = "";
+  }
+  if (selBar) selBar.hidden = true;
+  if (closeBtn) closeBtn.hidden = true;
+  if (selectAllCheck) {
+    selectAllCheck.checked = false;
+    selectAllCheck.indeterminate = false;
+  }
 
   // Seed the header from the row that was clicked so the dialog is never blank
   // while the fill window is being walked.
@@ -1359,6 +1662,19 @@ function fillLotsSummary(data) {
 function closeLotsModal() {
   closePosModal("pos-lots-modal");
   activeLotsSymbol = null;
+  activeLotsData = null;
+  activeLotsSelectedIndices.clear();
+  const confirmPanel = $("pos-lots-confirm-panel");
+  if (confirmPanel) confirmPanel.hidden = true;
+  const selBar = $("pos-lots-selection-bar");
+  if (selBar) selBar.hidden = true;
+  const closeBtn = $("btn-lots-close-selected");
+  if (closeBtn) closeBtn.hidden = true;
+  const selectAllCheck = $("pos-lots-select-all");
+  if (selectAllCheck) {
+    selectAllCheck.checked = false;
+    selectAllCheck.indeterminate = false;
+  }
 }
 
 function renderLiquidatePreview(container, list) {
@@ -1744,6 +2060,12 @@ function initPositionsUi() {
 
   $("btn-lots-modal-x")?.addEventListener("click", closeLotsModal);
   $("btn-lots-modal-close")?.addEventListener("click", closeLotsModal);
+  $("pos-lots-select-all")?.addEventListener("change", handleLotsSelectAllToggle);
+  $("btn-lots-clear-selection")?.addEventListener("click", handleLotsClearSelection);
+  $("pos-lots-list")?.addEventListener("click", handleLotsListClick);
+  $("btn-lots-close-selected")?.addEventListener("click", handleLotsCloseSelectedClick);
+  $("btn-lots-confirm-cancel")?.addEventListener("click", handleLotsConfirmCancelClick);
+  $("btn-lots-confirm-submit")?.addEventListener("click", submitCloseSelectedLots);
 
   $("btn-liquidate-selected-x")?.addEventListener("click", closeLiquidateSelectedModal);
   $("btn-liquidate-selected-cancel")?.addEventListener("click", closeLiquidateSelectedModal);

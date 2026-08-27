@@ -47,7 +47,7 @@
 
 .pos-modal-card .check strong {
   display: block;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 @keyframes pos-pulse {
@@ -1341,7 +1341,7 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-modal-meta-item strong {
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--mono, monospace);
 }
 
@@ -1426,7 +1426,7 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-preview-row strong {
   font-size: 1.05rem;
-  font-weight: 700;
+  font-weight: 500;
   font-family: var(--mono, monospace);
 }
 
@@ -1540,6 +1540,7 @@ button.primary.primary-danger:focus-visible {
 
 .pos-liquidate-totals strong {
   text-align: right;
+  font-weight: 500;
 }
 
 .pos-modal-foot {
@@ -1563,6 +1564,10 @@ button.primary.primary-danger:focus-visible {
    dialog, so this card runs wider than the close/liquidate ones. */
 .pos-lots-card {
   max-width: 780px;
+}
+
+.pos-lots-card strong {
+  font-weight: 500;
 }
 
 .pos-lots-body {
@@ -1612,6 +1617,7 @@ button.primary.primary-danger:focus-visible {
 .pos-lots-stat strong {
   font-family: var(--mono, monospace);
   font-size: 0.95rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1627,10 +1633,16 @@ button.primary.primary-danger:focus-visible {
 .pos-lot {
   display: grid;
   grid-template-columns:
-    minmax(8.5rem, 1.4fr) minmax(5rem, 0.9fr)
-    minmax(7rem, 1.2fr) minmax(6.5rem, 1fr) minmax(7rem, 1.1fr);
+    minmax(9.5rem, 1.5fr) minmax(5rem, 0.9fr)
+    minmax(6.5rem, 1.1fr) minmax(6.5rem, 1fr) minmax(7rem, 1.1fr);
   gap: 0.75rem;
   align-items: center;
+}
+
+.pos-lots-colhead-opened {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .pos-lots-colhead {
@@ -1663,6 +1675,8 @@ button.primary.primary-danger:focus-visible {
      single figure is read — the same trick the blotter rows use for side. */
   box-shadow: inset 2px 0 0 transparent;
   transition: background 0.15s ease;
+  cursor: pointer;
+  user-select: none;
 }
 
 .pos-lot:last-child {
@@ -1671,6 +1685,14 @@ button.primary.primary-danger:focus-visible {
 
 .pos-lot:hover {
   background: rgba(255, 255, 255, 0.025);
+}
+
+.pos-lot.is-selected {
+  background: rgba(212, 137, 76, 0.08);
+}
+
+.pos-lot.is-selected:hover {
+  background: rgba(212, 137, 76, 0.12);
 }
 
 .pos-lot.is-pos {
@@ -1692,6 +1714,11 @@ button.primary.primary-danger:focus-visible {
   min-width: 0;
 }
 
+.pos-lot-check {
+  margin: 0;
+  flex: none;
+}
+
 /* Lot 1 is the oldest parcel and the first shares a sell would retire; the
    ordinal carries that meaning, so it gets a chip rather than a bare digit. */
 .pos-lot-num {
@@ -1705,7 +1732,7 @@ button.primary.primary-danger:focus-visible {
   background: rgba(255, 255, 255, 0.07);
   font-family: var(--mono, monospace);
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text, #e8eef5);
 }
 
@@ -1717,7 +1744,7 @@ button.primary.primary-danger:focus-visible {
 
 .pos-lot-when-text strong {
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1745,7 +1772,7 @@ button.primary.primary-danger:focus-visible {
 .pos-lot-value strong,
 .pos-lot-pnl strong {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .pos-lot-pnl .pos-chg-pill {
@@ -1834,6 +1861,154 @@ button.primary.primary-danger:focus-visible {
 
 .pos-lots-totals strong {
   font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.pos-lots-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.85rem;
+  background: rgba(212, 137, 76, 0.09);
+  border-top: 1px solid rgba(212, 137, 76, 0.22);
+  font-size: 0.78rem;
+  color: var(--text);
+  animation: pos-lots-fade 0.15s ease-out;
+}
+
+.pos-lots-selection-bar[hidden] {
+  display: none !important;
+}
+
+.pos-lots-sel-info {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.pos-lots-sel-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(212, 137, 76, 0.2);
+  color: var(--copper, #d4894c);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.pos-lots-selection-bar strong {
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.pos-lots-confirm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(227, 93, 93, 0.06);
+  border: 1px solid rgba(227, 93, 93, 0.25);
+  border-radius: var(--radius-md, 8px);
+  animation: pos-lots-fade 0.2s ease-out;
+}
+
+.pos-lots-confirm-panel[hidden] {
+  display: none !important;
+}
+
+.pos-lots-confirm-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.pos-lots-confirm-head .danger-icon {
+  color: var(--sell, #e35d5d);
+  flex: none;
+  margin-top: 2px;
+}
+
+.pos-lots-confirm-titles h4 {
+  margin: 0 0 0.2rem 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pos-lots-confirm-titles p {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.pos-lots-confirm-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+}
+
+.pos-lots-confirm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pos-lots-confirm-stat span {
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pos-lots-confirm-stat strong {
+  font-family: var(--mono, monospace);
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-lots-fifo-note {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-left: 2px solid rgba(212, 137, 76, 0.5);
+  border-radius: 0 4px 4px 0;
+  background: rgba(212, 137, 76, 0.06);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.pos-lots-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.pos-lots-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+@keyframes pos-lots-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .pos-lots-note {
@@ -1989,3 +2164,30 @@ button.primary.primary-danger:focus-visible {
     display: none;
   }
 }
+
+@media (max-width: 600px) {
+  .pos-kpi-tile {
+    flex: 1 1 calc(50% - 1px);
+    padding: 0.75rem 0.8rem;
+  }
+
+  .pos-kpi-val {
+    font-size: 1.02rem;
+  }
+
+  .pos-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .pos-modal-card {
+    max-width: 100%;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    max-height: 85vh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
