@@ -37,8 +37,12 @@ class AiTradingBot:
             config.ai_provider,
             openai_key=config.openai_api_key,
             gemini_key=config.gemini_api_key,
+            anthropic_key=config.anthropic_api_key,
+            xai_key=config.xai_api_key,
             openai_model=config.openai_model,
             gemini_model=config.gemini_model,
+            anthropic_model=config.anthropic_model,
+            xai_model=config.xai_model,
         )
         self.brain = AiBrain(config, self.service, provider)
 

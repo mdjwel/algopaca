@@ -305,7 +305,9 @@ def apply_options_overlays(
         snapshot = service.get_all_positions()
     except Exception as exc:
         logger.warning("options overlay could not list positions: %s", exc)
-        snapshot = []
+        # None (not []) — an empty list would read as "confirmed no positions"
+        # and let _existing_options wrongly re-open on top of real ones.
+        snapshot = None
     for row in rows:
         apply_options_overlay(
             config, service, row, positions=snapshot, session_info=session_info
@@ -326,7 +328,9 @@ def apply_pair_options_overlay(
     try:
         snapshot = service.get_all_positions()
     except Exception:
-        snapshot = []
+        # None (not []) — an empty list would read as "confirmed no positions"
+        # and let _existing_options wrongly re-open on top of real ones.
+        snapshot = None
     overlays: list[dict[str, Any]] = []
     notes: list[str] = []
     for sym in (long_s, short_s):
@@ -520,8 +524,13 @@ def _open_overlay(
         return {"action": "skip", "skipped": "no option expirations"}
 
     max_premium_pct = float(getattr(config, "options_max_premium_pct", 1.0) or 0)
-    equity = _equity(service)
-    cap = equity * (max_premium_pct / 100.0) if max_premium_pct > 0 and equity > 0 else None
+    cap: float | None = None
+    if max_premium_pct > 0:
+        equity = _equity(service)
+        if equity <= 0:
+            # Cap is configured but we can't size it — fail safe, don't trade uncapped.
+            return {"action": "skip", "skipped": "no account equity"}
+        cap = equity * (max_premium_pct / 100.0)
 
     if style == "hedge":
         return _open_hedge(
@@ -546,10 +555,10 @@ def _open_overlay(
 
 
 def _premium_ok(debit: float | None, qty: int, cap: float | None) -> str | None:
-    if cap is None:
-        return None
     if debit is None or debit <= 0:
         return "no option quote"
+    if cap is None:
+        return None
     cost = debit * 100.0 * qty
     if cost > cap:
         return f"premium ${cost:.0f} exceeds cap ${cap:.0f}"

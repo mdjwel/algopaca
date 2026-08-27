@@ -191,6 +191,18 @@
                 </label>
                 <p id="gemini-key-hint" class="field-help" data-i18n="not_set">Not set</p>
               </div>
+              <div class="key-field">
+                <label for="field-anthropic-key"><span data-i18n="anthropic_key_label">Anthropic key</span>
+                  <input id="field-anthropic-key" name="anthropic_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… paste here" data-i18n-placeholder="placeholder_anthropic" aria-describedby="anthropic-key-hint" />
+                </label>
+                <p id="anthropic-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
+              <div class="key-field">
+                <label for="field-xai-key"><span data-i18n="xai_key_label">xAI key</span>
+                  <input id="field-xai-key" name="xai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="xai-… paste here" data-i18n-placeholder="placeholder_xai" aria-describedby="xai-key-hint" />
+                </label>
+                <p id="xai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+              </div>
               <label class="check stack" for="field-save-keys">
                 <input id="field-save-keys" name="save_keys_to_env" type="checkbox" checked />
                 <span>
@@ -204,6 +216,8 @@
               <button type="submit" id="btn-save-keys" class="primary" data-i18n="save_ai_keys_btn">Save AI keys</button>
               <button type="button" id="btn-clear-openai" class="ghost danger-text" data-i18n="clear_openai">Clear OpenAI</button>
               <button type="button" id="btn-clear-gemini" class="ghost danger-text" data-i18n="clear_gemini">Clear Gemini</button>
+              <button type="button" id="btn-clear-anthropic" class="ghost danger-text" data-i18n="clear_anthropic">Clear Anthropic</button>
+              <button type="button" id="btn-clear-xai" class="ghost danger-text" data-i18n="clear_xai">Clear xAI</button>
             </div>
           </form>
         </section>

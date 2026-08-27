@@ -173,16 +173,29 @@
                 <span class="pos-sync-dot" aria-hidden="true"></span>
                 <span id="pos-last-updated-text" class="pos-sync-time">Live</span>
               </div>
-              <button type="button" id="btn-refresh-positions" class="ghost" title="Refresh positions" data-i18n-title="refresh_positions">
-                <span data-i18n="refresh_positions">Refresh</span>
-              </button>
-              <span class="pos-actions-divider" aria-hidden="true"></span>
-              <button type="button" id="btn-liquidate-selected" class="ghost ghost-danger" hidden title="Liquidate selected positions" data-i18n-title="liquidate_selected">
-                <span id="btn-liquidate-selected-text" data-i18n="liquidate_selected">Close Selected</span>
-              </button>
-              <button type="button" id="btn-liquidate-all" class="ghost ghost-danger" disabled title="Liquidate all positions" data-i18n-title="liquidate_all">
-                <span data-i18n="liquidate_all">Liquidate all</span>
-              </button>
+              <!-- On desktop this wrapper dissolves (display: contents) so its
+                   buttons sit inline exactly as before; on mobile it becomes a
+                   trigger + popover so three buttons stop crowding the header. -->
+              <div class="pos-actions-menu-wrap" id="pos-actions-menu-wrap">
+                <button type="button" id="btn-pos-actions-toggle" class="ghost pos-actions-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="pos-actions-menu" title="Actions" data-i18n-title="actions">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
+                    <circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>
+                  </svg>
+                  <span class="sr-only" data-i18n="actions">Actions</span>
+                </button>
+                <div id="pos-actions-menu" class="pos-actions-menu">
+                  <button type="button" id="btn-refresh-positions" class="ghost" title="Refresh positions" data-i18n-title="refresh_positions">
+                    <span data-i18n="refresh_positions">Refresh</span>
+                  </button>
+                  <span class="pos-actions-divider" aria-hidden="true"></span>
+                  <button type="button" id="btn-liquidate-selected" class="ghost ghost-danger" hidden title="Liquidate selected positions" data-i18n-title="liquidate_selected">
+                    <span id="btn-liquidate-selected-text" data-i18n="liquidate_selected">Close Selected</span>
+                  </button>
+                  <button type="button" id="btn-liquidate-all" class="ghost ghost-danger" disabled title="Liquidate all positions" data-i18n-title="liquidate_all">
+                    <span data-i18n="liquidate_all">Liquidate all</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -192,8 +205,21 @@
             <a href="/auto-trade" data-i18n="nav_auto_trade">Auto Trade</a>
           </p>
 
+          <!-- Mobile-only: the filters bar collapses behind this so the panel
+               opens on the position list, not a wall of controls. -->
+          <button type="button" id="btn-toggle-pos-filters" class="pos-filters-toggle" aria-expanded="false" aria-controls="pos-filters-bar">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M7 12h10M10 18h4"/>
+            </svg>
+            <span data-i18n="filter_positions">Filter positions</span>
+            <span id="pos-filters-active-count" class="pos-filters-badge" hidden>0</span>
+            <svg class="pos-filters-toggle-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
+              <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+
           <!-- Filter & Search Toolbar -->
-          <div class="pos-filters-bar" role="group" aria-label="Positions filters" data-i18n-aria-label="filter_positions">
+          <div class="pos-filters-bar" id="pos-filters-bar" role="group" aria-label="Positions filters" data-i18n-aria-label="filter_positions">
             <div class="pos-search-wrap">
               <svg class="pos-search-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>

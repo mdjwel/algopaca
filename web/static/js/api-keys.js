@@ -20,9 +20,13 @@ const savingLabel = () => tx("saving", "Saving…");
 function keysPayload() {
   const openai = String($("field-openai-key")?.value || "").trim();
   const gemini = String($("field-gemini-key")?.value || "").trim();
+  const anthropic = String($("field-anthropic-key")?.value || "").trim();
+  const xai = String($("field-xai-key")?.value || "").trim();
   return {
     openai_api_key: openai,
     gemini_api_key: gemini,
+    anthropic_api_key: anthropic,
+    xai_api_key: xai,
     save_to_env: !!$("field-save-keys")?.checked,
   };
 }
@@ -143,13 +147,15 @@ function syncConfigConnection() {
   if (aiEl) {
     const o = keys.openai || { set: false, source: "none" };
     const g = keys.gemini || { set: false, source: "none" };
+    const a = keys.anthropic || { set: false, source: "none" };
+    const x = keys.xai || { set: false, source: "none" };
     const fmt = (entry, name) => {
       if (!entry.set) return `${name} ✗`;
       const src = entry.source === "ui" ? "UI" : entry.source === "env" ? ".env" : "";
       return `${name} ✓${src ? ` (${src})` : ""}`;
     };
-    aiEl.textContent = `${fmt(o, "OpenAI")} · ${fmt(g, "Gemini")}`;
-    aiEl.dataset.state = o.set || g.set ? "ok" : "muted";
+    aiEl.textContent = `${fmt(o, "OpenAI")} · ${fmt(g, "Gemini")} · ${fmt(a, "Anthropic")} · ${fmt(x, "xAI")}`;
+    aiEl.dataset.state = o.set || g.set || a.set || x.set ? "ok" : "muted";
   }
 
   if (statusHint && !configBusy) {
@@ -190,6 +196,14 @@ function syncConfigConnection() {
   if (clearGemini) {
     clearGemini.disabled = configBusy || busy || !keys.gemini?.set;
   }
+  const clearAnthropic = $("btn-clear-anthropic");
+  if (clearAnthropic) {
+    clearAnthropic.disabled = configBusy || busy || !keys.anthropic?.set;
+  }
+  const clearXai = $("btn-clear-xai");
+  if (clearXai) {
+    clearXai.disabled = configBusy || busy || !keys.xai?.set;
+  }
 
   syncTradingModeUi(s);
 }
@@ -219,7 +233,13 @@ function syncConfigBusyUi() {
   }
   if (aiForm) {
     [...aiForm.elements].forEach((el) => {
-      if (el.id === "btn-clear-openai" || el.id === "btn-clear-gemini") return;
+      if (
+        el.id === "btn-clear-openai" ||
+        el.id === "btn-clear-gemini" ||
+        el.id === "btn-clear-anthropic" ||
+        el.id === "btn-clear-xai"
+      )
+        return;
       el.disabled = saving;
     });
   }
@@ -268,7 +288,12 @@ async function onSaveKeys(ev) {
     errEl.hidden = true;
     errEl.textContent = "";
   }
-  if (!payload.openai_api_key && !payload.gemini_api_key) {
+  if (
+    !payload.openai_api_key &&
+    !payload.gemini_api_key &&
+    !payload.anthropic_api_key &&
+    !payload.xai_api_key
+  ) {
     const msg = "Paste at least one AI API key first.";
     if (errEl) {
       errEl.hidden = false;
@@ -287,13 +312,19 @@ async function onSaveKeys(ev) {
     });
     const openaiEl = $("field-openai-key");
     const geminiEl = $("field-gemini-key");
+    const anthropicEl = $("field-anthropic-key");
+    const xaiEl = $("field-xai-key");
     if (openaiEl) openaiEl.value = "";
     if (geminiEl) geminiEl.value = "";
+    if (anthropicEl) anthropicEl.value = "";
+    if (xaiEl) xaiEl.value = "";
     applyAiKeys(data.state?.ai_ready, data.ai_key_status || data.state?.ai_key_status);
     await refreshStatus({ forceSettings: false });
     const saved = [
       payload.openai_api_key ? "OpenAI" : null,
       payload.gemini_api_key ? "Gemini" : null,
+      payload.anthropic_api_key ? "Anthropic" : null,
+      payload.xai_api_key ? "xAI" : null,
     ]
       .filter(Boolean)
       .join(" + ");
@@ -578,10 +609,17 @@ async function onClearAlpacaKeys() {
   }
 }
 
+const AI_PROVIDER_LABELS = {
+  openai: "OpenAI",
+  gemini: "Gemini",
+  anthropic: "Anthropic",
+  xai: "xAI",
+};
+
 async function onClearAiKey(provider) {
   const status = lastKeyStatus || {};
-  const entry = provider === "gemini" ? status.gemini : status.openai;
-  const label = provider === "gemini" ? "Gemini" : "OpenAI";
+  const entry = status[provider];
+  const label = AI_PROVIDER_LABELS[provider] || provider;
   if (!entry?.set) {
     showToast(`No ${label} key to clear.`, "error");
     return;
@@ -603,6 +641,8 @@ async function onClearAiKey(provider) {
       body: JSON.stringify({
         openai: provider === "openai",
         gemini: provider === "gemini",
+        anthropic: provider === "anthropic",
+        xai: provider === "xai",
         clear_env: true,
       }),
     });
@@ -659,6 +699,8 @@ $("btn-apply-mode")?.addEventListener("click", onApplyTradingMode);
 $("btn-clear-alpaca")?.addEventListener("click", onClearAlpacaKeys);
 $("btn-clear-openai")?.addEventListener("click", () => onClearAiKey("openai"));
 $("btn-clear-gemini")?.addEventListener("click", () => onClearAiKey("gemini"));
+$("btn-clear-anthropic")?.addEventListener("click", () => onClearAiKey("anthropic"));
+$("btn-clear-xai")?.addEventListener("click", () => onClearAiKey("xai"));
 
 // Initialization
 refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));

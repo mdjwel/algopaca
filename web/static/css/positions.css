@@ -499,6 +499,19 @@ button.pos-alloc-legend-item:hover {
   margin: 0 0.15rem;
 }
 
+/* Desktop: both wrapper levels dissolve so Refresh / Close Selected /
+   Liquidate all sit inline in the header exactly as if the trigger and
+   popover markup weren't there at all. Mobile turns them back into a real
+   trigger + popover below. */
+.pos-actions-menu-wrap,
+.pos-actions-menu {
+  display: contents;
+}
+
+.pos-actions-trigger {
+  display: none;
+}
+
 .pos-sync-status {
   display: inline-flex;
   align-items: center;
@@ -588,6 +601,27 @@ button.pos-alloc-legend-item:hover {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   margin-bottom: 0.9rem;
+}
+
+/* Mobile-only trigger for the filters bar below — hidden on desktop, where
+   the bar is always open. */
+.pos-filters-toggle {
+  display: none;
+}
+
+.pos-filters-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--copper);
+  color: #1a1008;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .pos-search-wrap {
@@ -1270,24 +1304,61 @@ a.pos-prot-badge.orders:focus-visible {
   margin-bottom: 0.15rem;
 }
 
+/* Collapsed by default so a scrolling list of holdings reads as figures
+   first — the toggle below is what actually owns the divider now. */
+.pos-card-actions-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding-top: 0.5rem;
+  border: none;
+  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--ui, inherit);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pos-card-actions-toggle:hover,
+.pos-card-actions-toggle:active {
+  color: var(--text);
+}
+
+.pos-card-actions-chevron {
+  transition: transform 0.2s ease;
+}
+
+.pos-card-actions-toggle[aria-expanded="true"] .pos-card-actions-chevron {
+  transform: rotate(180deg);
+}
+
 .pos-card-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
 }
 
 .pos-card-actions .ghost {
   text-align: center;
+  text-decoration: none;
   padding: 0.5rem;
 }
 
 /* Card actions share a 2-column grid: Close/Cover on the first row, Lots/History
-   on the second — same actions as the desktop blotter. */
+   on the second — same actions as the desktop blotter. A long position has no
+   Cover button though, so History ends up alone in a 3-item grid; give that
+   orphan the full row instead of leaving a dead cell beside it. */
 .pos-card-actions .btn-pos-lots,
 .pos-card-actions .btn-pos-trade {
   grid-column: auto;
+}
+
+.pos-card-actions > :last-child:nth-child(3) {
+  grid-column: 1 / -1;
 }
 
 /* Empty State */
@@ -2246,12 +2317,49 @@ button.primary.primary-danger:focus-visible {
     display: flex;
   }
 
-  /* Stacked, but still wrapping rather than scrolling sideways: a filter the
-     user has to swipe to find is a filter they never use. */
+  /* Still a column stack, not a sideways scroll, once it is visible: a
+     filter the user has to swipe to find is a filter they never use. Orders
+     shares this class without the collapse toggle below, so the bar stays
+     visible there — only the Positions page's #pos-filters-bar collapses. */
   .pos-filters-bar {
     flex-direction: column;
     align-items: stretch;
     gap: 0.6rem;
+  }
+
+  #pos-filters-bar {
+    display: none;
+  }
+
+  #pos-filters-bar.is-open {
+    display: flex;
+  }
+
+  .pos-filters-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    margin-bottom: 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-soft);
+    color: var(--text);
+    font-family: var(--ui);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pos-filters-toggle-chevron {
+    margin-left: auto;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  .pos-filters-toggle[aria-expanded="true"] .pos-filters-toggle-chevron {
+    transform: rotate(180deg);
   }
 
   .pos-search-wrap {
@@ -2270,6 +2378,44 @@ button.primary.primary-danger:focus-visible {
   .pos-actions-divider {
     display: none;
   }
+
+  /* The trigger + popover markup comes back to life below the app-shell's
+     mobile-card breakpoint, replacing the desktop `display: contents`. */
+  .pos-actions-menu-wrap {
+    display: block;
+    position: relative;
+    margin-left: auto;
+  }
+
+  .pos-actions-trigger {
+    display: inline-flex;
+  }
+
+  .pos-actions-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 11.5rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    padding: 0.55rem;
+    background: color-mix(in srgb, var(--panel, #121a24) 96%, #0d1420);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    z-index: 200;
+  }
+
+  .pos-actions-menu-wrap.is-open .pos-actions-menu {
+    display: flex;
+  }
+
+  .pos-actions-menu .ghost {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* The sort dropdown duplicates the table headers on wide screens; it earns its
@@ -2277,6 +2423,15 @@ button.primary.primary-danger:focus-visible {
    a real filter — order type — in the same dropdown group shape. */
 @media (min-width: 861px) {
   .pos-seg-group.is-sort {
+    display: none;
+  }
+}
+
+/* Below the mobile-shell breakpoint the five-readout rail costs too much
+   vertical space before the position cards even start — the equity hero
+   alone carries enough context on a phone. */
+@media (max-width: 768px) {
+  #pos-kpi-grid .pos-kpi-rail {
     display: none;
   }
 }

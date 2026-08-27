@@ -84,6 +84,8 @@
   const badgeStatusLive = $("badge-status-live");
   const badgeStatusOpenai = $("badge-status-openai");
   const badgeStatusGemini = $("badge-status-gemini");
+  const badgeStatusAnthropic = $("badge-status-anthropic");
+  const badgeStatusXai = $("badge-status-xai");
   const btnExportData = $("btn-export-data");
 
   // DOM - Modal Delete
@@ -372,6 +374,8 @@
     updateIntegrationBadge(badgeStatusLive, user.has_live_key ? (user.live_authorized ? "authorized" : "connected") : "missing", user.has_live_key ? (user.live_authorized ? "Authorized Live" : "Keys Set") : "Not Set");
     updateIntegrationBadge(badgeStatusOpenai, user.has_openai_key ? "connected" : "missing", user.has_openai_key ? "Connected" : "Not Set");
     updateIntegrationBadge(badgeStatusGemini, user.has_gemini_key ? "connected" : "missing", user.has_gemini_key ? "Connected" : "Not Set");
+    updateIntegrationBadge(badgeStatusAnthropic, user.has_anthropic_key ? "connected" : "missing", user.has_anthropic_key ? "Connected" : "Not Set");
+    updateIntegrationBadge(badgeStatusXai, user.has_xai_key ? "connected" : "missing", user.has_xai_key ? "Connected" : "Not Set");
   }
 
   /** Build a ui-avatars.com profile image URL for the given display name. */

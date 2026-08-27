@@ -114,6 +114,7 @@
           </p>
 
           <form id="manual-order" class="form manual-form" novalidate>
+            <div class="manual-form-body">
             <fieldset class="field-group">
               <legend data-i18n="ticket">Order Ticket</legend>
               <div class="field-pair-row manual-symbol-side-row">
@@ -132,32 +133,11 @@
                 </div>
               </div>
 
-              <!-- Four actions, not two. "Sell" alone would mean "take profit"
-                   or "open a short" depending on state the button cannot show. -->
-              <fieldset class="segmented-field" id="manual-side-field">
+              <fieldset id="manual-side-field" class="sr-only" aria-hidden="true">
                 <legend data-i18n="action">Action</legend>
-                <div class="segmented segmented-actions" role="radiogroup" data-i18n-aria-label="action" aria-label="Action" aria-describedby="manual-side-help">
-                  <label class="segment segment-buy">
-                    <input type="radio" name="side" value="buy" checked />
-                    <span data-i18n="buy">Buy</span>
-                  </label>
-                  <label class="segment segment-sell">
-                    <input type="radio" name="side" value="sell" />
-                    <span data-i18n="sell">Sell</span>
-                  </label>
-                  <label class="segment segment-short">
-                    <input type="radio" name="side" value="short" aria-labelledby="manual-short-label" />
-                    <span id="manual-short-label" data-i18n="short_side">Short</span>
-                    <span id="manual-short-disabled-reason" class="segment-disabled-reason" role="tooltip" hidden></span>
-                  </label>
-                  <label class="segment segment-cover">
-                    <input type="radio" name="side" value="cover" aria-labelledby="manual-cover-label" />
-                    <span id="manual-cover-label" data-i18n="cover_side">Cover</span>
-                    <span id="manual-cover-disabled-reason" class="segment-disabled-reason" role="tooltip" hidden></span>
-                  </label>
-                </div>
+                <input type="radio" name="side" value="buy" checked />
+                <input type="radio" name="side" value="sell" />
               </fieldset>
-              <p id="manual-side-help" class="field-help" data-i18n="manual_side_help_buy">Buy opens or adds to a long and sizes from your risk budget.</p>
 
               <!-- Sell/Cover size sits on the ticket: shares or dollars, with
                    how much you actually have sitting next to the label. -->
@@ -498,19 +478,24 @@
                   <span data-i18n="advanced_stop_exit">Stop exit — advanced</span>
                 </summary>
                 <div class="manual-advanced-body">
-                  <label for="manual-stop-limit-offset" id="manual-stop-limit-label"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
-                    <input id="manual-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" aria-describedby="help-stop-limit-offset" />
-                    <p id="help-stop-limit-offset" class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit below.</p>
-                    <p class="field-error" role="alert" hidden></p>
-                  </label>
-
-                  <div class="manual-limit-row" id="manual-stop-limit-price-row">
-                    <label for="manual-stop-limit-price"><span data-i18n="stop_limit_price">Sell limit</span>
-                      <input id="manual-stop-limit-price" name="stop_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="help-stop-limit-price" />
+                  <div class="field-pair-row" id="manual-stop-exit-row">
+                    <label for="manual-stop-limit-offset" id="manual-stop-limit-label"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
+                      <input id="manual-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" aria-describedby="help-stop-limit-offset" />
+                      <p id="help-stop-limit-offset" class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit.</p>
                       <p class="field-error" role="alert" hidden></p>
                     </label>
-                    <button type="button" id="btn-stop-limit-at-stop" class="ghost small" data-i18n="use_stop_price">At stop</button>
-                    <p id="help-stop-limit-price" class="field-help" data-i18n="help_stop_limit_price">Optional. Long: at or below the stop (not above). Short: at or above. Overrides the cushion % when set. Leave empty for market or cushion.</p>
+
+                    <div class="manual-limit-row" id="manual-stop-limit-price-row">
+                      <label for="manual-stop-limit-price"><span data-i18n="stop_limit_price">Sell limit</span></label>
+                      <div class="price-input-shell">
+                        <input id="manual-stop-limit-price" name="stop_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="help-stop-limit-price" />
+                        <div class="price-fill-group" role="group" aria-label="Fill from stop" data-i18n-aria-label="use_stop_price">
+                          <button type="button" id="btn-stop-limit-at-stop" class="ghost small" data-i18n="use_stop_price">At stop</button>
+                        </div>
+                      </div>
+                      <p class="field-error" role="alert" hidden></p>
+                      <p id="help-stop-limit-price" class="field-help" data-i18n="help_stop_limit_price">Optional. Long: at or below the stop (not above). Short: at or above. Overrides the cushion % when set. Leave empty for market or cushion.</p>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -549,12 +534,19 @@
             <p id="manual-help" class="field-help info" data-i18n="manual_help_market">Market DAY order in regular hours.</p>
             <ul id="manual-breaches" class="manual-breaches" hidden></ul>
             <p id="manual-error" class="form-error" role="alert" hidden></p>
+            </div>
+            <div class="manual-place-bar">
+            <p id="manual-side-help" class="field-help" data-i18n="manual_side_help_buy">Buy opens or adds to a long and sizes from your risk budget.</p>
             <div class="manual-actions">
               <button type="button" id="btn-manual-save-preset" class="ghost" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save preset</button>
               <button type="button" id="btn-manual-preview" class="ghost" data-i18n="preview_order" data-i18n-title="preview_order_hint" title="Ask the desk to size the ticket without sending it">Preview</button>
-              <button type="submit" id="btn-manual-submit" class="primary" data-i18n="place_buy">Place Buy</button>
+              <div class="manual-place-actions" role="group" aria-labelledby="manual-side-help">
+                <button type="submit" id="btn-manual-buy" class="place-side" data-side="buy" aria-pressed="true" data-i18n="buy" data-i18n-title="place_buy" title="Place Buy">Buy</button>
+                <button type="button" id="btn-manual-sell" class="place-side" data-side="sell" aria-pressed="false" data-i18n="sell" data-i18n-title="place_sell" title="Place Sell">Sell</button>
+              </div>
             </div>
-            <p id="manual-shortcuts-help" class="field-help" data-i18n="help_shortcuts">Shortcuts: B buy · S sell · H short · C cover · P preview · ⌘/Ctrl+Enter submit.</p>
+            <p id="manual-shortcuts-help" class="field-help" data-i18n="help_shortcuts">Shortcuts: B buy · S sell · P preview · ⌘/Ctrl+Enter place.</p>
+            </div>
           </form>
         </section>
 

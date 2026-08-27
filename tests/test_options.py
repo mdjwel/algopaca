@@ -377,6 +377,63 @@ class OverlayApplyTests(unittest.TestCase):
         long_occ = self.service.submitted[0][1]
         self.assertIn("C00200000", long_occ)
 
+    def test_positions_fetch_failure_does_not_duplicate_orders(self):
+        occ = _occ("AAPL", self.exp, "C", 150)
+        self.service.positions = [
+            {
+                "symbol": occ,
+                "option_root": "AAPL",
+                "is_option": True,
+                "qty": 1,
+                "signed_qty": 1,
+            }
+        ]
+
+        def _boom():
+            raise RuntimeError("positions endpoint down")
+
+        self.service.get_all_positions = _boom
+        rows = [
+            {
+                "symbol": "AAPL",
+                "intent": "open_long",
+                "price": 150.0,
+                "session": "regular",
+                "position": 5,
+                "reason": "buy",
+            }
+        ]
+        apply_options_overlays(self.config, self.service, rows)
+        self.assertEqual(rows[0]["options"]["action"], "hold")
+        self.assertEqual(self.service.submitted, [])
+
+    def test_no_quote_blocks_even_without_premium_cap(self):
+        self.config.options_max_premium_pct = 0
+        self.service.default_mid = None
+        payload = {
+            "symbol": "AAPL",
+            "intent": "open_long",
+            "price": 150.0,
+            "session": "regular",
+            "reason": "sma buy",
+        }
+        apply_options_overlay(self.config, self.service, payload)
+        self.assertEqual(payload["options"]["skipped"], "no option quote")
+        self.assertEqual(self.service.submitted, [])
+
+    def test_missing_equity_fails_safe_when_cap_enabled(self):
+        self.service.equity = 0.0
+        payload = {
+            "symbol": "AAPL",
+            "intent": "open_long",
+            "price": 150.0,
+            "session": "regular",
+            "reason": "sma buy",
+        }
+        apply_options_overlay(self.config, self.service, payload)
+        self.assertEqual(payload["options"]["skipped"], "no account equity")
+        self.assertEqual(self.service.submitted, [])
+
     def test_batch_overlay_lists_positions_once(self):
         rows = [
             {

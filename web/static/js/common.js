@@ -639,15 +639,17 @@ function applyAiKeys(aiReady, keyStatus) {
   const status = keyStatus || {};
   const o = status.openai || { set: !!aiReady?.openai, source: "none", hint: "" };
   const g = status.gemini || { set: !!aiReady?.gemini, source: "none", hint: "" };
+  const a = status.anthropic || { set: !!aiReady?.anthropic, source: "none", hint: "" };
+  const x = status.xai || { set: !!aiReady?.xai, source: "none", hint: "" };
   const fmt = (entry, name) => {
     if (!entry.set) return `${name} missing`;
     const src = entry.source === "ui" ? "UI" : entry.source === "env" ? ".env" : "";
     return `${name} saved${src ? ` (${src})` : ""}`;
   };
   if (el) {
-    const missing = !o.set || !g.set;
+    const missing = !o.set || !g.set || !a.set || !x.set;
     el.innerHTML =
-      `AI keys: ${escapeHtml(fmt(o, "OpenAI"))} · ${escapeHtml(fmt(g, "Gemini"))}` +
+      `AI keys: ${escapeHtml(fmt(o, "OpenAI"))} · ${escapeHtml(fmt(g, "Gemini"))} · ${escapeHtml(fmt(a, "Anthropic"))} · ${escapeHtml(fmt(x, "xAI"))}` +
       (missing
         ? ` — <a href="${pagePath("api-keys")}">API Keys</a>`
         : "");
@@ -655,6 +657,8 @@ function applyAiKeys(aiReady, keyStatus) {
 
   const oHint = $("openai-key-hint");
   const gHint = $("gemini-key-hint");
+  const aHint = $("anthropic-key-hint");
+  const xHint = $("xai-key-hint");
   if (oHint) {
     oHint.textContent = o.set
       ? `Saved (${o.source}): ${o.hint || "••••"} — leave blank to keep`
@@ -665,14 +669,32 @@ function applyAiKeys(aiReady, keyStatus) {
       ? `Saved (${g.source}): ${g.hint || "••••"} — leave blank to keep`
       : "Not set — paste a Gemini key, then Save AI keys";
   }
+  if (aHint) {
+    aHint.textContent = a.set
+      ? `Saved (${a.source}): ${a.hint || "••••"} — leave blank to keep`
+      : "Not set — paste an Anthropic key, then Save AI keys";
+  }
+  if (xHint) {
+    xHint.textContent = x.set
+      ? `Saved (${x.source}): ${x.hint || "••••"} — leave blank to keep`
+      : "Not set — paste an xAI key, then Save AI keys";
+  }
 
   const openaiField = $("field-openai-key");
   const geminiField = $("field-gemini-key");
+  const anthropicField = $("field-anthropic-key");
+  const xaiField = $("field-xai-key");
   if (openaiField && !openaiField.value) {
     openaiField.placeholder = o.set ? `saved ${o.hint || "••••"}` : "sk-… paste here";
   }
   if (geminiField && !geminiField.value) {
     geminiField.placeholder = g.set ? `saved ${g.hint || "••••"}` : "AIza… paste here";
+  }
+  if (anthropicField && !anthropicField.value) {
+    anthropicField.placeholder = a.set ? `saved ${a.hint || "••••"}` : "sk-ant-… paste here";
+  }
+  if (xaiField && !xaiField.value) {
+    xaiField.placeholder = x.set ? `saved ${x.hint || "••••"}` : "xai-… paste here";
   }
   syncConfigConnectionSafe();
 }
@@ -1182,14 +1204,20 @@ document.addEventListener(
   true
 );
 
+const AI_PROVIDER_KEY_FIELD_IDS = {
+  openai: "field-openai-key",
+  gemini: "field-gemini-key",
+  anthropic: "field-anthropic-key",
+  xai: "field-xai-key",
+};
+
 function providerKeyReady(provider) {
   const status = lastKeyStatus || {};
-  const entry = provider === "gemini" ? status.gemini : status.openai;
+  const entry = status[provider];
   if (entry?.set) return true;
   // Fresh paste in the form counts for this session once saved — but before
   // save, still allow run if the field has a value (run-once posts the key).
-  const field =
-    provider === "gemini" ? $("field-gemini-key") : $("field-openai-key");
+  const field = $(AI_PROVIDER_KEY_FIELD_IDS[provider] || "field-openai-key");
   return !!(field?.value || "").trim();
 }
 

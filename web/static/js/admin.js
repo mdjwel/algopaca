@@ -65,10 +65,14 @@
   const integCountLive = $("integ-count-live");
   const integCountOpenai = $("integ-count-openai");
   const integCountGemini = $("integ-count-gemini");
+  const integCountAnthropic = $("integ-count-anthropic");
+  const integCountXai = $("integ-count-xai");
   const progPaper = $("prog-paper");
   const progLive = $("prog-live");
   const progOpenai = $("prog-openai");
   const progGemini = $("prog-gemini");
+  const progAnthropic = $("prog-anthropic");
+  const progXai = $("prog-xai");
 
   const inputUsersSearch = $("input-users-search");
   const btnClearUsersSearch = $("btn-clear-users-search");
@@ -436,6 +440,8 @@
       [integCountLive, progLive, intg.live_keys],
       [integCountOpenai, progOpenai, intg.openai],
       [integCountGemini, progGemini, intg.gemini],
+      [integCountAnthropic, progAnthropic, intg.anthropic],
+      [integCountXai, progXai, intg.xai],
     ];
     bars.forEach(([countEl, barEl, value]) => {
       const n = value || 0;
@@ -643,7 +649,7 @@
       if (u.has_live_key) {
         badges.push(`<span class="mini-badge is-live">${escapeHtml(t("live", "Live"))}</span>`);
       }
-      if (u.has_openai_key || u.has_gemini_key) {
+      if (u.has_openai_key || u.has_gemini_key || u.has_anthropic_key || u.has_xai_key) {
         badges.push('<span class="mini-badge is-active">AI</span>');
       }
       if (!badges.length) {
@@ -873,6 +879,8 @@
       if (user.has_live_key) keys.push(t("live", "Live"));
       if (user.has_openai_key) keys.push("OpenAI");
       if (user.has_gemini_key) keys.push("Gemini");
+      if (user.has_anthropic_key) keys.push("Anthropic");
+      if (user.has_xai_key) keys.push("xAI");
       modalDetailKeys.textContent = keys.length ? keys.join(", ") : "—";
     }
 

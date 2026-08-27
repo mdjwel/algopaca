@@ -1039,7 +1039,7 @@ class AlpacaService:
 
     def get_all_positions(self) -> list[dict[str, Any]]:
         """Fetch all open positions from Alpaca with normalized properties."""
-        if not getattr(self, "trading", None):
+        if self._trading is None:
             return []
         raw_positions = self.trading.get_all_positions() or []
 
@@ -1204,6 +1204,10 @@ class AlpacaService:
         kind = str(getattr(raw_type, "value", raw_type) or "").lower().rsplit(".", 1)[-1]
         if kind not in {"call", "put"} and parsed:
             kind = parsed["type"]
+        if kind not in {"call", "put"}:
+            # Unknown call/put — drop rather than silently mislabel as a call,
+            # which would pick the wrong strike/side for a vertical or hedge leg.
+            return None
         try:
             oi = int(getattr(raw, "open_interest", None) or 0)
         except (TypeError, ValueError):
@@ -1219,7 +1223,7 @@ class AlpacaService:
         return {
             "symbol": symbol,
             "root": root.upper(),
-            "type": kind if kind in {"call", "put"} else "call",
+            "type": kind,
             "strike": strike_f,
             "expiration": expiration,
             "open_interest": oi,
@@ -1227,7 +1231,11 @@ class AlpacaService:
         }
 
     def option_quote_mid(self, occ_symbol: str) -> float | None:
-        """Bid/ask mid for one OCC symbol, falling back to the contract close."""
+        """Bid/ask mid for one OCC symbol; ``None`` if there's no live quote.
+
+        No fallback to a stale contract close — the overlay treats ``None``
+        as "can't verify the premium" and skips the trade.
+        """
         occ = str(occ_symbol or "").strip().upper()
         if not occ:
             return None
@@ -1272,7 +1280,13 @@ class AlpacaService:
         contracts = int(qty or 0)
         if not occ or contracts <= 0:
             raise ValueError("Option order needs a contract symbol and qty >= 1")
-        side_enum = OrderSide.BUY if str(side).lower() in {"buy", "buy_to_open"} else OrderSide.SELL
+        side_key = str(side or "").strip().lower()
+        if side_key in {"buy", "buy_to_open"}:
+            side_enum = OrderSide.BUY
+        elif side_key in {"sell", "sell_to_close", "sell_to_open"}:
+            side_enum = OrderSide.SELL
+        else:
+            raise ValueError(f"Option order side must be buy or sell, got {side!r}")
         req = MarketOrderRequest(
             symbol=occ,
             qty=contracts,
@@ -1377,7 +1391,7 @@ class AlpacaService:
 
     def get_open_orders_summary(self) -> dict[str, list[dict[str, Any]]]:
         """Fetch all open orders and group them by symbol with protection metadata."""
-        if not getattr(self, "trading", None):
+        if self._trading is None:
             return {}
         try:
             req = GetOrdersRequest(
@@ -2224,8 +2238,9 @@ class AlpacaService:
 
         Returns ``(submitted_order, attached_exit_info_or_None)``.
         The attached-exit info is None for unprotected or exit orders.
-        Protected conditional and extended-hours entries are rejected because
-        Alpaca cannot attach the promised OTO/bracket protection to them.
+        Protected conditional entries are rejected because Alpaca cannot attach
+        the promised OTO/bracket protection to them. Extended-hours Limit
+        entries go out without an OTO; the desk arms the stop after fill.
 
         A protected long or short entry uses OrderClass.OTO, or BRACKET when a
         take-profit rides along too. Outside RTH, any non-extended order queues
@@ -2296,22 +2311,19 @@ class AlpacaService:
             (side == OrderSide.BUY or short_entry)
             and stop_pct > 0
             and otype in ATTACHABLE_ENTRY_TYPES
+            and not extended_hours
         )
         if (side == OrderSide.BUY or short_entry) and stop_pct > 0 and not attach_stop:
-            raise ValueError(
-                "Protected entries must use Market or Limit. Alpaca cannot attach "
-                "an OTO/bracket stop to this conditional order type."
-            )
+            if otype not in ATTACHABLE_ENTRY_TYPES:
+                raise ValueError(
+                    "Protected entries must use Market or Limit. Alpaca cannot attach "
+                    "an OTO/bracket stop to this conditional order type."
+                )
         oto_stop: dict[str, Any] | None = None
         if attach_stop:
             if tif not in {TimeInForce.DAY, TimeInForce.GTC}:
                 raise ValueError(
                     "Protected OTO/bracket entries only support DAY or GTC time in force."
-                )
-            if extended_hours:
-                raise ValueError(
-                    "Protective OTO/bracket exits cannot execute in extended hours. "
-                    "Turn off extended-hours fills to queue the protected entry for RTH."
                 )
             qty, attach_stop = whole_qty_for_attached_stop(qty)
             if not attach_stop:

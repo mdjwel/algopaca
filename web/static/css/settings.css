@@ -856,6 +856,18 @@
   border: 1px solid rgba(56, 189, 248, 0.35);
 }
 
+.integration-icon-anthropic {
+  background: rgba(192, 132, 252, 0.15);
+  color: var(--violet);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+}
+
+.integration-icon-xai {
+  background: rgba(240, 198, 116, 0.15);
+  color: var(--warn);
+  border: 1px solid rgba(240, 198, 116, 0.35);
+}
+
 .integration-info {
   display: flex;
   flex-direction: column;

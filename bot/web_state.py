@@ -20,8 +20,10 @@ logger = logging.getLogger(__name__)
 
 from bot.auth import AUTH_STORE, DB_DIR
 from bot.ai_models import (
+    DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_OPENAI_MODEL,
+    DEFAULT_XAI_MODEL,
     catalog_payload,
 )
 from bot.ai_presets import (
@@ -159,6 +161,8 @@ class RunSettings:
     ai_min_confidence: float = 0.55
     openai_model: str = DEFAULT_OPENAI_MODEL
     gemini_model: str = DEFAULT_GEMINI_MODEL
+    anthropic_model: str = DEFAULT_ANTHROPIC_MODEL
+    xai_model: str = DEFAULT_XAI_MODEL
     stop_loss_pct: float = 0.0  # 0 = off
     # AI risk engine — see bot/ai_risk.py. Named presets set their own geometry.
     ai_risk_pct: float = 0.5
@@ -365,12 +369,21 @@ class AppState:
         self._dip_hunt_seq: int = 0
         self._dip_hunt_thread: threading.Thread | None = None
         self._dip_hunt_stop = threading.Event()
-        self.ai_ready: dict[str, bool] = {"openai": False, "gemini": False}
+        self.ai_ready: dict[str, bool] = {
+            "openai": False,
+            "gemini": False,
+            "anthropic": False,
+            "xai": False,
+        }
         # UI / session overrides — never dumped raw into status settings.
         self._openai_api_key: str | None = None
         self._gemini_api_key: str | None = None
+        self._anthropic_api_key: str | None = None
+        self._xai_api_key: str | None = None
         self._openai_key_source: str = "none"  # none | env | ui
         self._gemini_key_source: str = "none"
+        self._anthropic_key_source: str = "none"
+        self._xai_key_source: str = "none"
         # User credentials from DB
         creds = AUTH_STORE.get_user_credentials(self.user_id)
         self._live_session_authorized: bool = bool(creds.get("live_authorized"))
@@ -437,6 +450,8 @@ class AppState:
                 "ai_ready": {
                     "openai": key_status["openai"]["set"],
                     "gemini": key_status["gemini"]["set"],
+                    "anthropic": key_status["anthropic"]["set"],
+                    "xai": key_status["xai"]["set"],
                 },
                 "ai_key_status": key_status,
                 "alpaca_key_status": self._alpaca_key_status_locked(),
@@ -471,14 +486,29 @@ class AppState:
         creds = AUTH_STORE.get_user_credentials(self.user_id)
         saved_openai = creds.get("openai_api_key", "")
         saved_gemini = creds.get("gemini_api_key", "")
+        saved_anthropic = creds.get("anthropic_api_key", "")
+        saved_xai = creds.get("xai_api_key", "")
         openai = self._openai_api_key or saved_openai
         gemini = self._gemini_api_key or saved_gemini
-        
+        anthropic = self._anthropic_api_key or saved_anthropic
+        xai = self._xai_api_key or saved_xai
+
         openai_source = "ui" if self._openai_api_key else ("saved" if saved_openai else "none")
         gemini_source = "ui" if self._gemini_api_key else ("saved" if saved_gemini else "none")
+        anthropic_source = (
+            "ui" if self._anthropic_api_key else ("saved" if saved_anthropic else "none")
+        )
+        xai_source = "ui" if self._xai_api_key else ("saved" if saved_xai else "none")
         self._openai_key_source = openai_source
         self._gemini_key_source = gemini_source
-        self.ai_ready = {"openai": bool(openai), "gemini": bool(gemini)}
+        self._anthropic_key_source = anthropic_source
+        self._xai_key_source = xai_source
+        self.ai_ready = {
+            "openai": bool(openai),
+            "gemini": bool(gemini),
+            "anthropic": bool(anthropic),
+            "xai": bool(xai),
+        }
         return {
             "openai": {
                 "set": bool(openai),
@@ -489,6 +519,16 @@ class AppState:
                 "set": bool(gemini),
                 "source": gemini_source,
                 "hint": mask_secret(gemini) if gemini else "",
+            },
+            "anthropic": {
+                "set": bool(anthropic),
+                "source": anthropic_source,
+                "hint": mask_secret(anthropic) if anthropic else "",
+            },
+            "xai": {
+                "set": bool(xai),
+                "source": xai_source,
+                "hint": mask_secret(xai) if xai else "",
             },
         }
 
@@ -933,6 +973,8 @@ class AppState:
         *,
         openai_api_key: str | None = None,
         gemini_api_key: str | None = None,
+        anthropic_api_key: str | None = None,
+        xai_api_key: str | None = None,
         save_to_env: bool = False,
     ) -> dict[str, Any]:
         """Update user's AI keys."""
@@ -946,6 +988,14 @@ class AppState:
                 cleaned = gemini_api_key.strip()
                 self._gemini_api_key = cleaned or None
                 updates["gemini_api_key"] = cleaned
+            if anthropic_api_key is not None:
+                cleaned = anthropic_api_key.strip()
+                self._anthropic_api_key = cleaned or None
+                updates["anthropic_api_key"] = cleaned
+            if xai_api_key is not None:
+                cleaned = xai_api_key.strip()
+                self._xai_api_key = cleaned or None
+                updates["xai_api_key"] = cleaned
             if updates:
                 AUTH_STORE.save_user_credentials(self.user_id, updates)
             status = self._key_status_locked()
@@ -956,11 +1006,13 @@ class AppState:
         *,
         openai: bool = False,
         gemini: bool = False,
+        anthropic: bool = False,
+        xai: bool = False,
         clear_env: bool = True,
     ) -> dict[str, Any]:
         """Clear user's AI keys."""
-        if not openai and not gemini:
-            raise ValueError("Choose OpenAI and/or Gemini to clear.")
+        if not openai and not gemini and not anthropic and not xai:
+            raise ValueError("Choose OpenAI, Gemini, Anthropic, and/or xAI to clear.")
         updates: dict[str, Any] = {}
         with self.lock:
             if openai:
@@ -969,6 +1021,12 @@ class AppState:
             if gemini:
                 self._gemini_api_key = None
                 updates["gemini_api_key"] = ""
+            if anthropic:
+                self._anthropic_api_key = None
+                updates["anthropic_api_key"] = ""
+            if xai:
+                self._xai_api_key = None
+                updates["xai_api_key"] = ""
             if updates:
                 AUTH_STORE.save_user_credentials(self.user_id, updates)
             return self._key_status_locked()
@@ -995,8 +1053,8 @@ class AppState:
             if mode not in {"sma", "dip", "ai", "pair", "ls"}:
                 raise ValueError("strategy_mode must be sma, dip, ai, pair, or ls")
             provider = str(data.get("ai_provider", self.settings.ai_provider)).lower()
-            if provider not in {"openai", "gemini"}:
-                raise ValueError("ai_provider must be openai or gemini")
+            if provider not in {"openai", "gemini", "anthropic", "xai"}:
+                raise ValueError("ai_provider must be openai, gemini, anthropic, or xai")
 
             pair_preset = resolve_pair_preset_id(
                 str(data.get("pair_preset", self.settings.pair_preset))
@@ -1262,6 +1320,12 @@ class AppState:
             gemini_model = str(
                 data.get("gemini_model") or self.settings.gemini_model
             ).strip() or self.settings.gemini_model
+            anthropic_model = str(
+                data.get("anthropic_model") or self.settings.anthropic_model
+            ).strip() or self.settings.anthropic_model
+            xai_model = str(
+                data.get("xai_model") or self.settings.xai_model
+            ).strip() or self.settings.xai_model
 
             self.settings = RunSettings(
                 symbol=symbol,
@@ -1301,6 +1365,8 @@ class AppState:
                 ai_min_confidence=conf,
                 openai_model=openai_model,
                 gemini_model=gemini_model,
+                anthropic_model=anthropic_model,
+                xai_model=xai_model,
                 stop_loss_pct=stop_pct,
                 ai_risk_pct=ai_risk_pct,
                 ai_atr_stop_mult=ai_atr_stop_mult,
@@ -1337,6 +1403,8 @@ class AppState:
         self.apply_api_keys(
             openai_api_key=data.get("openai_api_key"),
             gemini_api_key=data.get("gemini_api_key"),
+            anthropic_api_key=data.get("anthropic_api_key"),
+            xai_api_key=data.get("xai_api_key"),
             save_to_env=bool(data.get("save_keys_to_env", False)),
         )
         with self.lock:
@@ -1368,14 +1436,18 @@ class AppState:
 
         openai_key = self._openai_api_key or creds.get("openai_api_key", "")
         gemini_key = self._gemini_api_key or creds.get("gemini_api_key", "")
+        anthropic_key = self._anthropic_api_key or creds.get("anthropic_api_key", "")
+        xai_key = self._xai_api_key or creds.get("xai_api_key", "")
 
         with self.lock:
             s = self.settings
             self.ai_ready = {
                 "openai": bool(openai_key),
                 "gemini": bool(gemini_key),
+                "anthropic": bool(anthropic_key),
+                "xai": bool(xai_key),
             }
-            
+
         symbols_list = tuple(
             part.strip().upper()
             for part in (s.symbols or "").split(",")
@@ -1434,8 +1506,12 @@ class AppState:
             stop_limit_offset_pct=s.stop_limit_offset_pct,
             openai_model=s.openai_model,
             gemini_model=s.gemini_model,
+            anthropic_model=s.anthropic_model,
+            xai_model=s.xai_model,
             openai_api_key=openai_key,
             gemini_api_key=gemini_key,
+            anthropic_api_key=anthropic_key,
+            xai_api_key=xai_key,
             lang=s.lang,
             options_enabled=s.options_enabled,
             options_style=s.options_style,
@@ -1459,9 +1535,13 @@ class AppState:
     def _build_ai_bot(self) -> AiTradingBot:
         config = self._base_config()
         if config.ai_provider == "openai" and not config.openai_api_key:
-            raise ValueError("OpenAI API key missing — paste it on Configuration")
+            raise ValueError("OpenAI API key missing — paste it on API Keys")
         if config.ai_provider == "gemini" and not config.gemini_api_key:
-            raise ValueError("Gemini API key missing — paste it on Configuration")
+            raise ValueError("Gemini API key missing — paste it on API Keys")
+        if config.ai_provider == "anthropic" and not config.anthropic_api_key:
+            raise ValueError("Anthropic API key missing — paste it on API Keys")
+        if config.ai_provider == "xai" and not config.xai_api_key:
+            raise ValueError("xAI API key missing — paste it on API Keys")
         return AiTradingBot(config)
 
     def _trim_backtest_bars(
@@ -2662,15 +2742,23 @@ class AppState:
 
         config = self._base_config()
         if config.ai_provider == "openai" and not config.openai_api_key:
-            raise ValueError("OpenAI API key missing — paste it on Configuration")
+            raise ValueError("OpenAI API key missing — paste it on API Keys")
         if config.ai_provider == "gemini" and not config.gemini_api_key:
-            raise ValueError("Gemini API key missing — paste it on Configuration")
+            raise ValueError("Gemini API key missing — paste it on API Keys")
+        if config.ai_provider == "anthropic" and not config.anthropic_api_key:
+            raise ValueError("Anthropic API key missing — paste it on API Keys")
+        if config.ai_provider == "xai" and not config.xai_api_key:
+            raise ValueError("xAI API key missing — paste it on API Keys")
         return build_provider(
             config.ai_provider,
             openai_key=config.openai_api_key,
             gemini_key=config.gemini_api_key,
+            anthropic_key=config.anthropic_api_key,
+            xai_key=config.xai_api_key,
             openai_model=config.openai_model,
             gemini_model=config.gemini_model,
+            anthropic_model=config.anthropic_model,
+            xai_model=config.xai_model,
         )
 
     def _ai_configured(self) -> bool:
@@ -2680,6 +2768,10 @@ class AppState:
             return False
         if config.ai_provider == "gemini":
             return bool(config.gemini_api_key)
+        if config.ai_provider == "anthropic":
+            return bool(config.anthropic_api_key)
+        if config.ai_provider == "xai":
+            return bool(config.xai_api_key)
         return bool(config.openai_api_key)
 
     def history_insights(
@@ -3722,11 +3814,6 @@ class AppState:
                 raise ValueError(
                     "Protected OTO/bracket entries only support DAY or GTC time in force."
                 )
-            if extended:
-                raise ValueError(
-                    "Protective OTO/bracket exits cannot execute in extended hours. "
-                    "Turn off extended-hours fills to queue the protected entry for RTH."
-                )
 
         mode = str(size_mode or config.size_mode or "qty").strip().lower()
         if mode not in {"qty", "notional", "risk"}:
@@ -3791,7 +3878,12 @@ class AppState:
         # not at submit time, so the preview and the confirm dialog show the qty
         # that actually goes out.
         qty_whole_for_stop = False
-        attaches_stop = is_entry and stop_pct > 0 and otype in _ATTACHABLE_ENTRY_TYPES
+        attaches_stop = (
+            is_entry
+            and stop_pct > 0
+            and otype in _ATTACHABLE_ENTRY_TYPES
+            and not extended
+        )
         if attaches_stop and order_qty > 0:
             whole_qty, can_attach_stop = whole_qty_for_attached_stop(order_qty)
             if not can_attach_stop:
@@ -3968,6 +4060,10 @@ class AppState:
             warnings.append(
                 f"{side_raw.capitalize()} qty clamped to position: "
                 f"{requested_qty:g} → {order_qty:g} (held {held:g})"
+            )
+        if is_entry and extended and stop_pct > 0:
+            warnings.append(
+                "24-hour Limit cannot carry an OTO/bracket — the stop is armed after the fill."
             )
         # Risk in dollars is what the heat guard measures the book against, and
         # it is the one number the preview and the gate must agree on.
@@ -4221,6 +4317,8 @@ class AppState:
                     payload["reason"] += (
                         f" | stop @{armed['stop_price']:.2f} ({sign}{armed['pct']:.2f}%)"
                     )
+                elif extended:
+                    payload["reason"] += " | stop arms after fill"
             except Exception as exc:
                 payload["reason"] += f" | stop arm failed: {exc}"
         elif stop_info is not None:

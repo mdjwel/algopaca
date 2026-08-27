@@ -148,6 +148,47 @@ html {
     max-width: none !important;
     z-index: 920 !important;
   }
+
+  /* The desktop desk-footer's brand block, status beacon, page links, and
+     language switcher all live in the "More" sheet already — repeating them
+     here just adds scroll before the tab bar. Only the legal disclosures
+     link and the risk disclaimer earn a place on a phone. */
+  .desk-footer {
+    margin-top: 2rem;
+    padding: 1.1rem 0 0.25rem;
+  }
+
+  .desk-footer-brand-wrap,
+  .desk-footer-right {
+    display: none !important;
+  }
+
+  .desk-footer-inner {
+    justify-content: center;
+    padding-bottom: 1.1rem;
+  }
+
+  .desk-footer-links {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .desk-footer-link:not(.ext-link) {
+    display: none;
+  }
+
+  .desk-footer-bottom {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .desk-footer-copy {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    text-align: center;
+  }
 }
 
 /* ── Mobile Bottom Navigation Bar ───────────────────────────────── */

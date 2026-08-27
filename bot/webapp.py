@@ -97,8 +97,12 @@ class SettingsIn(BaseModel):
     ai_min_confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
     openai_model: Optional[str] = None
     gemini_model: Optional[str] = None
+    anthropic_model: Optional[str] = None
+    xai_model: Optional[str] = None
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""
+    xai_api_key: str = ""
     save_keys_to_env: bool = False
     # None = leave unchanged (prevents older clients from wiping .env stop).
     stop_loss_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
@@ -133,6 +137,8 @@ class LangIn(BaseModel):
 class ApiKeysIn(BaseModel):
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""
+    xai_api_key: str = ""
     save_to_env: bool = True
 
 
@@ -162,6 +168,8 @@ class ClearAlpacaKeysIn(BaseModel):
 class ClearAiKeysIn(BaseModel):
     openai: bool = False
     gemini: bool = False
+    anthropic: bool = False
+    xai: bool = False
     clear_env: bool = True
 
 
@@ -1163,11 +1171,18 @@ def save_lang(body: LangIn, user: dict = Depends(require_auth)) -> dict:
 def save_keys(body: ApiKeysIn, user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     try:
-        if not body.openai_api_key.strip() and not body.gemini_api_key.strip():
+        if (
+            not body.openai_api_key.strip()
+            and not body.gemini_api_key.strip()
+            and not body.anthropic_api_key.strip()
+            and not body.xai_api_key.strip()
+        ):
             raise ValueError("Paste at least one API key to save.")
         status = state.apply_api_keys(
             openai_api_key=body.openai_api_key or None,
             gemini_api_key=body.gemini_api_key or None,
+            anthropic_api_key=body.anthropic_api_key or None,
+            xai_api_key=body.xai_api_key or None,
             save_to_env=body.save_to_env,
         )
         return {"ok": True, "ai_key_status": status, "state": state.snapshot()}
@@ -1266,6 +1281,8 @@ def clear_keys(body: ClearAiKeysIn, user: dict = Depends(require_auth)) -> dict:
         status = state.clear_api_keys(
             openai=body.openai,
             gemini=body.gemini,
+            anthropic=body.anthropic,
+            xai=body.xai,
             clear_env=body.clear_env,
         )
         return {"ok": True, "ai_key_status": status, "state": state.snapshot()}

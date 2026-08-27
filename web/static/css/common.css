@@ -1838,16 +1838,6 @@ button.ghost.date-range-apply:focus-visible {
   flex: 1;
 }
 
-.manual-actions .primary[data-side="sell"] {
-  background: var(--sell);
-  color: #1a0808;
-}
-
-.manual-actions .primary[data-side="buy"] {
-  background: var(--buy);
-  color: #06140f;
-}
-
 .loop-elapsed {
   margin: 0;
   font-family: var(--mono);

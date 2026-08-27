@@ -40,7 +40,7 @@ let suppressWatchlistUntilStop = false;
 let smaPresets = [];
 let dipPresets = [];
 let pairPresets = [];
-let aiModels = { openai: [], gemini: [], defaults: {} };
+let aiModels = { openai: [], gemini: [], anthropic: [], xai: [], defaults: {} };
 let applyingPreset = false;
 let resultHistory = [];
 let loopStartedAtMs = null;
@@ -57,6 +57,8 @@ let lastTradeNotified = false;
 
 const FALLBACK_OPENAI_MODEL = "gpt-5.6-luna";
 const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const FALLBACK_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+const FALLBACK_XAI_MODEL = "grok-3-mini";
 
 
 function formValue(name, fallback = "") {
@@ -159,6 +161,14 @@ function formPayload() {
     gemini_model: String(
       formValue("gemini_model", aiModels.defaults?.gemini || FALLBACK_GEMINI_MODEL) ||
         FALLBACK_GEMINI_MODEL
+    ).trim(),
+    anthropic_model: String(
+      formValue("anthropic_model", aiModels.defaults?.anthropic || FALLBACK_ANTHROPIC_MODEL) ||
+        FALLBACK_ANTHROPIC_MODEL
+    ).trim(),
+    xai_model: String(
+      formValue("xai_model", aiModels.defaults?.xai || FALLBACK_XAI_MODEL) ||
+        FALLBACK_XAI_MODEL
     ).trim(),
     openai_api_key: provider === "openai" ? openaiKey : "",
     gemini_api_key: provider === "gemini" ? geminiKey : "",
@@ -363,14 +373,22 @@ function parsePairLegsFromText(raw) {
   return { long: uniq[0], short: uniq[1] };
 }
 
+const AI_PROVIDER_MISSING_KEY_MESSAGES = {
+  openai: "Paste an OpenAI API key on API Keys and click Save AI keys before running AI mode.",
+  gemini: "Paste a Gemini API key on API Keys and click Save AI keys before running AI mode.",
+  anthropic: "Paste an Anthropic API key on API Keys and click Save AI keys before running AI mode.",
+  xai: "Paste an xAI API key on API Keys and click Save AI keys before running AI mode.",
+};
+
 function validateReadyToRun() {
   const localError = validateLocal();
   if (localError) return localError;
   const payload = formPayload();
   if (payload.strategy_mode === "ai" && !providerKeyReady(payload.ai_provider)) {
-    return payload.ai_provider === "gemini"
-      ? "Paste a Gemini API key on API Keys and click Save AI keys before running AI mode."
-      : "Paste an OpenAI API key on API Keys and click Save AI keys before running AI mode.";
+    return (
+      AI_PROVIDER_MISSING_KEY_MESSAGES[payload.ai_provider] ||
+      AI_PROVIDER_MISSING_KEY_MESSAGES.openai
+    );
   }
   return null;
 }
@@ -756,6 +774,8 @@ function populateModelOptions(models) {
   aiModels = {
     openai: Array.isArray(models.openai) ? models.openai : [],
     gemini: Array.isArray(models.gemini) ? models.gemini : [],
+    anthropic: Array.isArray(models.anthropic) ? models.anthropic : [],
+    xai: Array.isArray(models.xai) ? models.xai : [],
     defaults: models.defaults || {},
   };
   fillModelSelect(
@@ -767,6 +787,16 @@ function populateModelOptions(models) {
     $("field-gemini-model"),
     aiModels.gemini,
     aiModels.defaults.gemini || FALLBACK_GEMINI_MODEL
+  );
+  fillModelSelect(
+    $("field-anthropic-model"),
+    aiModels.anthropic,
+    aiModels.defaults.anthropic || FALLBACK_ANTHROPIC_MODEL
+  );
+  fillModelSelect(
+    $("field-xai-model"),
+    aiModels.xai,
+    aiModels.defaults.xai || FALLBACK_XAI_MODEL
   );
 }
 
@@ -808,15 +838,17 @@ function syncModeUi() {
   const dip = mode === "dip";
   const pair = mode === "pair";
   const ls = mode === "ls";
-  const provider = payload.ai_provider === "gemini" ? "gemini" : "openai";
+  const AI_PROVIDERS = ["openai", "gemini", "anthropic", "xai"];
+  const provider = AI_PROVIDERS.includes(payload.ai_provider)
+    ? payload.ai_provider
+    : "openai";
   document.body.classList.toggle("mode-ai", ai);
   // Provider panels first, then ai-only — so SMA/dip mode re-hides model fields
   // that also carry provider-* classes.
-  document.querySelectorAll(".provider-openai").forEach((el) => {
-    el.hidden = provider !== "openai";
-  });
-  document.querySelectorAll(".provider-gemini").forEach((el) => {
-    el.hidden = provider !== "gemini";
+  AI_PROVIDERS.forEach((p) => {
+    document.querySelectorAll(`.provider-${p}`).forEach((el) => {
+      el.hidden = provider !== p;
+    });
   });
   document.querySelectorAll(".ai-only").forEach((el) => {
     el.hidden = !ai;
@@ -855,10 +887,10 @@ function syncModeUi() {
     }
   }
   // Model dropdown: only the active provider's select while in AI mode.
-  const openaiModel = $("field-openai-model")?.closest("label");
-  const geminiModel = $("field-gemini-model")?.closest("label");
-  if (openaiModel) openaiModel.hidden = !ai || provider !== "openai";
-  if (geminiModel) geminiModel.hidden = !ai || provider !== "gemini";
+  AI_PROVIDERS.forEach((p) => {
+    const modelLabel = $(`field-${p}-model`)?.closest("label");
+    if (modelLabel) modelLabel.hidden = !ai || provider !== p;
+  });
   const metricA = $("metric-a-label");
   const metricB = $("metric-b-label");
   if (metricA && metricB) {
@@ -1246,6 +1278,20 @@ function applySettings(settings, { force = false } = {}) {
       form.gemini_model,
       aiModels.gemini,
       settings.gemini_model || aiModels.defaults?.gemini || FALLBACK_GEMINI_MODEL
+    );
+  }
+  if (form.anthropic_model) {
+    fillModelSelect(
+      form.anthropic_model,
+      aiModels.anthropic,
+      settings.anthropic_model || aiModels.defaults?.anthropic || FALLBACK_ANTHROPIC_MODEL
+    );
+  }
+  if (form.xai_model) {
+    fillModelSelect(
+      form.xai_model,
+      aiModels.xai,
+      settings.xai_model || aiModels.defaults?.xai || FALLBACK_XAI_MODEL
     );
   }
   formDirty = false;

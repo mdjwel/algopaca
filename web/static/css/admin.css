@@ -299,6 +299,8 @@
 .progress-bar-fill.is-gold { background: linear-gradient(90deg, var(--warn), var(--warn)); }
 .progress-bar-fill.is-emerald { background: linear-gradient(90deg, var(--buy), var(--buy)); }
 .progress-bar-fill.is-purple { background: linear-gradient(90deg, var(--violet-deep), var(--violet)); }
+.progress-bar-fill.is-slate { background: linear-gradient(90deg, var(--hold), var(--hold)); }
+.progress-bar-fill.is-rose { background: linear-gradient(90deg, var(--sell), var(--sell)); }
 
 /* ==========================================================================
    Users Management Panel & Table

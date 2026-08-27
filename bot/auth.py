@@ -156,6 +156,8 @@ class AuthStore:
                     alpaca_live_secret_key TEXT,
                     openai_api_key TEXT,
                     gemini_api_key TEXT,
+                    anthropic_api_key TEXT,
+                    xai_api_key TEXT,
                     trading_mode TEXT DEFAULT 'paper',
                     allow_live INTEGER DEFAULT 0,
                     live_authorized INTEGER DEFAULT 0,
@@ -227,6 +229,12 @@ class AuthStore:
             existing = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
             if "status" not in existing:
                 conn.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+
+            existing_creds = {r["name"] for r in conn.execute("PRAGMA table_info(user_credentials)")}
+            if "anthropic_api_key" not in existing_creds:
+                conn.execute("ALTER TABLE user_credentials ADD COLUMN anthropic_api_key TEXT")
+            if "xai_api_key" not in existing_creds:
+                conn.execute("ALTER TABLE user_credentials ADD COLUMN xai_api_key TEXT")
 
             conn.commit()
         # Seed demo user if table is empty
@@ -329,7 +337,9 @@ class AuthStore:
                     (CASE WHEN c.alpaca_paper_api_key IS NOT NULL AND c.alpaca_paper_api_key != '' THEN 1 ELSE 0 END) as has_paper_key,
                     (CASE WHEN c.alpaca_live_api_key IS NOT NULL AND c.alpaca_live_api_key != '' THEN 1 ELSE 0 END) as has_live_key,
                     (CASE WHEN c.openai_api_key IS NOT NULL AND c.openai_api_key != '' THEN 1 ELSE 0 END) as has_openai_key,
-                    (CASE WHEN c.gemini_api_key IS NOT NULL AND c.gemini_api_key != '' THEN 1 ELSE 0 END) as has_gemini_key
+                    (CASE WHEN c.gemini_api_key IS NOT NULL AND c.gemini_api_key != '' THEN 1 ELSE 0 END) as has_gemini_key,
+                    (CASE WHEN c.anthropic_api_key IS NOT NULL AND c.anthropic_api_key != '' THEN 1 ELSE 0 END) as has_anthropic_key,
+                    (CASE WHEN c.xai_api_key IS NOT NULL AND c.xai_api_key != '' THEN 1 ELSE 0 END) as has_xai_key
                 FROM users u
                 LEFT JOIN sessions s ON u.id = s.user_id AND s.expires_at >= ?
                 LEFT JOIN user_credentials c ON u.id = c.user_id
@@ -359,6 +369,8 @@ class AuthStore:
                 "has_live_key": bool(row["has_live_key"]),
                 "has_openai_key": bool(row["has_openai_key"]),
                 "has_gemini_key": bool(row["has_gemini_key"]),
+                "has_anthropic_key": bool(row["has_anthropic_key"]),
+                "has_xai_key": bool(row["has_xai_key"]),
             }
 
     # Whitelist of sortable columns — the sort key arrives from the query string
@@ -431,7 +443,9 @@ class AuthStore:
                     (CASE WHEN c.alpaca_paper_api_key IS NOT NULL AND c.alpaca_paper_api_key != '' THEN 1 ELSE 0 END) as has_paper_key,
                     (CASE WHEN c.alpaca_live_api_key IS NOT NULL AND c.alpaca_live_api_key != '' THEN 1 ELSE 0 END) as has_live_key,
                     (CASE WHEN c.openai_api_key IS NOT NULL AND c.openai_api_key != '' THEN 1 ELSE 0 END) as has_openai_key,
-                    (CASE WHEN c.gemini_api_key IS NOT NULL AND c.gemini_api_key != '' THEN 1 ELSE 0 END) as has_gemini_key
+                    (CASE WHEN c.gemini_api_key IS NOT NULL AND c.gemini_api_key != '' THEN 1 ELSE 0 END) as has_gemini_key,
+                    (CASE WHEN c.anthropic_api_key IS NOT NULL AND c.anthropic_api_key != '' THEN 1 ELSE 0 END) as has_anthropic_key,
+                    (CASE WHEN c.xai_api_key IS NOT NULL AND c.xai_api_key != '' THEN 1 ELSE 0 END) as has_xai_key
                 FROM users u
                 LEFT JOIN sessions s ON u.id = s.user_id AND s.expires_at >= ?
                 LEFT JOIN user_credentials c ON u.id = c.user_id
@@ -464,6 +478,8 @@ class AuthStore:
                     "has_live_key": bool(r["has_live_key"]),
                     "has_openai_key": bool(r["has_openai_key"]),
                     "has_gemini_key": bool(r["has_gemini_key"]),
+                    "has_anthropic_key": bool(r["has_anthropic_key"]),
+                    "has_xai_key": bool(r["has_xai_key"]),
                 })
 
             return {
@@ -530,7 +546,9 @@ class AuthStore:
                     SUM(CASE WHEN alpaca_paper_api_key IS NOT NULL AND alpaca_paper_api_key != '' THEN 1 ELSE 0 END) as paper_keys_count,
                     SUM(CASE WHEN alpaca_live_api_key IS NOT NULL AND alpaca_live_api_key != '' THEN 1 ELSE 0 END) as live_keys_count,
                     SUM(CASE WHEN openai_api_key IS NOT NULL AND openai_api_key != '' THEN 1 ELSE 0 END) as openai_keys_count,
-                    SUM(CASE WHEN gemini_api_key IS NOT NULL AND gemini_api_key != '' THEN 1 ELSE 0 END) as gemini_keys_count
+                    SUM(CASE WHEN gemini_api_key IS NOT NULL AND gemini_api_key != '' THEN 1 ELSE 0 END) as gemini_keys_count,
+                    SUM(CASE WHEN anthropic_api_key IS NOT NULL AND anthropic_api_key != '' THEN 1 ELSE 0 END) as anthropic_keys_count,
+                    SUM(CASE WHEN xai_api_key IS NOT NULL AND xai_api_key != '' THEN 1 ELSE 0 END) as xai_keys_count
                 FROM user_credentials
                 """
             )
@@ -589,6 +607,8 @@ class AuthStore:
                     "live_keys": cred_stats.get("live_keys_count") or 0,
                     "openai": cred_stats.get("openai_keys_count") or 0,
                     "gemini": cred_stats.get("gemini_keys_count") or 0,
+                    "anthropic": cred_stats.get("anthropic_keys_count") or 0,
+                    "xai": cred_stats.get("xai_keys_count") or 0,
                 },
                 "daily_signups": daily_signups,
             }
@@ -1116,6 +1136,8 @@ class AuthStore:
             "alpaca_live_secret_key": "",
             "openai_api_key": "",
             "gemini_api_key": "",
+            "anthropic_api_key": "",
+            "xai_api_key": "",
             "trading_mode": "paper",
             "allow_live": False,
             "live_authorized": False,
@@ -1128,6 +1150,7 @@ class AuthStore:
                 SELECT alpaca_paper_api_key, alpaca_paper_secret_key,
                        alpaca_live_api_key, alpaca_live_secret_key,
                        openai_api_key, gemini_api_key,
+                       anthropic_api_key, xai_api_key,
                        trading_mode, allow_live, live_authorized, updated_at
                 FROM user_credentials
                 WHERE user_id = ?
@@ -1145,6 +1168,8 @@ class AuthStore:
                 "alpaca_live_secret_key": _decrypt_val(row["alpaca_live_secret_key"] or ""),
                 "openai_api_key": _decrypt_val(row["openai_api_key"] or ""),
                 "gemini_api_key": _decrypt_val(row["gemini_api_key"] or ""),
+                "anthropic_api_key": _decrypt_val(row["anthropic_api_key"] or ""),
+                "xai_api_key": _decrypt_val(row["xai_api_key"] or ""),
                 "trading_mode": row["trading_mode"] or "paper",
                 "allow_live": bool(row["allow_live"]),
                 "live_authorized": bool(row["live_authorized"]),
@@ -1167,6 +1192,8 @@ class AuthStore:
         enc_live_secret = _encrypt_val(current.get("alpaca_live_secret_key", ""))
         enc_openai_key = _encrypt_val(current.get("openai_api_key", ""))
         enc_gemini_key = _encrypt_val(current.get("gemini_api_key", ""))
+        enc_anthropic_key = _encrypt_val(current.get("anthropic_api_key", ""))
+        enc_xai_key = _encrypt_val(current.get("xai_api_key", ""))
         trading_mode = current.get("trading_mode", "paper")
         allow_live = 1 if current.get("allow_live") else 0
         live_authorized = 1 if current.get("live_authorized") else 0
@@ -1179,9 +1206,10 @@ class AuthStore:
                     user_id, alpaca_paper_api_key, alpaca_paper_secret_key,
                     alpaca_live_api_key, alpaca_live_secret_key,
                     openai_api_key, gemini_api_key,
+                    anthropic_api_key, xai_api_key,
                     trading_mode, allow_live, live_authorized, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     alpaca_paper_api_key = excluded.alpaca_paper_api_key,
                     alpaca_paper_secret_key = excluded.alpaca_paper_secret_key,
@@ -1189,6 +1217,8 @@ class AuthStore:
                     alpaca_live_secret_key = excluded.alpaca_live_secret_key,
                     openai_api_key = excluded.openai_api_key,
                     gemini_api_key = excluded.gemini_api_key,
+                    anthropic_api_key = excluded.anthropic_api_key,
+                    xai_api_key = excluded.xai_api_key,
                     trading_mode = excluded.trading_mode,
                     allow_live = excluded.allow_live,
                     live_authorized = excluded.live_authorized,
@@ -1198,6 +1228,7 @@ class AuthStore:
                     user_id, enc_paper_key, enc_paper_secret,
                     enc_live_key, enc_live_secret,
                     enc_openai_key, enc_gemini_key,
+                    enc_anthropic_key, enc_xai_key,
                     trading_mode, allow_live, live_authorized, now,
                 ),
             )
@@ -1220,6 +1251,8 @@ class AuthStore:
         if env_name == "ai":
             current["openai_api_key"] = ""
             current["gemini_api_key"] = ""
+            current["anthropic_api_key"] = ""
+            current["xai_api_key"] = ""
 
         if env_name == "all" or (env_name == "live" and current.get("trading_mode") == "live"):
             current["trading_mode"] = "paper"
@@ -1681,6 +1714,8 @@ class AuthStore:
                 "has_live_key": user.get("has_live_key", False),
                 "has_openai_key": user.get("has_openai_key", False),
                 "has_gemini_key": user.get("has_gemini_key", False),
+                "has_anthropic_key": user.get("has_anthropic_key", False),
+                "has_xai_key": user.get("has_xai_key", False),
             },
             "active_sessions": [
                 {

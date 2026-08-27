@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=("openai", "gemini"),
+        choices=("openai", "gemini", "anthropic", "xai"),
         default=None,
         help="Override AI_PROVIDER from .env",
     )

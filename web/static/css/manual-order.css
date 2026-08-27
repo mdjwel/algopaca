@@ -23,6 +23,54 @@
 
 .manual-panel {
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Masthead + app padding (~14.5rem) so Buy/Sell stay on-screen while the
+     ticket fields scroll inside .manual-form-body. Last-child sticky alone
+     would leave the bar below the fold until you scroll to the end. */
+  max-height: calc(100dvh - 14.5rem);
+  overflow: hidden;
+}
+
+.manual-panel .panel-head,
+.manual-panel .manual-banner {
+  flex-shrink: 0;
+}
+
+.form.manual-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0;
+}
+
+.manual-form-body {
+  display: grid;
+  gap: 0.9rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 0.4rem;
+}
+
+.manual-place-bar {
+  flex: 0 0 auto;
+  z-index: 6;
+  margin: 0.15rem -1.15rem -1.2rem;
+  padding: 0.7rem 1.15rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 -10px 24px color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.manual-place-bar > .field-help {
+  margin-top: 0;
 }
 
 .manual-rail {
@@ -680,16 +728,54 @@ a.ghost.small {
   display: none;
 }
 
-.segment-buy:has(input:checked) {
+/* Buy stays green and Sell stays red even when unselected — the pair is the
+   ticket's direction, not a generic switch. Selected is the stronger fill. */
+.segmented-actions .segment-buy,
+.segmented-actions .segment-sell {
+  min-height: 2.6rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.4rem;
+  font-family: var(--ui);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.segmented-actions .segment-buy {
   border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 16%, var(--panel));
+  background: color-mix(in srgb, var(--buy) 14%, var(--panel));
   color: var(--buy);
 }
 
-.segment-sell:has(input:checked) {
+.segmented-actions .segment-sell {
   border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 16%, var(--panel));
+  background: color-mix(in srgb, var(--sell) 14%, var(--panel));
   color: var(--sell);
+}
+
+.segmented-actions .segment-buy:hover {
+  border-color: var(--buy);
+  background: color-mix(in srgb, var(--buy) 22%, var(--panel));
+}
+
+.segmented-actions .segment-sell:hover {
+  border-color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 22%, var(--panel));
+}
+
+.segmented-actions .segment-buy:has(input:checked) {
+  border-color: var(--buy);
+  background: color-mix(in srgb, var(--buy) 28%, var(--panel));
+  color: var(--buy);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buy) 55%, transparent);
+}
+
+.segmented-actions .segment-sell:has(input:checked) {
+  border-color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 28%, var(--panel));
+  color: var(--sell);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sell) 55%, transparent);
 }
 
 .segment.is-disabled,
@@ -758,7 +844,7 @@ a.ghost.small {
   transform: translateY(0);
 }
 
-.segmented .segment {
+.segmented:not(.segmented-actions) .segment {
   padding: 0.45rem 0.6rem;
   font-size: 0.85rem;
 }
@@ -1054,18 +1140,107 @@ a.ghost.small {
 
 .manual-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
-  align-items: center;
+  align-items: stretch;
 }
 
-.manual-actions .primary {
-  flex: 1 1 auto;
+.manual-actions .ghost {
+  flex: 0 0 auto;
 }
 
-#btn-manual-submit[data-side="sell"],
-#btn-manual-submit[data-side="short"] {
-  background: var(--sell);
+.manual-place-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.place-side {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.4rem;
+  border: 1px solid;
+  font-family: var(--ui);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.place-side:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.place-side:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.place-side[data-side="buy"] {
+  border-color: var(--buy);
+  background: color-mix(in srgb, var(--buy) 14%, var(--panel));
+  color: var(--buy);
+}
+
+.place-side[data-side="sell"] {
   border-color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 14%, var(--panel));
+  color: var(--sell);
+}
+
+.place-side[data-side="buy"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--buy) 36%, var(--panel));
+  color: color-mix(in srgb, var(--buy) 22%, #fff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buy) 45%, transparent);
+}
+
+.place-side[data-side="sell"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sell) 36%, var(--panel));
+  color: color-mix(in srgb, var(--sell) 22%, #fff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sell) 45%, transparent);
+}
+
+/* The armed side is the place action — solid fill. Hover must keep that fill;
+   the unselected hover above is more specific than the resting selected rule. */
+.place-side[data-side="buy"][aria-pressed="true"] {
+  background: var(--buy);
+  color: #06140f;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buy) 55%, transparent);
+}
+
+.place-side[data-side="sell"][aria-pressed="true"] {
+  background: var(--sell);
+  color: #1a0808;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sell) 55%, transparent);
+}
+
+.place-side[data-side="buy"][aria-pressed="true"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--buy) 78%, #fff);
+  color: #06140f;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--buy) 35%, #fff),
+    0 6px 18px color-mix(in srgb, var(--buy) 40%, transparent);
+}
+
+.place-side[data-side="sell"][aria-pressed="true"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sell) 78%, #fff);
+  color: #1a0808;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--sell) 35%, #fff),
+    0 6px 18px color-mix(in srgb, var(--sell) 40%, transparent);
+}
+
+.place-side[aria-pressed="true"]:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #000 18%, transparent);
 }
 
 .manual-last-warnings {
@@ -1250,20 +1425,16 @@ body.modal-open {
 }
 
 /* ==========================================================================
-   Advanced Order upgrades — four actions, richer context, position management
+   Advanced Order upgrades — richer context, position management
    ========================================================================== */
 
-/* Four actions do not fit the two-column grid the buy/sell pair used. */
 .segmented-actions {
-  grid-auto-flow: row;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
 }
 
 @media (max-width: 520px) {
-  .segmented-actions {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .session-hours {
     white-space: normal;
   }
@@ -1274,20 +1445,6 @@ body.modal-open {
   .manual-type-field .nice-select .option {
     white-space: normal;
   }
-}
-
-/* Short is a sell that opens risk, cover a buy that closes it — they borrow
-   the buy/sell palette so direction stays readable at a glance. */
-.segment-short:has(input:checked) {
-  border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 16%, var(--panel));
-  color: var(--sell);
-}
-
-.segment-cover:has(input:checked) {
-  border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 16%, var(--panel));
-  color: var(--buy);
 }
 
 /* --------------------------------------------------- day range indicator -- */
@@ -1736,6 +1893,15 @@ body.modal-open {
   padding-top: 0.5rem;
 }
 
+.manual-advanced-body > .field-pair-row {
+  align-items: start;
+}
+
+.manual-advanced-body .manual-limit-row {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
 /* ------------------------------------------------- estimate head + toggle -- */
 
 .size-estimate-head {
@@ -1861,6 +2027,14 @@ body.modal-open {
    preview pins to the bottom of the viewport instead and opens on demand. */
 
 @media (max-width: 61.99rem) {
+  .manual-panel {
+    /* Masthead plus the pinned size-estimate bar above the bottom nav. */
+    max-height: calc(
+      100dvh - var(--mobile-nav-height, 62px) - env(safe-area-inset-bottom, 0px) -
+        16rem
+    );
+  }
+
   #manual-size-estimate {
     position: fixed;
     left: 0;

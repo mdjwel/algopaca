@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="https://algopaca.spiderdevs.xyz/"><img src="https://img.shields.io/badge/🚀_Live_Demo-algopaca.spiderdevs.xyz-orange.svg" alt="Live Demo"></a>
   <a href="https://x.com/ehjewelbd/status/2090872372731711646"><img src="https://img.shields.io/badge/𝕏_Post-Demo_%26_Announcement-black?logo=x&logoColor=white" alt="X Demo Post"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/trading-100%25_free_%26_commission--free-success.svg" alt="100% Free & Commission-Free Trading">
@@ -19,11 +20,13 @@
 </p>
 
 <p align="center">
+  <a href="https://algopaca.spiderdevs.xyz/">Live Demo</a> •
   <a href="#-watch-in-action-demo--walkthrough">Demo Video</a> •
   <a href="#-key-features">Features</a> •
   <a href="#-strategy-engines-overview">Strategies</a> •
   <a href="#%EF%B8%8F-system-architecture">Architecture</a> •
   <a href="#-quickstart">Quickstart</a> •
+  <a href="#-mcp-server-claude-cursor-and-other-ai-assistants">MCP Server</a> •
   <a href="#-cli--terminal-execution">CLI Usage</a> •
   <a href="#%EF%B8%8F-configuration-env">Configuration</a> •
   <a href="#-risk-management--safety-guardrails">Risk Safety</a> •
@@ -62,6 +65,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 - 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
 - 🧠 **Multi-Factor AI Intelligence**: Leverages state-of-the-art LLMs (OpenAI GPT-4o / GPT-4o-mini and Google Gemini 2.0 Flash / Pro) to fuse quantitative technical indicators, financial news sentiment, earnings surprise history, and macroeconomic calendar events into reasoned trading decisions.
 - 🛡️ **Mechanical Risk Protection**: Removes emotional decision-making with strict volatility-based ATR position sizing, automatic trailing stops, profit scaling, spread checks, and daily drawdown circuit breakers.
+- 🔌 **MCP Server for AI Assistants**: A built-in [Model Context Protocol](https://modelcontextprotocol.io) server exposes AlgoPaca's engines as structured tools, so Claude, Cursor, and other AI assistants can check the account, run a strategy cycle, place/close orders, and backtest directly.
 - ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, order execution, cycle audit history, and multi-language internationalization.
 - 🐳 **1-Click Deployment**: Get up and running in 60 seconds with Docker Compose or standard Python virtual environments.
 
@@ -95,6 +99,9 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 ---
 
 ## 🚀 Quickstart
+
+> [!TIP]
+> 🌐 **Try it live first**: **[algopaca.spiderdevs.xyz](https://algopaca.spiderdevs.xyz/)** is a hosted instance of the multi-user desk — sign up and connect your own Alpaca paper keys without installing anything.
 
 ### Option 1: Run with Docker & Docker Compose (Recommended)
 
@@ -163,6 +170,51 @@ launch_web.bat
 ```
 
 Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** to access your trading desk.
+
+---
+
+## 🔌 MCP Server (Claude, Cursor, and other AI assistants)
+
+AlgoPaca ships its own [Model Context Protocol](https://modelcontextprotocol.io) server on top of the same `alpaca-py` Trading API client the CLI and web desk use. It exposes AlgoPaca's five strategy engines, mechanical risk gates, options overlay, and backtester as structured tools, so an AI assistant like Claude or Cursor can check the account, run a strategy cycle, place/close orders, and backtest — all through tool calls instead of the web UI.
+
+```bash
+# 1. Configure .env (paper credentials by default — see Configuration below)
+cp .env.example .env
+
+# 2. Launch the MCP server (stdio transport)
+./run_mcp.sh          # macOS / Linux
+run_mcp.bat           # Windows
+```
+
+**Available tools:**
+
+| Tool                     | What it does                                                                 |
+| :----------------------- | :---------------------------------------------------------------------------- |
+| `get_account`             | Equity, cash, buying power, paper/live status, day P&L                       |
+| `get_positions`           | All open positions (stocks, ETFs, and options)                               |
+| `get_open_orders`         | Open orders grouped by symbol, with protective-stop metadata                 |
+| `list_strategy_presets`   | Named parameter presets for an engine (e.g. `sma` → `golden_cross`)          |
+| `run_strategy_cycle`      | Evaluate + (if a signal clears every risk gate) execute one engine's cycle, including its options overlay |
+| `place_manual_order`      | User-directed market/limit/stop order, with bracket/OTO stop-loss & take-profit |
+| `close_position`          | Liquidate a position fully or partially                                      |
+| `run_backtest`            | Walk-forward backtest an SMA or dip strategy on historical bars (no orders)  |
+
+Add it to Claude Desktop's `claude_desktop_config.json` (or Cursor's MCP settings) as a local stdio server:
+
+```json
+{
+  "mcpServers": {
+    "algopaca": {
+      "command": "/absolute/path/to/algopaca/.venv/bin/python",
+      "args": ["-m", "bot.mcp_server"],
+      "cwd": "/absolute/path/to/algopaca"
+    }
+  }
+}
+```
+
+> [!NOTE]
+> The server inherits AlgoPaca's paper/live safety model straight from `.env` — every tool call runs against Alpaca paper by default, and live trading only activates when `ALPACA_PAPER=false` and `ALPACA_ALLOW_LIVE=true` are both set. There is no way to flip environments per tool call.
 
 ---
 
@@ -328,6 +380,7 @@ algopaca/
 │   ├── econ_calendar.py     # Economic calendar reader (Forex Factory USD)
 │   ├── history_insights.py  # Trade history attribution & performance analytics
 │   ├── ls_strategy.py       # Regime Dual Momentum (L/S) engine
+│   ├── mcp_server.py        # MCP server exposing engines as AI assistant tools
 │   ├── pair_strategy.py     # Long/Short pair rotation engine
 │   ├── strategy.py          # SMA crossover engine
 │   ├── trader.py            # Execution dispatcher
@@ -344,6 +397,8 @@ algopaca/
 ├── launch_web.bat           # Windows web launcher
 ├── run.sh                   # macOS / Linux CLI runner
 ├── run.bat                  # Windows CLI runner
+├── run_mcp.sh                # macOS / Linux MCP server launcher
+├── run_mcp.bat                # Windows MCP server launcher
 ├── requirements.txt         # Python dependencies
 ├── CONTRIBUTING.md          # Contribution guidelines
 ├── CODE_OF_CONDUCT.md       # Community code of conduct

@@ -114,10 +114,18 @@ function stripNiceSelectFromManualInputs(form) {
   });
 }
 
-/** One of buy / sell / short / cover — see `place_manual_order` on the server. */
+/** Map a stored or linked action onto the Buy / Sell control. */
+function visibleTicketSide(side) {
+  const raw = String(side || "").toLowerCase();
+  if (raw === "sell" || raw === "cover" || raw === "close") return "sell";
+  if (["buy", "long", "add", "short"].includes(raw)) return "buy";
+  return "";
+}
+
+/** One of buy / sell — see `place_manual_order` on the server. */
 function manualSide() {
   const raw = String(manualFormValue("side", "buy") || "buy").toLowerCase();
-  return ["buy", "sell", "short", "cover"].includes(raw) ? raw : "buy";
+  return visibleTicketSide(raw) || "buy";
 }
 
 function manualSymbol() {
@@ -783,12 +791,6 @@ function validateManualLocal() {
     return tx(
       "err_protected_entry_tif",
       "Protected entries must use Day or GTC time in force."
-    );
-  }
-  if (manualIsEntry() && p.extended_hours) {
-    return tx(
-      "err_protected_entry_extended",
-      "Protected entry brackets cannot execute in the 24-hour market. Switch to Regular hours to queue this order for RTH."
     );
   }
   const asset = manualContext?.asset;
@@ -1606,7 +1608,7 @@ function syncManualTypeUi() {
     decorateTifSelect(tifSelect);
   }
 
-  syncTradingSessionUi(protectedEntry);
+  syncTradingSessionUi();
 
   const rows = {
     "manual-limit-row": manualNeedsLimit(),
@@ -1763,30 +1765,25 @@ function decorateTifSelect(select) {
   });
 }
 
-function syncTradingSessionUi(protectedEntry) {
+function syncTradingSessionUi() {
   const form = $("manual-order");
   const overnight = form?.querySelector('input[name="trading_session"][value="24h"]');
   const regular = form?.querySelector('input[name="trading_session"][value="regular"]');
   const locked = loopRunning || busy;
   const rthOnlyType = manualOrderTypeIsRthOnly();
-  const lock24h = protectedEntry || rthOnlyType;
+  const lock24h = rthOnlyType;
   if (overnight) {
     if (lock24h && overnight.checked) {
       setManualFormValue("trading_session", "regular");
     }
     overnight.disabled = lock24h || locked;
     const segment = overnight.closest(".segment");
-    const reason = protectedEntry
+    const reason = rthOnlyType
       ? tx(
-          "help_session_protected",
-          "Protected Buy/Short entries cannot fill in the 24-hour market — Alpaca will not attach the stop. This ticket stays on regular hours."
+          "help_session_rth_type",
+          "This order type fills in regular hours only. Sent now, it rests until the open."
         )
-      : rthOnlyType
-        ? tx(
-            "help_session_rth_type",
-            "This order type fills in regular hours only. Sent now, it rests until the open."
-          )
-        : "";
+      : "";
     const tooltip = $("manual-session-24h-disabled-reason");
     if (tooltip) {
       tooltip.hidden = !reason;
@@ -1809,21 +1806,21 @@ function syncTradingSessionUi(protectedEntry) {
 
   const help = $("manual-session-help");
   if (help) {
-    if (protectedEntry) {
-      help.textContent = tx(
-        "help_session_protected",
-        "Protected Buy/Short entries cannot fill in the 24-hour market — Alpaca will not attach the stop. This ticket stays on regular hours."
-      );
-    } else if (rthOnlyType) {
+    if (rthOnlyType) {
       help.textContent = tx(
         "help_session_rth_type",
         "This order type fills in regular hours only. Sent now, it rests until the open."
       );
     } else if (manualExtendedHours()) {
-      help.textContent = tx(
-        "help_session_24h",
-        "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
-      );
+      help.textContent = manualIsEntry()
+        ? tx(
+            "help_session_24h_entry",
+            "Limit Day or GTC. Alpaca cannot attach a stop to a 24-hour order — the desk arms the stop after this ticket fills."
+          )
+        : tx(
+            "help_session_24h",
+            "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
+          );
     } else {
       help.textContent = tx(
         "help_session_regular",
@@ -2086,7 +2083,7 @@ function calculateSizeEstimate() {
     equity,
     projectedRiskPct,
     riskReward: manualRiskReward(riskDollars, targetPrice, shares, entry),
-    attachesStop: ["market", "limit"].includes(manualOrderType()),
+    attachesStop: ["market", "limit"].includes(manualOrderType()) && !manualExtendedHours(),
     bpPct: buyingPower > 0 ? (cost / buyingPower) * 100 : null,
     exceedsBp: buyingPower > 0 && cost > buyingPower,
   };
@@ -2177,7 +2174,9 @@ function estimateFromServer(result) {
       shares,
       entry
     ),
-    attachesStop: ["market", "limit"].includes(String(result.order_type || "")),
+    attachesStop:
+      ["market", "limit"].includes(String(result.order_type || "")) &&
+      !result.extended_hours,
     warnings: Array.isArray(result.warnings) ? result.warnings : [],
     breaches: Array.isArray(result.breaches) ? result.breaches : [],
     bpPct: buyingPower > 0 ? (cost / buyingPower) * 100 : null,
@@ -2656,78 +2655,6 @@ function validateManualField(fieldName) {
   field.setAttribute("aria-invalid", error ? "true" : "false");
 }
 
-function manualSideDisabledReason(action, signedPosition) {
-  if (loopRunning) {
-    return tx(
-      "manual_loop_locked",
-      "Strategy loop is running — Advanced Order is locked."
-    );
-  }
-  if (busy) {
-    return tx(
-      "manual_action_busy",
-      "Wait for the current action to finish."
-    );
-  }
-  if (action === "short") {
-    if (signedPosition > 0) {
-      return tx(
-        "err_short_on_long",
-        "This symbol is held long. Sell the long before opening a short in it."
-      );
-    }
-    const asset = manualContext?.asset;
-    if (asset?.tradable === false) {
-      return tx(
-        "asset_not_tradable",
-        "Alpaca does not accept orders in this symbol — it is not tradable."
-      );
-    }
-    if (asset?.shortable === false) {
-      return tx(
-        "err_not_shortable",
-        "This symbol is not shortable at Alpaca — the borrow is unavailable, so the ticket would be rejected."
-      );
-    }
-  }
-  if (action === "cover" && signedPosition >= 0) {
-    return tx(
-      "err_cover_flat",
-      "No short position to cover in this symbol."
-    );
-  }
-  // Buy and Sell are greyed out under the same rules, and had no sentence to
-  // show for it — the shortcuts now need one too.
-  if (action === "buy" && signedPosition < 0) {
-    return tx(
-      "err_buy_on_short",
-      "This symbol is held short. Use Cover to buy those shares back."
-    );
-  }
-  if (action === "sell" && signedPosition <= 0) {
-    return tx("err_sell_flat", "No long position to sell in this symbol.");
-  }
-  return "";
-}
-
-/**
- * Which of the four actions this symbol and position actually allow.
- *
- * Shared by the segmented control and the keyboard shortcuts — the shortcuts
- * used to set the side directly, so `H` could land on Short while a long was
- * open, on exactly the option the UI was showing as greyed out.
- */
-function manualSideAvailability() {
-  const signed = manualSignedPosition();
-  const asset = manualContext?.asset;
-  return {
-    buy: signed >= 0,
-    sell: signed > 0,
-    short: signed <= 0 && asset?.tradable !== false && asset?.shortable !== false,
-    cover: signed < 0,
-  };
-}
-
 function syncManualSideUi() {
   const side = manualSide();
   const isExit = manualIsExit();
@@ -2742,41 +2669,14 @@ function syncManualSideUi() {
   if (sellGroup) sellGroup.hidden = !isExit;
   if (riskGroup) riskGroup.hidden = isExit;
 
-  // Sell and Cover only make sense against a position on that side; grey the
-  // rest out rather than letting the user compose an impossible ticket.
-  const signed = manualSignedPosition();
-  const availability = manualSideAvailability();
   const sideInputs = form?.elements?.side;
   if (sideInputs instanceof RadioNodeList) {
     [...sideInputs].forEach((input) => {
-      const allowed = availability[input.value] !== false;
-      // Never disable the option the user is standing on — they would lose the
-      // error explaining why it does not apply.
-      input.disabled = (!allowed && !input.checked) || loopRunning || busy;
+      input.disabled = loopRunning || busy;
       const segment = input.closest(".segment");
-      segment?.classList.toggle("is-disabled", !allowed);
-
-      if (input.value !== "short" && input.value !== "cover") return;
-      const reason =
-        input.disabled || !allowed
-          ? manualSideDisabledReason(input.value, signed)
-          : "";
-      const tooltip = segment?.querySelector(".segment-disabled-reason");
-      if (tooltip) {
-        tooltip.hidden = !reason;
-        tooltip.textContent = reason;
-        if (reason) input.setAttribute("aria-describedby", tooltip.id);
-        else input.removeAttribute("aria-describedby");
-      }
-      if (segment) {
-        if (reason && input.disabled) {
-          segment.tabIndex = 0;
-          segment.setAttribute("aria-disabled", "true");
-        } else {
-          segment.removeAttribute("tabindex");
-          segment.removeAttribute("aria-disabled");
-        }
-      }
+      segment?.classList.remove("is-disabled");
+      segment?.removeAttribute("tabindex");
+      segment?.removeAttribute("aria-disabled");
     });
   }
 
@@ -3272,28 +3172,49 @@ function syncManualDipHuntUi() {
     ) + extra;
 }
 
-function syncManualHelp() {
-  const help = $("manual-help");
-  const btn = $("btn-manual-submit");
+function selectManualSide(side) {
+  const next = visibleTicketSide(side);
+  if (!next || loopRunning || busy) return false;
+  if (manualSide() === next) return false;
+  setManualFormValue("side", next);
+  formDirtyManual = true;
+  saveManualFormDraft();
+  syncManualUi();
+  scheduleServerPreview();
+  return true;
+}
+
+function syncManualPlaceButtons() {
   const side = manualSide();
-  const SUBMIT_KEYS = {
-    buy: ["place_buy", "Place Buy"],
-    sell: ["place_sell", "Place Sell"],
-    short: ["place_short", "Place Short"],
-    cover: ["place_cover", "Place Cover"],
-  };
-  if (btn) {
-    btn.dataset.side = side;
-    if (busy && manualBusyLabel) {
+  const locked = loopRunning || busy;
+  [
+    ["btn-manual-buy", "buy", "place_buy", "Place Buy"],
+    ["btn-manual-sell", "sell", "place_sell", "Place Sell"],
+  ].forEach(([id, value, placeKey, placeFallback]) => {
+    const btn = $(id);
+    if (!btn) return;
+    const selected = side === value;
+    btn.type = selected ? "submit" : "button";
+    btn.setAttribute("aria-pressed", selected ? "true" : "false");
+    btn.disabled = locked;
+    btn.title = selected
+      ? tx(placeKey, placeFallback)
+      : tx(value, value === "sell" ? "Sell" : "Buy");
+    btn.setAttribute("data-i18n-title", selected ? placeKey : value);
+    if (busy && selected && manualBusyLabel) {
       btn.textContent = manualBusyLabel;
     } else {
-      // Keep the i18n key in sync so a language switch relabels the button.
-      const [key, fallback] = SUBMIT_KEYS[side] || SUBMIT_KEYS.buy;
+      const key = value === "sell" ? "sell" : "buy";
       btn.setAttribute("data-i18n", key);
       btn.removeAttribute("data-i18n-orig");
-      btn.textContent = tx(key, fallback);
+      btn.textContent = tx(key, value === "sell" ? "Sell" : "Buy");
     }
-  }
+  });
+}
+
+function syncManualHelp() {
+  const help = $("manual-help");
+  syncManualPlaceButtons();
   syncManualBusyHint();
   if (!help) return;
 
@@ -3363,7 +3284,7 @@ function readManualFormDraft() {
 
 /** Fields a draft or a preset is made of, and how to read each back. */
 const MANUAL_SAVED_FIELDS = {
-  side: ["buy", "sell", "short", "cover"],
+  side: ["buy", "sell"],
   order_type: ["market", "limit", "stop", "stop_limit", "trailing_stop"],
   time_in_force: ["day", "gtc", "ioc", "fok", "opg", "cls"],
   trading_session: ["24h", "regular"],
@@ -3432,6 +3353,11 @@ function applyManualForm(saved) {
     if (/^[A-Z.\-]{1,12}$/.test(symbol)) setManualFormValue("symbol", symbol);
   }
   Object.entries(MANUAL_SAVED_FIELDS).forEach(([name, allowed]) => {
+    if (name === "side") {
+      const side = visibleTicketSide(saved.side);
+      if (side) setManualFormValue("side", side);
+      return;
+    }
     if (allowed.includes(saved[name])) setManualFormValue(name, saved[name]);
   });
   // All / Half were retired from the ticket; map them onto the share box.
@@ -3618,18 +3544,7 @@ function applyManualTicketFromUrl() {
     touched = true;
   }
   const rawSide = String(params.get("side") || "").trim().toLowerCase();
-  // "long"/"short" describe a position; the ticket needs the action that gets
-  // you there, and Positions links arrive in both dialects.
-  const SIDE_ALIASES = {
-    buy: "buy",
-    long: "buy",
-    add: "buy",
-    sell: "sell",
-    close: "sell",
-    short: "short",
-    cover: "cover",
-  };
-  const side = SIDE_ALIASES[rawSide];
+  const side = visibleTicketSide(rawSide);
   if (side) {
     setManualFormValue("side", side);
     formDirtyManual = true;
@@ -5471,9 +5386,8 @@ function reuseRecentTicket(orderId) {
   if (loopRunning || busy) return;
   const symbol = String(row.symbol || "").trim().toUpperCase();
   if (/^[A-Z.\-]{1,12}$/.test(symbol)) setManualFormValue("symbol", symbol);
-  if (["buy", "sell", "short", "cover"].includes(String(row.side))) {
-    setManualFormValue("side", row.side);
-  }
+  const reusedSide = visibleTicketSide(row.side);
+  if (reusedSide) setManualFormValue("side", reusedSide);
   if (
     ["market", "limit", "stop", "stop_limit", "trailing_stop"].includes(
       String(row.order_type)
@@ -5622,6 +5536,20 @@ document.addEventListener("keydown", (ev) => {
 
 const manualForm = $("manual-order");
 manualForm?.addEventListener("submit", onManualSubmit);
+function onPlaceSideButton(ev) {
+  const side = ev.currentTarget?.dataset?.side;
+  if (!side) return;
+  if (loopRunning || busy) {
+    ev.preventDefault();
+    return;
+  }
+  if (manualSide() !== side) {
+    ev.preventDefault();
+    selectManualSide(side);
+  }
+}
+$("btn-manual-buy")?.addEventListener("click", onPlaceSideButton);
+$("btn-manual-sell")?.addEventListener("click", onPlaceSideButton);
 $("btn-manual-preview")?.addEventListener("click", () => {
   onManualPreview().catch(() => {});
 });
@@ -5889,21 +5817,7 @@ document.addEventListener("keydown", (ev) => {
 
   const pick = (side) => {
     ev.preventDefault();
-    if (loopRunning || busy) return;
-    // The segmented control greys these out; the shortcut has to agree with it
-    // rather than composing a ticket the form would refuse anyway.
-    if (manualSideAvailability()[side] === false) {
-      const reason =
-        manualSideDisabledReason(side, manualSignedPosition()) ||
-        tx("manual_side_unavailable", "That action does not apply to this position.");
-      showToast(reason, "error");
-      return;
-    }
-    setManualFormValue("side", side);
-    formDirtyManual = true;
-    saveManualFormDraft();
-    syncManualUi();
-    scheduleServerPreview();
+    selectManualSide(side);
   };
   switch (ev.key.toLowerCase()) {
     case "b":
@@ -5911,12 +5825,6 @@ document.addEventListener("keydown", (ev) => {
       break;
     case "s":
       pick("sell");
-      break;
-    case "h":
-      pick("short");
-      break;
-    case "c":
-      pick("cover");
       break;
     case "p":
       ev.preventDefault();

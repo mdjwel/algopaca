@@ -6,7 +6,12 @@ import os
 from dataclasses import dataclass, replace
 from typing import Any
 
-from bot.ai_models import DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL
+from bot.ai_models import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_XAI_MODEL,
+)
 from bot.ai_presets import (
     DEFAULT_PRESET_ID,
     instructions_for,
@@ -182,11 +187,15 @@ class Config:
     ls_risk_pct: float
     ls_rr: float
     ls_time_stop_bars: int
-    ai_provider: str  # openai | gemini
+    ai_provider: str  # openai | gemini | anthropic | xai
     openai_api_key: str
     gemini_api_key: str
+    anthropic_api_key: str
+    xai_api_key: str
     openai_model: str
     gemini_model: str
+    anthropic_model: str
+    xai_model: str
     ai_preset: str
     ai_instructions: str
     ai_min_confidence: float
@@ -334,8 +343,12 @@ class Config:
         stop_limit_offset_pct: float | None = None,
         openai_model: str | None = None,
         gemini_model: str | None = None,
+        anthropic_model: str | None = None,
+        xai_model: str | None = None,
         openai_api_key: str | None = None,
         gemini_api_key: str | None = None,
+        anthropic_api_key: str | None = None,
+        xai_api_key: str | None = None,
         lang: str | None = None,
         options_enabled: bool | None = None,
         options_style: str | None = None,
@@ -517,8 +530,8 @@ class Config:
         p_short = str(p_short or "").strip().upper()
 
         provider = (ai_provider or self.ai_provider).strip().lower()
-        if provider not in {"openai", "gemini"}:
-            raise ValueError("ai_provider must be 'openai' or 'gemini'")
+        if provider not in {"openai", "gemini", "anthropic", "xai"}:
+            raise ValueError("ai_provider must be 'openai', 'gemini', 'anthropic', or 'xai'")
 
         if isinstance(symbols, str):
             parsed_symbols = _parse_symbols(symbols)
@@ -662,11 +675,21 @@ class Config:
             stop_limit_offset_pct=stop_limit_offset,
             openai_model=openai_model or self.openai_model,
             gemini_model=gemini_model or self.gemini_model,
+            anthropic_model=anthropic_model or self.anthropic_model,
+            xai_model=xai_model or self.xai_model,
             openai_api_key=(
                 self.openai_api_key if openai_api_key is None else openai_api_key.strip()
             ),
             gemini_api_key=(
                 self.gemini_api_key if gemini_api_key is None else gemini_api_key.strip()
+            ),
+            anthropic_api_key=(
+                self.anthropic_api_key
+                if anthropic_api_key is None
+                else anthropic_api_key.strip()
+            ),
+            xai_api_key=(
+                self.xai_api_key if xai_api_key is None else xai_api_key.strip()
             ),
             lang=normalize_lang(self.lang if lang is None else lang),
             options_enabled=(
@@ -725,8 +748,12 @@ class Config:
         ai_provider: str = "openai",
         openai_api_key: str = "",
         gemini_api_key: str = "",
+        anthropic_api_key: str = "",
+        xai_api_key: str = "",
         openai_model: str = DEFAULT_OPENAI_MODEL,
         gemini_model: str = DEFAULT_GEMINI_MODEL,
+        anthropic_model: str = DEFAULT_ANTHROPIC_MODEL,
+        xai_model: str = DEFAULT_XAI_MODEL,
         ai_preset: str = "balanced",
         ai_instructions: str = "",
         ai_min_confidence: float = 0.55,
@@ -787,8 +814,12 @@ class Config:
             ai_provider=ai_provider,
             openai_api_key=(openai_api_key or "").strip(),
             gemini_api_key=(gemini_api_key or "").strip(),
+            anthropic_api_key=(anthropic_api_key or "").strip(),
+            xai_api_key=(xai_api_key or "").strip(),
             openai_model=openai_model,
             gemini_model=gemini_model,
+            anthropic_model=anthropic_model,
+            xai_model=xai_model,
             ai_preset=ai_preset,
             ai_instructions=ai_instructions,
             ai_min_confidence=ai_min_confidence,
@@ -876,7 +907,7 @@ class Config:
         ls_rr_v = float(_e("LS_RR", "2.0") or 2.0)
         ls_time = int(_e("LS_TIME_STOP_BARS", "15") or 15)
         provider = _e("AI_PROVIDER", "openai").strip().lower()
-        if provider not in {"openai", "gemini"}:
+        if provider not in {"openai", "gemini", "anthropic", "xai"}:
             provider = "openai"
 
         preset = resolve_preset_id(_e("AI_PRESET", DEFAULT_PRESET_ID))
@@ -1034,10 +1065,16 @@ class Config:
             ai_provider=provider,
             openai_api_key=_e("OPENAI_API_KEY", "").strip(),
             gemini_api_key=_e("GEMINI_API_KEY", "").strip(),
+            anthropic_api_key=_e("ANTHROPIC_API_KEY", "").strip(),
+            xai_api_key=_e("XAI_API_KEY", "").strip(),
             openai_model=_e("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip()
             or DEFAULT_OPENAI_MODEL,
             gemini_model=_e("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
             or DEFAULT_GEMINI_MODEL,
+            anthropic_model=_e("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL).strip()
+            or DEFAULT_ANTHROPIC_MODEL,
+            xai_model=_e("XAI_MODEL", DEFAULT_XAI_MODEL).strip()
+            or DEFAULT_XAI_MODEL,
             ai_preset=preset,
             ai_instructions=instructions,
             ai_min_confidence=conf,

@@ -1,4 +1,4 @@
-"""LLM providers: OpenAI and Google Gemini."""
+"""LLM providers: OpenAI, Google Gemini, Anthropic, and xAI."""
 
 from __future__ import annotations
 
@@ -9,7 +9,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from bot.ai_models import DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL
+from bot.ai_models import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_XAI_MODEL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -165,20 +170,94 @@ class GeminiProvider:
         return _parse_json(content)
 
 
+class AnthropicProvider:
+    name = "anthropic"
+
+    def __init__(self, api_key: str, model: str = DEFAULT_ANTHROPIC_MODEL) -> None:
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY is missing")
+        from anthropic import Anthropic
+
+        self.model = model
+        self._client = Anthropic(
+            api_key=api_key, timeout=_request_timeout(), max_retries=1
+        )
+
+    def complete_json(
+        self, user_prompt: str, *, system: str | None = None
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": 2048,
+            "system": system or SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+        # Claude 5 family models think by default; sampling params (temperature/
+        # top_p/top_k) are rejected while thinking is on. Only the Haiku 4.5
+        # tier (budget_tokens-based thinking, off by default) accepts them.
+        if not _omit_temperature(self.model):
+            kwargs["temperature"] = 0.2
+        response = self._client.messages.create(**kwargs)
+        content = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text"
+        )
+        return _parse_json(content or "{}")
+
+
+class XaiProvider:
+    name = "xai"
+
+    def __init__(self, api_key: str, model: str = DEFAULT_XAI_MODEL) -> None:
+        if not api_key:
+            raise ValueError("XAI_API_KEY is missing")
+        from openai import OpenAI
+
+        self.model = model
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.x.ai/v1",
+            timeout=_request_timeout(),
+            max_retries=1,
+        )
+
+    def complete_json(
+        self, user_prompt: str, *, system: str | None = None
+    ) -> dict[str, Any]:
+        response = self._client.chat.completions.create(
+            model=self.model,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system or SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        return _parse_json(content)
+
+
 def build_provider(
     provider: str,
     *,
     openai_key: str,
     gemini_key: str,
+    anthropic_key: str,
+    xai_key: str,
     openai_model: str,
     gemini_model: str,
+    anthropic_model: str,
+    xai_model: str,
 ) -> AiProvider:
     name = (provider or "openai").strip().lower()
     if name == "gemini":
         return GeminiProvider(gemini_key, gemini_model)
+    if name == "anthropic":
+        return AnthropicProvider(anthropic_key, anthropic_model)
+    if name == "xai":
+        return XaiProvider(xai_key, xai_model)
     if name == "openai":
         return OpenAiProvider(openai_key, openai_model)
-    raise ValueError(f"Unknown AI provider: {provider!r} (use openai or gemini)")
+    raise ValueError(f"Unknown AI provider: {provider!r} (use openai, gemini, anthropic, or xai)")
 
 
 _BIAS_VALUES = frozenset({"bullish", "bearish", "neutral"})
@@ -186,7 +265,15 @@ _BIAS_VALUES = frozenset({"bullish", "bearish", "neutral"})
 
 def _omit_temperature(model: str) -> bool:
     name = (model or "").strip().lower()
-    return name.startswith("gpt-5") or name.startswith("o1") or name.startswith("o3") or name.startswith("o4")
+    return (
+        name.startswith("gpt-5")
+        or name.startswith("o1")
+        or name.startswith("o3")
+        or name.startswith("o4")
+        or name.startswith("claude-opus-5")
+        or name.startswith("claude-sonnet-5")
+        or name.startswith("claude-fable-5")
+    )
 
 
 def _normalize_bias(value: Any) -> str:

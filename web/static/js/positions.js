@@ -12,6 +12,10 @@ let posFilterPnl = "all";
 let posSortKey = localStorage.getItem("desk_pos_sort_key") || "market_value";
 let posSortDir = localStorage.getItem("desk_pos_sort_dir") || "desc";
 let posSelectedSymbols = new Set();
+// Cards rebuild from scratch on every 10s background poll — tracked here
+// instead of read off the DOM so an expanded actions row doesn't silently
+// re-collapse under the user mid-poll.
+let posExpandedCardActions = new Set();
 // The allocation bar is a glance-at-it-occasionally panel, not a figure anyone
 // watches tick — it starts collapsed so the blotter is what greets you, and
 // remembers the choice for people who do want it open.
@@ -348,6 +352,9 @@ function renderPositionsPage() {
   for (const s of posSelectedSymbols) {
     if (!validSymbols.has(s)) posSelectedSymbols.delete(s);
   }
+  for (const s of posExpandedCardActions) {
+    if (!validSymbols.has(s)) posExpandedCardActions.delete(s);
+  }
 
   // The count beside the heading tracks what is on screen, not what is held —
   // otherwise a filtered view reads as if nothing was filtered.
@@ -586,6 +593,36 @@ function posFiltersAreDefault() {
 function updateResetFiltersButton() {
   const btn = $("btn-reset-pos-filters");
   if (btn) btn.disabled = posFiltersAreDefault();
+
+  // Mobile keeps the filters bar collapsed behind a toggle, so the badge is
+  // the only hint left that a filter is narrowing the list underneath it.
+  const badge = $("pos-filters-active-count");
+  if (badge) {
+    const count =
+      (posFilterSearch ? 1 : 0) +
+      (posFilterSide !== "all" ? 1 : 0) +
+      (posFilterPnl !== "all" ? 1 : 0);
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  }
+}
+
+function togglePosFiltersBar() {
+  const bar = $("pos-filters-bar");
+  const btn = $("btn-toggle-pos-filters");
+  if (!bar || !btn) return;
+  const open = !bar.classList.contains("is-open");
+  bar.classList.toggle("is-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function togglePosActionsMenu(forceClose) {
+  const wrap = $("pos-actions-menu-wrap");
+  const trigger = $("btn-pos-actions-toggle");
+  if (!wrap || !trigger) return;
+  const open = forceClose ? false : !wrap.classList.contains("is-open");
+  wrap.classList.toggle("is-open", open);
+  trigger.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function resetPosFilters() {
@@ -787,6 +824,7 @@ function renderPositionsCards(positions) {
     .map((pos) => {
       const sym = pos.symbol;
       const isSelected = posSelectedSymbols.has(sym);
+      const actionsOpen = posExpandedCardActions.has(sym);
       const side = String(pos.side || "long").toLowerCase();
       const upl = Number(pos.unrealized_pl || 0);
       const ipl = Number(pos.unrealized_intraday_pl || 0);
@@ -831,7 +869,13 @@ function renderPositionsCards(positions) {
             <span class="pos-card-prot">${protectionMarkup(pos)}</span>
           </div>
         </div>
-        <div class="pos-card-actions">
+        <button type="button" class="pos-card-actions-toggle" aria-expanded="${actionsOpen ? "true" : "false"}">
+          <span>${escapeHtml(tx("actions", "Actions"))}</span>
+          <svg class="pos-card-actions-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
+            <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <div class="pos-card-actions" ${actionsOpen ? "" : "hidden"}>
           <button type="button" class="ghost ghost-danger btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""}>
             ${escapeHtml(tx("close_position", "Close"))}
           </button>
@@ -1899,6 +1943,19 @@ function bindRowDelegation(container) {
     toggleSymbolSelection(check.dataset.symbol, check.checked);
   });
   container.addEventListener("click", (e) => {
+    const actionsToggle = e.target.closest(".pos-card-actions-toggle");
+    if (actionsToggle) {
+      const actions = actionsToggle.nextElementSibling;
+      const sym = actionsToggle.closest(".pos-card")?.dataset.symbol;
+      if (actions?.classList.contains("pos-card-actions") && sym) {
+        const open = actions.hidden;
+        actions.hidden = !open;
+        actionsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) posExpandedCardActions.add(sym);
+        else posExpandedCardActions.delete(sym);
+      }
+      return;
+    }
     const lotsBtn = e.target.closest(".btn-pos-lots");
     if (lotsBtn) {
       openLotsModal(lotsBtn.dataset.symbol).catch(() => {});
@@ -2005,6 +2062,37 @@ function initPositionsUi() {
   // `% invested` line it expands.
   $("btn-toggle-allocation")?.addEventListener("click", toggleAllocation);
   syncAllocationToggle();
+
+  // Mobile filters toggle — desktop never shows this button, so the handler
+  // is harmless dead weight there rather than something that needs gating.
+  $("btn-toggle-pos-filters")?.addEventListener("click", togglePosFiltersBar);
+
+  // Mobile actions dropdown (Refresh / Close Selected / Liquidate all).
+  // Desktop renders the same buttons inline via `display: contents`, so this
+  // trigger and its outside-click/Escape handling simply have nothing to do
+  // there.
+  const posActionsWrap = $("pos-actions-menu-wrap");
+  const posActionsTrigger = $("btn-pos-actions-toggle");
+  if (posActionsWrap && posActionsTrigger) {
+    posActionsTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePosActionsMenu();
+    });
+    document.addEventListener("click", (e) => {
+      if (!posActionsWrap.contains(e.target)) togglePosActionsMenu(true);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && posActionsWrap.classList.contains("is-open")) {
+        togglePosActionsMenu(true);
+        posActionsTrigger.focus();
+      }
+    });
+    // Picking any action closes the popover instead of leaving it open over
+    // whatever the action just triggered (a toast, a confirmation modal).
+    $("pos-actions-menu")
+      ?.querySelectorAll("button")
+      .forEach((btn) => btn.addEventListener("click", () => togglePosActionsMenu(true)));
+  }
 
   // The legend buttons filter the table. The bar stays a read-only image; its
   // tiny segments are not viable keyboard or touch targets.
