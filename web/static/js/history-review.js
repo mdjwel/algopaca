@@ -552,7 +552,7 @@ function syncReviewRunButton() {
     : tx("review_run", "Explain this range");
   btn.title = reviewAiAvailable
     ? ""
-    : tx("review_no_key", "Add an AI provider key on Configuration to get a written review.");
+    : tx("review_no_key", "Add an AI provider key on API Keys to get a written review.");
 }
 
 function renderNarrative(narration, meta = {}) {
@@ -628,7 +628,7 @@ async function runReviewNarration() {
       showToast(
         tx(
           "review_no_key",
-          "Add an AI provider key on Configuration to get a written review."
+          "Add an AI provider key on API Keys to get a written review."
         ),
         "error"
       );

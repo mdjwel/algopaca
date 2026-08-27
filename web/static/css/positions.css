@@ -571,93 +571,132 @@ button.pos-alloc-legend-item:hover {
   white-space: nowrap;
 }
 
+/* ── Filter rail ──────────────────────────────────────────────────
+   One flat rail rather than a strip of nested boxes: the group label
+   sits outside its control, so the only border on the row belongs to
+   something clickable. Every control resolves to --pos-ctl-h, which is
+   what keeps the search field, the segmented pills and the enhanced
+   dropdowns on one baseline — they used to run 32px, 30px and 44px. */
 .pos-filters-bar {
+  --pos-ctl-h: 32px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem 0.9rem;
-  background: rgba(12, 18, 26, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md, 8px);
-  margin-bottom: 0.85rem;
+  gap: 0.5rem 0.9rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.9rem;
 }
 
 .pos-search-wrap {
   position: relative;
-  min-width: 170px;
-  flex: 1 1 200px;
-  max-width: 280px;
+  flex: 0 1 16rem;
+  min-width: 11rem;
 }
 
 .pos-search-icon {
   position: absolute;
-  left: 0.65rem;
+  left: 0.7rem;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted, rgba(255, 255, 255, 0.45));
+  color: var(--muted);
   pointer-events: none;
 }
 
 .pos-search-input {
   width: 100%;
-  padding-left: 2rem;
-  padding-right: 1.75rem;
-  height: 32px;
-  font-size: 0.8rem;
-  font-family: inherit;
-  color: var(--text, #f0f4f8);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-sm, 6px);
+  height: var(--pos-ctl-h);
+  padding: 0 1.9rem 0 2.05rem;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
 }
 
+.pos-search-input::placeholder {
+  color: var(--muted);
+}
+
+.pos-search-wrap:hover .pos-search-input:not(:focus) {
+  border-color: color-mix(in srgb, var(--line) 55%, var(--copper));
+}
+
+.pos-search-input:focus,
 .pos-search-input:focus-visible {
   outline: none;
-  border-color: var(--copper, #d4894c);
-  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.2);
+  border-color: var(--copper);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--copper) 22%, transparent);
 }
 
+/* Pin to the field with inset, not transform — the global button:hover
+   translateY(-1px) would otherwise replace translateY(-50%) and drop the ×
+   out of the input. Also reset the 38px min-height those buttons inherit. */
 .pos-search-clear {
   position: absolute;
-  right: 0.4rem;
-  top: 50%;
-  transform: translateY(-50%);
+  inset: 0 0 0 auto;
+  z-index: 1;
+  width: 1.75rem;
+  min-width: 1.75rem;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: transparent;
-  border: none;
-  color: var(--muted, rgba(255, 255, 255, 0.45));
-  cursor: pointer;
-  padding: 0.15rem;
-  font-size: 1.1rem;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
   line-height: 1;
+  transform: none;
+  transition: color 0.15s ease;
 }
 
-.pos-search-clear:hover {
+.pos-search-clear:hover,
+.pos-search-clear:hover:not(:disabled),
+.pos-search-clear:focus-visible,
+.pos-search-clear:active {
+  transform: none;
   color: var(--text, #f0f4f8);
+  background: transparent;
+}
+
+.pos-search-clear:focus-visible {
+  outline: 2px solid var(--copper, #d4894c);
+  outline-offset: -2px;
 }
 
 .pos-filter-groups {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem 0.9rem;
+  min-width: 0;
 }
 
 .pos-seg-group {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .pos-seg-label {
-  font-family: var(--mono, monospace);
-  font-size: 0.66rem;
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted, rgba(255, 255, 255, 0.45));
+  letter-spacing: 0.09em;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -665,62 +704,134 @@ button.pos-alloc-legend-item:hover {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-sm, 6px);
-  padding: 2px;
+  height: var(--pos-ctl-h);
+  padding: 3px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-sizing: border-box;
 }
 
+/* min-height and the hover lift come from the global button rules; both fight
+   a control this small, so they are reset here rather than per state. */
 .pos-seg-btn {
-  font-family: var(--mono, monospace);
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  color: var(--muted, rgba(255, 255, 255, 0.55));
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  padding: 0.25rem 0.55rem;
-  height: 26px;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
+  min-height: 0;
+  padding: 0 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pos-seg-btn:hover,
+.pos-seg-btn:hover:not(:disabled) {
+  transform: none;
 }
 
 .pos-seg-btn:hover:not(.is-active) {
-  color: var(--text, #f0f4f8);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.pos-seg-btn:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: -1px;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* A solid copper fill made "All" — the default, information-free state — the
-   loudest mark on the page. A raised surface with copper text still reads as
-   selected without outshouting the P&L figures below. */
+   loudest mark on the page. A tinted chip with copper text still reads as
+   selected without outshouting the P&L figures below. The selected border is
+   an inset shadow, not a real one, so the chip does not resize on click. */
 .pos-seg-btn.is-active {
-  color: var(--copper, #d4894c);
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid color-mix(in srgb, var(--copper) 32%, transparent);
-  padding: 0.25rem calc(0.55rem - 1px);
+  color: var(--copper);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  background: color-mix(in srgb, var(--copper) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--copper) 34%, transparent);
 }
 
 /* Left to nice-select2 so it matches the History filters rather than
-   inventing a third dropdown look. */
+   inventing a third dropdown look — only the size is pulled back in line
+   with the pills, since the form-field preset is a 44px desk input. */
 .pos-sort-group {
-  flex: 1 1 12rem;
+  flex: 0 1 12.5rem;
+  min-width: 8.5rem;
+}
+
+.pos-sort-group .nice-select,
+.pos-sort-group .pos-sort-select {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
+.pos-filters-bar .nice-select {
+  display: inline-flex;
+  align-items: center;
+  height: var(--pos-ctl-h);
+  min-height: var(--pos-ctl-h);
+  padding: 0 1.65rem 0 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  line-height: 1;
+  color: var(--text);
+  background-color: var(--input-bg);
+  border-color: var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.pos-filters-bar .nice-select::after {
+  right: 11px;
+  width: 5px;
+  height: 5px;
+  margin-top: -4px;
+}
+
+.pos-filters-bar .nice-select .nice-select-dropdown {
+  min-width: 11rem;
+}
+
+/* Quiet until it has something to undo: disabled it is a ghost of a button,
+   enabled it picks up the copper the active filters are already wearing. */
 .pos-reset-filters.ghost {
-  min-height: 30px;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.72rem;
+  margin-left: auto;
+  height: var(--pos-ctl-h);
+  min-height: var(--pos-ctl-h);
+  padding: 0 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.pos-reset-filters.ghost:not(:disabled) {
+  color: var(--copper);
+  border-color: color-mix(in srgb, var(--copper) 28%, transparent);
+}
+
+.pos-reset-filters.ghost:not(:disabled):hover,
+.pos-reset-filters.ghost:not(:disabled):focus-visible {
+  transform: none;
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 50%, transparent);
 }
 
 .pos-reset-filters:disabled {
@@ -2135,17 +2246,21 @@ button.primary.primary-danger:focus-visible {
     display: flex;
   }
 
+  /* Stacked, but still wrapping rather than scrolling sideways: a filter the
+     user has to swipe to find is a filter they never use. */
   .pos-filters-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.6rem;
   }
 
   .pos-search-wrap {
+    flex: 1 1 auto;
     max-width: 100%;
   }
 
-  .pos-filter-groups {
-    justify-content: space-between;
+  .pos-sort-group {
+    flex: 1 1 14rem;
   }
 
   .positions-panel .panel-head-actions {
@@ -2158,9 +2273,10 @@ button.primary.primary-danger:focus-visible {
 }
 
 /* The sort dropdown duplicates the table headers on wide screens; it earns its
-   place only once the table is gone. */
+   place only once the table is gone. Scoped to `.is-sort` because Orders puts
+   a real filter — order type — in the same dropdown group shape. */
 @media (min-width: 861px) {
-  .pos-sort-group {
+  .pos-seg-group.is-sort {
     display: none;
   }
 }

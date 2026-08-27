@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
   <meta name="color-scheme" content="dark" />
-  <title>Configuration · AlgoPaca</title>
+  <title>API Keys · AlgoPaca</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
   <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -17,9 +17,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
   <link rel="stylesheet" href="/static/css/common.css" />
-  <link rel="stylesheet" href="/static/css/configuration.css" />
+  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
+  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
+  <link rel="stylesheet" href="/static/css/api-keys.css" />
 </head>
-<body data-page="configuration">
+<body data-page="api-keys">
   <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
   <div class="atmosphere" aria-hidden="true"></div>
   <div class="app">
@@ -32,10 +34,10 @@
             </a>
             <div class="masthead-brand-text">
               <p class="eyebrow" data-i18n="eyebrow">AlgoPaca · Simulated</p>
-              <h1 data-i18n="nav_configuration">Configuration</h1>
+              <h1 data-i18n="nav_api_keys">API Keys</h1>
             </div>
           </div>
-          <p id="page-tagline" class="tagline" data-i18n="tagline_configuration">Connect Alpaca paper keys and AI providers. Strategy controls live on Auto Trade.</p>
+          <p id="page-tagline" class="tagline" data-i18n="tagline_api_keys">Connect Alpaca paper keys and AI providers. Strategy controls live on Auto Trade.</p>
         </div>
         <div class="masthead-right">
           <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
@@ -70,7 +72,7 @@
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
     <main id="main">
-      <div id="page-configuration" class="page page-config" data-page="configuration">
+      <div id="page-api-keys" class="page page-config" data-page="api-keys">
         <section class="panel config-status-panel" aria-labelledby="config-status-heading">
           <div class="panel-head">
             <h2 id="config-status-heading" data-i18n="connection_heading">Connection</h2>
@@ -238,7 +240,7 @@
           <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
           <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
           <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
-          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="/api-keys" class="desk-footer-link" data-i18n="nav_api_keys">API Keys</a>
           <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
         </nav>
 
@@ -269,6 +271,6 @@
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
   <script src="/static/i18n.js"></script>
   <script src="/static/js/common.js"></script>
-  <script src="/static/js/configuration.js"></script>
+  <script src="/static/js/api-keys.js"></script>
 </body>
 </html>

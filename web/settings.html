@@ -17,6 +17,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
   <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
+  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
   <link rel="stylesheet" href="/static/css/settings.css" />
 </head>
 <body data-page="settings">
@@ -514,7 +516,7 @@
                     <option value="orders" data-i18n="nav_orders">Orders Blotter</option>
                     <option value="history" data-i18n="nav_history">History Insights</option>
                     <option value="backtest" data-i18n="nav_backtest">Backtest Desk</option>
-                    <option value="configuration" data-i18n="nav_configuration">Configuration</option>
+                    <option value="api-keys" data-i18n="nav_api_keys">API Keys</option>
                   </select>
                   <p class="field-hint" data-i18n="settings_default_page_hint">The desk screen opened automatically upon signing in.</p>
                 </div>
@@ -680,10 +682,11 @@
                   <h3 class="panel-title" data-i18n="settings_integrations_title">Connected Services & Keys</h3>
                   <p class="panel-desc" data-i18n="settings_integrations_desc">Status of API broker credentials and AI models configured for your account.</p>
                 </div>
-                <a href="/configuration" class="btn btn-secondary btn-sm">
+                <a href="/api-keys" class="btn btn-secondary btn-sm">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path>
+                    <path d="m21 2-9.6 9.6"></path>
+                    <circle cx="7.5" cy="15.5" r="5.5"></circle>
                   </svg>
                   <span data-i18n="settings_manage_keys_btn">Manage API Keys</span>
                 </a>

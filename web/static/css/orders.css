@@ -1088,61 +1088,9 @@ button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
   }
 }
 
-/* ── Mobile Filter Bar & Segmented Controls ─────────────────────── */
-.pos-filters-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.pos-search-wrap {
-  position: relative;
-  flex: 1 1 14rem;
-  min-width: 0;
-}
-
-.pos-filter-groups {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.pos-seg-group {
-  display: inline-flex;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-  gap: 2px;
-}
-
-.pos-seg-btn {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: calc(var(--radius-sm) - 2px);
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.pos-seg-btn:hover {
-  color: var(--text);
-}
-
-.pos-seg-btn.is-active {
-  background: color-mix(in srgb, var(--copper) 20%, transparent);
-  color: var(--copper);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
+/* The filter rail itself lives in positions.css — Orders shares that markup,
+   and a second copy of these rules here is what left the groups double-boxed:
+   a bordered `.pos-seg-group` wrapped around the bordered `.pos-seg-pill`. */
 
 /* ── Mobile Order Cards Layout ──────────────────────────────────── */
 .pos-cards-list {
@@ -1207,27 +1155,6 @@ button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
 
   #ord-cards-list:not([hidden]) {
     display: flex !important;
-  }
-
-  .pos-filters-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pos-search-wrap {
-    max-width: 100%;
-  }
-
-  .pos-filter-groups {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-  }
-
-  .pos-seg-group {
-    flex-shrink: 0;
   }
 }
 

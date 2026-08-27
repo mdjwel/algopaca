@@ -47,6 +47,7 @@ class DeskWebappTestCase(unittest.TestCase):
             "/positions",
             "/orders",
             "/history",
+            "/api-keys",
             "/configuration",
         ]
         for path in pages:
@@ -79,6 +80,7 @@ class DeskWebappTestCase(unittest.TestCase):
             "/positions",
             "/orders",
             "/history",
+            "/api-keys",
             "/configuration",
         ]
         for path in pages:

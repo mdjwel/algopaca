@@ -642,7 +642,7 @@ PAGE_FILES = {
     "positions": "positions.html",
     "orders": "orders.html",
     "history": "history.html",
-    "configuration": "configuration.html",
+    "api-keys": "api-keys.html",
     "admin": "admin.html",
     "settings": "settings.html",
 }
@@ -743,9 +743,10 @@ def page_history(request: Request) -> Response:
     return _protected_page(request, "history")
 
 
+@app.get("/api-keys")
 @app.get("/configuration")
-def page_configuration(request: Request) -> Response:
-    return _protected_page(request, "configuration")
+def page_api_keys(request: Request) -> Response:
+    return _protected_page(request, "api-keys")
 
 
 @app.get("/settings")

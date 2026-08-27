@@ -17,6 +17,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
   <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
+  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
   <link rel="stylesheet" href="/static/css/manual-order.css" />
 </head>
 <body data-page="manual-order">
@@ -421,7 +423,7 @@
                     <p id="manual-followon-offset" class="field-help" aria-live="polite"></p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
-                  <label for="manual-followon-expire"><span data-i18n="followon_expire">Wait up to (minutes)</span>
+                  <label for="manual-followon-expire" id="manual-followon-expire-label"><span data-i18n="followon_expire">Wait up to (minutes)</span>
                     <input id="manual-followon-expire" name="followon_expire_minutes" type="number" min="1" max="1440" step="1" value="120" inputmode="numeric" aria-describedby="help-followon-expire" />
                     <p id="help-followon-expire" class="field-help" data-i18n="help_followon_expire">After the close fills, how long the desk may take to send the next ticket. Max 1440 (24h).</p>
                     <p class="field-error" role="alert" hidden></p>
@@ -756,7 +758,7 @@
           <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
           <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
           <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
-          <a href="/configuration" class="desk-footer-link" data-i18n="nav_configuration">Configuration</a>
+          <a href="/api-keys" class="desk-footer-link" data-i18n="nav_api_keys">API Keys</a>
           <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
         </nav>
 

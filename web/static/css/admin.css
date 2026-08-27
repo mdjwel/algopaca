@@ -405,7 +405,6 @@
 .search-clear-btn:hover,
 .search-clear-btn:focus,
 .search-clear-btn:active {
-  transform: translateY(-50%) !important;
   background: color-mix(in srgb, var(--text) 22%, transparent);
   color: var(--text);
 }

@@ -1402,7 +1402,7 @@ class AuthStore:
             language = "en"
 
         default_page = str(current.get("default_page", "auto-trade")).strip().lower()
-        allowed_pages = {"auto-trade", "manual-order", "positions", "orders", "history", "backtest", "configuration", "admin"}
+        allowed_pages = {"auto-trade", "manual-order", "positions", "orders", "history", "backtest", "api-keys", "admin"}
         if default_page not in allowed_pages:
             default_page = "auto-trade"
 

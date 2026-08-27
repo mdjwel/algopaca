@@ -299,8 +299,11 @@ a.ghost.small {
   display: none;
 }
 
-.manual-form #manual-followon-price-row.is-market {
-  grid-template-columns: 1fr;
+/* Market next tickets send at the then-current price; the limit + wait row
+   is only for a resting limit that can miss. */
+.manual-form #manual-followon-price-row.is-market,
+.manual-form #manual-followon-price-row[hidden] {
+  display: none;
 }
 
 #manual-reinvest-summary:not(:empty),

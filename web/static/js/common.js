@@ -127,7 +127,7 @@ const PAGES = [
   "positions",
   "orders",
   "history",
-  "configuration",
+  "api-keys",
   "admin",
 ];
 
@@ -140,7 +140,7 @@ const PAGE_PATHS = {
   positions: "/positions",
   orders: "/orders",
   history: "/history",
-  configuration: "/configuration",
+  "api-keys": "/api-keys",
   admin: "/admin",
 };
 
@@ -183,8 +183,8 @@ function normalizePage(raw) {
     return "positions";
   if (p === "orders") return "orders";
   if (p === "history" || p === "trades") return "history";
-  if (p === "configuration" || p === "config" || p === "settings")
-    return "configuration";
+  if (p === "configuration" || p === "config" || p === "api-keys" || p === "settings")
+    return "api-keys";
   return PAGES.includes(p) ? p : "auto-trade";
 }
 
@@ -226,158 +226,6 @@ function initRouting() {
   const subByPage = { backtest: "run", "backtest-history": "history", "backtest-compare": "compare" };
   document.querySelectorAll(".bt-subnav a[data-bt-sub]").forEach((a) => {
     markCurrent(a, a.getAttribute("data-bt-sub") === subByPage[currentPage]);
-  });
-}
-
-/**
- * Desk nav dropdowns — the ARIA disclosure-navigation pattern: a button that
- * toggles a plain list of links. Pointer devices also get hover-to-open;
- * touch and keyboard drive it through click and the arrow keys.
- */
-let deskNavBound = false;
-
-function initDeskNav() {
-  // Both startup paths below can fire in the same load, and unlike
-  // `initRouting` this one binds listeners — running it twice would double
-  // every handler.
-  if (deskNavBound) return;
-  deskNavBound = true;
-
-  const groups = Array.from(document.querySelectorAll(".desk-nav-group"))
-    .map((root) => ({
-      root,
-      trigger: root.querySelector(".desk-nav-trigger"),
-      menu: root.querySelector(".desk-menu"),
-    }))
-    .filter((g) => g.trigger && g.menu);
-  if (!groups.length) return;
-
-  const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  let closeTimer = null;
-
-  const items = (g) => Array.from(g.menu.querySelectorAll(".desk-menu-link"));
-
-  function close(g) {
-    g.menu.hidden = true;
-    g.menu.classList.remove("is-flipped");
-    g.menu.style.left = "";
-    g.menu.style.right = "";
-    g.trigger.setAttribute("aria-expanded", "false");
-  }
-
-  /**
-   * Keep the panel inside the viewport: right-align it under its trigger if
-   * it would run off the right edge, then nudge it back if it is still
-   * clipped — which happens when the panel is wider than the space beside
-   * the trigger, e.g. long labels on a narrow screen. The nudge is done with
-   * `left`/`right` rather than a transform so it does not fight the opening
-   * animation, which owns `transform`.
-   */
-  function place(g) {
-    const pad = 8;
-    const vw = document.documentElement.clientWidth;
-    g.menu.classList.remove("is-flipped");
-    g.menu.style.left = "";
-    g.menu.style.right = "";
-
-    let box = g.menu.getBoundingClientRect();
-    if (box.right > vw - pad) {
-      g.menu.classList.add("is-flipped");
-      box = g.menu.getBoundingClientRect();
-    }
-
-    const flipped = g.menu.classList.contains("is-flipped");
-    let shift = 0;
-    if (box.left < pad) shift = pad - box.left;
-    else if (box.right > vw - pad) shift = vw - pad - box.right;
-    if (!shift) return;
-    // Both anchors move the panel rightward for a positive shift.
-    if (flipped) g.menu.style.right = `${Math.round(-shift)}px`;
-    else g.menu.style.left = `${Math.round(shift)}px`;
-  }
-
-  function closeAll(except) {
-    groups.forEach((g) => {
-      if (g !== except) close(g);
-    });
-  }
-
-  function open(g) {
-    clearTimeout(closeTimer);
-    closeAll(g);
-    g.menu.hidden = false;
-    g.trigger.setAttribute("aria-expanded", "true");
-    place(g);
-  }
-
-  function isOpen(g) {
-    return !g.menu.hidden;
-  }
-
-  function focusItem(g, index) {
-    const list = items(g);
-    if (!list.length) return;
-    const i = (index + list.length) % list.length;
-    list[i].focus();
-  }
-
-  groups.forEach((g) => {
-    g.trigger.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (isOpen(g)) close(g);
-      else open(g);
-    });
-
-    g.trigger.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        open(g);
-        focusItem(g, 0);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        open(g);
-        focusItem(g, -1);
-      } else if (e.key === "Escape" && isOpen(g)) {
-        close(g);
-      }
-    });
-
-    g.menu.addEventListener("keydown", (e) => {
-      const list = items(g);
-      const at = list.indexOf(document.activeElement);
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        focusItem(g, at + 1);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        focusItem(g, at - 1);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        close(g);
-        g.trigger.focus();
-      } else if (e.key === "Tab") {
-        close(g);
-      }
-    });
-
-    if (canHover) {
-      g.root.addEventListener("mouseenter", () => open(g));
-      g.root.addEventListener("mouseleave", () => {
-        clearTimeout(closeTimer);
-        closeTimer = setTimeout(() => close(g), 140);
-      });
-    }
-  });
-
-  // Anything that moves focus or intent away from the nav closes it.
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".desk-nav-group")) closeAll();
-  });
-  document.addEventListener("focusin", (e) => {
-    if (!e.target.closest(".desk-nav-group")) closeAll();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeAll();
   });
 }
 
@@ -587,11 +435,11 @@ function showToast(message, kind = "error", extraHtml = "") {
   el.hidden = false;
   el.dataset.kind = kind;
   const text = String(message);
-  // Missing Alpaca credentials — link to the Configuration page.
+  // Missing Alpaca credentials — link to the API Keys page.
   if (/ALPACA_(API|SECRET)_KEY/.test(text)) {
     el.innerHTML =
       escapeHtml(text).replaceAll("\n", "<br>") +
-      ` <a href="${pagePath("configuration")}">Open Configuration</a>`;
+      ` <a href="${pagePath("api-keys")}">Open API Keys</a>`;
   } else if (extraHtml) {
     el.innerHTML = escapeHtml(text).replaceAll("\n", "<br>") + extraHtml;
   } else {
@@ -801,7 +649,7 @@ function applyAiKeys(aiReady, keyStatus) {
     el.innerHTML =
       `AI keys: ${escapeHtml(fmt(o, "OpenAI"))} · ${escapeHtml(fmt(g, "Gemini"))}` +
       (missing
-        ? ` — <a href="${pagePath("configuration")}">Configuration</a>`
+        ? ` — <a href="${pagePath("api-keys")}">API Keys</a>`
         : "");
   }
 
@@ -842,7 +690,7 @@ function applyAlpacaKeys(status) {
     } else if (s.set) {
       line.textContent = `Alpaca: ${mode} · saved (${s.api_key_hint || "••••"})`;
     } else {
-      line.innerHTML = `Alpaca: missing — <a href="${pagePath("configuration")}">set keys on Configuration</a>`;
+      line.innerHTML = `Alpaca: missing — <a href="${pagePath("api-keys")}">set keys on API Keys</a>`;
     }
   }
   const keyHint = $("alpaca-key-hint");
@@ -1416,6 +1264,7 @@ async function handleUserLogout() {
   } catch (e) {}
   window.location.href = "/login";
 }
+window.handleUserLogout = handleUserLogout;
 
 async function initUserAuthStatus() {
   const mastheadRight = document.querySelector(".masthead-right");
@@ -1446,7 +1295,7 @@ async function initUserAuthStatus() {
     const roleLower = String(user.role || "trader").toLowerCase();
     const isAdmin = roleLower === "admin" || roleLower === "owner";
     const currentPath = window.location.pathname;
-    const isUserMenuActive = ["/settings", "/configuration", "/admin"].includes(currentPath);
+    const isUserMenuActive = ["/settings", "/api-keys", "/admin"].includes(currentPath);
 
     widget.innerHTML = `
       <div class="masthead-user-widget">
@@ -1469,19 +1318,13 @@ async function initUserAuthStatus() {
             </svg>
             <span data-i18n="user_settings">User Settings</span>
           </a>
-          <a href="/configuration" data-page="configuration" class="masthead-menu-item ${currentPath === "/configuration" ? "is-active" : ""}">
+          <a href="/api-keys" data-page="api-keys" class="masthead-menu-item ${currentPath === "/api-keys" ? "is-active" : ""}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"></line>
-              <line x1="4" y1="10" x2="4" y2="3"></line>
-              <line x1="12" y1="21" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12" y2="3"></line>
-              <line x1="20" y1="21" x2="20" y2="16"></line>
-              <line x1="20" y1="12" x2="20" y2="3"></line>
-              <line x1="1" y1="14" x2="7" y2="14"></line>
-              <line x1="9" y1="8" x2="15" y2="8"></line>
-              <line x1="17" y1="16" x2="23" y2="16"></line>
+              <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path>
+              <path d="m21 2-9.6 9.6"></path>
+              <circle cx="7.5" cy="15.5" r="5.5"></circle>
             </svg>
-            <span data-i18n="nav_configuration">Configuration</span>
+            <span data-i18n="nav_api_keys">API Keys</span>
           </a>
           ${isAdmin ? `
           <a href="/admin" data-page="admin" class="masthead-menu-item is-admin-link ${currentPath === "/admin" ? "is-active" : ""}">
@@ -1551,12 +1394,18 @@ async function initUserAuthStatus() {
   }
 
   // Synchronize Mobile Drawer Profile State
+  syncMobileProfileDrawer(user);
+}
+
+function syncMobileProfileDrawer(user) {
   const mobileProfileName = document.getElementById("mobile-profile-name");
   const mobileProfileAvatar = document.getElementById("mobile-profile-avatar");
   const mobileProfileRole = document.getElementById("mobile-profile-role");
   const mobileProfileMode = document.getElementById("mobile-profile-mode");
   const mobileAdminLink = document.getElementById("mobile-sheet-admin-link");
   const mobileSheetActions = document.getElementById("mobile-sheet-actions");
+
+  if (!mobileProfileName && !mobileSheetActions) return;
 
   if (user) {
     const displayName = escapeHtml(user.display_name || user.username || "Trader");
@@ -1608,374 +1457,67 @@ async function initUserAuthStatus() {
     mobileProfileMode.textContent = isLive ? "Live" : "Paper";
   }
 }
+window.syncMobileProfileDrawer = syncMobileProfileDrawer;
 
 /**
- * Mobile App Experience & Shell Integration
- * Bottom navigation bar, slide-up "More" drawer, touch gestures, active route sync, theme & lang controls.
+ * Adaptive Device Shell Loader
+ * Loads mobile-shell.js on mobile (<= 768px) and desk-shell.js on desktop (> 768px).
+ * Prevents mobile scripts & DOM from polluting desktop, and avoids desktop dropdown logic on mobile.
  */
-function initMobileAppShell() {
-  const path = window.location.pathname;
-  if (path.startsWith("/login") || path.startsWith("/signup") || path.startsWith("/reset-password")) {
-    return;
-  }
+function loadDeviceScript(src, id) {
+  if (document.getElementById(id)) return;
+  const s = document.createElement("script");
+  s.id = id;
+  s.src = src;
+  s.defer = true;
+  document.body.appendChild(s);
+}
 
-  let tabBar = document.getElementById("mobile-tab-bar");
-  let backdrop = document.getElementById("mobile-sheet-backdrop");
-  let sheet = document.getElementById("mobile-more-sheet");
-
-  if (!tabBar) {
-    tabBar = document.createElement("nav");
-    tabBar.id = "mobile-tab-bar";
-    tabBar.className = "mobile-tab-bar";
-    tabBar.setAttribute("aria-label", "Mobile App Navigation");
-    tabBar.innerHTML = `
-      <a href="/auto-trade" class="mobile-tab-item" data-page="auto-trade" aria-label="Auto Trade">
-        <div class="mobile-tab-icon-wrap">
-          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        </div>
-        <span class="mobile-tab-label" data-i18n="nav_auto_trade">Auto Trade</span>
-      </a>
-      <a href="/manual-order" class="mobile-tab-item" data-page="manual-order" aria-label="Advanced Order">
-        <div class="mobile-tab-icon-wrap">
-          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        </div>
-        <span class="mobile-tab-label" data-i18n="tab_order">Order</span>
-      </a>
-      <a href="/positions" class="mobile-tab-item" data-page="positions" aria-label="Positions">
-        <div class="mobile-tab-icon-wrap">
-          <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-        </div>
-        <span class="mobile-tab-label" data-i18n="nav_positions">Positions</span>
-      </a>
-      <a href="/orders" class="mobile-tab-item" data-page="orders" aria-label="Orders">
-        <div class="mobile-tab-icon-wrap">
-          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l2 2 4-4"/></svg>
-          <span class="mobile-tab-badge" id="mobile-orders-badge" hidden>0</span>
-        </div>
-        <span class="mobile-tab-label" data-i18n="nav_orders">Orders</span>
-      </a>
-      <button type="button" class="mobile-tab-item" id="mobile-more-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="mobile-more-sheet" aria-label="Menu & More">
-        <div class="mobile-tab-icon-wrap">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.75"/><circle cx="19" cy="12" r="1.75"/><circle cx="5" cy="12" r="1.75"/></svg>
-        </div>
-        <span class="mobile-tab-label" data-i18n="nav_more">More</span>
-      </button>
-    `;
-    document.body.appendChild(tabBar);
-  }
-
-  if (!backdrop) {
-    backdrop = document.createElement("div");
-    backdrop.id = "mobile-sheet-backdrop";
-    backdrop.className = "mobile-sheet-backdrop";
-    backdrop.setAttribute("aria-hidden", "true");
-    document.body.appendChild(backdrop);
-  }
-
-  if (!sheet) {
-    sheet = document.createElement("div");
-    sheet.id = "mobile-more-sheet";
-    sheet.className = "mobile-sheet";
-    sheet.setAttribute("role", "dialog");
-    sheet.setAttribute("aria-modal", "true");
-    sheet.setAttribute("aria-label", "Navigation & Settings Menu");
-    sheet.innerHTML = `
-      <div class="mobile-sheet-handle-wrap" id="mobile-sheet-handle">
-        <div class="mobile-sheet-handle"></div>
-      </div>
-      <div class="mobile-sheet-head">
-        <h2 class="mobile-sheet-title" data-i18n="app_menu">Menu & Settings</h2>
-        <button type="button" class="mobile-sheet-close" id="mobile-sheet-close" aria-label="Close menu">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M18 6L6 18M6 6l12 12"></path>
-          </svg>
-        </button>
-      </div>
-      <div class="mobile-sheet-body">
-        <div class="mobile-profile-card" id="mobile-sheet-profile">
-          <div class="mobile-profile-avatar" id="mobile-profile-avatar">AP</div>
-          <div class="mobile-profile-info">
-            <div class="mobile-profile-name" id="mobile-profile-name">Trader</div>
-            <div class="mobile-profile-meta">
-              <span class="mobile-profile-role" id="mobile-profile-role">Trader</span>
-              <span class="mobile-profile-badge armed" id="mobile-profile-mode">Paper</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="mobile-nav-group">
-          <h3 class="mobile-nav-group-title" data-i18n="nav_group_trade">Trading & Portfolio</h3>
-          <div class="mobile-nav-card">
-            <a href="/auto-trade" data-page="auto-trade" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_auto_trade">Auto Trade</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/manual-order" data-page="manual-order" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_manual_order">Advanced Order</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/positions" data-page="positions" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_positions">Positions</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/orders" data-page="orders" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l2 2 4-4"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_orders">Orders</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/history" data-page="history" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_history">History & Fills</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-          </div>
-        </div>
-
-        <div class="mobile-nav-group">
-          <h3 class="mobile-nav-group-title" data-i18n="nav_backtest">Backtest Lab</h3>
-          <div class="mobile-nav-card">
-            <a href="/backtest" data-page="backtest" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="bt_subnav_run">Run Simulation</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/backtest/history" data-page="backtest-history" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v5h5M21 21v-5h-5"/><path stroke-linecap="round" stroke-linejoin="round" d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="bt_subnav_history">Backtest History</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/backtest/compare" data-page="backtest-compare" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="bt_subnav_compare">Compare Strategies</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-          </div>
-        </div>
-
-        <div class="mobile-nav-group">
-          <h3 class="mobile-nav-group-title" data-i18n="nav_group_settings">Settings & Tools</h3>
-          <div class="mobile-nav-card">
-            <a href="/configuration" data-page="configuration" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_configuration">Configuration</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/settings" data-page="settings" class="mobile-nav-row">
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_settings">Settings</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-            <a href="/admin" data-page="admin" class="mobile-nav-row" id="mobile-sheet-admin-link" hidden>
-              <span class="mobile-nav-row-icon">
-                <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              </span>
-              <span class="mobile-nav-row-label" data-i18n="nav_admin">Admin Panel</span>
-              <span class="mobile-nav-row-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-            </a>
-          </div>
-        </div>
-
-        <div class="mobile-nav-group">
-          <h3 class="mobile-nav-group-title" data-i18n="theme">Theme</h3>
-          <div class="mobile-theme-picker" id="mobile-theme-picker">
-            <button type="button" class="mobile-theme-btn" data-theme-val="obsidian">
-              <span class="mobile-theme-swatch obsidian"></span>
-              <span class="mobile-theme-label">Obsidian</span>
-            </button>
-            <button type="button" class="mobile-theme-btn" data-theme-val="midnight">
-              <span class="mobile-theme-swatch midnight"></span>
-              <span class="mobile-theme-label">Midnight</span>
-            </button>
-            <button type="button" class="mobile-theme-btn" data-theme-val="emerald">
-              <span class="mobile-theme-swatch emerald"></span>
-              <span class="mobile-theme-label">Emerald</span>
-            </button>
-            <button type="button" class="mobile-theme-btn" data-theme-val="daylight">
-              <span class="mobile-theme-swatch daylight"></span>
-              <span class="mobile-theme-label">Daylight</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="mobile-nav-group">
-          <h3 class="mobile-nav-group-title" data-i18n="language">Language</h3>
-          <div class="mobile-lang-wrap">
-            <select class="mobile-lang-select lang-select" id="mobile-lang-select" data-native-select="true" aria-label="Language">
-              <option value="en">English (US)</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
-              <option value="hi">हिन्दी</option>
-              <option value="bn">বাংলা</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="mobile-sheet-actions" id="mobile-sheet-actions">
-          <button type="button" class="mobile-sheet-btn is-logout" id="btn-mobile-logout">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-            <span data-i18n="nav_sign_out">Sign Out</span>
-          </button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(sheet);
-  }
-
-  // Bind Open / Close Sheet handlers
-  const openTrigger = document.getElementById("mobile-more-trigger");
-  const closeBtn = document.getElementById("mobile-sheet-close");
-  const sheetHandle = document.getElementById("mobile-sheet-handle");
-
-  function openSheet() {
-    backdrop.classList.add("is-open");
-    sheet.classList.add("is-open");
-    document.body.classList.add("sheet-open");
-    openTrigger?.setAttribute("aria-expanded", "true");
-    openTrigger?.classList.add("is-active");
-    syncMobileThemeButtons();
-    syncMobileLangSelect();
-  }
-
-  function closeSheet() {
-    backdrop.classList.remove("is-open");
-    sheet.classList.remove("is-open");
-    document.body.classList.remove("sheet-open");
-    openTrigger?.setAttribute("aria-expanded", "false");
-    openTrigger?.classList.remove("is-active");
-    initRouting();
-  }
-
-  openTrigger?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (sheet.classList.contains("is-open")) closeSheet();
-    else openSheet();
-  });
-
-  closeBtn?.addEventListener("click", closeSheet);
-  backdrop?.addEventListener("click", closeSheet);
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && sheet.classList.contains("is-open")) {
-      closeSheet();
-    }
-  });
-
-  // Touch swipe-down to dismiss gesture
-  let startY = 0;
-  let currentY = 0;
-  sheetHandle?.addEventListener("touchstart", (e) => {
-    startY = e.touches[0].clientY;
-  }, { passive: true });
-
-  sheetHandle?.addEventListener("touchmove", (e) => {
-    currentY = e.touches[0].clientY;
-    const diff = currentY - startY;
-    if (diff > 0) {
-      sheet.style.transform = `translateY(${diff}px)`;
-    }
-  }, { passive: true });
-
-  sheetHandle?.addEventListener("touchend", () => {
-    const diff = currentY - startY;
-    sheet.style.transform = "";
-    if (diff > 60) {
-      closeSheet();
-    }
-    startY = 0;
-    currentY = 0;
-  });
-
-  // Theme switcher handler in sheet
-  function syncMobileThemeButtons() {
-    const activeTheme = document.documentElement.getAttribute("data-theme") || localStorage.getItem("algopaca_theme") || "obsidian";
-    document.querySelectorAll(".mobile-theme-btn").forEach((btn) => {
-      btn.classList.toggle("is-active", btn.getAttribute("data-theme-val") === activeTheme);
-    });
-  }
-
-  document.querySelectorAll(".mobile-theme-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const themeVal = btn.getAttribute("data-theme-val");
-      if (themeVal) {
-        document.documentElement.setAttribute("data-theme", themeVal);
-        try { localStorage.setItem("algopaca_theme", themeVal); } catch (e) {}
-        syncMobileThemeButtons();
-      }
-    });
-  });
-
-  // Language selector in sheet
-  function syncMobileLangSelect() {
-    const langSelect = document.getElementById("mobile-lang-select");
-    if (!langSelect) return;
-    const currentLang = typeof window.i18n !== "undefined" && window.i18n.currentLanguage
-      ? window.i18n.currentLanguage
-      : localStorage.getItem("algopaca_lang") || "en";
-    langSelect.value = currentLang;
-  }
-
-  const mobileLangSelect = document.getElementById("mobile-lang-select");
-  mobileLangSelect?.addEventListener("change", (e) => {
-    const chosen = e.target.value;
-    if (typeof window.i18n !== "undefined" && typeof window.i18n.setLanguage === "function") {
-      window.i18n.setLanguage(chosen);
-    }
-  });
-
-  // Wire up logout button in sheet
-  const mobileLogoutBtn = document.getElementById("btn-mobile-logout");
-  mobileLogoutBtn?.addEventListener("click", handleUserLogout);
-
-  // Close sheet when navigation link is clicked
-  sheet.querySelectorAll(".mobile-nav-row").forEach((link) => {
-    link.addEventListener("click", () => {
-      closeSheet();
-    });
-  });
-
-  // Translate mobile elements
-  if (typeof i18n !== "undefined" && i18n.translateDOM) {
-    i18n.translateDOM(tabBar);
-    i18n.translateDOM(sheet);
+function initDeviceShell() {
+  const isMobile = window.matchMedia("(max-width: 768px)").matches;
+  if (isMobile) {
+    loadDeviceScript("/static/js/mobile-shell.js", "script-mobile-shell");
+  } else {
+    loadDeviceScript("/static/js/desk-shell.js", "script-desk-shell");
   }
 }
 
-// Auto-run common routing, mobile app shell, & UI sync on load
+// Media query listener for responsive transitions (desktop window resizing / mobile devtools)
+try {
+  const mobileMql = window.matchMedia("(max-width: 768px)");
+  const handleDeviceChange = (e) => {
+    if (e.matches) {
+      loadDeviceScript("/static/js/mobile-shell.js", "script-mobile-shell");
+      if (typeof window.initMobileAppShell === "function") {
+        window.initMobileAppShell();
+      }
+    } else {
+      loadDeviceScript("/static/js/desk-shell.js", "script-desk-shell");
+      if (typeof window.initDeskNav === "function") {
+        window.initDeskNav();
+      }
+    }
+  };
+  if (typeof mobileMql.addEventListener === "function") {
+    mobileMql.addEventListener("change", handleDeviceChange);
+  } else if (typeof mobileMql.addListener === "function") {
+    mobileMql.addListener(handleDeviceChange);
+  }
+} catch (err) {
+  console.warn("Device shell MQL setup error:", err);
+}
+
+// Auto-run common routing, adaptive device shell, & UI sync on load
 document.addEventListener("DOMContentLoaded", () => {
   initRouting();
-  initDeskNav();
-  initMobileAppShell();
+  initDeviceShell();
   initNiceSelects();
   initDateFields();
   initUserAuthStatus();
 });
 if (document.readyState === "interactive" || document.readyState === "complete") {
   initRouting();
-  initDeskNav();
-  initMobileAppShell();
+  initDeviceShell();
   initNiceSelects();
   initDateFields();
   initUserAuthStatus();

@@ -603,7 +603,10 @@ function manualFollowOnPayload() {
     order_type: orderType,
     ticket_type: orderType,
     market: orderType === "market",
-    expire_minutes: manualFollowOnExpireMinutes(),
+    expire_minutes:
+      orderType === "market"
+        ? manualFollowOnExpireMinutes() || 120
+        : manualFollowOnExpireMinutes(),
     // Inherit the main ticket's trading session so "24 hour market" parent
     // produces a 24 hour market next-ticket.
     time_in_force: manualTimeInForce(),
@@ -871,7 +874,10 @@ function validateManualLocal() {
       if (p.followon.qty_mode === "custom" && !(p.followon.qty > 0)) {
         return tx("err_followon_qty", "Enter how many shares the next ticket should send.");
       }
-      if (!(p.followon.expire_minutes >= 1) || p.followon.expire_minutes > 1440) {
+      if (
+        !followonIsMarket(p.followon) &&
+        (!(p.followon.expire_minutes >= 1) || p.followon.expire_minutes > 1440)
+      ) {
         return tx(
           "err_followon_expire",
           "The next-ticket wait must be between 1 and 1440 minutes."
@@ -1974,7 +1980,7 @@ function calculateSizeEstimate() {
       blocked: true,
       blockedMessage: tx(
         "err_no_equity",
-        "Account equity is unavailable — connect Alpaca on Configuration before sizing a ticket."
+        "Account equity is unavailable — connect Alpaca on API Keys before sizing a ticket."
       ),
     };
   }
@@ -2584,7 +2590,7 @@ function validateManualField(fieldName) {
       error = tx("err_field_gt_zero", "Must be greater than 0");
     }
   } else if (fieldName === "followon_expire_minutes") {
-    if (manualFollowOnEnabled()) {
+    if (manualFollowOnEnabled() && manualFollowOnOrderType() !== "market") {
       if (!(val >= 1)) error = tx("err_field_min_1", "Minimum 1 minute");
       else if (val > 1440) error = tx("err_field_max_1440", "Max 1440 (24h)");
     }
@@ -3038,12 +3044,17 @@ function syncManualFollowOnUi() {
   const market = manualFollowOnOrderType() === "market";
   const limitLabel = $("manual-followon-limit-label");
   if (limitLabel) limitLabel.hidden = !enabled || market;
+  const expireLabel = $("manual-followon-expire-label");
+  if (expireLabel) expireLabel.hidden = !enabled || market;
   const priceRow = $("manual-followon-price-row");
-  if (priceRow) priceRow.classList.toggle("is-market", market);
+  if (priceRow) {
+    priceRow.hidden = !enabled || market;
+    priceRow.classList.toggle("is-market", market);
+  }
   const limitInput = $("manual-followon-limit");
   if (limitInput) limitInput.disabled = !enabled || market || loopRunning || busy;
   const expireInput = $("manual-followon-expire");
-  if (expireInput) expireInput.disabled = !enabled || loopRunning || busy;
+  if (expireInput) expireInput.disabled = !enabled || market || loopRunning || busy;
   const marketHint = $("manual-followon-market-hint");
   if (marketHint) marketHint.hidden = !enabled || !market;
 
@@ -4899,11 +4910,11 @@ function renderConfirmationModal(payload) {
           ? "—"
           : `≈ ${money(nextQty * payload.followon.limit_price)}`,
       ]);
+      rows.push([
+        tx("reinvest_expire", "Wait up to (minutes)"),
+        String(payload.followon.expire_minutes),
+      ]);
     }
-    rows.push([
-      tx("reinvest_expire", "Wait up to (minutes)"),
-      String(payload.followon.expire_minutes),
-    ]);
   }
 
   if (payload.dip_hunt) {
@@ -5814,6 +5825,7 @@ manualForm?.addEventListener("change", (ev) => {
   }
   if (name === "followon_order_type") {
     validateManualField("followon_limit_price");
+    validateManualField("followon_expire_minutes");
   }
   if (name === "sell_mode") {
     convertSellQtyOnUnitToggle(ev.target?.value);

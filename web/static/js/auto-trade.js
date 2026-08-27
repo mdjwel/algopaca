@@ -369,8 +369,8 @@ function validateReadyToRun() {
   const payload = formPayload();
   if (payload.strategy_mode === "ai" && !providerKeyReady(payload.ai_provider)) {
     return payload.ai_provider === "gemini"
-      ? "Paste a Gemini API key on Configuration and click Save AI keys before running AI mode."
-      : "Paste an OpenAI API key on Configuration and click Save AI keys before running AI mode.";
+      ? "Paste a Gemini API key on API Keys and click Save AI keys before running AI mode."
+      : "Paste an OpenAI API key on API Keys and click Save AI keys before running AI mode.";
   }
   return null;
 }
@@ -728,7 +728,7 @@ function syncStrategyHint(forceState) {
       ? "Stop the loop to edit strategy"
       : state === "invalid"
         ? "Fix validation errors before running"
-        : "Strategy settings auto-save; API keys live on Configuration";
+        : "Strategy settings auto-save; broker/AI keys live on the API Keys page";
 }
 
 function maybeSyncWatchlistFromPrimary(ev) {

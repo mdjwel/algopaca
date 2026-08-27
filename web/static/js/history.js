@@ -1275,7 +1275,7 @@ function applyTrades(payload) {
       note.textContent = err.includes("ALPACA_")
         ? tx(
             "pnl_note_connect",
-            "Connect Alpaca paper keys on Configuration to load fills and account P&L."
+            "Connect Alpaca paper keys on API Keys to load fills and account P&L."
           )
         : tx("pnl_note_error", "Portfolio P&L unavailable: {error}", {
             error: err,
