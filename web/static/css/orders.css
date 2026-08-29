@@ -707,6 +707,18 @@ a.pos-prot-badge.orders:focus-visible {
   font-weight: 600;
 }
 
+/* The approvals queue pairs its title with a link back to the desk. */
+#ord-queue-approvals > .ord-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+#ord-queue-approvals > .ord-queue-head h3 {
+  margin: 0;
+}
+
 .ord-queue-note {
   color: var(--muted);
   font-size: 0.72rem;

@@ -231,6 +231,11 @@ class Config:
     options_otm_pct: float = 5.0
     options_max_contracts: int = 1
     options_max_premium_pct: float = 1.0
+    # Auto trade approval and notification options
+    require_approval: bool = False
+    notify_browser: bool = True
+    notify_email: bool = False
+    notification_email: str = ""
 
     def primary_symbols(self) -> tuple[str, ...]:
         """Symbols to evaluate this cycle.
@@ -262,6 +267,10 @@ class Config:
         # engine calls that with equity and ATR. As a simple fallback:
         qty = float(self.trade_qty or 1)
         return qty
+
+    def order_qty_for_price(self, price: float) -> float:
+        """Alias for qty_for_size_mode."""
+        return self.qty_for_size_mode(price)
 
     def ai_stop_distance(self, price: float, atr: float | None) -> float:
         """Per-share risk in dollars: ATR-scaled when configured, else flat percent.
@@ -797,6 +806,10 @@ class Config:
         options_otm_pct: float = 5.0,
         options_max_contracts: int = 1,
         options_max_premium_pct: float = 1.0,
+        require_approval: bool = False,
+        notify_browser: bool = True,
+        notify_email: bool = False,
+        notification_email: str = "",
     ) -> Config:
         return cls(
             api_key=(api_key or "").strip(),
@@ -864,6 +877,10 @@ class Config:
             options_otm_pct=options_otm_pct,
             options_max_contracts=options_max_contracts,
             options_max_premium_pct=options_max_premium_pct,
+            require_approval=bool(require_approval),
+            notify_browser=bool(notify_browser),
+            notify_email=bool(notify_email),
+            notification_email=(notification_email or "").strip(),
         )
 
     @classmethod

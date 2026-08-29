@@ -155,6 +155,10 @@ function formPayload() {
     options_otm_pct: numField("options_otm_pct", 5),
     options_max_contracts: numField("options_max_contracts", 1),
     options_max_premium_pct: numField("options_max_premium_pct", 1),
+    require_approval: !!$("field-require-approval")?.checked,
+    notify_browser: $("field-notify-browser") ? !!$("field-notify-browser")?.checked : true,
+    notify_email: !!$("field-notify-email")?.checked,
+    notification_email: String($("field-notification-email")?.value || "").trim(),
     openai_model: String(
       formValue("openai_model", aiModels.defaults?.openai || FALLBACK_OPENAI_MODEL) ||
         FALLBACK_OPENAI_MODEL
@@ -555,6 +559,25 @@ function syncDeskAccordions() {
     aiBadge.textContent = isCustom
       ? tx("preset_custom_badge", "Custom")
       : (preset?.name || tx("preset_playbook_badge", "Playbook"));
+  }
+
+  const execBadge = $("desk-exec-summary-badge");
+  const requireApproval = !!$("field-require-approval")?.checked;
+  const notifyBrowser = !!$("field-notify-browser")?.checked;
+  const notifyEmail = !!$("field-notify-email")?.checked;
+  const emailField = $("email-notification-field");
+  if (emailField) {
+    emailField.hidden = !notifyEmail;
+  }
+  if (execBadge) {
+    const apprText = requireApproval
+      ? tx("approval_required_badge", "Approval required")
+      : tx("auto_execute_badge", "Auto");
+    const alerts = [];
+    if (notifyBrowser) alerts.push("Push");
+    if (notifyEmail) alerts.push("Email");
+    const alertText = alerts.length ? ` · ${alerts.join("+")}` : "";
+    execBadge.textContent = `${apprText}${alertText}`;
   }
 }
 
@@ -1333,6 +1356,22 @@ function applySettings(settings, { force = false } = {}) {
   if (form.options_max_premium_pct) {
     form.options_max_premium_pct.value = settings.options_max_premium_pct ?? 1;
   }
+  if (form.require_approval) {
+    form.require_approval.checked = !!settings.require_approval;
+  }
+  if (form.notify_browser) {
+    form.notify_browser.checked = settings.notify_browser !== false;
+  }
+  if (form.notify_email) {
+    form.notify_email.checked = !!settings.notify_email;
+  }
+  if (form.notification_email) {
+    form.notification_email.value = settings.notification_email || "";
+  }
+  const emailField = $("email-notification-field");
+  if (emailField) {
+    emailField.hidden = !settings.notify_email;
+  }
   if (form.openai_model) {
     fillModelSelect(
       form.openai_model,
@@ -1955,6 +1994,7 @@ function render(state, { forceSettings = false } = {}) {
     ? state.last_ai_results
     : [];
   lastDeskQuote = state.quote || null;
+  renderPendingApprovals(state.pending_approvals);
   // Desk-session history renders on the History page.
   if (typeof applyHistory === "function") {
     applyHistory(state.loop_history, state.result_history);
@@ -2356,6 +2396,276 @@ $("ai-watchlist")?.addEventListener("keydown", (ev) => {
   }
 });
 $("btn-clear-history")?.addEventListener("click", onClearHistory);
+
+// ---------------------------------------------------------------------------
+// Pending Approvals & Web Notifications
+// ---------------------------------------------------------------------------
+
+let lastPendingApprovals = [];
+const seenPendingApprovalIds = new Set();
+let pendingApprovalsPrimed = false;
+
+async function requestBrowserNotificationPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission !== "denied") {
+    const perm = await Notification.requestPermission();
+    return perm === "granted";
+  }
+  return false;
+}
+
+function sendBrowserPushNotification(title, options = {}) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const notify = new Notification(title, {
+      icon: "/static/img/algopaca-mark.svg",
+      badge: "/static/img/algopaca-mark.svg",
+      ...options,
+    });
+    notify.onclick = () => {
+      window.focus();
+      if (options.data?.url) {
+        window.location.href = options.data.url;
+      }
+    };
+  } catch (e) {
+    console.warn("Browser notification error:", e);
+  }
+}
+
+function renderPendingApprovals(approvals = []) {
+  const card = $("pending-approvals-card");
+  const listEl = $("pending-approvals-list");
+  const badgeEl = $("pending-approvals-badge");
+  if (!card || !listEl) return;
+
+  const pending = (approvals || []).filter((item) => item && item.status === "pending");
+  lastPendingApprovals = pending;
+
+  // Prime on the very first render — including an empty one. Priming only
+  // inside the non-empty branch would swallow the first ticket that ever
+  // arrives, which is exactly the one worth a notification.
+  const notifyBrowser = !!$("field-notify-browser")?.checked;
+  if (!pendingApprovalsPrimed) {
+    pending.forEach((item) => seenPendingApprovalIds.add(item.id));
+    pendingApprovalsPrimed = true;
+  } else {
+    pending
+      .filter((item) => !seenPendingApprovalIds.has(item.id))
+      .forEach((item) => {
+        seenPendingApprovalIds.add(item.id);
+        if (!notifyBrowser) return;
+        const side = item.action || "ORDER";
+        const sym = item.symbol || "";
+        const qty = item.qty || "";
+        sendBrowserPushNotification(
+          `AlgoPaca Approval Required: ${side} ${qty} ${sym}`,
+          {
+            body: `Strategy generated a pending ${side} signal on ${sym}. Click to review and approve.`,
+            tag: `approval-${item.id}`,
+            data: { url: `/auto-trade?approval=${item.id}` },
+          }
+        );
+      });
+  }
+
+  if (!pending.length) {
+    card.hidden = true;
+    listEl.innerHTML = "";
+    if (badgeEl) badgeEl.textContent = "0";
+    return;
+  }
+
+  card.hidden = false;
+  if (badgeEl) badgeEl.textContent = String(pending.length);
+
+  // Check URL param ?approval=...
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetApprId = urlParams.get("approval");
+
+  listEl.innerHTML = pending
+    .map((item) => {
+      const act = String(item.action || "BUY").toUpperCase();
+      const actClass =
+        act === "BUY"
+          ? "action-buy"
+          : act === "SELL"
+          ? "action-sell"
+          : act === "SHORT"
+          ? "action-short"
+          : "action-cover";
+      const isTarget = targetApprId && targetApprId === item.id;
+      const highlightClass = isTarget ? " is-highlighted" : "";
+      const priceFmt = item.price ? `$${Number(item.price).toFixed(2)}` : "Market";
+      const estVal = item.estimated_value ? `$${Number(item.estimated_value).toFixed(2)}` : "—";
+      const timeFmt = item.created_at ? new Date(item.created_at).toLocaleTimeString() : "";
+
+      return `
+        <div class="pending-approval-item${highlightClass}" id="approval-item-${escapeHtml(item.id)}" data-id="${escapeHtml(item.id)}">
+          <div class="pending-approval-head">
+            <div class="pending-approval-symbol-wrap">
+              <span class="pending-approval-symbol">${escapeHtml(item.symbol || "—")}</span>
+              <span class="pending-action-badge ${actClass}">${escapeHtml(act)}</span>
+              <span class="pending-approval-engine">${escapeHtml(item.engine || item.strategy_mode || "AUTO")}</span>
+            </div>
+            <span class="pending-approval-time">${escapeHtml(timeFmt)}</span>
+          </div>
+
+          <div class="pending-approval-details">
+            <div class="pending-detail-item">
+              <span class="pending-detail-label">${escapeHtml(tx("shares_qty", "Quantity"))}</span>
+              <span class="pending-detail-val">${escapeHtml(String(item.qty || "—"))}</span>
+            </div>
+            <div class="pending-detail-item">
+              <span class="pending-detail-label">${escapeHtml(tx("price", "Est. Price"))}</span>
+              <span class="pending-detail-val">${escapeHtml(priceFmt)}</span>
+            </div>
+            <div class="pending-detail-item">
+              <span class="pending-detail-label">${escapeHtml(tx("value", "Est. Value"))}</span>
+              <span class="pending-detail-val">${escapeHtml(estVal)}</span>
+            </div>
+            ${
+              item.stop_price
+                ? `
+            <div class="pending-detail-item">
+              <span class="pending-detail-label">${escapeHtml(tx("stop", "Stop"))}</span>
+              <span class="pending-detail-val">$${Number(item.stop_price).toFixed(2)}</span>
+            </div>`
+                : ""
+            }
+          </div>
+
+          ${
+            item.reason
+              ? `<p class="pending-approval-reason">${escapeHtml(item.reason)}</p>`
+              : item.thesis
+              ? `<p class="pending-approval-reason">${escapeHtml(item.thesis)}</p>`
+              : ""
+          }
+
+          <div class="pending-approval-actions">
+            <button type="button" class="btn-reject" data-action="reject" data-id="${escapeHtml(item.id)}">
+              ${escapeHtml(tx("reject", "Reject"))}
+            </button>
+            <button type="button" class="btn-approve" data-action="approve" data-id="${escapeHtml(item.id)}">
+              ${escapeHtml(tx("approve", "Approve & Execute"))}
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  if (targetApprId) {
+    const el = document.getElementById(`approval-item-${targetApprId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+}
+
+async function handleApprovalAction(id, action) {
+  if (!id || !action) return;
+  const btn = document.querySelector(`[data-id="${id}"][data-action="${action}"]`);
+  if (btn) btn.disabled = true;
+
+  try {
+    setBusy(true, action === "approve" ? "Approving order…" : "Rejecting order…");
+    const endpoint = `/api/auto-trade/approvals/${encodeURIComponent(id)}/${action}`;
+    const res = await api(endpoint, { method: "POST", body: "{}" });
+    showToast(
+      action === "approve"
+        ? `Order for ${res.approval?.symbol || "symbol"} approved and executed!`
+        : `Pending order for ${res.approval?.symbol || "symbol"} rejected.`,
+      "ok"
+    );
+    if (res.state) {
+      render(res.state);
+    } else {
+      await refreshStatus();
+    }
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function onApproveAllOrders() {
+  if (!lastPendingApprovals.length) return;
+  const confirmMsg = `Approve all ${lastPendingApprovals.length} pending orders?`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    setBusy(true, "Approving all orders…");
+    const res = await api("/api/auto-trade/approvals/approve-all", {
+      method: "POST",
+      body: "{}",
+    });
+    const count = (res.approved || []).length;
+    showToast(`Approved ${count} orders successfully.`, "ok");
+    if (res.state) {
+      render(res.state);
+    } else {
+      await refreshStatus();
+    }
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function onRejectAllOrders() {
+  if (!lastPendingApprovals.length) return;
+  const confirmMsg = `Reject and cancel all ${lastPendingApprovals.length} pending orders?`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    setBusy(true, "Rejecting all orders…");
+    const res = await api("/api/auto-trade/approvals/reject-all", {
+      method: "POST",
+      body: "{}",
+    });
+    const count = (res.rejected || []).length;
+    showToast(`Rejected ${count} orders.`, "ok");
+    if (res.state) {
+      render(res.state);
+    } else {
+      await refreshStatus();
+    }
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+$("pending-approvals-list")?.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-action][data-id]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  handleApprovalAction(id, action);
+});
+$("btn-approve-all")?.addEventListener("click", onApproveAllOrders);
+$("btn-reject-all")?.addEventListener("click", onRejectAllOrders);
+$("field-notify-browser")?.addEventListener("change", async (ev) => {
+  if (ev.target.checked) {
+    const granted = await requestBrowserNotificationPermission();
+    if (!granted) {
+      showToast("Browser notification permission was not granted.", "warn");
+    }
+  }
+});
+$("field-notify-email")?.addEventListener("change", (ev) => {
+  const emailField = $("email-notification-field");
+  if (emailField) {
+    emailField.hidden = !ev.target.checked;
+  }
+});
 
 // Auto-trade event listeners and initialization
 document.addEventListener("DOMContentLoaded", () => {

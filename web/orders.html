@@ -151,6 +151,13 @@
           </div>
           <p class="field-help ord-desk-help" data-i18n="orders_desk_queues_help_v2">These fire after a fill — they are not resting at the broker until then. Only plans whose trigger ticket is missing from the blotter show here; the rest sit on their own row below.</p>
           <div class="ord-desk-grid">
+            <div class="ord-queue" id="ord-queue-approvals" hidden>
+              <div class="ord-queue-head">
+                <h3 data-i18n="pending_approvals">Pending Approvals</h3>
+                <a href="/auto-trade" class="ghost" data-i18n="view_in_auto_trade">Open Desk</a>
+              </div>
+              <ul id="ord-approvals-list" class="ord-queue-list"></ul>
+            </div>
             <div class="ord-queue" id="ord-queue-reinvest" hidden>
               <h3 data-i18n="reinvest_queue">Re-investment queue</h3>
               <ul id="ord-reinvest-list" class="ord-queue-list"></ul>

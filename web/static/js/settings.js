@@ -78,6 +78,11 @@
   const inputDefaultTradeNotional = $("input-default-trade-notional");
   const checkConfirmOrders = $("check-confirm-orders");
   const checkConfirmCloseAll = $("check-confirm-close-all");
+  const checkSettingsRequireApproval = $("check-settings-require-approval");
+  const checkSettingsNotifyBrowser = $("check-settings-notify-browser");
+  const checkSettingsNotifyEmail = $("check-settings-notify-email");
+  const wrapSettingsNotificationEmail = $("wrap-settings-notification-email");
+  const inputSettingsNotificationEmail = $("input-settings-notification-email");
 
   // DOM - Integrations & Data
   const badgeStatusPaper = $("badge-status-paper");
@@ -954,6 +959,21 @@
     if (checkConfirmCloseAll) {
       checkConfirmCloseAll.checked = !!prefs.confirm_close_all;
     }
+    if (checkSettingsRequireApproval) {
+      checkSettingsRequireApproval.checked = !!prefs.require_approval;
+    }
+    if (checkSettingsNotifyBrowser) {
+      checkSettingsNotifyBrowser.checked = prefs.notify_browser !== undefined ? !!prefs.notify_browser : true;
+    }
+    if (checkSettingsNotifyEmail) {
+      checkSettingsNotifyEmail.checked = !!prefs.notify_email;
+      if (wrapSettingsNotificationEmail) {
+        wrapSettingsNotificationEmail.hidden = !prefs.notify_email;
+      }
+    }
+    if (inputSettingsNotificationEmail) {
+      inputSettingsNotificationEmail.value = prefs.notification_email || "";
+    }
 
     if (typeof refreshNiceSelects === "function") {
       refreshNiceSelects();
@@ -1030,6 +1050,10 @@
       const notional = parseFloat(inputDefaultTradeNotional?.value || "100.0");
       const confirmOrders = checkConfirmOrders ? checkConfirmOrders.checked : true;
       const confirmCloseAll = checkConfirmCloseAll ? checkConfirmCloseAll.checked : true;
+      const requireApproval = checkSettingsRequireApproval ? checkSettingsRequireApproval.checked : false;
+      const notifyBrowser = checkSettingsNotifyBrowser ? checkSettingsNotifyBrowser.checked : true;
+      const notifyEmail = checkSettingsNotifyEmail ? checkSettingsNotifyEmail.checked : false;
+      const notificationEmail = inputSettingsNotificationEmail?.value?.trim() || "";
 
       await savePreferencesPayload({
         default_size_mode: sizeMode,
@@ -1037,12 +1061,22 @@
         default_trade_notional: isNaN(notional) ? 100.0 : notional,
         confirm_orders: confirmOrders,
         confirm_close_all: confirmCloseAll,
+        require_approval: requireApproval,
+        notify_browser: notifyBrowser,
+        notify_email: notifyEmail,
+        notification_email: notificationEmail,
       }, "Trading defaults saved successfully.");
     } catch (err) {
       // toast shown
     } finally {
       btn.disabled = false;
       btn.innerHTML = origHtml;
+    }
+  });
+
+  checkSettingsNotifyEmail?.addEventListener("change", (ev) => {
+    if (wrapSettingsNotificationEmail) {
+      wrapSettingsNotificationEmail.hidden = !ev.target.checked;
     }
   });
 

@@ -1612,13 +1612,69 @@ function renderQueueList(queue, plans) {
   return plans.length;
 }
 
+let ordPendingApprovals = [];
+
+async function fetchPendingApprovals() {
+  try {
+    const res = await api("/api/auto-trade/approvals");
+    if (res && res.ok && Array.isArray(res.pending_approvals)) {
+      ordPendingApprovals = res.pending_approvals;
+    }
+  } catch (e) {
+    // Non-fatal if auto-trade approvals cannot be fetched
+  }
+}
+
 function renderDeskQueues() {
   const panel = $("ord-desk-panel");
   const desk = deskPlans();
   const reinvest = standaloneDeskPlans("reinvest", desk.reinvest, REINVEST_LIVE);
   const followon = standaloneDeskPlans("followon", desk.followon, FOLLOWON_LIVE);
   const dipHunt = standaloneDeskPlans("dip_hunt", desk.dip_hunt, DIP_HUNT_LIVE);
+
+  const apprList = $("ord-approvals-list");
+  const apprQueue = $("ord-queue-approvals");
+  const numApprovals = ordPendingApprovals.length;
+  if (apprList && apprQueue) {
+    if (numApprovals > 0) {
+      apprQueue.hidden = false;
+      apprList.innerHTML = ordPendingApprovals.map((item) => {
+        const action = String(item.action || "ORDER").toUpperCase();
+        const isLong = action === "BUY" || action === "COVER";
+        const spec = `${escapeHtml(String(item.qty || ""))} @ ${
+          item.price ? "$" + Number(item.price).toFixed(2) : "MKT"
+        }`;
+        return `
+        <li>
+          <div class="ord-queue-item" data-kind="waiting">
+            <div class="ord-queue-row">
+              <div class="ord-plan-chips">
+                <span class="ord-plan-sym-text">${escapeHtml(item.symbol || "")}</span>
+                <span class="side-badge ${isLong ? "buy" : "sell"}">${escapeHtml(action)}</span>
+                <span class="ord-plan-dot-sep" aria-hidden="true">·</span>
+                <span class="ord-plan-spec-val">${spec}</span>
+              </div>
+              <div class="ord-queue-actions">
+                <a href="/auto-trade?approval=${encodeURIComponent(item.id)}" class="ghost">${escapeHtml(tx("ord_approval_review", "Review & Execute"))}</a>
+              </div>
+            </div>
+            <div class="ord-plan-status-row">
+              <div class="ord-plan-status-pill kind-waiting">
+                <span class="ord-plan-pulse-dot" aria-hidden="true"></span>
+                <span class="ord-plan-note-text">${escapeHtml(item.reason || item.thesis || tx("pending_approval_note", "Awaiting your approval"))}</span>
+              </div>
+            </div>
+          </div>
+        </li>`;
+      }).join("");
+    } else {
+      apprQueue.hidden = true;
+      apprList.innerHTML = "";
+    }
+  }
+
   const n =
+    numApprovals +
     renderQueueList("reinvest", reinvest) +
     renderQueueList("followon", followon) +
     renderQueueList("dip_hunt", dipHunt);
@@ -1992,7 +2048,10 @@ async function refreshOrders({ quiet = false } = {}) {
       if (ordFilterAfter) params.set("after", ordFilterAfter);
       if (ordFilterUntil) params.set("until", ordFilterUntil);
     }
-    const data = await api(`/api/orders?${params.toString()}`);
+    const [data] = await Promise.all([
+      api(`/api/orders?${params.toString()}`),
+      fetchPendingApprovals(),
+    ]);
     if (requestSeq !== ordRequestSeq) return;
     ordersPayload = data;
     // Drop the optimistic flag as soon as the broker's own answer covers it:

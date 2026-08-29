@@ -93,3 +93,5 @@ yarn-error.log*
 .dip_hunt_plans.live.json
 .followon_plans.live.json
 .reinvest_plans.live.json
+.approvals.paper.json
+.approvals.live.json

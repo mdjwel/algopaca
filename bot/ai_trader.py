@@ -30,9 +30,15 @@ class CycleStopped(Exception):
 
 
 class AiTradingBot:
-    def __init__(self, config: Config, service: AlpacaService | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        service: AlpacaService | None = None,
+        approval_handler: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
         self.config = config
         self.service = service or AlpacaService(config)
+        self.approval_handler = approval_handler
         provider = build_provider(
             config.ai_provider,
             openai_key=config.openai_api_key,
@@ -290,79 +296,173 @@ class AiTradingBot:
             else None
         )
         if decision.action == Signal.BUY.value and position_qty < 0:
-            cancelled = self.service.cancel_open_stop_orders(symbol)
-            if cancelled:
-                logger.info("cancelled %s protective stop(s) before COVER", cancelled)
             cover_qty = min(abs(position_qty), qty if qty > 0 else abs(position_qty))
             sized = self._qty_for_session(cover_qty, whole=abs(position_qty) >= 1)
             if sized is None:
                 payload["reason"] += " | skipped: qty"
                 return payload
-            order = self.service.submit_order(
-                symbol, sized, OrderSide.BUY, protect=False
-            )
-            logger.info("AI COVER submitted: id=%s qty=%s", order.id, sized)
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = sized
-            payload["signal"] = Signal.BUY.value
-            payload["intent"] = "cover"
+            if self.config.require_approval and self.approval_handler:
+                # Stage before pulling the resting stop — the ticket may wait in
+                # the queue, and a cancelled stop leaves the short unprotected.
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="COVER",
+                    qty=sized,
+                    price=display_price,
+                    protect=False,
+                    reason=decision.reason,
+                    engine="ai",
+                    thesis=decision.thesis,
+                    confidence=decision.confidence,
+                    cancel_stops=True,
+                )
+                logger.info("AI COVER pending approval: id=%s qty=%s", appr.get("id"), sized)
+                payload["order_id"] = None
+                payload["order_qty"] = sized
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["signal"] = Signal.BUY.value
+                payload["intent"] = "cover"
+                payload["reason"] += " | Pending user approval"
+            else:
+                cancelled = self.service.cancel_open_stop_orders(symbol)
+                if cancelled:
+                    logger.info(
+                        "cancelled %s protective stop(s) before COVER", cancelled
+                    )
+                order = self.service.submit_order(
+                    symbol, sized, OrderSide.BUY, protect=False
+                )
+                logger.info("AI COVER submitted: id=%s qty=%s", order.id, sized)
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = sized
+                payload["signal"] = Signal.BUY.value
+                payload["intent"] = "cover"
         elif decision.action == Signal.BUY.value and position_qty == 0:
             sized = self._qty_for_session(qty)
             if sized is None:
                 payload["reason"] += " | skipped: qty"
                 return payload
-            order = self.service.submit_order(
-                symbol, sized, OrderSide.BUY, stop_price=entry_stop_long
-            )
-            logger.info(
-                "AI BUY submitted: id=%s qty=%s stop=%s",
-                order.id,
-                sized,
-                entry_stop_long or f"{self.config.stop_loss_pct or 0}%",
-            )
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = sized
-            payload["intent"] = "open_long"
-            self._arm_stop(symbol, payload, stop_distance)
+            if self.config.require_approval and self.approval_handler:
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="BUY",
+                    qty=sized,
+                    price=display_price,
+                    stop_price=entry_stop_long,
+                    stop_distance=stop_distance,
+                    reason=decision.reason,
+                    engine="ai",
+                    thesis=decision.thesis,
+                    confidence=decision.confidence,
+                )
+                logger.info("AI BUY pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_long)
+                payload["order_id"] = None
+                payload["order_qty"] = sized
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["intent"] = "open_long"
+                payload["reason"] += " | Pending user approval"
+            else:
+                order = self.service.submit_order(
+                    symbol, sized, OrderSide.BUY, stop_price=entry_stop_long
+                )
+                logger.info(
+                    "AI BUY submitted: id=%s qty=%s stop=%s",
+                    order.id,
+                    sized,
+                    entry_stop_long or f"{self.config.stop_loss_pct or 0}%",
+                )
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = sized
+                payload["intent"] = "open_long"
+                self._arm_stop(symbol, payload, stop_distance)
         elif decision.action == Signal.SELL.value and position_qty > 0:
-            cancelled = self.service.cancel_open_stop_orders(symbol)
-            if cancelled:
-                logger.info("cancelled %s protective stop(s) before SELL", cancelled)
             sell_qty = min(position_qty, qty if qty > 0 else position_qty)
             sized = self._qty_for_session(sell_qty)
             if sized is None:
                 payload["reason"] += " | skipped: qty"
                 return payload
-            order = self.service.submit_order(
-                symbol, sized, OrderSide.SELL, protect=False
-            )
-            logger.info("AI SELL submitted: id=%s qty=%s", order.id, sized)
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = sized
-            payload["intent"] = "close_long"
+            if self.config.require_approval and self.approval_handler:
+                # Stage before pulling the resting stop — the ticket may wait in
+                # the queue, and a cancelled stop leaves the long unprotected.
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="SELL",
+                    qty=sized,
+                    price=display_price,
+                    protect=False,
+                    reason=decision.reason,
+                    engine="ai",
+                    thesis=decision.thesis,
+                    confidence=decision.confidence,
+                    cancel_stops=True,
+                )
+                logger.info("AI SELL pending approval: id=%s qty=%s", appr.get("id"), sized)
+                payload["order_id"] = None
+                payload["order_qty"] = sized
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["intent"] = "close_long"
+                payload["reason"] += " | Pending user approval"
+            else:
+                cancelled = self.service.cancel_open_stop_orders(symbol)
+                if cancelled:
+                    logger.info(
+                        "cancelled %s protective stop(s) before SELL", cancelled
+                    )
+                order = self.service.submit_order(
+                    symbol, sized, OrderSide.SELL, protect=False
+                )
+                logger.info("AI SELL submitted: id=%s qty=%s", order.id, sized)
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = sized
+                payload["intent"] = "close_long"
         elif decision.action == Signal.SELL.value and position_qty == 0:
             # Alpaca does not short fractionals — whole shares only.
             sized = self._qty_for_session(qty, whole=True)
             if sized is None:
                 payload["reason"] += " | skipped: qty (shorts need whole shares)"
                 return payload
-            order = self.service.submit_order(
-                symbol,
-                sized,
-                OrderSide.SELL,
-                protect=True,
-                stop_price=entry_stop_short,
-            )
-            logger.info(
-                "AI SHORT submitted: id=%s qty=%s stop=%s",
-                order.id,
-                sized,
-                entry_stop_short or f"{self.config.stop_loss_pct or 0}%",
-            )
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = sized
-            payload["intent"] = "open_short"
-            self._arm_stop(symbol, payload, stop_distance)
+            if self.config.require_approval and self.approval_handler:
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="SHORT",
+                    qty=sized,
+                    price=display_price,
+                    stop_price=entry_stop_short,
+                    stop_distance=stop_distance,
+                    protect=True,
+                    reason=decision.reason,
+                    engine="ai",
+                    thesis=decision.thesis,
+                    confidence=decision.confidence,
+                )
+                logger.info("AI SHORT pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_short)
+                payload["order_id"] = None
+                payload["order_qty"] = sized
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["intent"] = "open_short"
+                payload["reason"] += " | Pending user approval"
+            else:
+                order = self.service.submit_order(
+                    symbol,
+                    sized,
+                    OrderSide.SELL,
+                    protect=True,
+                    stop_price=entry_stop_short,
+                )
+                logger.info(
+                    "AI SHORT submitted: id=%s qty=%s stop=%s",
+                    order.id,
+                    sized,
+                    entry_stop_short or f"{self.config.stop_loss_pct or 0}%",
+                )
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = sized
+                payload["intent"] = "open_short"
+                self._arm_stop(symbol, payload, stop_distance)
         else:
             logger.info("no action (already in desired state)")
             payload["reason"] += " | no action (position state)"

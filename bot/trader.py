@@ -25,9 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 class TradingBot:
-    def __init__(self, config: Config, service: AlpacaService | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        service: AlpacaService | None = None,
+        approval_handler: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
         self.config = config
         self.service = service or AlpacaService(config)
+        self.approval_handler = approval_handler
         if config.strategy_mode == "dip":
             dip = get_dip_preset(config.dip_preset)
             self.strategy: SmaCrossoverStrategy | BuyTheDipStrategy = BuyTheDipStrategy(
@@ -251,21 +257,45 @@ class TradingBot:
                 if stop_distance and display_price > 0
                 else None
             )
-            order = self.service.submit_order(
-                symbol, qty, OrderSide.BUY, stop_price=entry_stop
-            )
-            logger.info(
-                "BUY submitted: id=%s qty=%s type=%s stop=%s size=%s",
-                order.id,
-                qty,
-                order.type,
-                entry_stop or f"{self.config.stop_loss_pct or 0}%",
-                self.config.size_summary(),
-            )
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = qty
-            payload["intent"] = "open_long"
-            arm_protective_stop(self.service, symbol, payload, stop_distance)
+            if self.config.require_approval and self.approval_handler:
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="BUY",
+                    qty=qty,
+                    price=display_price,
+                    stop_price=entry_stop,
+                    stop_distance=stop_distance,
+                    reason=result.reason,
+                    engine=self._engine,
+                )
+                logger.info(
+                    "BUY pending approval: id=%s qty=%s stop=%s",
+                    appr.get("id"),
+                    qty,
+                    entry_stop or f"{self.config.stop_loss_pct or 0}%",
+                )
+                payload["order_id"] = None
+                payload["order_qty"] = qty
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["intent"] = "open_long"
+                payload["reason"] += " | Pending user approval"
+            else:
+                order = self.service.submit_order(
+                    symbol, qty, OrderSide.BUY, stop_price=entry_stop
+                )
+                logger.info(
+                    "BUY submitted: id=%s qty=%s type=%s stop=%s size=%s",
+                    order.id,
+                    qty,
+                    order.type,
+                    entry_stop or f"{self.config.stop_loss_pct or 0}%",
+                    self.config.size_summary(),
+                )
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = qty
+                payload["intent"] = "open_long"
+                arm_protective_stop(self.service, symbol, payload, stop_distance)
         elif result.signal is Signal.SELL and position_qty > 0:
             # Confidence=1 so only min-hold applies (no AI conf bump).
             hold = reversal_gate(self.config, gate_ctx, confidence=1.0)
@@ -274,9 +304,6 @@ class TradingBot:
                 payload["risk_blocked"] = hold.reason
                 arm_protective_stop(self.service, symbol, payload, stop_distance)
                 return payload
-            cancelled = self.service.cancel_open_stop_orders(symbol)
-            if cancelled:
-                logger.info("cancelled %s protective stop(s) before SELL", cancelled)
             try:
                 target = self.config.order_qty_for_price(display_price)
             except ValueError as exc:
@@ -286,17 +313,46 @@ class TradingBot:
             if qty is None:
                 payload["reason"] += " | skipped: qty"
                 return payload
-            order = self.service.submit_order(symbol, qty, OrderSide.SELL)
-            logger.info(
-                "SELL submitted: id=%s qty=%s type=%s size=%s",
-                order.id,
-                qty,
-                order.type,
-                self.config.size_summary(),
-            )
-            payload["order_id"] = str(order.id)
-            payload["order_qty"] = qty
-            payload["intent"] = "close_long"
+            if self.config.require_approval and self.approval_handler:
+                # Stage before touching the resting stop: the exit may sit in the
+                # queue for hours, and a cancelled stop would leave the long naked.
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action="SELL",
+                    qty=qty,
+                    price=display_price,
+                    reason=result.reason,
+                    engine=self._engine,
+                    cancel_stops=True,
+                )
+                logger.info(
+                    "SELL pending approval: id=%s qty=%s",
+                    appr.get("id"),
+                    qty,
+                )
+                payload["order_id"] = None
+                payload["order_qty"] = qty
+                payload["pending_approval_id"] = appr.get("id")
+                payload["approval_required"] = True
+                payload["intent"] = "close_long"
+                payload["reason"] += " | Pending user approval"
+            else:
+                cancelled = self.service.cancel_open_stop_orders(symbol)
+                if cancelled:
+                    logger.info(
+                        "cancelled %s protective stop(s) before SELL", cancelled
+                    )
+                order = self.service.submit_order(symbol, qty, OrderSide.SELL)
+                logger.info(
+                    "SELL submitted: id=%s qty=%s type=%s size=%s",
+                    order.id,
+                    qty,
+                    order.type,
+                    self.config.size_summary(),
+                )
+                payload["order_id"] = str(order.id)
+                payload["order_qty"] = qty
+                payload["intent"] = "close_long"
         else:
             logger.info("no action (already in desired state)")
             payload["reason"] += " | no action (position state)"

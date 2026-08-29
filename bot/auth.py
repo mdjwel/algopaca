@@ -188,6 +188,10 @@ class AuthStore:
                     default_size_mode TEXT DEFAULT 'qty',
                     default_trade_qty REAL DEFAULT 1.0,
                     default_trade_notional REAL DEFAULT 100.0,
+                    require_approval INTEGER DEFAULT 0,
+                    notify_browser INTEGER DEFAULT 1,
+                    notify_email INTEGER DEFAULT 0,
+                    notification_email TEXT DEFAULT '',
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
@@ -235,6 +239,16 @@ class AuthStore:
                 conn.execute("ALTER TABLE user_credentials ADD COLUMN anthropic_api_key TEXT")
             if "xai_api_key" not in existing_creds:
                 conn.execute("ALTER TABLE user_credentials ADD COLUMN xai_api_key TEXT")
+
+            existing_prefs = {r["name"] for r in conn.execute("PRAGMA table_info(user_preferences)")}
+            if "require_approval" not in existing_prefs:
+                conn.execute("ALTER TABLE user_preferences ADD COLUMN require_approval INTEGER DEFAULT 0")
+            if "notify_browser" not in existing_prefs:
+                conn.execute("ALTER TABLE user_preferences ADD COLUMN notify_browser INTEGER DEFAULT 1")
+            if "notify_email" not in existing_prefs:
+                conn.execute("ALTER TABLE user_preferences ADD COLUMN notify_email INTEGER DEFAULT 0")
+            if "notification_email" not in existing_prefs:
+                conn.execute("ALTER TABLE user_preferences ADD COLUMN notification_email TEXT DEFAULT ''")
 
             conn.commit()
         # Seed demo user if table is empty
@@ -1384,6 +1398,10 @@ class AuthStore:
             "default_size_mode": "qty",
             "default_trade_qty": 1.0,
             "default_trade_notional": 100.0,
+            "require_approval": False,
+            "notify_browser": True,
+            "notify_email": False,
+            "notification_email": "",
             "updated_at": _now_iso(),
         }
         with _get_connection(self.db_path) as conn:
@@ -1392,7 +1410,8 @@ class AuthStore:
                 """
                 SELECT theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
                        chart_refresh_interval, compact_mode, timezone_display,
-                       default_size_mode, default_trade_qty, default_trade_notional, updated_at
+                       default_size_mode, default_trade_qty, default_trade_notional,
+                       require_approval, notify_browser, notify_email, notification_email, updated_at
                 FROM user_preferences
                 WHERE user_id = ?
                 """,
@@ -1415,6 +1434,10 @@ class AuthStore:
                 "default_size_mode": row["default_size_mode"] or "qty",
                 "default_trade_qty": float(row["default_trade_qty"] or 1.0),
                 "default_trade_notional": float(row["default_trade_notional"] or 100.0),
+                "require_approval": bool(row["require_approval"]),
+                "notify_browser": bool(row["notify_browser"]),
+                "notify_email": bool(row["notify_email"]),
+                "notification_email": row["notification_email"] or "",
                 "updated_at": row["updated_at"] or _now_iso(),
             }
 
@@ -1451,6 +1474,10 @@ class AuthStore:
         default_size_mode = "notional" if str(current.get("default_size_mode", "qty")).lower() == "notional" else "qty"
         default_trade_qty = max(0.01, float(current.get("default_trade_qty", 1.0)))
         default_trade_notional = max(1.0, float(current.get("default_trade_notional", 100.0)))
+        require_approval = 1 if current.get("require_approval") else 0
+        notify_browser = 1 if current.get("notify_browser") else 0
+        notify_email = 1 if current.get("notify_email") else 0
+        notification_email = str(current.get("notification_email", "")).strip()
 
         with _get_connection(self.db_path) as conn:
             cursor = conn.cursor()
@@ -1459,9 +1486,10 @@ class AuthStore:
                 INSERT INTO user_preferences (
                     user_id, theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
                     chart_refresh_interval, compact_mode, timezone_display,
-                    default_size_mode, default_trade_qty, default_trade_notional, updated_at
+                    default_size_mode, default_trade_qty, default_trade_notional,
+                    require_approval, notify_browser, notify_email, notification_email, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     theme = excluded.theme,
                     language = excluded.language,
@@ -1475,12 +1503,17 @@ class AuthStore:
                     default_size_mode = excluded.default_size_mode,
                     default_trade_qty = excluded.default_trade_qty,
                     default_trade_notional = excluded.default_trade_notional,
+                    require_approval = excluded.require_approval,
+                    notify_browser = excluded.notify_browser,
+                    notify_email = excluded.notify_email,
+                    notification_email = excluded.notification_email,
                     updated_at = excluded.updated_at
                 """,
                 (
                     user_id, theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
                     chart_refresh_interval, compact_mode, timezone_display,
-                    default_size_mode, default_trade_qty, default_trade_notional, now,
+                    default_size_mode, default_trade_qty, default_trade_notional,
+                    require_approval, notify_browser, notify_email, notification_email, now,
                 ),
             )
             conn.commit()

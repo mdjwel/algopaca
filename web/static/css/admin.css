@@ -452,16 +452,26 @@
   border: 1px solid var(--line);
   color: var(--text);
   font-family: var(--ui);
-  font-size: 0.84rem;
+  font-size: 0.85rem;
   font-weight: 500;
   height: 38px;
+  min-height: 38px;
+  max-height: 38px;
   line-height: 36px;
   border-radius: var(--radius-sm);
-  padding-left: 0.95rem;
-  padding-right: 2rem;
+  padding: 0 2rem 0 0.85rem;
   width: 100%;
-  transition: all 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   box-sizing: border-box;
+}
+
+.filter-select-shell .nice-select .current,
+.modal-select-shell .nice-select .current {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 36px;
 }
 
 .filter-select-shell .nice-select:hover,
@@ -469,31 +479,73 @@
   border-color: color-mix(in srgb, var(--text) 22%, transparent);
 }
 
+.filter-select-shell .nice-select:focus,
 .filter-select-shell .nice-select.open,
+.modal-select-shell .nice-select:focus,
 .modal-select-shell .nice-select.open {
   border-color: var(--copper);
   background: var(--input-bg);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--copper) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--copper) 20%, transparent);
+  outline: none;
+}
+
+.filter-select-shell .nice-select:after,
+.modal-select-shell .nice-select:after {
+  border-bottom: 2px solid var(--text-muted);
+  border-right: 2px solid var(--text-muted);
+  right: 0.85rem;
+  top: 50%;
+  margin-top: -4px;
+  width: 5px;
+  height: 5px;
+  transform-origin: 66% 66%;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.filter-select-shell .nice-select:hover:after,
+.modal-select-shell .nice-select:hover:after,
+.filter-select-shell .nice-select:focus:after,
+.modal-select-shell .nice-select:focus:after,
+.filter-select-shell .nice-select.open:after,
+.modal-select-shell .nice-select.open:after {
+  border-bottom-color: var(--copper);
+  border-right-color: var(--copper);
+}
+
+.filter-select-shell .nice-select.open:after,
+.modal-select-shell .nice-select.open:after {
+  transform: rotate(-135deg);
 }
 
 .filter-select-shell .nice-select .nice-select-dropdown,
 .modal-select-shell .nice-select .nice-select-dropdown {
-  background: var(--input-bg);
+  background: var(--surface-card, #0f1622);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);
   z-index: 100;
   margin-top: 4px;
+  width: 100%;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+}
+
+.filter-select-shell .nice-select .list,
+.modal-select-shell .nice-select .list {
+  padding: 0.25rem 0;
+  margin: 0;
 }
 
 .filter-select-shell .nice-select .option,
 .modal-select-shell .nice-select .option {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  font-family: var(--ui);
   line-height: 34px;
   min-height: 34px;
-  padding-left: 0.95rem;
-  padding-right: 0.95rem;
+  padding: 0 0.95rem;
   transition: background 0.12s ease, color 0.12s ease;
 }
 
@@ -505,6 +557,12 @@
 .modal-select-shell .nice-select .option.selected.focus {
   background: color-mix(in srgb, var(--copper) 12%, transparent);
   color: var(--copper);
+}
+
+.filter-select-shell .nice-select .option.selected,
+.modal-select-shell .nice-select .option.selected {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .admin-table-container {
@@ -964,7 +1022,7 @@
   position: absolute;
   right: 0.5rem;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) !important;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -974,11 +1032,14 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
-.btn-toggle-pw:hover {
+.btn-toggle-pw:hover,
+.btn-toggle-pw:focus,
+.btn-toggle-pw:active {
   color: var(--text);
+  transform: translateY(-50%) !important;
 }
 
 .checkbox-field {
@@ -1402,6 +1463,8 @@
 
 .modal-select-shell {
   flex: 1;
+  width: 100%;
+  position: relative;
 }
 
 #btn-modal-save-role {

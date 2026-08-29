@@ -104,6 +104,23 @@
             <div id="ai-watchlist" class="ai-watchlist" role="table" aria-label="Watchlist signals" data-i18n-aria-label="watchlist_signals" hidden></div>
           </section>
 
+          <!-- Pending Approvals Panel -->
+          <section class="panel pending-approvals-panel" id="pending-approvals-card" hidden>
+            <div class="panel-head">
+              <div class="panel-head-title-wrap">
+                <h2 data-i18n="pending_approvals">Pending Approvals</h2>
+                <span id="pending-approvals-badge" class="badge badge-amber">0</span>
+              </div>
+              <div class="panel-head-actions">
+                <button type="button" id="btn-approve-all" class="btn btn-sm btn-success" data-i18n="approve_all">Approve All</button>
+                <button type="button" id="btn-reject-all" class="btn btn-sm btn-ghost-danger" data-i18n="reject_all">Reject All</button>
+              </div>
+            </div>
+            <div class="pending-approvals-body">
+              <div id="pending-approvals-list" class="pending-approvals-list"></div>
+            </div>
+          </section>
+
           <section class="panel account-panel">
             <div class="panel-head">
               <h2 data-i18n="account">Account</h2>
@@ -521,6 +538,53 @@
                     <textarea id="field-instructions" name="ai_instructions" rows="4" placeholder="Preset playbook loads here. Edit to switch to Custom." data-i18n-placeholder="ai_instructions_placeholder"></textarea>
                   </label>
                   <p class="field-help" data-i18n="ai_instructions_help">Sent to the model each cycle with TA, news, calendar, and earnings. Editing text switches the preset to Custom.</p>
+                </div>
+              </details>
+
+              <!-- Execution & Notifications Accordion -->
+              <details class="field-group desk-accordion execution-controls-panel" id="desk-execution-controls-group">
+                <summary class="desk-accordion-head">
+                  <span class="desk-fold-caret" aria-hidden="true"></span>
+                  <span class="desk-accordion-title" data-i18n="execution_controls">Execution &amp; Notifications</span>
+                  <span id="desk-exec-summary-badge" class="desk-accordion-badge"></span>
+                </summary>
+                <div class="desk-accordion-body">
+                  <p class="field-help" data-i18n="execution_controls_help">Choose whether auto-trade orders require manual confirmation before sending to Alpaca, and configure multi-channel alerts.</p>
+                  
+                  <label class="check stack" for="field-require-approval">
+                    <input id="field-require-approval" name="require_approval" type="checkbox" />
+                    <span>
+                      <strong data-i18n="require_approval">Require order approval</strong>
+                      <span class="check-desc" data-i18n="require_approval_desc">Hold auto-trade signals in pending state until you click Approve</span>
+                    </span>
+                  </label>
+
+                  <div class="exec-notification-section">
+                    <div class="notification-channels-title" data-i18n="notification_channels">Notification Channels</div>
+
+                    <label class="check stack" for="field-notify-browser">
+                      <input id="field-notify-browser" name="notify_browser" type="checkbox" checked />
+                      <span>
+                        <strong data-i18n="notify_browser">Browser notifications</strong>
+                        <span class="check-desc" data-i18n="notify_browser_desc">Receive desktop browser push notifications when a signal or approval is ready</span>
+                      </span>
+                    </label>
+
+                    <label class="check stack" for="field-notify-email">
+                      <input id="field-notify-email" name="notify_email" type="checkbox" />
+                      <span>
+                        <strong data-i18n="notify_email">Email notifications</strong>
+                        <span class="check-desc" data-i18n="notify_email_desc">Send email alerts with order details and quick action links</span>
+                      </span>
+                    </label>
+
+                    <div id="email-notification-field" class="email-notification-field" hidden>
+                      <label for="field-notification-email"><span data-i18n="notification_email">Notification Email (optional)</span>
+                        <input id="field-notification-email" name="notification_email" type="email" placeholder="Leave empty to use account email" data-i18n-placeholder="notification_email_placeholder" autocomplete="email" />
+                      </label>
+                      <p class="field-help" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
+                    </div>
+                  </div>
                 </div>
               </details>
 

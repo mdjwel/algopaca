@@ -655,6 +655,62 @@
                   </div>
                 </div>
 
+                <div class="panel-divider"></div>
+
+                <div class="panel-head-sub">
+                  <h4 class="sub-heading" data-i18n="settings_auto_trade_approval_heading">Auto-Trade Approval &amp; Notifications</h4>
+                  <p class="sub-desc" data-i18n="settings_auto_trade_approval_desc">Default behavior for automated strategy signals and alert channels.</p>
+                </div>
+
+                <div class="settings-switches-grid">
+                  <div class="switch-item">
+                    <div class="switch-item-text">
+                      <strong class="switch-title" data-i18n="require_approval">Require Order Approval</strong>
+                      <span class="switch-desc" data-i18n="require_approval_desc">Hold auto-trade signals in pending state until you click Approve</span>
+                    </div>
+                    <div class="switch-item-actions">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="check-settings-require-approval" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="switch-item">
+                    <div class="switch-item-text">
+                      <strong class="switch-title" data-i18n="notify_browser">Browser Push Notifications</strong>
+                      <span class="switch-desc" data-i18n="notify_browser_desc">Receive desktop browser push notifications when a signal or approval is ready</span>
+                    </div>
+                    <div class="switch-item-actions">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="check-settings-notify-browser" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="switch-item">
+                    <div class="switch-item-text">
+                      <strong class="switch-title" data-i18n="notify_email">Email Notifications</strong>
+                      <span class="switch-desc" data-i18n="notify_email_desc">Send email alerts with order details and quick action links</span>
+                    </div>
+                    <div class="switch-item-actions">
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="check-settings-notify-email" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-form-row" id="wrap-settings-notification-email" hidden>
+                  <div class="field-wrap">
+                    <label for="input-settings-notification-email" data-i18n="notification_email">Custom Notification Email (optional)</label>
+                    <input type="email" id="input-settings-notification-email" class="field-input" placeholder="Leave empty to use account email" data-i18n-placeholder="notification_email_placeholder" />
+                    <p class="field-hint" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
+                  </div>
+                </div>
+
                 <div class="form-actions">
                   <button type="submit" class="btn btn-primary" id="btn-save-trading-defaults">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">

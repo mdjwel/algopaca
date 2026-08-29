@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import smtplib
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -735,6 +736,303 @@ def send_password_reset_email(
         reset_url=reset_url,
         lang=lang,
     )
+
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )
+
+
+def render_order_approval_email(
+    to_email: str,
+    order_details: dict[str, Any],
+    desk_url: str,
+    lang: str = "en",
+) -> tuple[str, str, str]:
+    """Generate (subject, body_text, body_html) for an auto-trade pending order approval notification."""
+    symbol = str(order_details.get("symbol", "N/A")).upper().strip()
+    action = str(order_details.get("action", "BUY")).upper().strip()
+    qty = order_details.get("qty", 1)
+    price = order_details.get("price", 0.0)
+    est_val = order_details.get("estimated_value")
+    if est_val is None and price and qty:
+        try:
+            est_val = round(float(qty) * float(price), 2)
+        except Exception:
+            est_val = None
+    engine = str(order_details.get("engine", order_details.get("strategy_mode", "Auto Trade"))).upper()
+    reason = str(order_details.get("reason", "Signal criteria met")).strip()
+    thesis = str(order_details.get("thesis", "")).strip()
+    stop_price = order_details.get("stop_price") or order_details.get("stop_loss")
+    env = str(order_details.get("environment", "Paper")).capitalize()
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    is_buy = action in ("BUY", "COVER")
+    accent_color = "#10b981" if is_buy else "#ef4444"
+    accent_gradient = (
+        "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+        if is_buy
+        else "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+    )
+
+    price_str = f"${float(price):,.2f}" if isinstance(price, (int, float)) and float(price) > 0 else f"${price}"
+    est_val_str = f"${float(est_val):,.2f}" if isinstance(est_val, (int, float)) and float(est_val) > 0 else "N/A"
+
+    is_bn = str(lang).strip().lower() == "bn"
+    if is_bn:
+        subject = f"⚠️ [অনুমোদন প্রয়োজন] {action} {qty} {symbol} · AlgoPaca অটো ট্রেড"
+        body_text = f"""নমস্কার,
+
+আপনার AlgoPaca অটো ট্রেডিং বট {symbol} এর জন্য একটি নতুন ট্রেড অর্ডার প্রস্তুত করেছে এবং আপনার অনুমোদনের অপেক্ষা করছে।
+
+অর্ডার বিবরণ:
+- সিম্বল: {symbol}
+- অ্যাকশন: {action}
+- শেয়ার পরিমাণ: {qty}
+- আনুমানিক মূল্য: {price_str}
+- মোট মূল্য: {est_val_str}
+- ইঞ্জিন / স্ট্র্যাটেজি: {engine}
+- পরিবেশ: {env}
+- যুক্তি / কারণ: {reason}
+{"- AI থিসিস: " + thesis if thesis else ""}
+{"- স্টপ লস: $" + str(stop_price) if stop_price else ""}
+- সময়: {now_str}
+
+অর্ডারটি পর্যালোচনা ও অনুমোদন করতে ডেস্কে প্রবেশ করুন:
+{desk_url}
+
+ধন্যবাদান্তে,
+AlgoPaca Automated Quantitative Trading Desk
+"""
+    else:
+        subject = f"⚠️ [Approval Required] {action} {qty} {symbol} · AlgoPaca Auto Trade"
+        body_text = f"""Hello,
+
+An automated trading signal from AlgoPaca requires your manual confirmation before the order can be placed.
+
+Order Details:
+- Symbol: {symbol}
+- Action: {action}
+- Quantity: {qty}
+- Estimated Mark Price: {price_str}
+- Estimated Value: {est_val_str}
+- Strategy Engine: {engine}
+- Mode / Environment: {env}
+- Rationale: {reason}
+{"- AI Thesis: " + thesis if thesis else ""}
+{"- Stop Loss: $" + str(stop_price) if stop_price else ""}
+- Timestamp: {now_str}
+
+Review and approve or reject this order on your trading desk:
+{desk_url}
+
+Best regards,
+AlgoPaca Automated Quantitative Trading Desk
+"""
+
+    safe_symbol = html.escape(symbol)
+    safe_action = html.escape(action)
+    safe_qty = html.escape(str(qty))
+    safe_price = f"${float(price):,.2f}" if isinstance(price, (int, float)) and price > 0 else f"${html.escape(str(price))}"
+    safe_est_val = f"${float(est_val):,.2f}" if isinstance(est_val, (int, float)) and est_val > 0 else "—"
+    safe_engine = html.escape(engine)
+    safe_reason = html.escape(reason)
+    safe_thesis = html.escape(thesis)
+    safe_env = html.escape(env)
+    safe_url = html.escape(desk_url)
+
+    stop_html = (
+        f"""<tr><td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Stop Loss:</td><td style="padding: 6px 0; color: #f87171; font-family: monospace; font-size: 13px; font-weight: 600; text-align: right;">${html.escape(str(stop_price))}</td></tr>"""
+        if stop_price
+        else ""
+    )
+    thesis_html = (
+        f"""<div style="margin-top: 14px; padding: 12px 14px; background: rgba(30, 41, 59, 0.7); border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 12px; color: #cbd5e1; line-height: 1.5;"><strong>AI Rationale:</strong> {safe_thesis}</div>"""
+        if thesis
+        else ""
+    )
+
+    btn_label = (
+        "ট্রেড পর্যালোচনা ও অনুমোদন করুন"
+        if is_bn
+        else "Review &amp; Approve Order on Desk"
+    )
+    card_title = f"ট্রেড অনুমোদন প্রয়োজন &bull; {safe_action} {safe_symbol}" if is_bn else f"Action Required: Approve {safe_action} {safe_symbol}"
+
+    body_html = f"""<!DOCTYPE html>
+<html lang="{html.escape(lang)}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{html.escape(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #080d14; color: #cbd5e1; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #080d14; padding: 36px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 540px; background-color: #121927; border: 1px solid #223044; border-radius: 14px; overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,0.6);">
+          <!-- Top Colored Gradient Bar -->
+          <tr>
+            <td style="height: 4px; background: {accent_gradient}; font-size: 1px; line-height: 1px;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding: 28px 24px;">
+              <!-- Header -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px;">
+                <tr>
+                  <td>
+                    <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: {accent_color}22; color: {accent_color}; border: 1px solid {accent_color}44;">
+                      {safe_action} · {safe_env}
+                    </span>
+                    <h2 style="margin: 10px 0 4px 0; color: #ffffff; font-size: 20px; font-weight: 700;">
+                      {card_title}
+                    </h2>
+                    <p style="margin: 0; color: #94a3b8; font-size: 13px;">
+                      An auto-trade signal was generated and requires your confirmation before execution.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Order Specs Box -->
+              <div style="background: #0d131f; border: 1px solid #1e293b; border-radius: 10px; padding: 18px 20px; margin-bottom: 22px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Symbol:</td>
+                    <td style="padding: 6px 0; color: #f8fafc; font-family: monospace; font-size: 14px; font-weight: 700; text-align: right;">{safe_symbol}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Action:</td>
+                    <td style="padding: 6px 0; color: {accent_color}; font-family: monospace; font-size: 13px; font-weight: 700; text-align: right;">{safe_action}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Quantity:</td>
+                    <td style="padding: 6px 0; color: #f8fafc; font-family: monospace; font-size: 13px; text-align: right;">{safe_qty} shares</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Est. Mark Price:</td>
+                    <td style="padding: 6px 0; color: #f8fafc; font-family: monospace; font-size: 13px; text-align: right;">{safe_price}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Est. Total Value:</td>
+                    <td style="padding: 6px 0; color: #38bdf8; font-family: monospace; font-size: 13px; font-weight: 600; text-align: right;">{safe_est_val}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Strategy Engine:</td>
+                    <td style="padding: 6px 0; color: #cbd5e1; font-size: 13px; text-align: right;">{safe_engine}</td>
+                  </tr>
+                  {stop_html}
+                </table>
+                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #1e293b; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                  <strong>Reason:</strong> {safe_reason}
+                </div>
+                {thesis_html}
+              </div>
+
+              <!-- CTA Button -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 16px;">
+                <tr>
+                  <td align="center">
+                    <a href="{safe_url}" target="_blank" style="display: block; width: 100%; text-align: center; background: {accent_gradient}; color: #ffffff; font-size: 15px; font-weight: 700; padding: 14px 24px; border-radius: 8px; text-decoration: none; box-sizing: border-box; box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
+                      {btn_label} &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; text-align: center; font-size: 11px; color: #64748b;">
+                You can also approve or reject this trade from the AlgoPaca Auto Trade desk.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #0d131f; border-top: 1px solid #1e293b; padding: 16px 24px; text-align: center; font-size: 11px; color: #64748b;">
+              AlgoPaca Automated Quantitative Trading Desk &bull; {html.escape(now_str)}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+    return subject, body_text, body_html
+
+
+def send_order_approval_email(
+    to_email: str,
+    order_details: dict[str, Any],
+    desk_url: str,
+    lang: str = "en",
+) -> bool:
+    """Send an order approval request email via SMTP."""
+    subject, body_text, body_html = render_order_approval_email(
+        to_email=to_email,
+        order_details=order_details,
+        desk_url=desk_url,
+        lang=lang,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )
+
+
+def send_trade_notification_email(
+    to_email: str,
+    order_details: dict[str, Any],
+    desk_url: str,
+    lang: str = "en",
+) -> bool:
+    """Send an executed trade alert email via SMTP."""
+    symbol = str(order_details.get("symbol", "N/A")).upper()
+    action = str(order_details.get("action", order_details.get("signal", "BUY"))).upper()
+    qty = order_details.get("qty", order_details.get("order_qty", 1))
+    price = order_details.get("price", 0.0)
+    order_id = str(order_details.get("order_id", "") or "")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    subject = f"⚡ [Trade Executed] {action} {qty} {symbol} · AlgoPaca"
+    body_text = f"""Hello,
+
+An automated order has been executed on your AlgoPaca trading desk.
+
+- Symbol: {symbol}
+- Action: {action}
+- Quantity: {qty}
+- Price: ${price}
+- Order ID: {order_id}
+- Timestamp: {now_str}
+
+View open orders and positions:
+{desk_url}
+
+Best regards,
+AlgoPaca Team
+"""
+    body_html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; background: #080d14; color: #cbd5e1; padding: 30px;">
+  <div style="max-width: 500px; margin: 0 auto; background: #121927; border: 1px solid #223044; border-radius: 12px; padding: 24px;">
+    <h2 style="color: #ffffff; margin-top: 0;">⚡ Trade Executed: {html.escape(action)} {html.escape(symbol)}</h2>
+    <p>An automated trade order has been submitted to your broker.</p>
+    <ul>
+      <li><strong>Symbol:</strong> {html.escape(symbol)}</li>
+      <li><strong>Action:</strong> {html.escape(action)}</li>
+      <li><strong>Quantity:</strong> {html.escape(str(qty))}</li>
+      <li><strong>Price:</strong> ${html.escape(str(price))}</li>
+      <li><strong>Order ID:</strong> {html.escape(order_id)}</li>
+    </ul>
+    <p><a href="{html.escape(desk_url)}" style="color: #38bdf8;">Open AlgoPaca Desk &rarr;</a></p>
+  </div>
+</body>
+</html>"""
 
     return send_email(
         to_email=to_email,

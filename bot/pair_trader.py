@@ -31,7 +31,12 @@ class PairTradingBot:
     (research backtests rotate full equity). Signals always use daily bars.
     """
 
-    def __init__(self, config: Config, service: AlpacaService | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        service: AlpacaService | None = None,
+        approval_handler: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
         if config.bar_timeframe != "1Day":
             logger.warning(
                 "Pair mode forces 1Day bars (configured %s)", config.bar_timeframe
@@ -39,6 +44,7 @@ class PairTradingBot:
             config = replace(config, bar_timeframe="1Day")
         self.config = config
         self.service = service or AlpacaService(config)
+        self.approval_handler = approval_handler
         long_s, short_s = parse_pair_symbols(
             config.symbols,
             long_symbol=config.pair_long_symbol,
@@ -210,6 +216,31 @@ class PairTradingBot:
                 "qty": qty,
                 "reason": reason + " | skipped: qty",
             }
+        if self.config.require_approval and self.approval_handler:
+            # The exit path has no quote of its own; fetch one so the approval
+            # card and email show a real estimate instead of $0.00.
+            try:
+                price = float(self.service.get_mark_price(symbol)["price"])
+            except Exception:
+                price = 0.0
+            appr = self.approval_handler(
+                symbol=symbol,
+                action="SELL",
+                qty=qty_out,
+                price=price,
+                reason=reason,
+                engine="pair",
+            )
+            return {
+                "symbol": symbol,
+                "side": "sell",
+                "qty": qty_out,
+                "price": price,
+                "order_id": None,
+                "pending_approval_id": appr.get("id"),
+                "approval_required": True,
+                "reason": reason + " | Pending user approval",
+            }
         order = self.service.submit_order(symbol, qty_out, OrderSide.SELL)
         return {
             "symbol": symbol,
@@ -231,6 +262,25 @@ class PairTradingBot:
                 "qty": qty,
                 "price": price,
                 "reason": reason + " | skipped: qty",
+            }
+        if self.config.require_approval and self.approval_handler:
+            appr = self.approval_handler(
+                symbol=symbol,
+                action="BUY",
+                qty=qty_out,
+                price=price,
+                reason=reason,
+                engine="pair",
+            )
+            return {
+                "symbol": symbol,
+                "side": "buy",
+                "qty": qty_out,
+                "price": price,
+                "order_id": None,
+                "pending_approval_id": appr.get("id"),
+                "approval_required": True,
+                "reason": reason + " | Pending user approval",
             }
         order = self.service.submit_order(symbol, qty_out, OrderSide.BUY)
         return {

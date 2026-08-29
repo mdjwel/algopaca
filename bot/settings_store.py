@@ -92,6 +92,10 @@ _DEFAULTS: dict[str, Any] = {
     "options_otm_pct": 5.0,
     "options_max_contracts": 1,
     "options_max_premium_pct": 1.0,
+    "require_approval": False,
+    "notify_browser": True,
+    "notify_email": False,
+    "notification_email": "",
 }
 
 

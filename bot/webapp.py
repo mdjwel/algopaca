@@ -130,6 +130,20 @@ class SettingsIn(BaseModel):
     options_otm_pct: Optional[float] = Field(None, ge=0.5, le=25.0)
     options_max_contracts: Optional[int] = Field(None, ge=1, le=20)
     options_max_premium_pct: Optional[float] = Field(None, ge=0.0, le=10.0)
+    require_approval: Optional[bool] = None
+    notify_browser: Optional[bool] = None
+    notify_email: Optional[bool] = None
+    notification_email: Optional[str] = None
+
+
+# Approval/notification toggles live on both the Auto-Trade desk and the User
+# Settings page; these are the keys mirrored between the two stores.
+APPROVAL_PREF_KEYS = (
+    "require_approval",
+    "notify_browser",
+    "notify_email",
+    "notification_email",
+)
 
 
 class LangIn(BaseModel):
@@ -539,6 +553,10 @@ class UserPreferencesIn(BaseModel):
     default_size_mode: Optional[str] = "qty"
     default_trade_qty: Optional[float] = Field(1.0, gt=0)
     default_trade_notional: Optional[float] = Field(100.0, gt=0)
+    require_approval: Optional[bool] = False
+    notify_browser: Optional[bool] = True
+    notify_email: Optional[bool] = False
+    notification_email: Optional[str] = ""
 
 
 class UserTerminateSessionIn(BaseModel):
@@ -976,7 +994,13 @@ def api_user_preferences_get(user: dict = Depends(require_auth)) -> dict:
 def api_user_preferences_save(body: UserPreferencesIn, user: dict = Depends(require_auth)) -> dict:
     """Update UI themes, language, and trading defaults for current user."""
     try:
-        saved = AUTH_STORE.save_user_preferences(user["id"], body.model_dump(exclude_unset=True))
+        payload = body.model_dump(exclude_unset=True)
+        saved = AUTH_STORE.save_user_preferences(user["id"], payload)
+        # The approval/notification toggles only take effect through the desk's
+        # RunSettings, so push them across rather than leaving them inert here.
+        desk_keys = {k: payload[k] for k in APPROVAL_PREF_KEYS if k in payload}
+        if desk_keys:
+            get_user_state(user["id"]).update_settings(desk_keys)
         return {"ok": True, "preferences": saved, "message": "Preferences saved successfully."}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1157,11 +1181,33 @@ def manual_context(symbol: str = "AAPL", user: dict = Depends(require_auth)) -> 
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+def _mirror_approval_prefs_from_desk(user_id: int, payload: dict) -> None:
+    """Keep the User Settings copies of the approval toggles in step.
+
+    The engines read these off the desk's RunSettings, but Settings → Trading
+    defaults shows them too. Without this write-back the two screens disagree
+    about whether approval is required.
+    """
+    mirrored = {
+        key: payload[key]
+        for key in APPROVAL_PREF_KEYS
+        if payload.get(key) is not None
+    }
+    if not mirrored:
+        return
+    try:
+        AUTH_STORE.save_user_preferences(user_id, mirrored)
+    except Exception:
+        log.warning("Could not mirror approval prefs for user %s", user_id)
+
+
 @app.post("/api/settings")
 def save_settings(body: SettingsIn, user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     try:
-        state.update_settings(body.model_dump())
+        payload = body.model_dump()
+        state.update_settings(payload)
+        _mirror_approval_prefs_from_desk(user["id"], payload)
         return {
             "ok": True,
             "settings": state.snapshot()["settings"],
@@ -1487,6 +1533,7 @@ def run_once(
     try:
         payload = body.model_dump()
         state.update_settings(payload)
+        _mirror_approval_prefs_from_desk(user["id"], payload)
         result = state.run_once()
         return {"ok": True, "result": result, "state": state.snapshot()}
     except HTTPException:
@@ -1812,6 +1859,7 @@ def loop_start(
     try:
         payload = body.model_dump()
         state.update_settings(payload)
+        _mirror_approval_prefs_from_desk(user["id"], payload)
         state.start_loop()
         return {"ok": True, "state": state.snapshot()}
     except HTTPException:
@@ -1839,6 +1887,83 @@ def clear_history(user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     state.clear_history()
     return {"ok": True, "state": state.snapshot()}
+
+
+# ---------------------------------------------------------------------------
+# Auto-Trade Pending Approvals Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/auto-trade/approvals")
+def get_pending_approvals(user: dict = Depends(require_auth)) -> dict:
+    """List pending auto-trade order approvals awaiting confirmation."""
+    state = get_user_state(user["id"])
+    return {
+        "ok": True,
+        "pending_approvals": state.list_pending_approvals(),
+        "all_approvals": state.list_all_approvals(),
+    }
+
+
+@app.post("/api/auto-trade/approvals/{approval_id}/approve")
+def approve_auto_trade_order(
+    approval_id: str, user: dict = Depends(require_auth)
+) -> dict:
+    """Approve and execute a pending auto-trade order."""
+    state = get_user_state(user["id"])
+    try:
+        return state.approve_pending_order(approval_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=humanize_alpaca_error(exc)
+        ) from exc
+
+
+@app.post("/api/auto-trade/approvals/{approval_id}/reject")
+def reject_auto_trade_order(
+    approval_id: str, user: dict = Depends(require_auth)
+) -> dict:
+    """Reject and dismiss a pending auto-trade order."""
+    state = get_user_state(user["id"])
+    try:
+        return state.reject_pending_order(approval_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/auto-trade/approvals/approve-all")
+def approve_all_auto_trade_orders(user: dict = Depends(require_auth)) -> dict:
+    """Approve all pending auto-trade orders."""
+    state = get_user_state(user["id"])
+    try:
+        return state.approve_all_pending_orders()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=humanize_alpaca_error(exc)
+        ) from exc
+
+
+@app.post("/api/auto-trade/approvals/reject-all")
+def reject_all_auto_trade_orders(user: dict = Depends(require_auth)) -> dict:
+    """Reject all pending auto-trade orders."""
+    state = get_user_state(user["id"])
+    try:
+        return state.reject_all_pending_orders()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/auto-trade/approvals/clear")
+def clear_resolved_auto_trade_approvals(user: dict = Depends(require_auth)) -> dict:
+    """Clear non-pending (resolved) auto-trade approval history."""
+    state = get_user_state(user["id"])
+    try:
+        return state.clear_resolved_approvals()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

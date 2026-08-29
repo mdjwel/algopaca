@@ -53,7 +53,12 @@ class LsTradingBot:
     Position size uses equity × risk% / ATR stop distance (desk qty is fallback).
     """
 
-    def __init__(self, config: Config, service: AlpacaService | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        service: AlpacaService | None = None,
+        approval_handler: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
         if config.bar_timeframe != "1Day":
             logger.warning(
                 "LS mode forces 1Day bars (configured %s)", config.bar_timeframe
@@ -68,6 +73,7 @@ class LsTradingBot:
             config = replace(config, stop_loss_pct=0.0)
         self.config = config
         self.service = service or AlpacaService(config)
+        self.approval_handler = approval_handler
         self.strategy = LongShortRegimeStrategy(
             ema_fast=int(getattr(config, "ls_ema_fast", 21) or 21),
             ema_slow=int(getattr(config, "ls_ema_slow", 55) or 55),
@@ -296,7 +302,31 @@ class LsTradingBot:
                     "reason": reason + " | skipped: open orders",
                     "order_id": None,
                 }
-            if side == OrderSide.SELL and position_qty > 0:
+            closes_long = side == OrderSide.SELL and position_qty > 0
+            if self.config.require_approval and self.approval_handler:
+                # Stage before pulling the resting stop — the ticket may wait in
+                # the queue, and a cancelled stop leaves the long unprotected.
+                act = "BUY" if side == OrderSide.BUY else "SELL"
+                appr = self.approval_handler(
+                    symbol=symbol,
+                    action=act,
+                    qty=round(qty, 6),
+                    price=display_price,
+                    reason=reason,
+                    engine="ls",
+                    cancel_stops=closes_long,
+                )
+                return {
+                    "symbol": symbol,
+                    "side": side.value.lower(),
+                    "qty": round(qty, 6),
+                    "price": display_price,
+                    "reason": reason + " | Pending user approval",
+                    "order_id": None,
+                    "pending_approval_id": appr.get("id"),
+                    "approval_required": True,
+                }
+            if closes_long:
                 try:
                     cancelled = self.service.cancel_open_stop_orders(symbol)
                     if cancelled:

@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -81,7 +82,12 @@ from bot.config import (
     paper_mode_from_env,
     resolve_size_mode,
 )
-from bot.desk_risk import atr_from_bars, risk_qty_for, stop_distance_for
+from bot.desk_risk import (
+    arm_protective_stop,
+    atr_from_bars,
+    risk_qty_for,
+    stop_distance_for,
+)
 from bot.earnings import fetch_earnings
 from bot.manual_guards import manual_entry_breaches, portfolio_heat
 from bot.env_store import mask_secret, remove_env_keys, upsert_env_values
@@ -112,6 +118,7 @@ from bot.pair_presets import (
     normalize_weak_side,
     resolve_preset_id as resolve_pair_preset_id,
 )
+from bot.approval_store import approvals_path_for, load_approvals, save_approvals
 from bot.pair_strategy import parse_pair_symbols
 from bot.pair_trader import PairTradingBot
 from bot.settings_store import SETTINGS_PATH, load_settings, save_settings
@@ -189,6 +196,10 @@ class RunSettings:
     options_otm_pct: float = 5.0
     options_max_contracts: int = 1
     options_max_premium_pct: float = 1.0
+    require_approval: bool = False
+    notify_browser: bool = True
+    notify_email: bool = False
+    notification_email: str = ""
 
 
 ALLOWED_TIMEFRAMES = ("1Min", "5Min", "15Min", "1Hour", "1Day")
@@ -305,6 +316,8 @@ class AppState:
         self._followon_path_live = self.workspace_dir / ".followon_plans.live.json"
         self._dip_hunt_path_paper = self.workspace_dir / ".dip_hunt_plans.paper.json"
         self._dip_hunt_path_live = self.workspace_dir / ".dip_hunt_plans.live.json"
+        self._approvals_path_paper = approvals_path_for(self.workspace_dir, paper=True)
+        self._approvals_path_live = approvals_path_for(self.workspace_dir, paper=False)
         self.lock = threading.Lock()
         self.settings = RunSettings()
         self.loop_running = False
@@ -315,6 +328,12 @@ class AppState:
         self._active_poll: int | None = None
         self.result_history: deque[dict[str, Any]] = deque(maxlen=100)
         self._history_seq: int = 0
+        self.pending_approvals: deque[dict[str, Any]] = deque(maxlen=200)
+        # Which ledger the deque currently holds; None forces the first load.
+        self._approvals_paper: bool | None = None
+        self._approval_seq: int = 0
+        # Tickets mid-flight at the broker, so a double-click cannot send twice.
+        self._approvals_inflight: set[str] = set()
         # Cycle outcomes that never become a fill — risk-gate blocks, market
         # closed, open-order skips, stop moves, scale-outs. History's execution
         # audit reads these; without them those events exist only in the log.
@@ -423,6 +442,7 @@ class AppState:
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
+            self._sync_approvals_locked()
             key_status = self._key_status_locked()
             started = self.loop_started_at
             elapsed = None
@@ -446,6 +466,7 @@ class AppState:
                 "last_result": self.last_result,
                 "last_ai_results": self.last_ai_results,
                 "result_history": list(self.result_history),
+                "pending_approvals": list(self.pending_approvals),
                 "loop_history": list(self.loop_sessions),
                 "quote": self.quote,
                 "last_position": self.last_position,
@@ -1344,6 +1365,28 @@ class AppState:
                 data.get("xai_model") or self.settings.xai_model
             ).strip() or self.settings.xai_model
 
+            if data.get("require_approval") is None:
+                require_approval = bool(self.settings.require_approval)
+            else:
+                raw_appr = data.get("require_approval")
+                require_approval = raw_appr in (True, 1, "1", "true", "True", "yes", "on") if isinstance(raw_appr, (bool, int, str)) else bool(raw_appr)
+
+            if data.get("notify_browser") is None:
+                notify_browser = bool(self.settings.notify_browser)
+            else:
+                raw_nb = data.get("notify_browser")
+                notify_browser = raw_nb in (True, 1, "1", "true", "True", "yes", "on") if isinstance(raw_nb, (bool, int, str)) else bool(raw_nb)
+
+            if data.get("notify_email") is None:
+                notify_email = bool(self.settings.notify_email)
+            else:
+                raw_ne = data.get("notify_email")
+                notify_email = raw_ne in (True, 1, "1", "true", "True", "yes", "on") if isinstance(raw_ne, (bool, int, str)) else bool(raw_ne)
+
+            notification_email = str(
+                data.get("notification_email", self.settings.notification_email) or ""
+            ).strip()
+
             self.settings = RunSettings(
                 symbol=symbol,
                 symbols=symbols_raw.upper(),
@@ -1404,6 +1447,10 @@ class AppState:
                 options_otm_pct=options_otm_pct,
                 options_max_contracts=options_max_contracts,
                 options_max_premium_pct=options_max_premium_pct,
+                require_approval=require_approval,
+                notify_browser=notify_browser,
+                notify_email=notify_email,
+                notification_email=notification_email,
             )
             if self.settings.fast_sma >= self.settings.slow_sma:
                 raise ValueError("Fast SMA must be smaller than Slow SMA")
@@ -1539,17 +1586,27 @@ class AppState:
             options_otm_pct=s.options_otm_pct,
             options_max_contracts=s.options_max_contracts,
             options_max_premium_pct=s.options_max_premium_pct,
+            require_approval=s.require_approval,
+            notify_browser=s.notify_browser,
+            notify_email=s.notify_email,
+            notification_email=s.notification_email,
         )
 
     def _build_algo_bot(self) -> TradingBot:
         """SMA or buy-the-dip bot (TradingBot branches on strategy_mode)."""
-        return TradingBot(self._base_config())
+        return TradingBot(
+            self._base_config(), approval_handler=self.create_pending_approval
+        )
 
     def _build_pair_bot(self) -> PairTradingBot:
-        return PairTradingBot(self._base_config())
+        return PairTradingBot(
+            self._base_config(), approval_handler=self.create_pending_approval
+        )
 
     def _build_ls_bot(self) -> LsTradingBot:
-        return LsTradingBot(self._base_config())
+        return LsTradingBot(
+            self._base_config(), approval_handler=self.create_pending_approval
+        )
 
     def _build_ai_bot(self) -> AiTradingBot:
         config = self._base_config()
@@ -1561,7 +1618,7 @@ class AppState:
             raise ValueError("Anthropic API key missing — paste it on API Keys")
         if config.ai_provider == "xai" and not config.xai_api_key:
             raise ValueError("xAI API key missing — paste it on API Keys")
-        return AiTradingBot(config)
+        return AiTradingBot(config, approval_handler=self.create_pending_approval)
 
     def _trim_backtest_bars(
         self, bars: pd.DataFrame, *, days_i: int, end: datetime
@@ -8255,6 +8312,379 @@ class AppState:
             "failed_count": failed,
             "results": results,
         }
+
+    # -----------------------------------------------------------------------
+    # Auto-Trade Pending Approvals & Notification Dispatches
+    # -----------------------------------------------------------------------
+
+    def _approvals_path_locked(self, *, paper: bool) -> Path:
+        return self._approvals_path_paper if paper else self._approvals_path_live
+
+    def _sync_approvals_locked(self) -> None:
+        """Point the deque at the ledger for the account currently selected.
+
+        Paper and live keep separate files (same rule as reinvest/follow-on
+        plans), so flipping the desk's trading mode must swap the queue rather
+        than carry paper tickets into a live account.
+        """
+        try:
+            creds = AUTH_STORE.get_user_credentials(self.user_id)
+            paper = creds.get("trading_mode", "paper") != "live"
+        except Exception:
+            paper = True
+        if paper == self._approvals_paper:
+            return
+        self._approvals_paper = paper
+        try:
+            loaded = load_approvals(self._approvals_path_locked(paper=paper))
+        except Exception as exc:
+            logger.warning("Failed to load approvals: %s", exc)
+            loaded = {}
+        items = sorted(
+            loaded.values(), key=lambda p: p.get("created_ts") or 0.0, reverse=True
+        )
+        self.pending_approvals.clear()
+        self.pending_approvals.extend(items)
+        self._approval_seq = max(self._approval_seq, len(items))
+
+    def _persist_approvals_locked(self) -> None:
+        try:
+            paper = self._approvals_paper
+            if paper is None:
+                return
+            approvals_dict = {
+                item["id"]: item for item in self.pending_approvals if item.get("id")
+            }
+            save_approvals(approvals_dict, self._approvals_path_locked(paper=paper))
+        except Exception as exc:
+            logger.warning("Failed to persist approvals: %s", exc)
+
+    def create_pending_approval(
+        self,
+        symbol: str,
+        action: str,
+        qty: float,
+        price: float,
+        *,
+        stop_price: float | None = None,
+        stop_distance: float | None = None,
+        take_profit: float | None = None,
+        reason: str = "",
+        engine: str = "",
+        thesis: str = "",
+        confidence: float | None = None,
+        protect: bool | None = None,
+        cancel_stops: bool = False,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create and store an auto-trade pending approval awaiting user confirmation."""
+        sym_clean = symbol.upper().strip()
+        act_clean = action.upper().strip()
+        with self.lock:
+            self._sync_approvals_locked()
+            for existing in self.pending_approvals:
+                if (
+                    existing.get("status") == "pending"
+                    and existing.get("symbol") == sym_clean
+                    and existing.get("action") == act_clean
+                ):
+                    return existing
+
+            self._approval_seq += 1
+            now_ts = time.time()
+            appr_id = f"appr_{int(now_ts)}_{self._approval_seq}_{uuid4().hex[:6]}"
+            now_iso = datetime.fromtimestamp(now_ts, timezone.utc).isoformat()
+            env = "paper" if self._approvals_paper is not False else "live"
+            price_flt = float(price or 0.0)
+            qty_flt = float(qty)
+            item = {
+                "id": appr_id,
+                "created_at": now_iso,
+                "created_ts": now_ts,
+                "symbol": sym_clean,
+                "action": act_clean,
+                "side": act_clean.lower(),
+                "qty": qty_flt,
+                "price": price_flt,
+                "estimated_value": round(qty_flt * price_flt, 2) if price_flt > 0 else None,
+                "stop_price": stop_price,
+                "stop_distance": stop_distance,
+                "take_profit": take_profit,
+                "reason": reason,
+                "engine": engine or self.settings.strategy_mode,
+                "strategy_mode": self.settings.strategy_mode,
+                "thesis": thesis,
+                "confidence": confidence,
+                "protect": protect,
+                "cancel_stops": bool(cancel_stops),
+                "environment": env,
+                "status": "pending",  # pending | approved | rejected
+                "extra": extra or {},
+            }
+            self.pending_approvals.appendleft(item)
+            self._persist_approvals_locked()
+
+        # Dispatch email notification asynchronously if enabled
+        if self.settings.notify_email:
+            self._dispatch_approval_email_async(item)
+
+        return item
+
+    def _get_target_notification_email(self) -> str:
+        """Resolve recipient email: custom notification_email or user profile email."""
+        with self.lock:
+            custom = (self.settings.notification_email or "").strip()
+        if custom:
+            return custom
+        user = AUTH_STORE.get_user_by_id(self.user_id)
+        return (user or {}).get("email", "")
+
+    def _dispatch_approval_email_async(self, item: dict[str, Any]) -> None:
+        target_email = self._get_target_notification_email()
+        if not target_email:
+            return
+
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+        desk_url = f"{base_url}/auto-trade?approval={item['id']}"
+        lang = self.settings.lang
+
+        def _send() -> None:
+            try:
+                from bot.email_service import send_order_approval_email
+                send_order_approval_email(
+                    to_email=target_email,
+                    order_details=item,
+                    desk_url=desk_url,
+                    lang=lang,
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch auto-trade approval email: %s", exc)
+
+        threading.Thread(target=_send, daemon=True).start()
+
+    def _dispatch_trade_executed_email_async(self, item: dict[str, Any]) -> None:
+        target_email = self._get_target_notification_email()
+        if not target_email:
+            return
+
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+        desk_url = f"{base_url}/orders"
+        lang = self.settings.lang
+
+        def _send() -> None:
+            try:
+                from bot.email_service import send_trade_notification_email
+                send_trade_notification_email(
+                    to_email=target_email,
+                    order_details=item,
+                    desk_url=desk_url,
+                    lang=lang,
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch auto-trade executed email: %s", exc)
+
+        threading.Thread(target=_send, daemon=True).start()
+
+    def list_pending_approvals(self) -> list[dict[str, Any]]:
+        with self.lock:
+            self._sync_approvals_locked()
+            return [
+                dict(item)
+                for item in self.pending_approvals
+                if item.get("status") == "pending"
+            ]
+
+    def list_all_approvals(self) -> list[dict[str, Any]]:
+        """Pending plus resolved tickets, newest first."""
+        with self.lock:
+            self._sync_approvals_locked()
+            return [dict(item) for item in self.pending_approvals]
+
+    def _claim_pending_approval(self, approval_id: str) -> dict[str, Any]:
+        """Reserve a still-pending ticket, or explain why it cannot be acted on.
+
+        The broker round-trip runs outside the lock, so the id is held in
+        ``_approvals_inflight`` for the duration — otherwise two clicks on
+        Approve would both see ``pending`` and submit the order twice.
+        """
+        with self.lock:
+            self._sync_approvals_locked()
+            for item in self.pending_approvals:
+                if item.get("id") != approval_id:
+                    continue
+                if item.get("status") != "pending":
+                    raise ValueError(
+                        f"Order '{approval_id}' is already {item.get('status')}"
+                    )
+                if approval_id in self._approvals_inflight:
+                    raise ValueError(f"Order '{approval_id}' is already being sent")
+                self._approvals_inflight.add(approval_id)
+                return item
+        raise ValueError(f"Approval order '{approval_id}' not found")
+
+    def _release_approval(self, approval_id: str) -> None:
+        with self.lock:
+            self._approvals_inflight.discard(approval_id)
+
+    def approve_pending_order(self, approval_id: str) -> dict[str, Any]:
+        target = self._claim_pending_approval(approval_id)
+        try:
+            return self._execute_approved_order(target)
+        finally:
+            self._release_approval(approval_id)
+
+    def _execute_approved_order(self, target: dict[str, Any]) -> dict[str, Any]:
+        symbol = target["symbol"]
+        action = str(target["action"]).upper()
+        qty = target["qty"]
+        stop_price = target.get("stop_price")
+        protect = target.get("protect")
+
+        self._require_live_execution()
+        config = self._base_config()
+        service = AlpacaService(config)
+
+        side = OrderSide.BUY if action in ("BUY", "COVER") else OrderSide.SELL
+
+        # Closing tickets stage *before* the engine pulls the resting stop, so
+        # the position stays protected while it waits. Clear it here instead —
+        # the stop's reserved shares would otherwise reject the exit.
+        if target.get("cancel_stops"):
+            try:
+                cancelled = service.cancel_open_stop_orders(symbol)
+                if cancelled:
+                    logger.info(
+                        "cancelled %s protective stop(s) before approved %s %s",
+                        cancelled,
+                        action,
+                        symbol,
+                    )
+            except Exception as exc:
+                logger.warning("stop cancel failed for %s: %s", symbol, exc)
+
+        order = service.submit_order(
+            symbol,
+            qty,
+            side,
+            protect=protect,
+            stop_price=stop_price,
+        )
+        order_id = str(getattr(order, "id", "") or "")
+
+        executed_trade = {
+            "symbol": symbol,
+            "signal": "buy" if side == OrderSide.BUY else "sell",
+            "side": "buy" if side == OrderSide.BUY else "sell",
+            "order_id": order_id,
+            "order_qty": qty,
+            "price": target.get("price") or 0.0,
+            "reason": target.get("reason") or "Approved auto-trade order",
+            "engine": target.get("engine") or "auto",
+        }
+
+        # Entries the engine would have protected itself: submit_order can only
+        # attach an OTO leg during regular hours, so mirror the engines' resting
+        # stop fallback instead of leaving an approved entry naked.
+        if action in ("BUY", "SHORT"):
+            arm_protective_stop(
+                service, symbol, executed_trade, target.get("stop_distance")
+            )
+
+        with self.lock:
+            target["status"] = "approved"
+            target["order_id"] = order_id
+            target["approved_at"] = datetime.now(timezone.utc).isoformat()
+            if executed_trade.get("stop_loss"):
+                target["stop_loss"] = executed_trade["stop_loss"]
+            self._persist_approvals_locked()
+            resolved = dict(target)
+            notify_email = self.settings.notify_email
+
+        # _record_trade_history takes self.lock itself — never call it holding one.
+        self._record_trade_history([executed_trade])
+
+        if notify_email:
+            self._dispatch_trade_executed_email_async(executed_trade)
+
+        return {
+            "ok": True,
+            "approval": resolved,
+            "order_id": order_id,
+            "state": self.snapshot(),
+        }
+
+    def reject_pending_order(self, approval_id: str) -> dict[str, Any]:
+        target = self._claim_pending_approval(approval_id)
+        try:
+            resolved = self._resolve_rejection(target)
+        finally:
+            self._release_approval(approval_id)
+        return {
+            "ok": True,
+            "approval": resolved,
+            "state": self.snapshot(),
+        }
+
+    def _resolve_rejection(self, target: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            target["status"] = "rejected"
+            target["rejected_at"] = datetime.now(timezone.utc).isoformat()
+            self._persist_approvals_locked()
+            return dict(target)
+
+    def approve_all_pending_orders(self) -> dict[str, Any]:
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        for item in self.list_pending_approvals():
+            appr_id = item["id"]
+            try:
+                target = self._claim_pending_approval(appr_id)
+            except ValueError as exc:
+                errors.append({"id": appr_id, "error": str(exc)})
+                continue
+            try:
+                res = self._execute_approved_order(target)
+                results.append(res["approval"])
+            except Exception as exc:
+                errors.append({"id": appr_id, "error": str(exc)})
+            finally:
+                self._release_approval(appr_id)
+        return {
+            "ok": not errors,
+            "approved": results,
+            "errors": errors,
+            "state": self.snapshot(),
+        }
+
+    def reject_all_pending_orders(self) -> dict[str, Any]:
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        for item in self.list_pending_approvals():
+            appr_id = item["id"]
+            try:
+                target = self._claim_pending_approval(appr_id)
+            except ValueError as exc:
+                errors.append({"id": appr_id, "error": str(exc)})
+                continue
+            try:
+                results.append(self._resolve_rejection(target))
+            finally:
+                self._release_approval(appr_id)
+        return {
+            "ok": not errors,
+            "rejected": results,
+            "errors": errors,
+            "state": self.snapshot(),
+        }
+
+    def clear_resolved_approvals(self) -> dict[str, Any]:
+        with self.lock:
+            self._sync_approvals_locked()
+            kept = [item for item in self.pending_approvals if item.get("status") == "pending"]
+            self.pending_approvals.clear()
+            self.pending_approvals.extend(kept)
+            self._persist_approvals_locked()
+        return {"ok": True, "state": self.snapshot()}
 
     @staticmethod
     def _close_result_failed(result: Any) -> bool:
