@@ -178,27 +178,82 @@
           </div>
           <form id="ai-config" class="form" novalidate>
             <fieldset class="field-group">
+              <legend data-i18n="active_ai_provider">Active AI provider</legend>
+              <div class="env-toggle provider-toggle" role="radiogroup" aria-label="Active AI provider" data-i18n-aria-label="active_ai_provider">
+                <label class="env-option" for="field-provider-openai">
+                  <input id="field-provider-openai" name="active_ai_provider" type="radio" value="openai" checked />
+                  <span class="env-option-body">
+                    <strong data-i18n="provider_openai_title">OpenAI</strong>
+                    <span class="check-desc" data-i18n="provider_openai_desc">GPT-5 / GPT-4 · Flagship reasoning &amp; speed</span>
+                  </span>
+                </label>
+                <label class="env-option" for="field-provider-gemini">
+                  <input id="field-provider-gemini" name="active_ai_provider" type="radio" value="gemini" />
+                  <span class="env-option-body">
+                    <strong data-i18n="provider_gemini_title">Google Gemini</strong>
+                    <span class="check-desc" data-i18n="provider_gemini_desc">Gemini 3.6 / 3.5 · Fast analysis &amp; multimodal</span>
+                  </span>
+                </label>
+                <label class="env-option" for="field-provider-anthropic">
+                  <input id="field-provider-anthropic" name="active_ai_provider" type="radio" value="anthropic" />
+                  <span class="env-option-body">
+                    <strong data-i18n="provider_anthropic_title">Anthropic</strong>
+                    <span class="check-desc" data-i18n="provider_anthropic_desc">Claude Sonnet / Opus / Haiku · High precision</span>
+                  </span>
+                </label>
+                <label class="env-option" for="field-provider-xai">
+                  <input id="field-provider-xai" name="active_ai_provider" type="radio" value="xai" />
+                  <span class="env-option-body">
+                    <strong data-i18n="provider_xai_title">xAI</strong>
+                    <span class="check-desc" data-i18n="provider_xai_desc">Grok 4 / Grok 3 · Real-time market intelligence</span>
+                  </span>
+                </label>
+              </div>
+              <p id="ai-provider-status" class="field-help">Active: OpenAI</p>
+              <p id="ai-provider-pending-note" class="field-help warn" hidden></p>
+              <div class="manual-actions key-actions">
+                <button type="button" id="btn-apply-ai-provider" class="ghost" data-i18n="apply_ai_provider">Apply AI provider</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="field-group">
               <legend data-i18n="api_keys_legend">API keys</legend>
-              <div class="key-field">
-                <label for="field-openai-key"><span data-i18n="openai_key_label">OpenAI key</span>
+              <div class="key-field" id="key-field-openai">
+                <label for="field-openai-key">
+                  <span class="key-field-header">
+                    <span data-i18n="openai_key_label">OpenAI key</span>
+                    <span class="active-provider-tag" id="tag-active-openai" hidden data-i18n="active_provider_tag">Active</span>
+                  </span>
                   <input id="field-openai-key" name="openai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… paste here" data-i18n-placeholder="placeholder_openai" aria-describedby="openai-key-hint" />
                 </label>
                 <p id="openai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
               </div>
-              <div class="key-field">
-                <label for="field-gemini-key"><span data-i18n="gemini_key_label">Gemini key</span>
+              <div class="key-field" id="key-field-gemini" hidden>
+                <label for="field-gemini-key">
+                  <span class="key-field-header">
+                    <span data-i18n="gemini_key_label">Gemini key</span>
+                    <span class="active-provider-tag" id="tag-active-gemini" hidden data-i18n="active_provider_tag">Active</span>
+                  </span>
                   <input id="field-gemini-key" name="gemini_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… paste here" data-i18n-placeholder="placeholder_gemini" aria-describedby="gemini-key-hint" />
                 </label>
                 <p id="gemini-key-hint" class="field-help" data-i18n="not_set">Not set</p>
               </div>
-              <div class="key-field">
-                <label for="field-anthropic-key"><span data-i18n="anthropic_key_label">Anthropic key</span>
+              <div class="key-field" id="key-field-anthropic" hidden>
+                <label for="field-anthropic-key">
+                  <span class="key-field-header">
+                    <span data-i18n="anthropic_key_label">Anthropic key</span>
+                    <span class="active-provider-tag" id="tag-active-anthropic" hidden data-i18n="active_provider_tag">Active</span>
+                  </span>
                   <input id="field-anthropic-key" name="anthropic_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… paste here" data-i18n-placeholder="placeholder_anthropic" aria-describedby="anthropic-key-hint" />
                 </label>
                 <p id="anthropic-key-hint" class="field-help" data-i18n="not_set">Not set</p>
               </div>
-              <div class="key-field">
-                <label for="field-xai-key"><span data-i18n="xai_key_label">xAI key</span>
+              <div class="key-field" id="key-field-xai" hidden>
+                <label for="field-xai-key">
+                  <span class="key-field-header">
+                    <span data-i18n="xai_key_label">xAI key</span>
+                    <span class="active-provider-tag" id="tag-active-xai" hidden data-i18n="active_provider_tag">Active</span>
+                  </span>
                   <input id="field-xai-key" name="xai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="xai-… paste here" data-i18n-placeholder="placeholder_xai" aria-describedby="xai-key-hint" />
                 </label>
                 <p id="xai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
@@ -215,9 +270,9 @@
             <div class="manual-actions key-actions">
               <button type="submit" id="btn-save-keys" class="primary" data-i18n="save_ai_keys_btn">Save AI keys</button>
               <button type="button" id="btn-clear-openai" class="ghost danger-text" data-i18n="clear_openai">Clear OpenAI</button>
-              <button type="button" id="btn-clear-gemini" class="ghost danger-text" data-i18n="clear_gemini">Clear Gemini</button>
-              <button type="button" id="btn-clear-anthropic" class="ghost danger-text" data-i18n="clear_anthropic">Clear Anthropic</button>
-              <button type="button" id="btn-clear-xai" class="ghost danger-text" data-i18n="clear_xai">Clear xAI</button>
+              <button type="button" id="btn-clear-gemini" class="ghost danger-text" data-i18n="clear_gemini" hidden>Clear Gemini</button>
+              <button type="button" id="btn-clear-anthropic" class="ghost danger-text" data-i18n="clear_anthropic" hidden>Clear Anthropic</button>
+              <button type="button" id="btn-clear-xai" class="ghost danger-text" data-i18n="clear_xai" hidden>Clear xAI</button>
             </div>
           </form>
         </section>

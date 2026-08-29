@@ -291,7 +291,7 @@ class AlpacaService:
         if self._trading is None:
             raise ValueError(
                 "Alpaca API credentials are not configured for this account. "
-                "Please go to Configuration to connect your Alpaca API Key and Secret Key."
+                "Please go to API Keys to connect your Alpaca API Key and Secret Key."
             )
         return self._trading
 
@@ -304,7 +304,7 @@ class AlpacaService:
         if self._data is None:
             raise ValueError(
                 "Alpaca API credentials are not configured for this account. "
-                "Please go to Configuration to connect your Alpaca API Key and Secret Key."
+                "Please go to API Keys to connect your Alpaca API Key and Secret Key."
             )
         return self._data
 

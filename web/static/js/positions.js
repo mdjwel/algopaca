@@ -29,6 +29,7 @@ let closePercentage = 100;
 let closeQty = 0;
 let closeQtyRounded = false;
 let posModalReturnFocus = null;
+let posPrevTicks = new Map();
 
 /** Background polls only ever need a blotter that is seconds-fresh. The desk
  *  status poll runs every 2s; matching it here would put four Alpaca calls a
@@ -616,15 +617,6 @@ function togglePosFiltersBar() {
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function togglePosActionsMenu(forceClose) {
-  const wrap = $("pos-actions-menu-wrap");
-  const trigger = $("btn-pos-actions-toggle");
-  if (!wrap || !trigger) return;
-  const open = forceClose ? false : !wrap.classList.contains("is-open");
-  wrap.classList.toggle("is-open", open);
-  trigger.setAttribute("aria-expanded", open ? "true" : "false");
-}
-
 function resetPosFilters() {
   posFilterSearch = "";
   posFilterSide = "all";
@@ -649,13 +641,39 @@ function syncFilterButtons(attr, value) {
 function updateSelectedBatchButton() {
   const btn = $("btn-liquidate-selected");
   const text = $("btn-liquidate-selected-text");
+  const floatingBar = $("pos-batch-floating-bar");
+  const floatingCount = $("pos-batch-count");
+  const floatingMv = $("pos-batch-mv");
+  const floatingPnl = $("pos-batch-pnl");
+  const floatingBtnText = $("btn-batch-liquidate-text");
+
   const count = posSelectedSymbols.size;
-  if (!btn) return;
-  if (count > 0 && !loopRunning) {
-    btn.hidden = false;
-    if (text) text.textContent = `${tx("liquidate_selected", "Close Selected")} (${count})`;
-  } else {
-    btn.hidden = true;
+  const isVisible = count > 0 && !loopRunning;
+
+  if (btn) {
+    btn.hidden = !isVisible;
+    if (isVisible && text) {
+      text.textContent = `${tx("liquidate_selected", "Close Selected")} (${count})`;
+    }
+  }
+
+  if (floatingBar) {
+    floatingBar.hidden = !isVisible;
+    if (isVisible && positionsData && Array.isArray(positionsData.positions)) {
+      const selectedPositions = positionsData.positions.filter((p) => posSelectedSymbols.has(p.symbol));
+      const totalMv = selectedPositions.reduce((sum, p) => sum + Math.abs(Number(p.market_value || 0)), 0);
+      const totalUpl = selectedPositions.reduce((sum, p) => sum + Number(p.unrealized_pl || 0), 0);
+
+      if (floatingCount) floatingCount.textContent = String(count);
+      if (floatingMv) floatingMv.textContent = money(totalMv);
+      if (floatingPnl) {
+        floatingPnl.textContent = formatPnl(totalUpl);
+        floatingPnl.className = `pos-batch-metric mono ${totalUpl >= 0 ? "pos" : "neg"}`;
+      }
+      if (floatingBtnText) {
+        floatingBtnText.textContent = `${tx("liquidate_selected", "Close Selected")} (${count})`;
+      }
+    }
   }
 }
 
@@ -718,6 +736,18 @@ function symbolManualOrderLink(symbol, extraClass = "", label = "") {
   return `<a href="${pagePath("manual-order")}?symbol=${encodeURIComponent(sym)}" class="${classes}" title="${escapeHtml(tx("trade_symbol", "Trade this symbol"))}">${escapeHtml(text)}</a>`;
 }
 
+function getTickFlashClass(sym, currentPrice, upl) {
+  const key = String(sym || "");
+  const prev = posPrevTicks.get(key);
+  let flash = "";
+  if (prev && Number.isFinite(currentPrice) && Number.isFinite(prev.price)) {
+    if (currentPrice > prev.price + 0.001) flash = "pos-flash-pos";
+    else if (currentPrice < prev.price - 0.001) flash = "pos-flash-neg";
+  }
+  posPrevTicks.set(key, { price: Number(currentPrice || 0), upl: Number(upl || 0) });
+  return flash;
+}
+
 function renderPositionsTable(positions) {
   const tbody = $("pos-table-body");
   if (!tbody) return;
@@ -731,13 +761,15 @@ function renderPositionsTable(positions) {
       const ipl = Number(pos.unrealized_intraday_pl || 0);
       const chg = pos.change_today;
       const qty = Number(pos.qty || 0);
+      const currPx = Number(pos.current_price || 0);
+      const flashClass = getTickFlashClass(sym, currPx, upl);
       const qtyAvail = Number(pos.qty_available != null ? pos.qty_available : qty);
       const closeTitle = loopRunning
         ? tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually")
         : tx("close_position", "Close");
 
       return `
-      <tr class="pos-table-row ${isSelected ? "is-selected" : ""}" data-symbol="${escapeHtml(sym)}" data-side="${escapeHtml(side)}">
+      <tr class="pos-table-row ${isSelected ? "is-selected" : ""} ${flashClass}" data-symbol="${escapeHtml(sym)}" data-side="${escapeHtml(side)}">
         <td class="pos-cell-check">
           <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} ${loopRunning ? "disabled" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
         </td>
@@ -755,7 +787,7 @@ function renderPositionsTable(positions) {
           ${qtyAvail < qty ? `<small class="pos-avail-note">${escapeHtml(tx("qty_available_short", "{qty} avail", { qty: formatPositionQty(qtyAvail) }))}</small>` : ""}
         </td>
         <td class="pos-cell-price pos-num mono">
-          <div>$${Number(pos.current_price || 0).toFixed(2)}</div>
+          <div>$${currPx.toFixed(2)}</div>
           ${chg != null ? `<small class="pos-chg-pill ${chg >= 0 ? "pos" : "neg"}">${formatPnlPct(chg)}</small>` : ""}
         </td>
         <td class="pos-cell-price pos-num mono">$${Number(pos.avg_entry_price || 0).toFixed(2)}</td>
@@ -779,13 +811,6 @@ function renderPositionsTable(positions) {
             <button type="button" class="pos-act pos-act-close btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""} title="${escapeHtml(closeTitle)}">
               ${escapeHtml(tx("close_position", "Close"))}
             </button>
-            ${
-              side === "short"
-                ? `<a href="/manual-order?symbol=${encodeURIComponent(sym)}&side=cover" class="pos-act btn-pos-cover" title="${escapeHtml(tx("cover_position_hint", "Buy part of this short back"))}">
-              ${escapeHtml(tx("cover_side", "Cover"))}
-            </a>`
-                : ""
-            }
             <button type="button" class="pos-act btn-pos-lots" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("pos_lots_hint", "See the individual share lots behind this holding"))}">
               ${escapeHtml(tx("pos_lots_short", "Lots"))}
             </button>
@@ -858,11 +883,17 @@ function renderPositionsCards(positions) {
           </div>
           <div>
             <span>${escapeHtml(tx("unrealized_pnl", "Unrealized P&L"))}</span>
-            <strong class="${upl >= 0 ? "pos" : "neg"}">${formatPnl(upl)}${formatPnlPct(pos.unrealized_pct) ? ` (${formatPnlPct(pos.unrealized_pct)})` : ""}</strong>
+            <div class="pos-kpi-valrow">
+              <strong class="${upl >= 0 ? "pos" : "neg"}">${formatPnl(upl)}</strong>
+              ${pos.unrealized_pct != null ? `<small class="pos-chg-pill ${Number(pos.unrealized_pct) >= 0 ? "pos" : "neg"}">${formatPnlPct(pos.unrealized_pct)}</small>` : ""}
+            </div>
           </div>
           <div>
             <span>${escapeHtml(tx("intraday_pnl", "Today's P&L"))}</span>
-            <strong class="${ipl >= 0 ? "pos" : "neg"}">${formatPnl(ipl)}</strong>
+            <div class="pos-kpi-valrow">
+              <strong class="${ipl >= 0 ? "pos" : "neg"}">${formatPnl(ipl)}</strong>
+              ${pos.unrealized_intraday_pct != null ? `<small class="pos-chg-pill ${Number(pos.unrealized_intraday_pct) >= 0 ? "pos" : "neg"}">${formatPnlPct(pos.unrealized_intraday_pct)}</small>` : ""}
+            </div>
           </div>
           <div>
             <span>${escapeHtml(tx("protection", "Protection"))}</span>
@@ -879,13 +910,6 @@ function renderPositionsCards(positions) {
           <button type="button" class="ghost ghost-danger btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""}>
             ${escapeHtml(tx("close_position", "Close"))}
           </button>
-          ${
-            side === "short"
-              ? `<a href="/manual-order?symbol=${encodeURIComponent(sym)}&side=cover" class="ghost">
-            ${escapeHtml(tx("cover_side", "Cover"))}
-          </a>`
-              : ""
-          }
           <button type="button" class="ghost btn-pos-lots" data-symbol="${escapeHtml(sym)}">
             ${escapeHtml(tx("pos_lots_short", "Lots"))}
           </button>
@@ -1288,9 +1312,10 @@ function renderLotsRows(data) {
 
   if (totals) {
     const totalPl = Number(data.total_unrealized_pl || 0);
+    const count = lots.length;
+    const countLabel = count === 1 ? tx("pos_lots_total_1", "1 lot") : tx("pos_lots_total", "{count} lots", { count });
     totals.innerHTML = `
-      <span>${escapeHtml(tx("pos_lots_total", "{count} lots", { count: lots.length }))}</span>
-      <span class="mono">${formatPositionQty(data.total_qty)} ${escapeHtml(tx("shares_unit", "shares"))}</span>
+      <span>${escapeHtml(countLabel)} · ${formatPositionQty(data.total_qty)} ${escapeHtml(tx("shares_unit", "shares"))}</span>
       <span class="mono">${escapeHtml(
         tx("cost_short", "Cost {value}", { value: money(data.total_cost_basis || 0) })
       )}</span>
@@ -1697,7 +1722,9 @@ function fillLotsSummary(data) {
       setPnlTone(pnlEl, null);
     } else {
       const total = Number(data.total_unrealized_pl);
-      pnlEl.textContent = formatPnl(total);
+      const pct = data.total_unrealized_pct;
+      const pctFormatted = pct != null && Number.isFinite(Number(pct)) ? formatPnlPct(pct) : "";
+      pnlEl.innerHTML = `${formatPnl(total)}${pctFormatted ? ` <small class="pos-chg-pill ${Number(pct) >= 0 ? "pos" : "neg"}">${pctFormatted}</small>` : ""}`;
       setPnlTone(pnlEl, total);
     }
   }
@@ -2067,35 +2094,7 @@ function initPositionsUi() {
   // is harmless dead weight there rather than something that needs gating.
   $("btn-toggle-pos-filters")?.addEventListener("click", togglePosFiltersBar);
 
-  // Mobile actions dropdown (Refresh / Close Selected / Liquidate all).
-  // Desktop renders the same buttons inline via `display: contents`, so this
-  // trigger and its outside-click/Escape handling simply have nothing to do
-  // there.
-  const posActionsWrap = $("pos-actions-menu-wrap");
-  const posActionsTrigger = $("btn-pos-actions-toggle");
-  if (posActionsWrap && posActionsTrigger) {
-    posActionsTrigger.addEventListener("click", (e) => {
-      e.stopPropagation();
-      togglePosActionsMenu();
-    });
-    document.addEventListener("click", (e) => {
-      if (!posActionsWrap.contains(e.target)) togglePosActionsMenu(true);
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && posActionsWrap.classList.contains("is-open")) {
-        togglePosActionsMenu(true);
-        posActionsTrigger.focus();
-      }
-    });
-    // Picking any action closes the popover instead of leaving it open over
-    // whatever the action just triggered (a toast, a confirmation modal).
-    $("pos-actions-menu")
-      ?.querySelectorAll("button")
-      .forEach((btn) => btn.addEventListener("click", () => togglePosActionsMenu(true)));
-  }
-
-  // The legend buttons filter the table. The bar stays a read-only image; its
-  // tiny segments are not viable keyboard or touch targets.
+  // The legend buttons and allocation bar segments filter the table.
   const focusSymbol = (symbol) => {
     if (!symbol || !searchInput) return;
     searchInput.value = symbol;
@@ -2107,6 +2106,16 @@ function initPositionsUi() {
   $("pos-allocation-legend")?.addEventListener("click", (e) => {
     focusSymbol(e.target.closest(".pos-alloc-legend-item")?.dataset.symbol);
   });
+  $("pos-allocation-bar")?.addEventListener("click", (e) => {
+    const seg = e.target.closest(".pos-alloc-segment:not(.is-cash)");
+    if (seg?.dataset.symbol) focusSymbol(seg.dataset.symbol);
+  });
+
+  $("btn-batch-deselect")?.addEventListener("click", () => {
+    posSelectedSymbols.clear();
+    renderPositionsPage();
+  });
+  $("btn-batch-liquidate")?.addEventListener("click", openLiquidateSelectedModal);
 
   $("btn-refresh-positions")?.addEventListener("click", () => {
     refreshPositions({ quiet: false }).catch(() => {});

@@ -73,6 +73,8 @@ from bot.options_chain import normalize_options_style
 from bot.config import (
     Config,
     DEFAULT_LANG,
+    MAX_ATR_STOP_MULT,
+    MIN_ATR_STOP_MULT,
     alpaca_slot_status,
     live_allowed_from_env,
     normalize_lang,
@@ -165,6 +167,7 @@ class RunSettings:
     xai_model: str = DEFAULT_XAI_MODEL
     stop_loss_pct: float = 0.0  # 0 = off
     # AI risk engine — see bot/ai_risk.py. Named presets set their own geometry.
+    risk_engine_enabled: bool = True
     ai_risk_pct: float = 0.5
     ai_atr_stop_mult: float = 1.8
     ai_take_profit_r: float = 2.0
@@ -939,7 +942,7 @@ class AppState:
             return
         if not creds.get("allow_live"):
             raise ValueError(
-                "Live trading is blocked. Enable Live Trading in Configuration."
+                "Live trading is blocked. Enable Live Trading on API Keys."
             )
 
     def authorize_live_session(self, confirm: str | None = None) -> dict[str, Any]:
@@ -1239,6 +1242,20 @@ class AppState:
                 self.settings.lang if data.get("lang") is None else data["lang"]
             )
 
+            if data.get("risk_engine_enabled") is None:
+                risk_engine_enabled = bool(self.settings.risk_engine_enabled)
+            else:
+                raw_risk = data.get("risk_engine_enabled")
+                if isinstance(raw_risk, str):
+                    risk_engine_enabled = raw_risk.strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    }
+                else:
+                    risk_engine_enabled = bool(raw_risk)
+
             if data.get("options_enabled") is None:
                 options_enabled = bool(self.settings.options_enabled)
             else:
@@ -1368,6 +1385,7 @@ class AppState:
                 anthropic_model=anthropic_model,
                 xai_model=xai_model,
                 stop_loss_pct=stop_pct,
+                risk_engine_enabled=risk_engine_enabled,
                 ai_risk_pct=ai_risk_pct,
                 ai_atr_stop_mult=ai_atr_stop_mult,
                 ai_take_profit_r=ai_take_profit_r,
@@ -1513,6 +1531,7 @@ class AppState:
             anthropic_api_key=anthropic_key,
             xai_api_key=xai_key,
             lang=s.lang,
+            risk_engine_enabled=s.risk_engine_enabled,
             options_enabled=s.options_enabled,
             options_style=s.options_style,
             options_dte_min=s.options_dte_min,
@@ -3766,11 +3785,18 @@ class AppState:
         risk_pct = (
             desk_risk if ai_risk_pct is None else max(0.0, min(10.0, float(ai_risk_pct)))
         )
-        atr_mult = (
-            desk_atr
-            if ai_atr_stop_mult is None
-            else max(0.0, min(10.0, float(ai_atr_stop_mult)))
-        )
+        # Not clamped like the others: silently rounding 0.01 up to the floor
+        # would size a ticket the user never asked for. 0 stays legal — it means
+        # "no ATR stop, use the flat percent" — but the gap above it is refused.
+        if ai_atr_stop_mult is None:
+            atr_mult = desk_atr
+        else:
+            atr_mult = min(MAX_ATR_STOP_MULT, max(0.0, float(ai_atr_stop_mult)))
+            if 0 < atr_mult < MIN_ATR_STOP_MULT:
+                raise ValueError(
+                    f"Stop = ATR × must be 0 (use the flat stop %) or at least "
+                    f"{MIN_ATR_STOP_MULT:g}."
+                )
 
         config = self._base_config()
         config = config.override(

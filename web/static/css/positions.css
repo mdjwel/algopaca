@@ -13,8 +13,27 @@
 .pos-allocation-panel[hidden],
 .pos-winloss-pill[hidden],
 .pos-chg-pill[hidden],
-.pos-modal-backdrop[hidden] {
+.pos-modal-backdrop[hidden],
+.pos-batch-floating-bar[hidden] {
   display: none !important;
+}
+
+@keyframes pos-tick-flash-pos {
+  0% { background-color: rgba(63, 191, 143, 0.4); }
+  100% { background-color: transparent; }
+}
+
+@keyframes pos-tick-flash-neg {
+  0% { background-color: rgba(227, 93, 93, 0.4); }
+  100% { background-color: transparent; }
+}
+
+.pos-flash-pos {
+  animation: pos-tick-flash-pos 0.85s ease-out;
+}
+
+.pos-flash-neg {
+  animation: pos-tick-flash-neg 0.85s ease-out;
 }
 
 /* The blotter tags every numeric cell `.mono`, but nothing ever defined the
@@ -300,15 +319,46 @@
   color: var(--text-muted);
 }
 
-/* Below this the rail can no longer hold its five readouts on one line
-   beside the hero, so equity takes the full width and the rail follows. */
-@media (max-width: 1180px) {
+/* Intermediate tablet widths: equity hero spans top, rail is an even grid */
+@media (min-width: 769px) and (max-width: 1180px) {
   .pos-kpi-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .pos-kpi-hero {
     padding-bottom: 0.95rem;
+  }
+
+  .pos-kpi-rail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pos-kpi-tile {
+    flex: none;
+    margin: 0;
+    border: none;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .pos-kpi-tile:nth-child(3n) {
+    border-right: none;
+  }
+
+  .pos-kpi-tile:nth-child(4) {
+    grid-column: span 1;
+    border-bottom: none;
+  }
+
+  .pos-kpi-tile:nth-child(5) {
+    grid-column: span 2;
+    border-bottom: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
   }
 }
 
@@ -387,8 +437,15 @@
 
 .pos-alloc-segment {
   height: 100%;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: default;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), filter 0.15s ease;
+  cursor: pointer;
+}
+
+.pos-alloc-segment:not(.is-cash):hover,
+.pos-alloc-segment:not(.is-cash):active {
+  filter: brightness(1.25);
+  outline: 2px solid var(--copper);
+  outline-offset: -1px;
 }
 
 /* Uninvested equity closes the bar to 100%; hatched so it never reads as a
@@ -497,19 +554,6 @@ button.pos-alloc-legend-item:hover {
   height: 1.5rem;
   background: var(--line, rgba(255, 255, 255, 0.12));
   margin: 0 0.15rem;
-}
-
-/* Desktop: both wrapper levels dissolve so Refresh / Close Selected /
-   Liquidate all sit inline in the header exactly as if the trigger and
-   popover markup weren't there at all. Mobile turns them back into a real
-   trigger + popover below. */
-.pos-actions-menu-wrap,
-.pos-actions-menu {
-  display: contents;
-}
-
-.pos-actions-trigger {
-  display: none;
 }
 
 .pos-sync-status {
@@ -1336,29 +1380,35 @@ a.pos-prot-badge.orders:focus-visible {
   transform: rotate(180deg);
 }
 
+/* 2x2 grid on mobile cards: whether 3 actions (Long) or 4 actions (Short),
+   buttons have ample tap width and height without text truncation. */
 .pos-card-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+.pos-card-actions > * {
+  min-width: 0;
+}
+
+/* When 3 actions exist (Long), Close button spans full width at the top */
+.pos-card-actions:has(> :nth-child(3):last-child) > :first-child {
+  grid-column: 1 / -1;
 }
 
 .pos-card-actions .ghost {
   text-align: center;
   text-decoration: none;
-  padding: 0.5rem;
-}
-
-/* Card actions share a 2-column grid: Close/Cover on the first row, Lots/History
-   on the second — same actions as the desktop blotter. A long position has no
-   Cover button though, so History ends up alone in a 3-item grid; give that
-   orphan the full row instead of leaving a dead cell beside it. */
-.pos-card-actions .btn-pos-lots,
-.pos-card-actions .btn-pos-trade {
-  grid-column: auto;
-}
-
-.pos-card-actions > :last-child:nth-child(3) {
-  grid-column: 1 / -1;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.5rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Empty State */
@@ -1632,9 +1682,11 @@ button.primary.primary-danger:focus-visible {
 }
 
 .pos-pct-chips .chip {
-  padding: 0.25rem 0.6rem;
-  font-size: 0.75rem;
-  min-height: 2rem;
+  flex: 1 1 0;
+  text-align: center;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.78rem;
+  min-height: 2.2rem;
 }
 
 .pos-modal-qty-row {
@@ -1712,8 +1764,8 @@ button.primary.primary-danger:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.75rem;
   align-items: center;
-  margin-top: -0.65rem;
-  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  padding: 0.55rem 1rem;
   border-radius: var(--radius-md, 8px);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
@@ -2255,52 +2307,273 @@ button.primary.primary-danger:focus-visible {
   font-size: 0.85rem;
 }
 
-/* Five columns do not survive a phone: the row stacks into label/value pairs,
-   which is why the labels live in the markup at all. */
+/* ── Mobile Share Lots Modal Redesign (≤ 720px) ─────────────────────── */
 @media (max-width: 720px) {
+  .pos-lots-body {
+    padding: 0.85rem 1rem;
+    gap: 0.75rem;
+  }
+
+  /* Compact 2x2 + PnL summary rail */
   .pos-lots-rail {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: var(--radius-md, 10px);
+    background: color-mix(in srgb, var(--panel) 96%, #fff 4%);
+    border: 1px solid var(--line);
+    margin-bottom: 0.15rem;
+    overflow: hidden;
+  }
+
+  .pos-lots-stat {
+    padding: 0.65rem 0.8rem;
+    border: none;
+    border-bottom: 1px solid var(--line-soft);
+    background: transparent;
   }
 
   .pos-lots-stat:nth-child(odd) {
-    border-left: none;
+    border-right: 1px solid var(--line-soft);
   }
 
-  .pos-lots-stat:nth-child(n + 3) {
-    border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
+  .pos-lots-stat:nth-child(3),
+  .pos-lots-stat:nth-child(4) {
+    border-bottom: none;
   }
 
+  .pos-lots-stat span {
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .pos-lots-stat strong {
+    font-size: 0.95rem;
+  }
+
+  /* Stat 5 (Total Unrealized PnL): Full-width hero summary strip */
   .pos-lots-stat-pnl {
     grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+    border-right: none !important;
+    border-bottom: none !important;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.9rem;
+    background: color-mix(in srgb, var(--panel) 88%, #000);
   }
 
+  .pos-lots-stat-pnl span {
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
+
+  .pos-lots-stat-pnl strong {
+    font-size: 1.05rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  /* List Container: Individual floating cards */
   .pos-lots-colhead {
     display: none;
   }
 
+  .pos-lots-list-wrap {
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .pos-lots-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 48vh;
+    padding: 1px;
+    overflow-y: auto;
+  }
+
+  /* Individual Lot Card */
   .pos-lot {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem 0.75rem;
-    padding: 0.75rem 0.85rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem 0.85rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-md, 10px);
+    background: color-mix(in srgb, var(--panel) 94%, #fff 6%);
+    border: 1px solid var(--line);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
   }
 
+  .pos-lot:active {
+    transform: scale(0.99);
+  }
+
+  .pos-lot.is-pos {
+    border-left: 3.5px solid var(--buy);
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  .pos-lot.is-neg {
+    border-left: 3.5px solid var(--sell);
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  .pos-lot.is-flat {
+    border-left: 3.5px solid var(--line);
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  .pos-lot.is-selected {
+    border-color: var(--copper);
+    background: color-mix(in srgb, var(--copper) 12%, var(--panel));
+    box-shadow: 0 0 0 1px var(--copper);
+  }
+
+  /* Top Row: Date, Lot #, and PnL Pill right aligned */
   .pos-lot-when {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
   }
 
-  .pos-lot-size {
-    grid-column: 1 / -1;
-    order: 5;
+  .pos-lot-num {
+    min-width: 1.35rem;
+    height: 1.35rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
   }
 
-  .pos-lot-entry,
-  .pos-lot-value,
+  .pos-lot-when-text strong {
+    font-size: 0.84rem;
+  }
+
   .pos-lot-pnl {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .pos-lot-pnl strong {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .pos-lot-pnl .pos-lot-label {
+    display: none;
+  }
+
+  /* Mid Row: Entry (left) & Market Value (right) */
+  .pos-lot-entry {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
     align-items: flex-start;
+    gap: 0.12rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .pos-lot-value {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.12rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .pos-lot-entry strong,
+  .pos-lot-value strong {
+    font-size: 0.88rem;
+  }
+
+  /* Hide weight bar on mobile to keep parcel card compact */
+  .pos-lot-size {
+    display: none !important;
   }
 
   .pos-lot-label {
     display: block;
+    font-size: 0.64rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* Totals Bar */
+  .pos-lots-totals {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.65rem 0.95rem;
+    border-radius: var(--radius-md, 8px);
+    background: color-mix(in srgb, var(--panel) 92%, #fff 8%);
+    border: 1px solid var(--line);
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .pos-lots-legend {
+    font-size: 0.7rem;
+    line-height: 1.45;
+    color: var(--muted);
+    opacity: 0.8;
+    text-align: center;
+    padding: 0 0.5rem;
+    margin: 0.25rem 0 0;
+  }
+
+  /* Sticky Footer & Action Buttons */
+  .pos-lots-foot {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.65rem;
+    align-items: stretch;
+    padding: 0.85rem 1.1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--panel) 97%, #000);
+    border-top: 1px solid var(--line);
+  }
+
+  .pos-lots-foot a#pos-lots-history-link {
+    text-align: center;
+    justify-content: center;
+    min-height: 38px;
+    font-size: 0.8rem;
+  }
+
+  .pos-lots-foot-actions {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .pos-lots-foot-actions button {
+    flex: 1 1 0;
+    min-height: 42px;
+    justify-content: center;
   }
 }
 
@@ -2378,43 +2651,11 @@ button.primary.primary-danger:focus-visible {
   .pos-actions-divider {
     display: none;
   }
-
-  /* The trigger + popover markup comes back to life below the app-shell's
-     mobile-card breakpoint, replacing the desktop `display: contents`. */
-  .pos-actions-menu-wrap {
-    display: block;
-    position: relative;
-    margin-left: auto;
-  }
-
-  .pos-actions-trigger {
-    display: inline-flex;
-  }
-
-  .pos-actions-menu {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    min-width: 11.5rem;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.4rem;
-    padding: 0.55rem;
-    background: color-mix(in srgb, var(--panel, #121a24) 96%, #0d1420);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-    z-index: 200;
-  }
-
-  .pos-actions-menu-wrap.is-open .pos-actions-menu {
-    display: flex;
-  }
-
-  .pos-actions-menu .ghost {
+  .pos-reset-filters.ghost {
     width: 100%;
     justify-content: center;
+    margin-left: 0;
+    margin-top: 0.25rem;
   }
 }
 
@@ -2427,25 +2668,164 @@ button.primary.primary-danger:focus-visible {
   }
 }
 
-/* Below the mobile-shell breakpoint the five-readout rail costs too much
-   vertical space before the position cards even start — the equity hero
-   alone carries enough context on a phone. */
+/* Mobile KPI Grid: Clean 2x2 layout + full-width position count & W/L filter rail */
 @media (max-width: 768px) {
-  #pos-kpi-grid .pos-kpi-rail {
+  .pos-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .pos-kpi-hero {
+    padding: 0.95rem 1rem;
+  }
+
+  .pos-kpi-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: var(--radius-md);
+  }
+
+  .pos-kpi-tile {
+    flex: none;
+    margin: 0;
+    border: none;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 0.7rem 0.8rem;
+  }
+
+  .pos-kpi-tile:nth-child(2n) {
+    border-right: none;
+  }
+
+  .pos-kpi-tile:nth-child(5) {
+    grid-column: 1 / -1;
+    border-bottom: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .pos-kpi-tile:nth-child(5) .pos-kpi-val {
+    font-size: 1.05rem;
+  }
+
+  .pos-kpi-tile:nth-child(5) .pos-winloss-pill {
+    margin-top: 0;
+  }
+}
+
+/* Floating Batch Action Bar */
+.pos-batch-floating-bar {
+  position: fixed;
+  bottom: calc(var(--mobile-nav-height, 0px) + env(safe-area-inset-bottom, 0px) + 1.25rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100% - 2rem), 42rem);
+  z-index: 880;
+  border-radius: var(--radius-lg, 16px);
+  background: color-mix(in srgb, var(--panel, #141e2a) 92%, #000);
+  border: 1px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 0.65rem 1rem;
+  animation: pos-float-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pos-float-slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.pos-batch-floating-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.pos-batch-floating-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pos-batch-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(212, 137, 76, 0.2);
+  color: var(--copper);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.pos-batch-metric {
+  font-size: 0.88rem;
+}
+
+.pos-batch-floating-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pos-batch-floating-actions .btn-sm {
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 480px) {
+  .pos-batch-floating-bar {
+    bottom: calc(var(--mobile-nav-height, 0px) + env(safe-area-inset-bottom, 0px) + 0.65rem);
+    width: calc(100% - 1rem);
+    padding: 0.55rem 0.75rem;
+  }
+
+  .pos-batch-floating-inner {
+    gap: 0.5rem;
+  }
+
+  .pos-batch-floating-info {
+    gap: 0.45rem;
+  }
+
+  .pos-batch-metric {
+    font-size: 0.8rem;
+  }
+
+  .pos-liquidate-row {
+    grid-template-columns: minmax(0, 1.2fr) auto auto;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+  }
+
+  .pos-liquidate-row span:nth-child(2) {
     display: none;
+  }
+
+  .pos-liquidate-totals {
+    font-size: 0.8rem;
+    padding: 0.45rem 0.75rem;
   }
 }
 
 @media (max-width: 600px) {
-  .pos-kpi-tile {
-    flex: 1 1 calc(50% - 1px);
-    padding: 0.75rem 0.8rem;
-  }
-
-  .pos-kpi-val {
-    font-size: 1.02rem;
-  }
-
   .pos-modal-backdrop {
     align-items: flex-end;
     padding: 0;
@@ -2457,8 +2837,24 @@ button.primary.primary-danger:focus-visible {
     border-bottom-right-radius: 0;
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
-    max-height: 85vh;
+    max-height: 88vh;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  .pos-modal-card::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 8px auto 0;
+    flex-shrink: 0;
+  }
+
+  .pos-modal-head {
+    padding: 0.75rem 1.15rem 0.85rem;
+  }
 }
+
 

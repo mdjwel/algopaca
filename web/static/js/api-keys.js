@@ -8,6 +8,14 @@ let configBusyTarget = null;
 // Held separately from the desk's real mode so the 2s status poll cannot
 // overwrite a selection mid-typing.
 let pendingModeChoice = null;
+let pendingProviderChoice = null;
+
+const AI_PROVIDER_LABELS = {
+  openai: "OpenAI",
+  gemini: "Google Gemini",
+  anthropic: "Anthropic",
+  xai: "xAI",
+};
 
 // Resolved on every render rather than once at load: these labels overwrite the
 // `data-i18n` text the translator put on the buttons, so a constant captured in
@@ -16,6 +24,78 @@ const savePaperLabel = () => tx("save_paper_keys_btn", "Save paper keys");
 const saveLiveLabel = () => tx("save_live_keys_btn", "Save live keys");
 const saveAiLabel = () => tx("save_ai_keys_btn", "Save AI keys");
 const savingLabel = () => tx("saving", "Saving…");
+
+function selectedAiProvider() {
+  const checked = document.querySelector('input[name="active_ai_provider"]:checked');
+  return checked ? checked.value : (lastDeskSettings?.ai_provider || "openai");
+}
+
+function activeAiProvider(settings) {
+  const s = settings || lastDeskSettings || {};
+  return s.ai_provider || "openai";
+}
+
+function syncAiProviderVisibility(settings) {
+  const selected = selectedAiProvider();
+  const active = activeAiProvider(settings);
+  const note = $("ai-provider-pending-note");
+  if (!note) return;
+  note.hidden = selected === active;
+  if (note.hidden) {
+    note.textContent = "";
+  } else {
+    const selectedLabel = AI_PROVIDER_LABELS[selected] || selected;
+    const activeLabel = AI_PROVIDER_LABELS[active] || active;
+    note.textContent = tx(
+      "ai_provider_pending",
+      "Showing {selected} credentials — the desk stays on {active} until you apply.",
+      { selected: selectedLabel, active: activeLabel }
+    );
+  }
+}
+
+function syncAiProviderUi(settings) {
+  const s = settings || lastDeskSettings || {};
+  const active = activeAiProvider(s);
+  if (pendingProviderChoice === active) pendingProviderChoice = null;
+  const shown = pendingProviderChoice || active;
+
+  const radioOpenai = $("field-provider-openai");
+  const radioGemini = $("field-provider-gemini");
+  const radioAnthropic = $("field-provider-anthropic");
+  const radioXai = $("field-provider-xai");
+
+  if (radioOpenai) radioOpenai.checked = shown === "openai";
+  if (radioGemini) radioGemini.checked = shown === "gemini";
+  if (radioAnthropic) radioAnthropic.checked = shown === "anthropic";
+  if (radioXai) radioXai.checked = shown === "xai";
+
+  syncAiProviderVisibility(s);
+
+  const statusEl = $("ai-provider-status");
+  if (statusEl) {
+    const providerLabel = AI_PROVIDER_LABELS[active] || active;
+    statusEl.textContent = tx(
+      "ai_provider_status_active",
+      "Active: {provider}",
+      { provider: providerLabel }
+    );
+  }
+
+  ["openai", "gemini", "anthropic", "xai"].forEach((p) => {
+    const tag = $(`tag-active-${p}`);
+    if (tag) tag.hidden = p !== active;
+    const field = $(`key-field-${p}`);
+    if (field) {
+      field.hidden = p !== shown;
+      field.classList.toggle("is-active-provider", p === active);
+    }
+    const clearBtn = $(`btn-clear-${p}`);
+    if (clearBtn) {
+      clearBtn.hidden = p !== shown;
+    }
+  });
+}
 
 function keysPayload() {
   const openai = String($("field-openai-key")?.value || "").trim();
@@ -27,6 +107,7 @@ function keysPayload() {
     gemini_api_key: gemini,
     anthropic_api_key: anthropic,
     xai_api_key: xai,
+    ai_provider: selectedAiProvider(),
     save_to_env: !!$("field-save-keys")?.checked,
   };
 }
@@ -149,12 +230,14 @@ function syncConfigConnection() {
     const g = keys.gemini || { set: false, source: "none" };
     const a = keys.anthropic || { set: false, source: "none" };
     const x = keys.xai || { set: false, source: "none" };
-    const fmt = (entry, name) => {
-      if (!entry.set) return `${name} ✗`;
+    const active = activeAiProvider(lastDeskSettings);
+    const fmt = (entry, name, key) => {
+      const isAct = key === active ? " ★" : "";
+      if (!entry.set) return `${name}${isAct} ✗`;
       const src = entry.source === "ui" ? "UI" : entry.source === "env" ? ".env" : "";
-      return `${name} ✓${src ? ` (${src})` : ""}`;
+      return `${name}${isAct} ✓${src ? ` (${src})` : ""}`;
     };
-    aiEl.textContent = `${fmt(o, "OpenAI")} · ${fmt(g, "Gemini")} · ${fmt(a, "Anthropic")} · ${fmt(x, "xAI")}`;
+    aiEl.textContent = `${fmt(o, "OpenAI", "openai")} · ${fmt(g, "Gemini", "gemini")} · ${fmt(a, "Anthropic", "anthropic")} · ${fmt(x, "xAI", "xai")}`;
     aiEl.dataset.state = o.set || g.set || a.set || x.set ? "ok" : "muted";
   }
 
@@ -206,6 +289,7 @@ function syncConfigConnection() {
   }
 
   syncTradingModeUi(s);
+  syncAiProviderUi(lastDeskSettings);
 }
 
 function setConfigPanelHint(target, state, label) {
@@ -224,6 +308,7 @@ function syncConfigBusyUi() {
   const saveLive = $("btn-save-live");
   const saveAi = $("btn-save-keys");
   const applyMode = $("btn-apply-mode");
+  const applyAi = $("btn-apply-ai-provider");
 
   if (alpacaForm) {
     [...alpacaForm.elements].forEach((el) => {
@@ -257,6 +342,7 @@ function syncConfigBusyUi() {
       configBusy && configBusyTarget === "live" ? savingLabel() : saveLiveLabel();
   }
   if (applyMode) applyMode.disabled = saving;
+  if (applyAi) applyAi.disabled = saving;
   if (saveAi) {
     saveAi.disabled = saving;
     saveAi.textContent =
@@ -288,13 +374,16 @@ async function onSaveKeys(ev) {
     errEl.hidden = true;
     errEl.textContent = "";
   }
-  if (
-    !payload.openai_api_key &&
-    !payload.gemini_api_key &&
-    !payload.anthropic_api_key &&
-    !payload.xai_api_key
-  ) {
-    const msg = "Paste at least one AI API key first.";
+  const hasKeys =
+    !!payload.openai_api_key ||
+    !!payload.gemini_api_key ||
+    !!payload.anthropic_api_key ||
+    !!payload.xai_api_key;
+  const currentProvider = activeAiProvider(lastDeskSettings);
+  const providerChanged = payload.ai_provider && payload.ai_provider !== currentProvider;
+
+  if (!hasKeys && !providerChanged) {
+    const msg = "Paste at least one AI API key or choose a different AI provider.";
     if (errEl) {
       errEl.hidden = false;
       errEl.textContent = msg;
@@ -304,7 +393,7 @@ async function onSaveKeys(ev) {
     return;
   }
   try {
-    setBusy(true, "Saving AI keys…");
+    setBusy(true, "Saving AI configuration…");
     setConfigBusy(true, "ai");
     const data = await api("/api/keys", {
       method: "POST",
@@ -318,8 +407,10 @@ async function onSaveKeys(ev) {
     if (geminiEl) geminiEl.value = "";
     if (anthropicEl) anthropicEl.value = "";
     if (xaiEl) xaiEl.value = "";
+    pendingProviderChoice = null;
     applyAiKeys(data.state?.ai_ready, data.ai_key_status || data.state?.ai_key_status);
-    await refreshStatus({ forceSettings: false });
+    if (data.state) applyDeskState(data.state);
+    else await refreshStatus({ forceSettings: true });
     const saved = [
       payload.openai_api_key ? "OpenAI" : null,
       payload.gemini_api_key ? "Gemini" : null,
@@ -329,12 +420,24 @@ async function onSaveKeys(ev) {
       .filter(Boolean)
       .join(" + ");
     setConfigPanelHint("ai", "saved", tx("status_saved", "Saved"));
-    showToast(
-      payload.save_to_env
-        ? `${saved} key saved to .env.`
-        : `${saved} key saved for this session.`,
-      "ok"
-    );
+    const activeLabel = AI_PROVIDER_LABELS[payload.ai_provider] || payload.ai_provider;
+    if (saved) {
+      showToast(
+        payload.save_to_env
+          ? `${saved} key saved to .env (Active: ${activeLabel}).`
+          : `${saved} key saved for this session (Active: ${activeLabel}).`,
+        "ok"
+      );
+    } else {
+      showToast(
+        tx(
+          "ai_provider_switched",
+          "{provider} is now the active AI provider.",
+          { provider: activeLabel }
+        ),
+        "ok"
+      );
+    }
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
@@ -609,12 +712,59 @@ async function onClearAlpacaKeys() {
   }
 }
 
-const AI_PROVIDER_LABELS = {
-  openai: "OpenAI",
-  gemini: "Gemini",
-  anthropic: "Anthropic",
-  xai: "xAI",
-};
+async function applyAiProvider(provider) {
+  const errEl = $("ai-config-error");
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  const label = AI_PROVIDER_LABELS[provider] || provider;
+  try {
+    setBusy(true, `Switching AI provider to ${label}…`);
+    setConfigBusy(true, "ai");
+    const data = await api("/api/keys", {
+      method: "POST",
+      body: JSON.stringify({ ai_provider: provider }),
+    });
+    if (data.state) applyDeskState(data.state);
+    else await refreshStatus({ forceSettings: true });
+
+    pendingProviderChoice = null;
+    syncAiProviderUi(lastDeskSettings);
+    setConfigPanelHint("ai", "saved", tx("status_saved", "Saved"));
+    showToast(
+      tx(
+        "ai_provider_switched",
+        "{provider} is now the active AI provider.",
+        { provider: label }
+      ),
+      "ok"
+    );
+  } catch (err) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = err.message;
+    }
+    setConfigPanelHint("ai", "invalid", tx("status_failed", "Failed"));
+    showToast(err.message, "error");
+    pendingProviderChoice = null;
+    syncAiProviderUi(lastDeskSettings);
+  } finally {
+    setConfigBusy(false);
+    setBusy(false);
+  }
+}
+
+async function onApplyAiProvider() {
+  const provider = selectedAiProvider();
+  const current = activeAiProvider(lastDeskSettings);
+  if (provider === current) {
+    const label = AI_PROVIDER_LABELS[provider] || provider;
+    showToast(`${label} is already active.`, "ok");
+    return;
+  }
+  await applyAiProvider(provider);
+}
 
 async function onClearAiKey(provider) {
   const status = lastKeyStatus || {};
@@ -666,15 +816,18 @@ async function onClearAiKey(provider) {
 /** Apply a fresh status payload after a save/clear without waiting for the poll. */
 function applyDeskState(state) {
   if (!state || typeof state !== "object") return;
+  if (state.settings) lastDeskSettings = state.settings;
   if (state.account) applyAccount(state.account);
   applyAiKeys(state.ai_ready, state.ai_key_status);
   applyAlpacaKeys(state.alpaca_key_status);
   applyTradingEnv(state.trading_mode || state.alpaca_key_status);
+  syncAiProviderUi(state.settings || lastDeskSettings);
   syncConfigConnection();
 }
 
 $("ai-config")?.addEventListener("submit", onSaveKeys);
 $("btn-save-keys")?.addEventListener("click", onSaveKeys);
+$("btn-apply-ai-provider")?.addEventListener("click", onApplyAiProvider);
 $("alpaca-config")?.addEventListener("submit", onSaveAlpacaKeys);
 $("btn-save-live")?.addEventListener("click", onSaveLiveKeys);
 // Both credential slots live in one <form>, whose only submit button is the
@@ -696,6 +849,15 @@ $("btn-apply-mode")?.addEventListener("click", onApplyTradingMode);
     syncTradingModeUi(lastAlpacaStatus);
   });
 });
+
+// Selecting an AI provider only stages the choice until applied or saved.
+["field-provider-openai", "field-provider-gemini", "field-provider-anthropic", "field-provider-xai"].forEach((id) => {
+  $(id)?.addEventListener("change", () => {
+    pendingProviderChoice = selectedAiProvider();
+    syncAiProviderUi(lastDeskSettings);
+  });
+});
+
 $("btn-clear-alpaca")?.addEventListener("click", onClearAlpacaKeys);
 $("btn-clear-openai")?.addEventListener("click", () => onClearAiKey("openai"));
 $("btn-clear-gemini")?.addEventListener("click", () => onClearAiKey("gemini"));
@@ -703,15 +865,22 @@ $("btn-clear-anthropic")?.addEventListener("click", () => onClearAiKey("anthropi
 $("btn-clear-xai")?.addEventListener("click", () => onClearAiKey("xai"));
 
 // Initialization
-refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));
+refreshStatus({ forceSettings: true })
+  .then(() => syncAiProviderUi(lastDeskSettings))
+  .catch((err) => showToast(err.message, "error"));
 
 // The save buttons and panel hints are rewritten from JS, so `translateDOM()`
 // alone leaves whichever label was rendered last in the old language.
 function onDeskLanguageChange() {
   syncConfigBusyUi();
+  syncAiProviderUi(lastDeskSettings);
 }
 
 function onDeskStatusUpdate(state) {
+  if (state.settings) {
+    lastDeskSettings = state.settings;
+    syncAiProviderUi(state.settings);
+  }
   if (state.alpaca_key_status) {
     applyAlpacaKeys(state.alpaca_key_status);
   }

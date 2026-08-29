@@ -5,19 +5,33 @@
    scrolls — on one column the rail simply follows the form. */
 .manual-layout {
   display: grid;
-  gap: 1.15rem;
+  gap: 1.25rem;
   align-items: start;
-  max-width: 68rem;
+  max-width: 80rem;
+  margin: 0 auto;
 }
 
-@media (min-width: 62rem) {
+@media (min-width: 48.0625rem) {
   .manual-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(19rem, 23rem);
+    grid-template-columns: minmax(0, 1.28fr) minmax(21rem, 25rem);
   }
 
   .manual-rail {
     position: sticky;
     top: 1rem;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--line) 60%, transparent) transparent;
+  }
+
+  /* The form itself is not height-bound (the page scrolls, not the panel), so
+     this pins to the viewport bottom while the ticket's own fieldsets scroll
+     past it — Buy alone runs three fieldsets before the button. */
+  .manual-place-bar {
+    position: sticky;
+    bottom: 0;
   }
 }
 
@@ -26,16 +40,108 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Masthead + app padding (~14.5rem) so Buy/Sell stay on-screen while the
-     ticket fields scroll inside .manual-form-body. Last-child sticky alone
-     would leave the bar below the fold until you scroll to the end. */
-  max-height: calc(100dvh - 14.5rem);
-  overflow: hidden;
 }
 
 .manual-panel .panel-head,
 .manual-panel .manual-banner {
   flex-shrink: 0;
+}
+
+/* -------------------------------------------------- quick symbol chips ---- */
+.manual-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: -0.4rem 0 0.65rem;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 4px 2px;
+}
+
+.manual-quick-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.manual-quick-chips:empty {
+  display: none;
+}
+
+.quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+
+.quick-chip:hover {
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 12%, var(--panel));
+  color: var(--text);
+}
+
+.quick-chip.is-active {
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 22%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--copper) 45%, transparent);
+}
+
+.quick-chip-pos {
+  font-size: 0.68rem;
+  padding: 0.08rem 0.3rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--buy) 18%, transparent);
+  color: var(--buy);
+  font-weight: 600;
+}
+
+.quick-chip-pos.neg,
+.quick-chip-pos.short {
+  background: color-mix(in srgb, var(--sell) 18%, transparent);
+  color: var(--sell);
+}
+
+/* ------------------------------------------------ inline sizing badge ---- */
+.manual-inline-sizing-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  margin: 0.5rem 0 0.2rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--buy) 25%, var(--line));
+  background: color-mix(in srgb, var(--buy) 8%, var(--panel));
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--text);
+}
+
+.manual-inline-sizing-badge[hidden] {
+  display: none;
+}
+
+.manual-inline-sizing-badge .badge-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.manual-inline-sizing-badge .badge-stat strong {
+  color: var(--buy);
+  font-weight: 600;
 }
 
 .form.manual-form {
@@ -48,11 +154,9 @@
 
 .manual-form-body {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.95rem;
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding-bottom: 0.4rem;
 }
 
@@ -60,7 +164,7 @@
   flex: 0 0 auto;
   z-index: 6;
   margin: 0.15rem -1.15rem -1.2rem;
-  padding: 0.7rem 1.15rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.75rem 1.15rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background: color-mix(in srgb, var(--panel) 96%, transparent);
@@ -290,7 +394,7 @@ a.ghost.small {
 .manual-ctx-meta {
   margin: 0.75rem 0 0;
   padding-top: 0.75rem;
-  border-top: 1px solid rgba(212, 137, 76, 0.2);
+  border-top: 1px solid color-mix(in srgb, var(--copper) 20%, transparent);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -300,20 +404,42 @@ a.ghost.small {
 
 /* Form fieldgroup visual separation */
 .manual-form .field-group {
-  background: rgba(212, 137, 76, 0.04);
-  border-color: rgba(212, 137, 76, 0.25);
+  background: color-mix(in srgb, var(--copper) 4%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 25%, transparent);
 }
 
 .manual-form #manual-risk-group {
-  background: rgba(139, 154, 171, 0.04);
-  border-color: rgba(139, 154, 171, 0.2);
+  background: color-mix(in srgb, var(--hold) 4%, transparent);
+  border-color: color-mix(in srgb, var(--hold) 20%, transparent);
+}
+
+.manual-risk-size-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.manual-bracket-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .manual-bracket-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* The buy-back arms a *second* order, so it reads as its own instrument
    rather than another row of the sell block. */
 .manual-form #manual-reinvest-group {
-  background: rgba(93, 168, 140, 0.05);
-  border-color: rgba(93, 168, 140, 0.22);
+  background: color-mix(in srgb, var(--buy) 5%, transparent);
+  border-color: color-mix(in srgb, var(--buy) 22%, transparent);
 }
 
 .manual-form #manual-followon-group {
@@ -335,7 +461,7 @@ a.ghost.small {
   gap: 0.75rem;
   margin-top: 0.25rem;
   padding-top: 0.75rem;
-  border-top: 1px dashed rgba(93, 168, 140, 0.3);
+  border-top: 1px dashed color-mix(in srgb, var(--buy) 30%, transparent);
 }
 
 .manual-form #manual-followon-fields {
@@ -358,8 +484,8 @@ a.ghost.small {
 #manual-followon-summary:not(:empty) {
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-sm);
-  background: rgba(93, 168, 140, 0.09);
-  border: 1px solid rgba(93, 168, 140, 0.24);
+  background: color-mix(in srgb, var(--buy) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--buy) 24%, transparent);
 }
 
 #manual-followon-summary:not(:empty) {
@@ -375,13 +501,143 @@ a.ghost.small {
 }
 
 .manual-form #manual-dip-hunt-group {
-  background: rgba(93, 168, 140, 0.05);
-  border-color: rgba(93, 168, 140, 0.22);
+  background: color-mix(in srgb, var(--buy) 5%, transparent);
+  border-color: color-mix(in srgb, var(--buy) 22%, transparent);
 }
 
-.manual-form #manual-dip-hunt-group > .check,
-.manual-form #manual-dip-hunt-fields {
-  grid-column: 1 / -1;
+.manual-form details.field-group.manual-accordion,
+.manual-form details.manual-accordion {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.manual-form details.field-group.manual-accordion[open],
+.manual-form details.manual-accordion[open] {
+  padding: 0.65rem 0.85rem 0.85rem;
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.15rem 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  user-select: none;
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head::-webkit-details-marker {
+  display: none;
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head::marker {
+  content: "";
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head:hover {
+  color: var(--text);
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head .manual-accordion-title {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head .manual-accordion-badge {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  color: var(--muted);
+  text-transform: none;
+}
+
+.manual-form details.manual-accordion > summary.manual-accordion-head .manual-accordion-badge:empty {
+  display: none;
+}
+
+.manual-form details.manual-accordion[open] > summary.manual-accordion-head {
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  color: var(--text);
+}
+
+.manual-form details.manual-accordion[open] > summary.manual-accordion-head .manual-fold-caret {
+  transform: rotate(45deg);
+}
+
+.manual-form details.manual-accordion > .manual-accordion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.manual-form details.manual-accordion .manual-accordion-body > .check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.18s ease, background 0.18s ease;
+  width: 100%;
+  cursor: pointer;
+}
+
+.manual-form details.manual-accordion .manual-accordion-body > .check:hover {
+  border-color: color-mix(in srgb, var(--copper) 30%, transparent);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.manual-form details.manual-accordion .manual-accordion-body > .check:focus-within {
+  border-color: var(--copper);
+}
+
+.manual-form details.manual-accordion#manual-risk-group .manual-accordion-body > .check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--hold) 45%, transparent);
+  background: color-mix(in srgb, var(--hold) 10%, transparent);
+}
+
+.manual-form details.manual-accordion#manual-dip-hunt-group .manual-accordion-body > .check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--buy) 45%, transparent);
+  background: color-mix(in srgb, var(--buy) 10%, transparent);
+}
+
+.manual-form #manual-bracket-fields {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed color-mix(in srgb, var(--hold) 30%, transparent);
+  width: 100%;
+}
+
+.manual-form #manual-bracket-fields[hidden] {
+  display: none;
 }
 
 .manual-form #manual-dip-hunt-fields {
@@ -389,7 +645,8 @@ a.ghost.small {
   gap: 0.75rem;
   margin-top: 0.25rem;
   padding-top: 0.75rem;
-  border-top: 1px dashed rgba(93, 168, 140, 0.3);
+  border-top: 1px dashed color-mix(in srgb, var(--buy) 30%, transparent);
+  width: 100%;
 }
 
 .manual-form #manual-dip-hunt-fields[hidden] {
@@ -399,8 +656,8 @@ a.ghost.small {
 #manual-dip-hunt-summary:not(:empty) {
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-sm);
-  background: rgba(93, 168, 140, 0.09);
-  border: 1px solid rgba(93, 168, 140, 0.24);
+  background: color-mix(in srgb, var(--buy) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--buy) 24%, transparent);
 }
 
 .manual-form .field-group[hidden] {
@@ -438,132 +695,6 @@ a.ghost.small {
 .manual-form .field-group > details,
 .manual-form .field-group > p {
   grid-column: 1 / -1;
-}
-
-/* Quantity: label + available + #/$ pill on one row, the amount below. */
-.manual-qty-field {
-  display: grid;
-  gap: 0.4rem;
-  min-width: 0;
-}
-
-.manual-qty-field[hidden] {
-  display: none;
-}
-
-.qty-field-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.qty-field-copy {
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
-  min-width: 0;
-}
-
-.manual-form .qty-field-label {
-  display: inline;
-  margin: 0;
-  font-family: var(--ui);
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--text);
-}
-
-.qty-field-avail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ui);
-  font-size: 0.85rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-
-.qty-field-avail.is-empty {
-  color: var(--warn);
-}
-
-.qty-unit-toggle {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  padding: 0.14rem;
-  gap: 0.08rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--line) 70%, var(--panel));
-}
-
-.manual-form .qty-unit {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  margin: 0;
-  padding: 0;
-  border-radius: 999px;
-  background: transparent;
-  font-family: var(--mono);
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--muted);
-  gap: 0;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.manual-form .qty-unit input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-  pointer-events: none;
-}
-
-.manual-form .qty-unit:hover {
-  color: var(--text);
-}
-
-.manual-form .qty-unit:has(input:checked) {
-  background: var(--copper);
-  color: var(--ink);
-}
-
-.manual-form .qty-unit:has(input:focus-visible) {
-  outline: 2px solid var(--copper);
-  outline-offset: 2px;
-}
-
-.manual-form .qty-unit.is-disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.qty-field-input {
-  min-width: 0;
-}
-
-.qty-field-input[hidden] {
-  display: none;
-}
-
-.qty-fill-group .ghost.small.is-active {
-  border-color: var(--copper);
-  background: color-mix(in srgb, var(--copper) 18%, var(--panel));
-  color: var(--text);
 }
 
 #manual-sell-group > .field-help {
@@ -729,53 +860,67 @@ a.ghost.small {
 }
 
 /* Buy stays green and Sell stays red even when unselected — the pair is the
-   ticket's direction, not a generic switch. Selected is the stronger fill. */
+   ticket's direction, not a generic switch. Selected is the stronger dark fill. */
 .segmented-actions .segment-buy,
 .segmented-actions .segment-sell {
-  min-height: 2.6rem;
+  min-height: 2.65rem;
   padding: 0.55rem 0.9rem;
-  border-radius: 0.4rem;
+  border-radius: var(--radius-sm, 0.4rem);
   font-family: var(--ui);
   font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
   text-transform: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .segmented-actions .segment-buy {
-  border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 14%, var(--panel));
-  color: var(--buy);
+  border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  color: color-mix(in srgb, var(--buy) 70%, var(--muted));
 }
 
 .segmented-actions .segment-sell {
-  border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 14%, var(--panel));
-  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 35%, var(--line));
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  color: color-mix(in srgb, var(--sell) 70%, var(--muted));
 }
 
 .segmented-actions .segment-buy:hover {
-  border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 22%, var(--panel));
+  border-color: color-mix(in srgb, var(--buy) 65%, var(--line));
+  background: color-mix(in srgb, var(--buy) 12%, var(--panel));
+  color: var(--buy);
 }
 
 .segmented-actions .segment-sell:hover {
-  border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 22%, var(--panel));
+  border-color: color-mix(in srgb, var(--sell) 65%, var(--line));
+  background: color-mix(in srgb, var(--sell) 12%, var(--panel));
+  color: var(--sell);
 }
 
+/* Active / Checked state: Rich Dark Color Background (not black or light) */
 .segmented-actions .segment-buy:has(input:checked) {
   border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 28%, var(--panel));
+  background: color-mix(in srgb, var(--buy) 22%, var(--panel));
   color: var(--buy);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buy) 55%, transparent);
+  font-weight: 700;
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--buy) 25%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--buy) 40%, transparent);
 }
 
 .segmented-actions .segment-sell:has(input:checked) {
   border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 28%, var(--panel));
+  background: color-mix(in srgb, var(--sell) 22%, var(--panel));
   color: var(--sell);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sell) 55%, transparent);
+  font-weight: 700;
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--sell) 25%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--sell) 40%, transparent);
 }
 
 .segment.is-disabled,
@@ -798,8 +943,9 @@ a.ghost.small {
 .segment-disabled-reason {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 0.65rem);
-  z-index: 30;
+  top: calc(100% + 0.45rem);
+  bottom: auto;
+  z-index: 50;
   display: block;
   width: max-content;
   max-width: min(18rem, calc(100vw - 2rem));
@@ -819,7 +965,7 @@ a.ghost.small {
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(0.25rem);
+  transform: translateY(-0.25rem);
   transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
 }
 
@@ -827,9 +973,10 @@ a.ghost.small {
   content: "";
   position: absolute;
   right: 1.4rem;
-  top: 100%;
+  bottom: 100%;
+  top: auto;
   border: 0.35rem solid transparent;
-  border-top-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+  border-bottom-color: color-mix(in srgb, var(--copper) 45%, var(--line));
 }
 
 /* `:focus` as well as `:focus-visible`: a disabled segment carries tabindex=0
@@ -931,22 +1078,9 @@ a.ghost.small {
   transition: all 0.2s ease;
 }
 
-.manual-reinvest-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-}
-
 .manual-reinvest-head {
   color: var(--text);
   font-weight: 600;
-}
-
-.manual-reinvest-note {
-  color: var(--muted);
-  font-size: 0.72rem;
 }
 
 /* A waiting plan is live money that has not moved yet — copper, like every
@@ -957,18 +1091,10 @@ a.ghost.small {
   background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
 }
 
-.manual-reinvest-item[data-kind="waiting"] .manual-reinvest-note {
-  color: var(--copper);
-}
-
 .manual-reinvest-item[data-kind="ok"] {
   border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
   border-left-color: var(--buy);
   background: linear-gradient(135deg, rgba(63, 191, 143, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
-}
-
-.manual-reinvest-item[data-kind="ok"] .manual-reinvest-note {
-  color: var(--buy);
 }
 
 .manual-reinvest-item[data-kind="error"],
@@ -976,11 +1102,6 @@ a.ghost.small {
   border-color: color-mix(in srgb, var(--sell) 35%, var(--line));
   border-left-color: var(--sell);
   background: linear-gradient(135deg, rgba(227, 93, 93, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
-}
-
-.manual-reinvest-item[data-kind="error"] .manual-reinvest-note,
-.manual-reinvest-item[data-kind="warn"] .manual-reinvest-note {
-  color: var(--sell);
 }
 
 .manual-last-heading {
@@ -1045,7 +1166,8 @@ a.ghost.small {
   background: color-mix(in srgb, var(--buy) 8%, var(--panel));
   border-color: color-mix(in srgb, var(--buy) 30%, var(--line));
   display: grid;
-  gap: 0.55rem;
+  gap: 0.65rem;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .manual-layout[data-side="sell"] .size-estimate,
@@ -1067,7 +1189,7 @@ a.ghost.small {
 .size-estimate-value {
   margin: 0;
   font-family: var(--mono);
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--buy);
 }
@@ -1075,6 +1197,121 @@ a.ghost.small {
 .manual-layout[data-side="sell"] .size-estimate-value,
 .manual-layout[data-side="short"] .size-estimate-value {
   color: var(--sell);
+}
+
+/* ------------------------------------------- visual bracket diagram ---- */
+.bracket-visualizer {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-bg, #0c1728) 85%, transparent);
+  border: 1px solid var(--line);
+}
+
+.bracket-visualizer[hidden] {
+  display: none;
+}
+
+.bracket-tier {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  padding: 0.15rem 0;
+}
+
+.bracket-tier-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  width: 4.5rem;
+}
+
+.bracket-tier-val {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bracket-tier-pct {
+  font-size: 0.74rem;
+  font-weight: 500;
+  width: 4.8rem;
+  text-align: right;
+}
+
+.bracket-tier-pct.pos {
+  color: var(--buy);
+}
+
+.bracket-tier-pct.neg {
+  color: var(--sell);
+}
+
+.target-tier .bracket-tier-val {
+  color: var(--buy);
+}
+
+.stop-tier .bracket-tier-val {
+  color: var(--sell);
+}
+
+.bracket-bar-container {
+  margin-top: 0.25rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.bracket-bar-track {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  gap: 2px;
+}
+
+.bracket-bar-seg {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.bracket-bar-seg.stop-seg {
+  background: var(--sell);
+}
+
+.bracket-bar-seg.target-seg {
+  background: var(--buy);
+}
+
+.bracket-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.bracket-bar-sub.pos {
+  color: var(--buy);
+  font-weight: 600;
+}
+
+.bracket-bar-sub.neg {
+  color: var(--sell);
+  font-weight: 600;
+}
+
+.bracket-bar-sub.rr-badge {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--copper) 18%, transparent);
+  color: var(--copper);
+  font-weight: 600;
 }
 
 .size-estimate-grid {
@@ -1150,97 +1387,118 @@ a.ghost.small {
 }
 
 .manual-place-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  display: flex;
   flex: 1 1 14rem;
   min-width: 0;
 }
 
-.place-side {
-  min-height: 2.75rem;
-  padding: 0.55rem 0.9rem;
-  border-radius: 0.4rem;
+/* ----------------------------------------------------- dynamic submit button ---- */
+.btn-manual-submit {
+  width: 100%;
+  min-height: 2.85rem;
+  padding: 0.65rem 1.15rem;
+  border-radius: var(--radius-sm);
   border: 1px solid;
   font-family: var(--ui);
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
     color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
 }
 
-.place-side:focus-visible {
+.btn-manual-submit.is-buy {
+  border-color: var(--buy);
+  background: var(--buy);
+  color: #06140f;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--buy) 25%, transparent);
+}
+
+.btn-manual-submit.is-buy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--buy) 85%, #fff);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--buy) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.btn-manual-submit.is-sell {
+  border-color: var(--sell);
+  background: var(--sell);
+  color: #1a0808;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--sell) 25%, transparent);
+}
+
+.btn-manual-submit.is-sell:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sell) 85%, #fff);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--sell) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.btn-manual-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-manual-submit:focus-visible {
   outline: 2px solid var(--copper);
   outline-offset: 2px;
 }
 
-.place-side:disabled {
+.btn-manual-submit:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  box-shadow: none;
+  transform: none;
 }
 
-.place-side[data-side="buy"] {
-  border-color: var(--buy);
-  background: color-mix(in srgb, var(--buy) 14%, var(--panel));
-  color: var(--buy);
+.btn-submit-pill {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
 }
 
-.place-side[data-side="sell"] {
-  border-color: var(--sell);
-  background: color-mix(in srgb, var(--sell) 14%, var(--panel));
-  color: var(--sell);
+.btn-submit-pill:empty {
+  display: none;
 }
 
-.place-side[data-side="buy"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--buy) 36%, var(--panel));
-  color: color-mix(in srgb, var(--buy) 22%, #fff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buy) 45%, transparent);
+/* ------------------------------------------ position management accordion card ---- */
+.manual-manage-panel {
+  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
+  background: color-mix(in srgb, var(--copper) 6%, var(--panel));
 }
 
-.place-side[data-side="sell"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sell) 36%, var(--panel));
-  color: color-mix(in srgb, var(--sell) 22%, #fff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sell) 45%, transparent);
+.manage-active-badge {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--copper) 22%, transparent);
+  color: var(--copper);
+  text-transform: uppercase;
 }
 
-/* The armed side is the place action — solid fill. Hover must keep that fill;
-   the unselected hover above is more specific than the resting selected rule. */
-.place-side[data-side="buy"][aria-pressed="true"] {
-  background: var(--buy);
-  color: #06140f;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buy) 55%, transparent);
-}
-
-.place-side[data-side="sell"][aria-pressed="true"] {
-  background: var(--sell);
-  color: #1a0808;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sell) 55%, transparent);
-}
-
-.place-side[data-side="buy"][aria-pressed="true"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--buy) 78%, #fff);
-  color: #06140f;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--buy) 35%, #fff),
-    0 6px 18px color-mix(in srgb, var(--buy) 40%, transparent);
-}
-
-.place-side[data-side="sell"][aria-pressed="true"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sell) 78%, #fff);
-  color: #1a0808;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--sell) 35%, #fff),
-    0 6px 18px color-mix(in srgb, var(--sell) 40%, transparent);
-}
-
-.place-side[aria-pressed="true"]:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #000 18%, transparent);
+.queue-count-pill {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--copper) 25%, transparent);
+  color: var(--copper);
 }
 
 .manual-last-warnings {
@@ -1740,85 +1998,13 @@ body.modal-open {
 
 /* --------------------------------------------------------- price fillers -- */
 
-/* Bid / Mark / Ask sit inside the price field, not beside it. */
-.price-input-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
-  min-height: 2.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: #101823;
-  overflow: hidden;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.price-input-shell:hover {
-  border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
-}
-
-.price-input-shell:focus-within {
+/* "At stop" latches: the sell limit follows the stop until it is pressed
+   again, so it has to read as held down, not as a button just clicked. */
+.price-fill-group .ghost.small[aria-pressed="true"],
+.price-fill-group .ghost.small.is-active {
   border-color: var(--copper);
-  box-shadow: 0 0 0 3px rgba(212, 137, 76, 0.16);
-}
-
-.price-input-shell:has(input[aria-invalid="true"]) {
-  border-color: var(--error);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
-}
-
-.price-input-shell:has(input:disabled) {
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.price-input-shell input[type="number"]:disabled {
-  opacity: 1;
-  cursor: not-allowed;
-}
-
-.price-input-shell input[type="number"] {
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0.55rem 0.55rem 0.55rem 0.7rem;
-  appearance: textfield;
-}
-
-.price-input-shell input[type="number"]:focus,
-.price-input-shell input[type="number"]:focus-visible {
-  border: 0;
-  box-shadow: none;
-  outline: none;
-}
-
-.price-input-shell input[type="number"]::-webkit-inner-spin-button,
-.price-input-shell input[type="number"]::-webkit-outer-spin-button {
-  appearance: none;
-  margin: 0;
-}
-
-.price-fill-group {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.28rem 0.3rem 0.28rem 0.4rem;
-  margin: 0.28rem 0.28rem 0.28rem 0;
-  border-left: 1px solid var(--line);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.price-fill-group .ghost.small {
-  min-height: 0;
-  padding: 0.18rem 0.4rem;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  background: color-mix(in srgb, var(--copper) 18%, var(--panel));
+  color: var(--text);
 }
 
 /* ------------------------------------------------------------- presets ---- */
@@ -1967,6 +2153,7 @@ body.modal-open {
 .manual-recent-btn {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.15rem;
   width: 100%;
   padding: 0.45rem 0.4rem;
@@ -2026,15 +2213,7 @@ body.modal-open {
    the stop were invisible for the entire time you were choosing them. The
    preview pins to the bottom of the viewport instead and opens on demand. */
 
-@media (max-width: 61.99rem) {
-  .manual-panel {
-    /* Masthead plus the pinned size-estimate bar above the bottom nav. */
-    max-height: calc(
-      100dvh - var(--mobile-nav-height, 62px) - env(safe-area-inset-bottom, 0px) -
-        16rem
-    );
-  }
-
+@media (max-width: 48rem) {
   #manual-size-estimate {
     position: fixed;
     left: 0;
@@ -2047,20 +2226,29 @@ body.modal-open {
     border-width: 1px 0 0;
     border-radius: 0;
     box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.45);
+    background: color-mix(in srgb, var(--panel) 95%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
 
   #manual-size-estimate.is-expanded {
-    max-height: 60vh;
+    max-height: 55vh;
     overflow-y: auto;
     overscroll-behavior: contain;
+    box-shadow: 0 -1rem 2.5rem rgba(0, 0, 0, 0.6);
   }
 
   #manual-size-estimate:not(.is-expanded) .size-estimate-grid,
-  #manual-size-estimate:not(.is-expanded) .size-estimate-note {
+  #manual-size-estimate:not(.is-expanded) .size-estimate-note,
+  #manual-size-estimate:not(.is-expanded) .bracket-visualizer {
     display: none;
   }
 
   #manual-size-estimate.is-expanded .size-estimate-grid:not([hidden]) {
+    display: grid;
+  }
+
+  #manual-size-estimate.is-expanded .bracket-visualizer:not([hidden]) {
     display: grid;
   }
 
@@ -2076,6 +2264,12 @@ body.modal-open {
   /* Room for the bar and bottom nav so it never covers the last control on the form. */
   body[data-page="manual-order"] {
     padding-bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px) + 8rem);
+  }
+}
+
+@media (pointer: coarse) {
+  #manual-shortcuts-help {
+    display: none;
   }
 }
 

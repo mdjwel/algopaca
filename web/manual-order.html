@@ -97,16 +97,18 @@
       </div>
     </div>
 
-    <main id="main">
+    <main id="main" tabindex="-1">
       <div id="page-manual-order" class="page manual-layout" data-page="manual-order" data-side="buy">
         <section class="panel manual-panel is-open" id="manual-panel" aria-labelledby="manual-heading">
           <div class="panel-head">
-            <h2 id="manual-heading" data-i18n="manual_order_heading">Advanced Order</h2>
+            <h2 id="manual-heading" data-i18n="ticket">Order Ticket</h2>
             <p id="manual-hint" class="panel-hint" data-state="ready" aria-live="polite">Live paper</p>
           </div>
 
-          <!-- Each fragment carries its own key: translateDOM only rewrites the
-               first text node, so a single key would leave the link English. -->
+          <!-- Quick access watchlist / open position chips -->
+          <div id="manual-quick-chips" class="manual-quick-chips" aria-label="Quick symbol selection" data-i18n-aria-label="quick_symbol_selection" role="region"></div>
+
+          <!-- Strategy loop lock banner -->
           <p id="manual-loop-banner" class="manual-banner" role="status" hidden data-i18n="manual_loop_locked">
             Strategy loop is running — Advanced Order is locked.
             <a href="/auto-trade" data-i18n="manual_loop_locked_link">Stop the loop on Auto Trade</a>
@@ -115,7 +117,9 @@
 
           <form id="manual-order" class="form manual-form" novalidate>
             <div class="manual-form-body">
-            <fieldset class="field-group">
+
+            <!-- 1. Order Ticket (Asset, Action, Sizing & Execution Terms) -->
+            <fieldset class="field-group" id="manual-asset-group">
               <legend data-i18n="ticket">Order Ticket</legend>
               <div class="field-pair-row manual-symbol-side-row">
                 <label for="manual-symbol"><span data-i18n="symbol">Symbol</span>
@@ -133,14 +137,77 @@
                 </div>
               </div>
 
-              <fieldset id="manual-side-field" class="sr-only" aria-hidden="true">
+              <fieldset id="manual-side-field" class="segmented-field" aria-label="Order action" data-i18n-aria-label="action">
                 <legend data-i18n="action">Action</legend>
-                <input type="radio" name="side" value="buy" checked />
-                <input type="radio" name="side" value="sell" />
+                <div class="segmented segmented-actions" role="radiogroup" data-i18n-aria-label="action" aria-label="Action">
+                  <label class="segment segment-buy">
+                    <input type="radio" name="side" value="buy" checked />
+                    <span data-i18n="buy">Buy</span>
+                  </label>
+                  <label class="segment segment-sell">
+                    <input type="radio" name="side" value="sell" />
+                    <span data-i18n="sell">Sell</span>
+                  </label>
+                </div>
               </fieldset>
 
-              <!-- Sell/Cover size sits on the ticket: shares or dollars, with
-                   how much you actually have sitting next to the label. -->
+              <!-- Position Sizing (Buy Risk Engine) -->
+              <div class="manual-qty-field" id="manual-buy-sizing-block">
+                <div class="qty-field-head">
+                  <div class="qty-field-copy">
+                    <label class="qty-field-label" id="manual-buy-legend" for="manual-ai-risk-pct" data-i18n="quantity">Quantity</label>
+                    <span id="manual-buy-avail" class="qty-field-avail"></span>
+                  </div>
+                  <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
+                    <label class="qty-unit" data-tooltip="Risk %" data-i18n-tooltip="size_by_risk">
+                      <input type="radio" name="buy_size_mode" value="risk" checked />
+                      <span aria-hidden="true">%</span>
+                      <span class="sr-only" data-i18n="size_by_risk">Risk</span>
+                    </label>
+                    <label class="qty-unit" data-tooltip="Dollars" data-i18n-tooltip="dollars_title">
+                      <input type="radio" name="buy_size_mode" value="notional" />
+                      <span aria-hidden="true">$</span>
+                      <span class="sr-only" data-i18n="dollars_title">Dollars</span>
+                    </label>
+                    <label class="qty-unit" data-tooltip="Shares" data-i18n-tooltip="shares_title">
+                      <input type="radio" name="buy_size_mode" value="qty" />
+                      <span aria-hidden="true">#</span>
+                      <span class="sr-only" data-i18n="shares_title">Shares</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="qty-field-input" id="manual-risk-pct-label">
+                  <div class="price-input-shell">
+                    <input id="manual-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0.05" max="10" step="0.05" inputmode="decimal" placeholder="0.5" aria-describedby="manual-buy-avail manual-size-mode-help" />
+                  </div>
+                  <p class="field-error" role="alert" hidden></p>
+                </div>
+
+                <div class="qty-field-input" id="manual-notional-label" hidden>
+                  <div class="price-input-shell">
+                    <input id="manual-notional" name="notional" type="number" min="1" step="1" inputmode="decimal" placeholder="1000" aria-describedby="manual-buy-avail manual-size-mode-help" />
+                    <div class="price-fill-group" role="group" aria-label="Fill from buying power" data-i18n-aria-label="fill_from_bp">
+                      <button type="button" class="ghost small" data-notional-fill="25" data-i18n="bp_pct_25">25%</button>
+                      <button type="button" class="ghost small" data-notional-fill="50" data-i18n="bp_pct_50">50%</button>
+                      <button type="button" class="ghost small" data-notional-fill="100" data-i18n="bp_pct_max">Max</button>
+                    </div>
+                  </div>
+                  <p class="field-error" role="alert" hidden></p>
+                </div>
+
+                <div class="qty-field-input" id="manual-buy-qty-label" hidden>
+                  <div class="price-input-shell">
+                    <input id="manual-buy-qty" name="buy_qty" type="number" min="1" step="1" inputmode="decimal" placeholder="10" aria-describedby="manual-buy-avail manual-size-mode-help" />
+                  </div>
+                  <p class="field-error" role="alert" hidden></p>
+                </div>
+
+                <p class="field-help" id="manual-size-mode-help" aria-live="polite" data-i18n="manual_risk_help_short">Shares are set so a stop-out costs your risk budget: equity × risk % ÷ (ATR × multiplier). More volatility means fewer shares for the same dollar risk.</p>
+                <div id="manual-inline-sizing-badge" class="manual-inline-sizing-badge" aria-live="polite" hidden></div>
+              </div>
+
+              <!-- Sell-side quantity fields -->
               <div class="manual-qty-field" id="manual-sell-group" hidden>
                 <div class="qty-field-head">
                   <div class="qty-field-copy">
@@ -148,12 +215,12 @@
                     <span id="manual-sell-avail" class="qty-field-avail"></span>
                   </div>
                   <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
-                    <label class="qty-unit">
+                    <label class="qty-unit" data-tooltip="Shares" data-i18n-tooltip="shares_title">
                       <input type="radio" name="sell_mode" value="custom" checked />
                       <span aria-hidden="true">#</span>
                       <span class="sr-only" data-i18n="label_shares">Shares</span>
                     </label>
-                    <label class="qty-unit">
+                    <label class="qty-unit" data-tooltip="Dollars" data-i18n-tooltip="dollars_title">
                       <input type="radio" name="sell_mode" value="dollars" />
                       <span aria-hidden="true">$</span>
                       <span class="sr-only" data-i18n="label_dollar_amount">Dollar amount</span>
@@ -181,11 +248,10 @@
                   <p class="field-error" role="alert" hidden></p>
                 </div>
                 <p id="manual-sell-help" class="field-help" aria-live="polite" data-i18n="manual_sell_hint">Choose how much of the position to close. Any resting protective stop is cancelled first.</p>
-                <!-- The old ticket cancelled the stop over the whole position and
-                     then sold part of it, leaving the rest naked. It now re-arms. -->
                 <p id="manual-partial-note" class="field-help info" hidden data-i18n="manual_partial_rearm">A stop is re-armed over the shares you keep once this fills.</p>
               </div>
 
+              <!-- Order Execution Terms -->
               <label for="manual-order-type" class="manual-span manual-type-field"><span data-i18n="order_type">Order type</span>
                 <select id="manual-order-type" name="order_type" autocomplete="off">
                   <option value="market" data-i18n="market">Market</option>
@@ -233,14 +299,14 @@
                   <p id="help-tif" class="field-help" data-i18n="help_tif_day">A Day order is cancelled at the close if it has not filled.</p>
                 </div>
 
-                <!-- Bid / Mark / Ask, because a limit typed from the mark alone is
-                     the wrong side of a wide spread half the time. -->
+                <!-- Limit price with Bid / Mid / Mark / Ask helpers -->
                 <div id="manual-limit-row" class="manual-limit-row" hidden>
                   <label for="manual-limit" id="manual-limit-label"><span data-i18n="limit_price">Limit price ($)</span></label>
                   <div class="price-input-shell">
                     <input id="manual-limit" name="limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-limit-offset" />
                     <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
                       <button type="button" id="btn-limit-bid" class="ghost small" data-i18n="use_bid">Bid</button>
+                      <button type="button" id="btn-limit-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
                       <button type="button" id="btn-limit-mark" class="ghost small" data-i18n="use_mark">Mark</button>
                       <button type="button" id="btn-limit-ask" class="ghost small" data-i18n="use_ask">Ask</button>
                     </div>
@@ -250,12 +316,14 @@
                 </div>
               </div>
 
+              <!-- Trigger price with Bid / Mid / Mark / Ask helpers -->
               <div id="manual-stop-row" class="manual-limit-row" hidden>
                 <label for="manual-stop-price" id="manual-stop-price-label"><span data-i18n="trigger_price">Trigger price</span></label>
                 <div class="price-input-shell">
                   <input id="manual-stop-price" name="stop_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-stop-offset" />
                   <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
                     <button type="button" id="btn-stop-bid" class="ghost small" data-i18n="use_bid">Bid</button>
+                    <button type="button" id="btn-stop-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
                     <button type="button" id="btn-stop-mark" class="ghost small" data-i18n="use_mark">Mark</button>
                     <button type="button" id="btn-stop-ask" class="ghost small" data-i18n="use_ask">Ask</button>
                   </div>
@@ -272,16 +340,105 @@
                 <p id="manual-trail-help" class="field-help" data-i18n="help_trail_percent">The stop follows the best price by this percentage and never moves back.</p>
               </div>
 
-              <!-- Shown when the tape is outside RTH and this ticket will rest
-                   until regular hours rather than filling in the current session.
-                   JS owns the copy (session + type), so this has no data-i18n. -->
               <p id="manual-session-warn" class="field-help warn" hidden>This order will rest until regular hours.</p>
               <p id="manual-asset-warn" class="field-help warn" hidden></p>
             </fieldset>
 
-            <!-- Sell-side only: a standing instruction to buy the shares back
-                 cheaper once the sell actually fills. Alpaca has no sell-then-buy
-                 order class, so the desk watches the sell and sends the buy. -->
+            <!-- 2. Protective Bracket Legs -->
+            <details class="field-group manual-accordion" id="manual-risk-group">
+              <summary class="manual-accordion-head">
+                <span class="manual-fold-caret" aria-hidden="true"></span>
+                <span class="manual-accordion-title" data-i18n="bracket_legend">Protective Bracket</span>
+                <span id="manual-bracket-summary-badge" class="manual-accordion-badge"></span>
+              </summary>
+              <div class="manual-accordion-body">
+                <label class="check" for="manual-bracket-enabled">
+                  <input type="checkbox" id="manual-bracket-enabled" name="bracket_enabled" checked />
+                  <strong data-i18n="bracket_enable">Attach stop-loss and profit target</strong>
+                </label>
+                <p class="field-help" id="manual-bracket-help" data-i18n="bracket_help">Attach automated stop-loss and take-profit exit orders when this buy order fills.</p>
+
+                <div id="manual-bracket-fields">
+                  <!-- Bracket order legs: Stop distance and Target distance paired together -->
+                  <div class="field-pair-row manual-bracket-row">
+                    <label for="manual-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
+                      <input id="manual-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0.1" max="10" step="0.1" inputmode="decimal" aria-describedby="help-atr-mult" />
+                      <p id="help-atr-mult" class="field-help" data-i18n="help_atr_mult">Stop distance multiplier. Wider multiples survive noise but buy fewer shares. Range: 0.1–10.</p>
+                      <p class="field-error" role="alert" hidden></p>
+                    </label>
+
+                    <label for="manual-take-profit-r" id="manual-take-profit-label"><span data-i18n="label_take_profit_r">Take profit = R ×</span>
+                      <input id="manual-take-profit-r" name="take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" aria-describedby="help-take-profit-r" />
+                      <p id="help-take-profit-r" class="field-help" data-i18n="help_take_profit_r">Target distance in multiples of the stop, sent as the other leg of a bracket order. 0 sends a stop only.</p>
+                      <p class="field-error" role="alert" hidden></p>
+                    </label>
+                  </div>
+
+                  <details class="manual-advanced" id="manual-exit-advanced">
+                    <summary class="manual-advanced-head">
+                      <span class="manual-fold-caret" aria-hidden="true"></span>
+                      <span data-i18n="advanced_stop_exit">Stop exit — advanced</span>
+                    </summary>
+                    <div class="manual-advanced-body">
+                      <div class="field-pair-row" id="manual-stop-exit-row">
+                        <label for="manual-stop-limit-offset" id="manual-stop-limit-label"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
+                          <input id="manual-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" aria-describedby="help-stop-limit-offset" />
+                          <p id="help-stop-limit-offset" class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell at a limit this % below it. 0 sells at market unless you set a sell limit.</p>
+                          <p class="field-error" role="alert" hidden></p>
+                        </label>
+
+                        <div class="manual-limit-row" id="manual-stop-limit-price-row">
+                          <label for="manual-stop-limit-price"><span data-i18n="stop_limit_price">Sell limit</span></label>
+                          <div class="price-input-shell">
+                            <input id="manual-stop-limit-price" name="stop_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="help-stop-limit-price" />
+                            <div class="price-fill-group" role="group" aria-label="Fill from stop" data-i18n-aria-label="use_stop_price">
+                              <button type="button" id="btn-stop-limit-at-stop" class="ghost small" aria-pressed="false" data-i18n="use_stop_price">At stop</button>
+                            </div>
+                          </div>
+                          <p class="field-error" role="alert" hidden></p>
+                          <p id="help-stop-limit-price" class="field-help" data-i18n="help_stop_limit_price">Optional. Must sit at or below the stop, not above. Overrides the cushion % when set. Leave empty for market or cushion.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </details>
+
+            <!-- 5. Buy Automation: Dip Hunt -->
+            <details class="field-group manual-accordion" id="manual-dip-hunt-group" hidden>
+              <summary class="manual-accordion-head">
+                <span class="manual-fold-caret" aria-hidden="true"></span>
+                <span class="manual-accordion-title" data-i18n="dip_hunt_legend">Buy from the lowest price</span>
+                <span id="manual-dip-hunt-summary-badge" class="manual-accordion-badge"></span>
+              </summary>
+              <div class="manual-accordion-body">
+                <label class="check" for="manual-dip-hunt-enabled">
+                  <input type="checkbox" id="manual-dip-hunt-enabled" name="dip_hunt_enabled" />
+                  <strong data-i18n="dip_hunt_enable">Re-buy after a stop-out dip</strong>
+                </label>
+                <p class="field-help" data-i18n="dip_hunt_help">When the stop fills, the desk waits for a further drop from that sell price. If the drop hits before the wait is up, it buys immediately. If the wait ends first, it parks a limit at the same target. The cycle repeats until you cancel it or the take-profit fills.</p>
+
+                <div id="manual-dip-hunt-fields" hidden>
+                  <div class="field-pair-row">
+                    <label for="manual-dip-hunt-wait"><span data-i18n="dip_hunt_wait">Wait (minutes)</span>
+                      <input id="manual-dip-hunt-wait" name="dip_hunt_wait_minutes" type="number" min="1" max="1440" step="1" value="10" inputmode="numeric" aria-describedby="help-dip-hunt-wait" />
+                      <p id="help-dip-hunt-wait" class="field-help" data-i18n="help_dip_hunt_wait">How long to watch after the stop fills before parking a limit. Skipped if the drop prints first. Max 1440 (24h).</p>
+                      <p class="field-error" role="alert" hidden></p>
+                    </label>
+                    <label for="manual-dip-hunt-pct"><span data-i18n="dip_hunt_pct">Further drop %</span>
+                      <input id="manual-dip-hunt-pct" name="dip_hunt_pct" type="number" min="0.1" max="50" step="0.1" value="5" inputmode="decimal" aria-describedby="help-dip-hunt-pct" />
+                      <p id="help-dip-hunt-pct" class="field-help" data-i18n="help_dip_hunt_pct">Buy this far below the stop-out fill. Example: stop at $10, 5% → limit at $9.50.</p>
+                      <p class="field-error" role="alert" hidden></p>
+                    </label>
+                  </div>
+                  <p id="manual-dip-hunt-summary" class="field-help info" aria-live="polite"></p>
+                  <p class="field-help info" data-i18n="dip_hunt_runtime_note">Live hunts are saved and resume after a restart until the re-buy fills or you cancel them.</p>
+                </div>
+              </div>
+            </details>
+
+            <!-- 6. Sell Automation: Re-invest -->
             <fieldset class="field-group" id="manual-reinvest-group" hidden>
               <legend data-i18n="reinvest_legend">Re-invest after the sell fills</legend>
 
@@ -314,7 +471,15 @@
 
                 <div class="field-pair-row">
                   <label for="manual-reinvest-limit"><span data-i18n="reinvest_limit_price">Buy-back limit price</span>
-                    <input id="manual-reinvest-limit" name="reinvest_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-reinvest-offset" />
+                    <div class="price-input-shell">
+                      <input id="manual-reinvest-limit" name="reinvest_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-reinvest-offset" />
+                      <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
+                        <button type="button" id="btn-reinvest-bid" class="ghost small" data-i18n="use_bid">Bid</button>
+                        <button type="button" id="btn-reinvest-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
+                        <button type="button" id="btn-reinvest-mark" class="ghost small" data-i18n="use_mark">Mark</button>
+                        <button type="button" id="btn-reinvest-ask" class="ghost small" data-i18n="use_ask">Ask</button>
+                      </div>
+                    </div>
                     <p id="manual-reinvest-offset" class="field-help" aria-live="polite"></p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
@@ -330,9 +495,7 @@
               </div>
             </fieldset>
 
-            <!-- Sell or cover: reverse the same name, or buy a different one,
-                 once this close actually fills. Alpaca will not flip a long
-                 into a short on one order, so the desk waits then sends. -->
+            <!-- 7. Sell Automation: Follow-on -->
             <fieldset class="field-group" id="manual-followon-group" hidden>
               <legend data-i18n="followon_legend">Next ticket after this close fills</legend>
 
@@ -399,7 +562,15 @@
 
                 <div class="field-pair-row" id="manual-followon-price-row">
                   <label for="manual-followon-limit" id="manual-followon-limit-label"><span data-i18n="followon_limit_price">Target limit price</span>
-                    <input id="manual-followon-limit" name="followon_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-followon-offset" />
+                    <div class="price-input-shell">
+                      <input id="manual-followon-limit" name="followon_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-followon-offset" />
+                      <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
+                        <button type="button" id="btn-followon-bid" class="ghost small" data-i18n="use_bid">Bid</button>
+                        <button type="button" id="btn-followon-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
+                        <button type="button" id="btn-followon-mark" class="ghost small" data-i18n="use_mark">Mark</button>
+                        <button type="button" id="btn-followon-ask" class="ghost small" data-i18n="use_ask">Ask</button>
+                      </div>
+                    </div>
                     <p id="manual-followon-offset" class="field-help" aria-live="polite"></p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
@@ -416,151 +587,36 @@
               </div>
             </fieldset>
 
-            <fieldset class="field-group" id="manual-risk-group">
-              <legend data-i18n="risk_engine">Risk engine</legend>
-
-              <fieldset class="segmented-field" id="manual-size-mode-field">
-                <legend data-i18n="size_by">Size by</legend>
-                <div class="segmented segmented-quiet" role="radiogroup" data-i18n-aria-label="size_by" aria-label="Size by">
-                  <label class="segment">
-                    <input type="radio" name="buy_size_mode" value="risk" checked />
-                    <span data-i18n="size_by_risk">Risk</span>
-                  </label>
-                  <label class="segment">
-                    <input type="radio" name="buy_size_mode" value="notional" />
-                    <span data-i18n="size_by_dollars">Dollars</span>
-                  </label>
-                  <label class="segment">
-                    <input type="radio" name="buy_size_mode" value="qty" />
-                    <span data-i18n="size_by_shares">Shares</span>
-                  </label>
-                </div>
-              </fieldset>
-
-              <p class="field-help" id="manual-size-mode-help" data-i18n="manual_risk_help_short">Shares are set so a stop-out costs your risk budget: equity × risk % ÷ (ATR × multiplier). More volatility means fewer shares for the same dollar risk.</p>
-
-              <!-- The stop always comes from ATR, so only the first column
-                   changes with the sizing mode. -->
-              <div class="field-pair-row">
-                <label for="manual-ai-risk-pct" id="manual-risk-pct-label"><span data-i18n="label_risk_per_trade">Risk per trade %</span>
-                  <input id="manual-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0.05" max="10" step="0.05" inputmode="decimal" aria-describedby="help-risk-pct" />
-                  <p id="help-risk-pct" class="field-help" data-i18n="help_risk_pct">Maximum loss per trade as a percentage of account equity. Range: 0.05–10%.</p>
-                  <p class="field-error" role="alert" hidden></p>
-                </label>
-                <label for="manual-notional" id="manual-notional-label" hidden><span data-i18n="label_dollar_amount">Dollar amount</span>
-                  <input id="manual-notional" name="notional" type="number" min="1" step="1" inputmode="decimal" placeholder="1000" aria-describedby="help-notional" />
-                  <p id="help-notional" class="field-help" data-i18n="help_dollar_amount">Cash to put to work. Shares = amount ÷ mark, rounded down to whole shares.</p>
-                  <p class="field-error" role="alert" hidden></p>
-                </label>
-                <label for="manual-buy-qty" id="manual-buy-qty-label" hidden><span data-i18n="label_shares">Shares</span>
-                  <input id="manual-buy-qty" name="buy_qty" type="number" min="1" step="1" inputmode="decimal" placeholder="10" aria-describedby="help-buy-qty" />
-                  <p id="help-buy-qty" class="field-help" data-i18n="help_buy_shares">Exact share count. The stop still comes from ATR, so your dollar risk moves with it.</p>
-                  <p class="field-error" role="alert" hidden></p>
-                </label>
-                <label for="manual-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
-                  <input id="manual-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0.1" max="10" step="0.1" inputmode="decimal" aria-describedby="help-atr-mult" />
-                  <p id="help-atr-mult" class="field-help" data-i18n="help_atr_mult">Stop distance multiplier. Wider multiples survive noise but buy fewer shares. Range: 0.1–10.</p>
-                  <p class="field-error" role="alert" hidden></p>
-                </label>
-              </div>
-
-              <label for="manual-take-profit-r" id="manual-take-profit-label"><span data-i18n="label_take_profit_r">Take profit = R ×</span>
-                <input id="manual-take-profit-r" name="take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" aria-describedby="help-take-profit-r" />
-                <p id="help-take-profit-r" class="field-help" data-i18n="help_take_profit_r">Target distance in multiples of the stop, sent as the other leg of a bracket order. 0 sends a stop only.</p>
-                <p class="field-error" role="alert" hidden></p>
-              </label>
-
-              <!-- How the stop *exits* is a separate decision from where it
-                   sits, and most tickets never touch it — so it folds away. -->
-              <details class="manual-advanced" id="manual-exit-advanced">
-                <summary class="manual-advanced-head">
-                  <span class="manual-fold-caret" aria-hidden="true"></span>
-                  <span data-i18n="advanced_stop_exit">Stop exit — advanced</span>
-                </summary>
-                <div class="manual-advanced-body">
-                  <div class="field-pair-row" id="manual-stop-exit-row">
-                    <label for="manual-stop-limit-offset" id="manual-stop-limit-label"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
-                      <input id="manual-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" aria-describedby="help-stop-limit-offset" />
-                      <p id="help-stop-limit-offset" class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit.</p>
-                      <p class="field-error" role="alert" hidden></p>
-                    </label>
-
-                    <div class="manual-limit-row" id="manual-stop-limit-price-row">
-                      <label for="manual-stop-limit-price"><span data-i18n="stop_limit_price">Sell limit</span></label>
-                      <div class="price-input-shell">
-                        <input id="manual-stop-limit-price" name="stop_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="help-stop-limit-price" />
-                        <div class="price-fill-group" role="group" aria-label="Fill from stop" data-i18n-aria-label="use_stop_price">
-                          <button type="button" id="btn-stop-limit-at-stop" class="ghost small" data-i18n="use_stop_price">At stop</button>
-                        </div>
-                      </div>
-                      <p class="field-error" role="alert" hidden></p>
-                      <p id="help-stop-limit-price" class="field-help" data-i18n="help_stop_limit_price">Optional. Long: at or below the stop (not above). Short: at or above. Overrides the cushion % when set. Leave empty for market or cushion.</p>
-                    </div>
-                  </div>
-                </div>
-              </details>
-            </fieldset>
-
-            <!-- Buy-side only: after a stop-out, hunt a cheaper re-entry.
-                 Hidden by default like every other side-specific block, so a
-                 restored sell draft never flashes it before the JS runs. -->
-            <fieldset class="field-group" id="manual-dip-hunt-group" hidden>
-              <legend data-i18n="dip_hunt_legend">Buy from the lowest price</legend>
-
-              <label class="check" for="manual-dip-hunt-enabled">
-                <input type="checkbox" id="manual-dip-hunt-enabled" name="dip_hunt_enabled" />
-                <strong data-i18n="dip_hunt_enable">Re-buy after a stop-out dip</strong>
-              </label>
-              <p class="field-help" data-i18n="dip_hunt_help">When the stop fills, the desk waits for a further drop from that sell price. If the drop hits before the wait is up, it buys immediately. If the wait ends first, it parks a limit at the same target. The cycle repeats until you cancel it or the take-profit fills.</p>
-
-              <div id="manual-dip-hunt-fields" hidden>
-                <div class="field-pair-row">
-                  <label for="manual-dip-hunt-wait"><span data-i18n="dip_hunt_wait">Wait (minutes)</span>
-                    <input id="manual-dip-hunt-wait" name="dip_hunt_wait_minutes" type="number" min="1" max="1440" step="1" value="10" inputmode="numeric" aria-describedby="help-dip-hunt-wait" />
-                    <p id="help-dip-hunt-wait" class="field-help" data-i18n="help_dip_hunt_wait">How long to watch after the stop fills before parking a limit. Skipped if the drop prints first. Max 1440 (24h).</p>
-                    <p class="field-error" role="alert" hidden></p>
-                  </label>
-                  <label for="manual-dip-hunt-pct"><span data-i18n="dip_hunt_pct">Further drop %</span>
-                    <input id="manual-dip-hunt-pct" name="dip_hunt_pct" type="number" min="0.1" max="50" step="0.1" value="5" inputmode="decimal" aria-describedby="help-dip-hunt-pct" />
-                    <p id="help-dip-hunt-pct" class="field-help" data-i18n="help_dip_hunt_pct">Buy this far below the stop-out fill. Example: stop at $10, 5% → limit at $9.50.</p>
-                    <p class="field-error" role="alert" hidden></p>
-                  </label>
-                </div>
-                <p id="manual-dip-hunt-summary" class="field-help info" aria-live="polite"></p>
-                <p class="field-help info" data-i18n="dip_hunt_runtime_note">Live hunts are saved and resume after a restart until the re-buy fills or you cancel them.</p>
-              </div>
-            </fieldset>
-
             <p id="manual-help" class="field-help info" data-i18n="manual_help_market">Market DAY order in regular hours.</p>
             <ul id="manual-breaches" class="manual-breaches" hidden></ul>
             <p id="manual-error" class="form-error" role="alert" hidden></p>
             </div>
+
+            <!-- Sticky Place Action Bar -->
             <div class="manual-place-bar">
-            <p id="manual-side-help" class="field-help" data-i18n="manual_side_help_buy">Buy opens or adds to a long and sizes from your risk budget.</p>
-            <div class="manual-actions">
-              <button type="button" id="btn-manual-save-preset" class="ghost" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save preset</button>
-              <button type="button" id="btn-manual-preview" class="ghost" data-i18n="preview_order" data-i18n-title="preview_order_hint" title="Ask the desk to size the ticket without sending it">Preview</button>
-              <div class="manual-place-actions" role="group" aria-labelledby="manual-side-help">
-                <button type="submit" id="btn-manual-buy" class="place-side" data-side="buy" aria-pressed="true" data-i18n="buy" data-i18n-title="place_buy" title="Place Buy">Buy</button>
-                <button type="button" id="btn-manual-sell" class="place-side" data-side="sell" aria-pressed="false" data-i18n="sell" data-i18n-title="place_sell" title="Place Sell">Sell</button>
+              <p id="manual-side-help" class="field-help" data-i18n="manual_side_help_buy">Buy opens or adds to a long and sizes from your risk budget.</p>
+              <div class="manual-actions">
+                <button type="button" id="btn-manual-save-preset" class="ghost" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save preset</button>
+                <button type="button" id="btn-manual-preview" class="ghost" data-i18n="preview_order" data-i18n-title="preview_order_hint" title="Ask the desk to size the ticket without sending it">Preview</button>
+                <div class="manual-place-actions">
+                  <button type="submit" id="btn-manual-submit" class="btn-manual-submit is-buy" data-side="buy" aria-describedby="manual-side-help">
+                    <span class="btn-submit-main" id="btn-submit-text" data-i18n="place_buy">Place Buy Order</span>
+                    <span class="btn-submit-pill" id="btn-submit-pill"></span>
+                  </button>
+                </div>
               </div>
-            </div>
-            <p id="manual-shortcuts-help" class="field-help" data-i18n="help_shortcuts">Shortcuts: B buy · S sell · P preview · ⌘/Ctrl+Enter place.</p>
+              <p id="manual-shortcuts-help" class="field-help" data-i18n="help_shortcuts">Shortcuts: B buy · S sell · P preview · ⌘/Ctrl+Enter place.</p>
             </div>
           </form>
         </section>
 
-        <!-- Everything the desk knows about the ticket, kept beside the form so
-             the mark, the size, and the fill never scroll out of view. -->
+        <!-- Right Rail: Market Context, Size Estimate & Queues -->
         <aside class="manual-rail" aria-label="Ticket context" data-i18n-aria-label="ticket_context">
           <section class="panel manual-context-block" aria-labelledby="manual-context-heading">
             <div class="manual-context-head">
               <h3 id="manual-context-heading" data-i18n="market_context">Market Context</h3>
               <button type="button" id="btn-manual-refresh" class="ghost small" data-i18n="refresh_quote" data-i18n-title="refresh_quote_hint" title="Re-fetch mark, position, and account">Refresh</button>
             </div>
-            <!-- Not a live region: an eleven-row ledger that re-reads itself
-                 every 15s would talk over everything else. `#manual-context-live`
-                 announces the one line that actually changed instead. -->
             <p id="manual-context-live" class="sr-only" role="status" aria-live="polite"></p>
             <dl id="manual-context" class="manual-context">
               <div><dt data-i18n="mark">Mark</dt><dd id="manual-ctx-mark">—</dd></div>
@@ -575,9 +631,7 @@
               <div><dt data-i18n="next_earnings">Next earnings</dt><dd id="manual-ctx-earnings">—</dd></div>
               <div><dt data-i18n="buying_power">Buying power</dt><dd id="manual-ctx-bp">—</dd></div>
             </dl>
-            <!-- Where price sits inside the day's range: the difference between
-                 buying the low and buying the high, which a mark alone hides. -->
-            <div id="manual-day-range" class="manual-day-range" hidden>
+            <div id="manual-day-range" class="manual-day-range" role="meter" aria-label="Day price range" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden>
               <div class="manual-day-range-track"><span id="manual-day-range-marker" class="manual-day-range-marker"></span></div>
               <div class="manual-day-range-ends">
                 <span id="manual-day-low">—</span>
@@ -586,15 +640,11 @@
               </div>
             </div>
             <ul id="manual-asset-flags" class="manual-asset-flags" hidden></ul>
-            <!-- Resting orders are actionable here: a stop left behind blocks
-                 the next ticket, and Positions is two clicks away. -->
             <ul id="manual-ctx-orders" class="manual-ctx-orders" hidden></ul>
             <p id="manual-ctx-meta" class="manual-ctx-meta" data-i18n="enter_symbol_hint">Enter a symbol to load mark and position.</p>
           </section>
 
-          <!-- On a phone this becomes a fixed bar pinned to the bottom of the
-               viewport: sizing a ticket you cannot see the size of was the one
-               thing the single-column layout made impossible. -->
+          <!-- Order Preview & Visual Bracket Payoff -->
           <section id="manual-size-estimate" class="panel size-estimate">
             <p id="manual-estimate-live" class="sr-only" role="status" aria-live="polite"></p>
             <div class="size-estimate-head">
@@ -602,58 +652,101 @@
               <button type="button" id="btn-estimate-expand" class="ghost small size-estimate-toggle" aria-expanded="false" aria-controls="manual-estimate-grid" data-i18n="details">Details</button>
             </div>
             <p class="size-estimate-value" id="manual-estimate-value">—</p>
+
+            <!-- Visual Bracket & R:R Payoff Diagram -->
+            <div id="manual-bracket-visualizer" class="bracket-visualizer" hidden>
+              <div class="bracket-tier target-tier">
+                <span class="bracket-tier-label" data-i18n="target_price">Target</span>
+                <span id="bracket-target-val" class="bracket-tier-val">—</span>
+                <span id="bracket-target-pct" class="bracket-tier-pct pos">+0.00%</span>
+              </div>
+              <div class="bracket-tier entry-tier">
+                <span class="bracket-tier-label" data-i18n="entry_price">Entry</span>
+                <span id="bracket-entry-val" class="bracket-tier-val">—</span>
+                <span class="bracket-tier-pct">—</span>
+              </div>
+              <div class="bracket-tier stop-tier">
+                <span class="bracket-tier-label" data-i18n="stop_price">Stop</span>
+                <span id="bracket-stop-val" class="bracket-tier-val">—</span>
+                <span id="bracket-stop-pct" class="bracket-tier-pct neg">-0.00%</span>
+              </div>
+              <div class="bracket-bar-container">
+                <div class="bracket-bar-track">
+                  <span id="bracket-bar-stop" class="bracket-bar-seg stop-seg" style="width: 33%"></span>
+                  <span id="bracket-bar-target" class="bracket-bar-seg target-seg" style="width: 67%"></span>
+                </div>
+                <div class="bracket-bar-labels">
+                  <span id="bracket-risk-dollars" class="bracket-bar-sub neg">-$0.00</span>
+                  <span id="bracket-rr-ratio" class="bracket-bar-sub rr-badge">1 : 2.0 R:R</span>
+                  <span id="bracket-reward-dollars" class="bracket-bar-sub pos">+$0.00</span>
+                </div>
+              </div>
+            </div>
+
             <dl class="size-estimate-grid" id="manual-estimate-grid" hidden>
               <div id="est-row-cost"><dt id="est-cost-label" data-i18n="est_cost">Est. cost</dt><dd id="est-cost">—</dd></div>
               <div id="est-row-stop"><dt data-i18n="stop_price">Stop</dt><dd id="est-stop">—</dd></div>
               <div id="est-row-stop-limit"><dt data-i18n="stop_limit_price">Sell limit</dt><dd id="est-stop-limit">—</dd></div>
               <div id="est-row-risk"><dt data-i18n="max_risk">Max risk</dt><dd id="est-risk">—</dd></div>
               <div id="est-row-target"><dt data-i18n="target_price">Target</dt><dd id="est-target">—</dd></div>
-              <!-- Stop and target were both on screen while the one number that
-                   compares them was computed and thrown away. -->
               <div id="est-row-rr"><dt data-i18n="risk_reward">Risk / reward</dt><dd id="est-rr">—</dd></div>
               <div id="est-row-bp"><dt id="est-bp-label" data-i18n="pct_buying_power">% of buying power</dt><dd id="est-bp">—</dd></div>
             </dl>
             <p class="size-estimate-note" id="manual-estimate-note"></p>
           </section>
 
-          <!-- The three plan queues are the same kind of card, so they fold the
-               same way. This one used to be the odd one out, permanently open. -->
+          <!-- Last Ticket Card -->
+          <details id="manual-last-ticket" class="panel manual-last-ticket manual-fold" aria-live="polite" hidden>
+            <summary class="manual-fold-head">
+              <span class="manual-fold-caret" aria-hidden="true"></span>
+              <h3 class="manual-last-heading" data-i18n="last_ticket">Last ticket</h3>
+            </summary>
+            <div class="manual-fold-body">
+              <p id="manual-last-summary" class="manual-last-summary">—</p>
+              <p id="manual-last-status" class="manual-last-status" data-kind="warn" hidden></p>
+              <ul id="manual-last-warnings" class="manual-last-warnings" hidden></ul>
+              <dl id="manual-last-details" class="manual-last-details stats"></dl>
+              <p class="manual-last-link">
+                <a href="/positions" id="manual-positions-link" data-i18n="nav_positions">Positions</a>
+                <a href="/history" id="manual-history-link" data-i18n="view_in_history">View in History</a>
+              </p>
+            </div>
+          </details>
+
+          <!-- Collapsible Queue Cards -->
           <details id="manual-dip-hunt-panel" class="panel manual-reinvest-panel manual-fold" hidden>
             <summary class="manual-fold-head">
               <span class="manual-fold-caret" aria-hidden="true"></span>
               <h3 class="manual-last-heading" data-i18n="dip_hunt_queue">Dip-hunt queue</h3>
+              <span id="manual-dip-hunt-count" class="queue-count-pill" hidden>0</span>
             </summary>
             <div class="manual-fold-body">
               <ul id="manual-dip-hunt-list" class="manual-reinvest-list"></ul>
             </div>
           </details>
 
-          <section id="manual-last-ticket" class="panel manual-last-ticket" aria-live="polite" hidden>
-            <h3 class="manual-last-heading" data-i18n="last_ticket">Last ticket</h3>
-            <p id="manual-last-summary" class="manual-last-summary">—</p>
-            <p id="manual-last-status" class="manual-last-status" data-kind="warn" hidden></p>
-            <ul id="manual-last-warnings" class="manual-last-warnings" hidden></ul>
-            <dl id="manual-last-details" class="manual-last-details stats"></dl>
-            <p class="manual-last-link">
-              <a href="/positions" id="manual-positions-link" data-i18n="nav_positions">Positions</a>
-              <a href="/history" id="manual-history-link" data-i18n="view_in_history">View in History</a>
-            </p>
-          </section>
-
-          <!-- Secondary rail cards start collapsed so the ticket, the mark,
-               and the last fill stay the things you see first. -->
           <details id="manual-reinvest-panel" class="panel manual-reinvest-panel manual-fold" aria-live="polite" hidden>
             <summary class="manual-fold-head">
               <span class="manual-fold-caret" aria-hidden="true"></span>
               <h3 class="manual-last-heading" data-i18n="reinvest_queue">Re-investment queue</h3>
+              <span id="manual-reinvest-count" class="queue-count-pill" hidden>0</span>
             </summary>
             <div class="manual-fold-body">
               <ul id="manual-reinvest-list" class="manual-reinvest-list"></ul>
             </div>
           </details>
 
-          <!-- "Last ticket" vanished on reload; a session's worth of tickets is
-               what someone actually reconciles against Positions. -->
+          <details id="manual-followon-panel" class="panel manual-reinvest-panel manual-fold" aria-live="polite" hidden>
+            <summary class="manual-fold-head">
+              <span class="manual-fold-caret" aria-hidden="true"></span>
+              <h3 class="manual-last-heading" data-i18n="followon_queue">Next-ticket queue</h3>
+              <span id="manual-followon-count" class="queue-count-pill" hidden>0</span>
+            </summary>
+            <div class="manual-fold-body">
+              <ul id="manual-followon-list" class="manual-reinvest-list"></ul>
+            </div>
+          </details>
+
           <details id="manual-recent-panel" class="panel manual-recent-panel manual-fold" hidden>
             <summary class="manual-fold-head">
               <span class="manual-fold-caret" aria-hidden="true"></span>
@@ -667,28 +760,33 @@
             </div>
           </details>
 
-          <details id="manual-followon-panel" class="panel manual-reinvest-panel manual-fold" aria-live="polite" hidden>
+          <!-- Book-wide Risk: Portfolio Heat -->
+          <details id="manual-heat-panel" class="panel manual-heat-panel manual-fold" aria-live="polite" hidden>
             <summary class="manual-fold-head">
               <span class="manual-fold-caret" aria-hidden="true"></span>
-              <h3 class="manual-last-heading" data-i18n="followon_queue">Next-ticket queue</h3>
+              <h3 class="manual-last-heading" data-i18n="portfolio_heat">Portfolio heat</h3>
             </summary>
             <div class="manual-fold-body">
-              <ul id="manual-followon-list" class="manual-reinvest-list"></ul>
+              <p id="manual-heat-value" class="manual-heat-value">—</p>
+              <div class="manual-heat-track" role="meter" aria-label="Portfolio heat level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="manual-heat-fill" class="manual-heat-fill"></span></div>
+              <p id="manual-heat-note" class="manual-heat-note"></p>
+              <p id="manual-heat-unprotected" class="manual-heat-note warn" hidden></p>
             </div>
           </details>
 
-          <!-- Until now the ticket could only *cancel* protection, which is the
-               one action that makes a position more dangerous. -->
+          <!-- Dynamic Position Management: collapsible card when holding shares -->
           <details id="manual-manage-panel" class="panel manual-manage-panel manual-fold" hidden>
             <summary class="manual-fold-head">
               <span class="manual-fold-caret" aria-hidden="true"></span>
-              <h3 class="manual-last-heading" data-i18n="manage_position">Manage position</h3>
+              <h3 class="manual-last-heading" data-i18n="manage_position">Manage Position</h3>
+              <span id="manual-manage-badge" class="manage-active-badge" data-i18n="position_open_badge">Open</span>
             </summary>
             <div class="manual-fold-body">
               <p id="manual-manage-summary" class="manual-manage-summary">—</p>
               <div class="manual-manage-actions">
                 <button type="button" id="btn-stop-breakeven" class="ghost small" data-i18n="stop_to_breakeven" data-i18n-title="stop_to_breakeven_hint" title="Move the stop to your average entry so the trade cannot lose">To breakeven</button>
                 <button type="button" id="btn-stop-trail" class="ghost small" data-i18n="stop_to_trailing" data-i18n-title="stop_to_trailing_hint" title="Replace the fixed stop with a trailing one">Trail</button>
+                <button type="button" id="btn-manage-close" class="ghost small ghost-danger" data-i18n="close_position_btn" data-i18n-title="close_position_btn" title="Close position">Close position</button>
               </div>
               <div class="manual-manage-row">
                 <label for="manual-manage-stop" class="sr-only" data-i18n="stop_price">Stop</label>
@@ -701,20 +799,6 @@
                 <span class="manual-manage-unit" data-i18n="trail_percent_unit">% trail</span>
               </div>
               <p id="manual-manage-note" class="field-help" aria-live="polite"></p>
-            </div>
-          </details>
-
-          <!-- Book-wide risk. A per-ticket 0.5% is only 0.5% if you hold one. -->
-          <details id="manual-heat-panel" class="panel manual-heat-panel manual-fold" aria-live="polite" hidden>
-            <summary class="manual-fold-head">
-              <span class="manual-fold-caret" aria-hidden="true"></span>
-              <h3 class="manual-last-heading" data-i18n="portfolio_heat">Portfolio heat</h3>
-            </summary>
-            <div class="manual-fold-body">
-              <p id="manual-heat-value" class="manual-heat-value">—</p>
-              <div class="manual-heat-track"><span id="manual-heat-fill" class="manual-heat-fill"></span></div>
-              <p id="manual-heat-note" class="manual-heat-note"></p>
-              <p id="manual-heat-unprotected" class="manual-heat-note warn" hidden></p>
             </div>
           </details>
         </aside>

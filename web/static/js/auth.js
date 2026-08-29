@@ -203,7 +203,9 @@
     const first = document.querySelector(".auth-input.has-error");
     if (!first) return;
     first.focus();
-    first.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (typeof first.scrollIntoView === "function") {
+      first.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }
 
   async function readApiPayload(response) {
@@ -1162,11 +1164,23 @@
       });
 
       if (shouldScroll) {
-        targetTab.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "nearest"
-        });
+        const container = targetTab.closest ? targetTab.closest(".showcase-engine-tabs") : targetTab.parentElement;
+        if (container && container.scrollWidth > container.clientWidth) {
+          const containerRect = container.getBoundingClientRect();
+          const tabRect = targetTab.getBoundingClientRect();
+
+          const tabRelativeLeft = tabRect.left - containerRect.left + container.scrollLeft;
+          const tabRelativeRight = tabRelativeLeft + tabRect.width;
+
+          if (tabRelativeLeft < container.scrollLeft) {
+            container.scrollTo({ left: Math.max(0, tabRelativeLeft - 12), behavior: "smooth" });
+          } else if (tabRelativeRight > container.scrollLeft + container.clientWidth) {
+            container.scrollTo({
+              left: tabRelativeRight - container.clientWidth + 12,
+              behavior: "smooth"
+            });
+          }
+        }
       }
     }
 

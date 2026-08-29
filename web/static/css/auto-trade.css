@@ -1,16 +1,161 @@
 /* ── Auto Trade (Desk) Page Styles ─────────────────────────────── */
+
+/* ── Collapsible Accordions (Risk Engine & Options Overlay) ── */
+details.field-group.desk-accordion,
+details.desk-accordion {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+details.field-group.desk-accordion[open],
+details.desk-accordion[open] {
+  padding: 0.65rem 0.85rem 0.85rem;
+}
+
+details.desk-accordion > summary.desk-accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.15rem 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  user-select: none;
+}
+
+details.desk-accordion > summary.desk-accordion-head::-webkit-details-marker {
+  display: none;
+}
+
+details.desk-accordion > summary.desk-accordion-head::marker {
+  content: "";
+}
+
+details.desk-accordion > summary.desk-accordion-head:hover {
+  color: var(--text);
+}
+
+details.desk-accordion > summary.desk-accordion-head:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+details.desk-accordion > summary.desk-accordion-head .desk-accordion-title {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+
+details.desk-accordion > summary.desk-accordion-head .desk-fold-caret {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease;
+}
+
+details.desk-accordion[open] > summary.desk-accordion-head .desk-fold-caret {
+  transform: rotate(45deg);
+}
+
+details.desk-accordion > summary.desk-accordion-head .desk-accordion-badge {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  color: var(--muted);
+  text-transform: none;
+}
+
+details.desk-accordion > summary.desk-accordion-head .desk-accordion-badge:empty {
+  display: none;
+}
+
+details.desk-accordion[open] > summary.desk-accordion-head {
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  color: var(--text);
+}
+
+details.desk-accordion > .desk-accordion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+details.desk-accordion .desk-accordion-body > .check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.18s ease, background 0.18s ease;
+  width: 100%;
+  cursor: pointer;
+}
+
+details.desk-accordion .desk-accordion-body > .check:hover {
+  border-color: color-mix(in srgb, var(--copper) 30%, transparent);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+details.desk-accordion .desk-accordion-body > .check:focus-within {
+  border-color: var(--copper);
+}
+
+details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
+}
+
+#desk-risk-engine-fields,
+#desk-options-overlay-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+#desk-risk-engine-fields[hidden],
+#desk-options-overlay-fields[hidden] {
+  display: none !important;
+}
+
 .run-zone {
   position: sticky;
   bottom: 0;
   z-index: 2;
   margin-top: 0.85rem;
-  padding: 0.45rem 0.7rem 0.4rem;
+  padding: 0.6rem 0.8rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--panel) 88%, #0c1219);
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .run-zone.is-paper {
@@ -23,7 +168,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.run-zone-bar .actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   flex-wrap: wrap;
 }
 
@@ -31,13 +182,18 @@
   flex-shrink: 0;
 }
 
-.run-zone .actions {
-  margin-top: 0.1rem;
+.run-backtest-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .run-notes {
-  margin-top: 0.35rem;
-  padding-top: 0.1rem;
+  margin-top: 0.45rem;
+  padding-top: 0.25rem;
   border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   min-width: 0;
   max-width: 100%;
@@ -48,17 +204,19 @@
 }
 
 .run-notes summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 44px;
+  min-height: 28px;
+  padding: 0.2rem 0;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
   cursor: pointer;
   list-style: none;
   color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
 }
 
 .run-notes summary::-webkit-details-marker {
@@ -111,7 +269,7 @@
 .run-notes-body {
   display: grid;
   gap: 0.3rem;
-  padding: 0 0 0.35rem 1.05rem;
+  padding: 0.2rem 0 0.35rem 0.95rem;
 }
 
 .run-zone.is-paper .run-notes summary,
@@ -122,14 +280,6 @@
 .run-zone.is-paper .run-notes summary:hover,
 .run-notes.is-paper summary:hover {
   color: var(--copper);
-}
-
-.run-backtest-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  margin-left: auto;
 }
 
 @media (max-width: 768px) {
@@ -146,7 +296,7 @@
   .run-zone-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.4rem;
+    gap: 0.5rem;
   }
 
   .run-zone .actions {
@@ -165,14 +315,26 @@
     min-height: 48px;
     font-size: 0.92rem;
     font-weight: 600;
+    width: 100%;
   }
 
+  .run-zone .actions .loop-elapsed,
+  .run-zone-bar .loop-elapsed {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+
+  .run-zone .run-backtest-link,
   .run-zone .actions .run-backtest-link {
     grid-column: 1 / -1;
     width: 100%;
-    min-height: 40px;
+    min-height: 42px;
     margin: 0.25rem 0 0;
     text-align: center;
+  }
+
+  .run-notes summary {
+    font-size: 0.76rem;
   }
 
   .signal-wall {

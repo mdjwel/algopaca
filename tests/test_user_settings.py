@@ -298,6 +298,39 @@ class TestUserSettings(unittest.TestCase):
         # User is gone
         self.assertIsNone(self.auth_store.get_user_by_id(self.trader["id"]))
 
+    def test_save_ai_provider_selection(self) -> None:
+        """Verify selecting active AI provider updates desk settings and snapshot."""
+        # Switch provider to gemini
+        res = self.client.post(
+            "/api/keys",
+            json={"ai_provider": "gemini"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["state"]["settings"]["ai_provider"], "gemini")
+
+        # Invalid provider rejected
+        res = self.client.post(
+            "/api/keys",
+            json={"ai_provider": "invalid_provider"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 400)
+
+        # Save both key and provider
+        res = self.client.post(
+            "/api/keys",
+            json={"ai_provider": "anthropic", "anthropic_api_key": "sk-ant-testkey123"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["state"]["settings"]["ai_provider"], "anthropic")
+        self.assertTrue(data["ai_key_status"]["anthropic"]["set"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

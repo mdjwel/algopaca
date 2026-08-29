@@ -19,13 +19,13 @@
   min-width: 0;
 }
 
-/* Each credential is a label + its status line, kept together so the pair can
-   sit in one column of the two-column `.field-group` grid — key beside secret
-   instead of four stacked rows. */
+/* Each credential spans full width so long API keys and hints have ample room. */
 .key-field {
+  grid-column: 1 / -1;
   display: grid;
   gap: 0.35rem;
   min-width: 0;
+  width: 100%;
   align-content: start;
 }
 
@@ -35,14 +35,6 @@
 
 .field-note {
   margin-top: 0.1rem;
-}
-
-/* Between the one-column breakpoint and full width the panels are only ~half a
-   narrow viewport, which is too tight for two password fields side by side. */
-@media (max-width: 1200px) and (min-width: 861px) {
-  .config-keys-row .key-field {
-    grid-column: 1 / -1;
-  }
 }
 
 /* ── Trading environment selector ─────────────────────────────── */
@@ -156,8 +148,10 @@
 
 /* `.field-group` is `display: grid`, which outranks the `hidden` attribute's
    UA `display: none` — without this the hidden slot still renders. */
-.form .field-group[hidden] {
-  display: none;
+.form .field-group[hidden],
+.form .key-field[hidden],
+.key-actions button[hidden] {
+  display: none !important;
 }
 
 #env-pending-note {
@@ -168,15 +162,51 @@
   margin-top: 0;
 }
 
-#trading-mode-status {
+#trading-mode-status,
+#ai-provider-status {
   margin-bottom: 0;
   font-family: var(--mono);
   font-size: 0.78rem;
   color: var(--muted);
 }
 
+#ai-provider-pending-note {
+  margin-bottom: 0;
+}
+
 body[data-trading-mode="live"] #trading-mode-status {
   color: #ffb4b4;
+}
+
+.key-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.active-provider-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--copper);
+  background: rgba(212, 137, 76, 0.12);
+  border: 1px solid rgba(212, 137, 76, 0.3);
+  border-radius: var(--radius-pill);
+  padding: 0.1rem 0.45rem;
+  line-height: 1.2;
+}
+
+.key-field.is-active-provider input {
+  border-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+.key-field.is-active-provider input:focus {
+  border-color: var(--copper);
 }
 
 .danger-live {
@@ -210,3 +240,4 @@ body[data-trading-mode="live"] #trading-mode-status {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+

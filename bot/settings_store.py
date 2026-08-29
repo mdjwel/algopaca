@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from bot.ai_models import DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL
+from bot.ai_models import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_XAI_MODEL,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_PATH = ROOT / ".desk_settings.json"
@@ -20,6 +25,8 @@ _SECRET_KEYS = frozenset(
     {
         "openai_api_key",
         "gemini_api_key",
+        "anthropic_api_key",
+        "xai_api_key",
         "api_key",
         "secret_key",
         "save_keys_to_env",
@@ -63,7 +70,10 @@ _DEFAULTS: dict[str, Any] = {
     "ai_min_confidence": 0.55,
     "openai_model": DEFAULT_OPENAI_MODEL,
     "gemini_model": DEFAULT_GEMINI_MODEL,
+    "anthropic_model": DEFAULT_ANTHROPIC_MODEL,
+    "xai_model": DEFAULT_XAI_MODEL,
     "stop_loss_pct": 0.0,
+    "risk_engine_enabled": True,
     "ai_risk_pct": 0.5,
     "ai_atr_stop_mult": 1.8,
     "ai_take_profit_r": 2.0,
@@ -135,6 +145,8 @@ def load_settings(path: Path | None = None) -> dict[str, Any]:
             "ai_min_confidence",
             "openai_model",
             "gemini_model",
+            "anthropic_model",
+            "xai_model",
             "stop_loss_pct",
         }:
             data[key] = value

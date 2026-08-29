@@ -129,6 +129,13 @@ def resolve_size_mode(raw: str | None, strategy_mode: str) -> str:
     return mode
 
 
+# Smallest ATR multiple that still prices a real stop. 0 is a separate, valid
+# setting — it hands the stop back to flat ``stop_loss_pct``. Anything strictly
+# between the two is a typo with teeth: risk sizing divides the risk budget by
+# the stop distance, so 0.01 ATR sizes a position ~180× the intended one.
+MIN_ATR_STOP_MULT = 0.1
+MAX_ATR_STOP_MULT = 10.0
+
 DEFAULT_LANG = "en"
 
 # Desk languages, shared by the UI and the AI prompt. Keep in sync with
@@ -201,6 +208,7 @@ class Config:
     ai_min_confidence: float
     stop_loss_pct: float  # 0 = off; percent below entry for protective sell
     # --- Risk engine (shared by AI / SMA / dip / pair; all 0 = off) ---
+    risk_engine_enabled: bool = True
     ai_risk_pct: float = 0.5  # equity % risked per trade; 0 = fixed qty/notional
     ai_atr_stop_mult: float = 1.8  # stop distance in ATR14; 0 = fall back to stop_loss_pct
     ai_take_profit_r: float = 2.0  # scale out half at N×R; 0 = off
@@ -231,25 +239,28 @@ class Config:
         watchlist — SMA, dip, and AI modes.
         """
         head = (self.symbol or "").upper().strip()
-        rest = tuple(s for s in self.symbols if s and s != head)
-        if head:
-            return (head, *rest)
-        return rest or ("AAPL",)
+        tail = [s for s in self.symbols if s != head]
+        return (head, *tail) if head else tuple(self.symbols)
 
-    def order_qty_for_price(self, price: float) -> float:
-        """Shares to trade at `price` (converts dollar notional when configured)."""
+    def qty_for_size_mode(self, price: float) -> float:
+        """Shares to trade from the current size mode.
+
+        * ``qty``: flat ``trade_qty`` (rounded down to whole shares for fractional-disabled).
+        * ``notional``: ``trade_notional / price`` (float; Alpaca accepts fractional).
+        * ``ai``: dynamic from ATR stop distance + risk budget (falls back to qty if ATR missing).
+        """
         mode = normalize_size_mode(self.size_mode)
+        price = float(price or 0)
+        if price <= 0:
+            return float(self.trade_qty or 1)
         if mode == "notional":
-            mark = float(price or 0)
-            if mark <= 0:
-                raise ValueError("Need a positive mark price to size by dollar amount")
             notional = float(self.trade_notional or 0)
-            if notional <= 0:
-                raise ValueError("Dollar amount must be greater than 0")
-            return notional / mark
-        qty = float(self.trade_qty or 0)
-        if qty <= 0:
-            raise ValueError("Trade qty must be greater than 0")
+            if notional > 0:
+                return notional / price
+            return float(self.trade_qty or 1)
+        # "ai" mode sizes dynamically per signal via ai_qty_for_risk(); the
+        # engine calls that with equity and ATR. As a simple fallback:
+        qty = float(self.trade_qty or 1)
         return qty
 
     def ai_stop_distance(self, price: float, atr: float | None) -> float:
@@ -258,6 +269,8 @@ class Config:
         The risk engine owns stops via ``ai_atr_stop_mult`` for AI / SMA / dip /
         pair. Flat ``stop_loss_pct`` is only a fallback when the ATR multiple is 0.
         """
+        if not self.risk_engine_enabled:
+            return 0.0
         price = float(price or 0)
         if price <= 0:
             return 0.0
@@ -269,7 +282,7 @@ class Config:
         self, price: float, stop_distance: float, equity: float
     ) -> float | None:
         """Shares so that a stop-out costs `ai_risk_pct` of equity. None = risk sizing off."""
-        if self.ai_risk_pct <= 0:
+        if not self.risk_engine_enabled or self.ai_risk_pct <= 0:
             return None
         price = float(price or 0)
         stop_distance = float(stop_distance or 0)
@@ -350,6 +363,7 @@ class Config:
         anthropic_api_key: str | None = None,
         xai_api_key: str | None = None,
         lang: str | None = None,
+        risk_engine_enabled: bool | None = None,
         options_enabled: bool | None = None,
         options_style: str | None = None,
         options_dte_min: int | None = None,
@@ -692,6 +706,11 @@ class Config:
                 self.xai_api_key if xai_api_key is None else xai_api_key.strip()
             ),
             lang=normalize_lang(self.lang if lang is None else lang),
+            risk_engine_enabled=(
+                self.risk_engine_enabled
+                if risk_engine_enabled is None
+                else bool(risk_engine_enabled)
+            ),
             options_enabled=(
                 self.options_enabled if options_enabled is None else bool(options_enabled)
             ),
@@ -770,6 +789,7 @@ class Config:
         ai_reversal_conf_bump: float = 0.15,
         stop_limit_offset_pct: float = 0.0,
         lang: str = DEFAULT_LANG,
+        risk_engine_enabled: bool = True,
         options_enabled: bool = True,
         options_style: str = "vertical",
         options_dte_min: int = 21,
@@ -836,6 +856,7 @@ class Config:
             ai_reversal_conf_bump=ai_reversal_conf_bump,
             stop_limit_offset_pct=stop_limit_offset_pct,
             lang=lang,
+            risk_engine_enabled=risk_engine_enabled,
             options_enabled=options_enabled,
             options_style=options_style,
             options_dte_min=options_dte_min,
@@ -1109,6 +1130,7 @@ class Config:
                 0.0, min(1.0, float(_e("AI_REVERSAL_CONF_BUMP", "0.15")))
             ),
             lang=normalize_lang(_e("LANG_CODE", DEFAULT_LANG)),
+            risk_engine_enabled=env_flag("RISK_ENGINE_ENABLED", True),
             options_enabled=env_flag("OPTIONS_ENABLED", True),
             options_style=normalize_options_style(_e("OPTIONS_STYLE", "vertical")),
             options_dte_min=options_dte_min,

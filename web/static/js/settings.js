@@ -370,12 +370,18 @@
     updateProfileDirtyState();
 
     // Integration badges
+    const activeProvider = (typeof lastDeskSettings !== "undefined" && lastDeskSettings?.ai_provider) || "openai";
+    const getAiBadgeText = (keyPresent, providerName) => {
+      const isAct = providerName === activeProvider;
+      if (keyPresent) return isAct ? "Active · Connected" : "Connected";
+      return isAct ? "Active · Not Set" : "Not Set";
+    };
     updateIntegrationBadge(badgeStatusPaper, user.has_paper_key ? "connected" : "missing", user.has_paper_key ? "Configured" : "Not Set");
     updateIntegrationBadge(badgeStatusLive, user.has_live_key ? (user.live_authorized ? "authorized" : "connected") : "missing", user.has_live_key ? (user.live_authorized ? "Authorized Live" : "Keys Set") : "Not Set");
-    updateIntegrationBadge(badgeStatusOpenai, user.has_openai_key ? "connected" : "missing", user.has_openai_key ? "Connected" : "Not Set");
-    updateIntegrationBadge(badgeStatusGemini, user.has_gemini_key ? "connected" : "missing", user.has_gemini_key ? "Connected" : "Not Set");
-    updateIntegrationBadge(badgeStatusAnthropic, user.has_anthropic_key ? "connected" : "missing", user.has_anthropic_key ? "Connected" : "Not Set");
-    updateIntegrationBadge(badgeStatusXai, user.has_xai_key ? "connected" : "missing", user.has_xai_key ? "Connected" : "Not Set");
+    updateIntegrationBadge(badgeStatusOpenai, user.has_openai_key ? "connected" : (activeProvider === "openai" ? "pending" : "missing"), getAiBadgeText(user.has_openai_key, "openai"));
+    updateIntegrationBadge(badgeStatusGemini, user.has_gemini_key ? "connected" : (activeProvider === "gemini" ? "pending" : "missing"), getAiBadgeText(user.has_gemini_key, "gemini"));
+    updateIntegrationBadge(badgeStatusAnthropic, user.has_anthropic_key ? "connected" : (activeProvider === "anthropic" ? "pending" : "missing"), getAiBadgeText(user.has_anthropic_key, "anthropic"));
+    updateIntegrationBadge(badgeStatusXai, user.has_xai_key ? "connected" : (activeProvider === "xai" ? "pending" : "missing"), getAiBadgeText(user.has_xai_key, "xai"));
   }
 
   /** Build a ui-avatars.com profile image URL for the given display name. */

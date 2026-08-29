@@ -90,6 +90,13 @@
       }
     });
 
+    root.querySelectorAll("[data-i18n-tooltip]").forEach((el) => {
+      const key = el.getAttribute("data-i18n-tooltip");
+      if (key && dict[key]) {
+        el.setAttribute("data-tooltip", dict[key]);
+      }
+    });
+
     root.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
       const key = el.getAttribute("data-i18n-aria-label");
       if (key && dict[key]) {

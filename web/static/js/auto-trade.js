@@ -137,6 +137,7 @@ function formPayload() {
     ai_preset: String(formValue("ai_preset", "balanced") || "balanced"),
     ai_instructions: String(formValue("ai_instructions", "") || ""),
     ai_min_confidence: Number(formValue("ai_min_confidence", 0.55) || 0.55),
+    risk_engine_enabled: !!$("field-risk-engine-enabled")?.checked,
     ai_risk_pct: numField("ai_risk_pct", 0.5),
     ai_atr_stop_mult: numField("ai_atr_stop_mult", 1.8),
     ai_take_profit_r: numField("ai_take_profit_r", 2),
@@ -394,38 +395,42 @@ function validateReadyToRun() {
 }
 
 function syncSizeModeUi() {
+  const form = $("settings");
   const strategyMode = formPayload().strategy_mode;
   let mode = deskSizeMode(strategyMode);
   if (strategyMode !== "ai" && mode === "ai") {
     mode = "qty";
   }
-  const hidden = $("field-size-mode");
-  if (hidden) hidden.value = mode;
-  const shell = document.querySelector("#settings .size-input-shell");
-  if (shell) shell.dataset.sizeMode = mode;
-  const aiBtn = $("size-mode-ai");
-  if (aiBtn) aiBtn.hidden = strategyMode !== "ai";
-  document.querySelectorAll("#settings .size-toggle-btn").forEach((btn) => {
-    const active = btn.dataset.sizeMode === mode;
-    btn.classList.toggle("is-active", active);
-    btn.setAttribute("aria-pressed", active ? "true" : "false");
-    btn.disabled = loopRunning;
-  });
+  const sizeModeRadios = form?.elements?.size_mode;
+  if (sizeModeRadios instanceof RadioNodeList || Array.isArray(sizeModeRadios)) {
+    [...sizeModeRadios].forEach((input) => {
+      input.checked = input.value === mode;
+      input.disabled = loopRunning;
+    });
+  } else if (sizeModeRadios) {
+    sizeModeRadios.value = mode;
+    sizeModeRadios.disabled = loopRunning;
+  }
+  const aiUnit = $("size-unit-ai");
+  if (aiUnit) aiUnit.hidden = strategyMode !== "ai";
+
+  const qtyWrap = $("auto-qty-label");
+  const notionalWrap = $("auto-notional-label");
+  const aiWrap = $("auto-ai-label");
+
+  if (qtyWrap) qtyWrap.hidden = mode !== "qty";
+  if (notionalWrap) notionalWrap.hidden = mode !== "notional";
+  if (aiWrap) aiWrap.hidden = mode !== "ai";
+
   const qtyEl = $("field-qty");
   const notionalEl = $("field-notional");
-  const aiPlaceholder = $("size-ai-placeholder");
-  const label = $("size-field-label");
   if (qtyEl) {
-    qtyEl.hidden = mode !== "qty";
     qtyEl.disabled = loopRunning || mode !== "qty";
   }
   if (notionalEl) {
-    notionalEl.hidden = mode !== "notional";
     notionalEl.disabled = loopRunning || mode !== "notional";
   }
-  if (aiPlaceholder) {
-    aiPlaceholder.hidden = mode !== "ai";
-  }
+  const label = $("size-field-label");
   if (label) {
     if (mode === "ai") {
       label.htmlFor = "";
@@ -437,8 +442,8 @@ function syncSizeModeUi() {
       label.setAttribute("data-i18n", "size_notional_label");
     } else {
       label.htmlFor = "field-qty";
-      label.textContent = tx("shares_qty", "Shares / qty");
-      label.setAttribute("data-i18n", "shares_qty");
+      label.textContent = tx("quantity", "Quantity");
+      label.setAttribute("data-i18n", "quantity");
     }
   }
   const hint = $("size-hint");
@@ -487,11 +492,70 @@ function selectSizeMode(mode) {
   let next = "qty";
   if (mode === "notional") next = "notional";
   else if (mode === "ai" && strategyMode === "ai") next = "ai";
-  const hidden = $("field-size-mode");
-  if (hidden) hidden.value = next;
+  const form = $("settings");
+  if (form && form.elements.size_mode) {
+    if (form.elements.size_mode instanceof RadioNodeList || Array.isArray(form.elements.size_mode)) {
+      [...form.elements.size_mode].forEach((r) => {
+        r.checked = r.value === next;
+      });
+    } else {
+      form.elements.size_mode.value = next;
+    }
+  }
   syncSizeModeUi();
   formDirty = true;
   schedulePersistSettings();
+}
+
+function syncDeskAccordions() {
+  const riskBadge = $("desk-risk-summary-badge");
+  const riskEnabled = !!$("field-risk-engine-enabled")?.checked;
+  const riskFields = $("desk-risk-engine-fields");
+  if (riskFields) {
+    riskFields.hidden = !riskEnabled;
+  }
+  if (riskBadge) {
+    if (!riskEnabled) {
+      riskBadge.textContent = tx("risk_engine_off", "off");
+    } else {
+      const riskPct = Number(formValue("ai_risk_pct", 0.5) || 0.5);
+      const atrStop = Number(formValue("ai_atr_stop_mult", 1.8) || 1.8);
+      const tpR = Number(formValue("ai_take_profit_r", 2) || 2);
+      const stopText = atrStop > 0 ? `${atrStop}× ATR` : "0 ATR";
+      const tpText = tpR > 0 ? `${tpR}R` : "No TP";
+      riskBadge.textContent = `${riskPct}% · ${stopText} · ${tpText}`;
+    }
+  }
+
+  const optionsBadge = $("desk-options-summary-badge");
+  const optionsEnabled = !!$("field-options-enabled")?.checked;
+  const optionsFields = $("desk-options-overlay-fields");
+  if (optionsFields) {
+    optionsFields.hidden = !optionsEnabled;
+  }
+  if (optionsBadge) {
+    if (!optionsEnabled) {
+      optionsBadge.textContent = tx("options_off", "off");
+    } else {
+      const style = String(formValue("options_style", "vertical") || "vertical");
+      const styleLabels = {
+        vertical: tx("options_style_vertical_badge", "Vertical spread"),
+        long_option: tx("options_style_long_badge", "Long option"),
+        hedge: tx("options_style_hedge_badge", "Hedge"),
+      };
+      optionsBadge.textContent = styleLabels[style] || "Options";
+    }
+  }
+
+  const aiBadge = $("desk-ai-instructions-badge");
+  if (aiBadge) {
+    const presetId = formValue("ai_preset", "conservative");
+    const preset = findPreset(presetId);
+    const isCustom = presetId === "custom";
+    aiBadge.textContent = isCustom
+      ? tx("preset_custom_badge", "Custom")
+      : (preset?.name || tx("preset_playbook_badge", "Playbook"));
+  }
 }
 
 function syncRunZone() {
@@ -508,14 +572,14 @@ function syncRunZone() {
   if (loopBtn && !loopRunning) {
     loopBtn.title = `Poll on an interval and place ${env} on buy/sell`;
   }
+  syncDeskAccordions();
 }
 
 function idleLoopState() {
-  const env = ordersEnvPhraseEn();
   if (loopLastDurationSec != null) {
-    return `Idle · last run ${formatDuration(loopLastDurationSec)}. The next run can place ${env}.`;
+    return `Idle · last run ${formatDuration(loopLastDurationSec)}.`;
   }
-  return `Idle — edit strategy, then run once. Run once or Start loop will place ${env} on buy/sell.`;
+  return tx("idle_state_hint", "Idle — edit strategy, then run once.");
 }
 
 function engineSideCopy(mode) {
@@ -1251,6 +1315,9 @@ function applySettings(settings, { force = false } = {}) {
   for (const [name, fallback] of AI_RISK_FIELDS) {
     if (form[name]) form[name].value = settings[name] ?? fallback;
   }
+  if (form.risk_engine_enabled) {
+    form.risk_engine_enabled.checked = settings.risk_engine_enabled !== false;
+  }
   if (form.options_enabled) {
     form.options_enabled.checked = settings.options_enabled !== false;
   }
@@ -1308,6 +1375,7 @@ function applySettings(settings, { force = false } = {}) {
   syncSmaHint();
   syncDipHint();
   syncSizeModeUi();
+  syncDeskAccordions();
   refreshNiceSelects($("settings"));
   if (typeof hydrateManualFromSettings === "function") {
     hydrateManualFromSettings(settings, { force });
@@ -2202,6 +2270,7 @@ if (form) {
     syncModeUi();
     syncSmaHint();
     syncDipHint();
+    syncDeskAccordions();
     if (name === "symbol") {
       applyAiWatchlist(lastDeskWatchlist);
       syncFeaturedWall();
@@ -2228,6 +2297,9 @@ if (form) {
     if (name === "pair_preset") {
       applyPairPreset(ev.target.value);
     }
+    if (name === "size_mode") {
+      selectSizeMode(ev.target.value);
+    }
     if (name === "strategy_mode" && (ev.target.value === "pair" || ev.target.value === "ls")) {
       if (form.elements.bar_timeframe) form.elements.bar_timeframe.value = "1Day";
     }
@@ -2246,6 +2318,7 @@ if (form) {
     syncModeUi();
     syncSmaHint();
     syncDipHint();
+    syncDeskAccordions();
     if (name === "openai_api_key" || name === "gemini_api_key" || name === "save_keys_to_env") {
       return;
     }
@@ -2253,11 +2326,6 @@ if (form) {
   });
   form.addEventListener("focusin", () => {
     formFocused = true;
-  });
-  form.querySelectorAll(".size-toggle-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectSizeMode(btn.dataset.sizeMode || "qty");
-    });
   });
   form.addEventListener("focusout", () => {
     setTimeout(() => {

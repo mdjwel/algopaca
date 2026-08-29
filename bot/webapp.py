@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from bot.alpaca_errors import humanize_alpaca_error
 from bot.auth import AUTH_STORE, is_admin_or_owner
 from bot.backtest_store import summarize_entry
+from bot.config import MIN_ATR_STOP_MULT
 from bot.email_service import (
     get_smtp_config,
     save_smtp_config,
@@ -108,6 +109,7 @@ class SettingsIn(BaseModel):
     stop_loss_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
     # AI risk engine — None keeps the stored value, so a client that does not
     # send these cannot silently reset the desk's risk limits.
+    risk_engine_enabled: Optional[bool] = None
     ai_risk_pct: Optional[float] = Field(None, ge=0.0, le=10.0)
     ai_atr_stop_mult: Optional[float] = Field(None, ge=0.0, le=10.0)
     ai_take_profit_r: Optional[float] = Field(None, ge=0.0, le=20.0)
@@ -139,6 +141,7 @@ class ApiKeysIn(BaseModel):
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
     xai_api_key: str = ""
+    ai_provider: Optional[str] = None
     save_to_env: bool = True
 
 
@@ -311,6 +314,21 @@ class ManualOrderIn(BaseModel):
     followon: Optional[FollowOnIn] = None
     # Buy tickets only — hunt a cheaper re-entry after the stop fills.
     dip_hunt: Optional[DipHuntIn] = None
+
+    @field_validator("ai_atr_stop_mult")
+    @classmethod
+    def atr_mult_clears_floor(cls, value: Optional[float]) -> Optional[float]:
+        """0 (ATR stop off) or a real multiple — never the gap between them.
+
+        ``ge=0.0`` alone let 0.01 through, which prices a near-zero stop and
+        then sizes the risk budget against it. See ``MIN_ATR_STOP_MULT``.
+        """
+        if value is not None and 0 < float(value) < MIN_ATR_STOP_MULT:
+            raise ValueError(
+                f"Stop = ATR × must be 0 (use the flat stop %) or at least "
+                f"{MIN_ATR_STOP_MULT:g}"
+            )
+        return value
 
     @model_validator(mode="after")
     def one_trail_dimension(self) -> "ManualOrderIn":
@@ -1171,20 +1189,31 @@ def save_lang(body: LangIn, user: dict = Depends(require_auth)) -> dict:
 def save_keys(body: ApiKeysIn, user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     try:
-        if (
-            not body.openai_api_key.strip()
-            and not body.gemini_api_key.strip()
-            and not body.anthropic_api_key.strip()
-            and not body.xai_api_key.strip()
-        ):
-            raise ValueError("Paste at least one API key to save.")
-        status = state.apply_api_keys(
-            openai_api_key=body.openai_api_key or None,
-            gemini_api_key=body.gemini_api_key or None,
-            anthropic_api_key=body.anthropic_api_key or None,
-            xai_api_key=body.xai_api_key or None,
-            save_to_env=body.save_to_env,
+        has_keys = bool(
+            body.openai_api_key.strip()
+            or body.gemini_api_key.strip()
+            or body.anthropic_api_key.strip()
+            or body.xai_api_key.strip()
         )
+        if not has_keys and not (body.ai_provider and body.ai_provider.strip()):
+            raise ValueError("Paste at least one API key or choose an AI provider to save.")
+
+        if body.ai_provider and body.ai_provider.strip():
+            provider = body.ai_provider.strip().lower()
+            if provider not in {"openai", "gemini", "anthropic", "xai"}:
+                raise ValueError("ai_provider must be openai, gemini, anthropic, or xai")
+            state.update_settings({"ai_provider": provider})
+
+        if has_keys:
+            status = state.apply_api_keys(
+                openai_api_key=body.openai_api_key or None,
+                gemini_api_key=body.gemini_api_key or None,
+                anthropic_api_key=body.anthropic_api_key or None,
+                xai_api_key=body.xai_api_key or None,
+                save_to_env=body.save_to_env,
+            )
+        else:
+            status = state.snapshot()["ai_key_status"]
         return {"ok": True, "ai_key_status": status, "state": state.snapshot()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

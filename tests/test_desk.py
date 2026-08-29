@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 
-from bot.webapp import app
+from bot.config import MAX_ATR_STOP_MULT, MIN_ATR_STOP_MULT
+from bot.webapp import ManualOrderIn, app
 
 
 class DeskWebappTestCase(unittest.TestCase):
@@ -111,14 +113,35 @@ class DeskWebappTestCase(unittest.TestCase):
         self.assertNotIn("saas", data)
         self.assertIn("options_enabled", data["settings"])
         self.assertTrue(data["settings"]["options_enabled"])
+        self.assertIn("risk_engine_enabled", data["settings"])
+        self.assertIsInstance(data["settings"]["risk_engine_enabled"], bool)
 
     def test_api_settings_update(self):
-        res = self.auth_client.post("/api/settings", json={"sma_preset": "custom", "fast_sma": 12, "slow_sma": 26})
+        res = self.auth_client.post(
+            "/api/settings",
+            json={
+                "sma_preset": "custom",
+                "fast_sma": 12,
+                "slow_sma": 26,
+                "risk_engine_enabled": False,
+            },
+        )
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data.get("ok"))
         self.assertEqual(data["settings"]["fast_sma"], 12)
         self.assertEqual(data["settings"]["slow_sma"], 26)
+        self.assertFalse(data["settings"]["risk_engine_enabled"])
+
+        # Reset back to True
+        res_reset = self.auth_client.post(
+            "/api/settings",
+            json={
+                "risk_engine_enabled": True,
+            },
+        )
+        self.assertEqual(res_reset.status_code, 200)
+        self.assertTrue(res_reset.json()["settings"]["risk_engine_enabled"])
 
     def test_api_lang(self):
         res = self.auth_client.post("/api/lang", json={"lang": "en"})
@@ -172,6 +195,41 @@ class DeskWebappTestCase(unittest.TestCase):
             with self.subTest(path=path):
                 res = self.anon_client.get(path)
                 self.assertEqual(res.status_code, 404)
+
+
+class ManualOrderValidationTestCase(unittest.TestCase):
+    """The ATR multiple prices the stop, and risk sizing divides by it."""
+
+    def _ticket(self, **overrides):
+        payload = {"symbol": "AAPL", "side": "buy", "qty": 1}
+        payload.update(overrides)
+        return ManualOrderIn(**payload)
+
+    def test_atr_mult_between_zero_and_floor_is_rejected(self):
+        # ge=0.0 alone let these through, and a 0.01 ATR stop sizes a position
+        # roughly 180x the one the 1.8 default would have bought.
+        for value in (0.001, 0.01, 0.05, 0.099):
+            with self.subTest(value=value):
+                with self.assertRaises(ValidationError):
+                    self._ticket(ai_atr_stop_mult=value)
+
+    def test_atr_mult_floor_and_ceiling_are_accepted(self):
+        for value in (MIN_ATR_STOP_MULT, 1.8, MAX_ATR_STOP_MULT):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self._ticket(ai_atr_stop_mult=value).ai_atr_stop_mult, value
+                )
+
+    def test_atr_mult_zero_stays_valid(self):
+        """0 is a setting, not a typo: it hands the stop to flat stop_loss_pct."""
+        self.assertEqual(self._ticket(ai_atr_stop_mult=0).ai_atr_stop_mult, 0.0)
+
+    def test_atr_mult_omitted_keeps_desk_default(self):
+        self.assertIsNone(self._ticket().ai_atr_stop_mult)
+
+    def test_atr_mult_above_ceiling_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            self._ticket(ai_atr_stop_mult=10.1)
 
 
 if __name__ == "__main__":

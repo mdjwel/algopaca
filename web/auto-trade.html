@@ -148,7 +148,115 @@
                   <span id="engine-side-note" data-i18n="engine_side_note_long">Sell closes a long — no short from flat.</span>
                 </p>
                 <p id="mode-hint" class="field-help" data-i18n="mode_hint_sma">Classic crossover on the evaluate list — buy/sell when fast SMA crosses slow.</p>
-                <label for="field-provider" class="ai-only"><span data-i18n="ai_provider">AI provider</span>
+                <!-- SMA crossover options -->
+                <label for="field-sma-preset" class="stack sma-only"><span data-i18n="sma_preset">SMA preset</span>
+                  <select id="field-sma-preset" name="sma_preset">
+                    <option value="classic" data-i18n="preset_sma_classic">Classic 10/30</option>
+                    <option value="short_term" data-i18n="preset_sma_short_term">Short-term 5/20</option>
+                    <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
+                    <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
+                    <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="sma-preset-hint" class="field-help sma-only" data-i18n="sma_preset_hint">Default crossover — balanced signal frequency.</p>
+                <div class="bt-sma-windows sma-only">
+                  <label for="field-fast"><span data-i18n="fast_sma">Fast SMA</span>
+                    <input id="field-fast" name="fast_sma" type="number" value="10" min="2" inputmode="numeric" />
+                  </label>
+                  <label for="field-slow"><span data-i18n="slow_sma">Slow SMA</span>
+                    <input id="field-slow" name="slow_sma" type="number" value="30" min="3" inputmode="numeric" />
+                  </label>
+                </div>
+                <p id="sma-hint" class="field-help sma-only" data-i18n="sma_hint">Fast must be smaller than Slow (e.g. 10 &lt; 30).</p>
+
+                <!-- Buy the dip options -->
+                <label for="field-dip-preset" class="stack dip-only" hidden><span data-i18n="dip_preset">Dip preset</span>
+                  <select id="field-dip-preset" name="dip_preset">
+                    <option value="deep" data-i18n="preset_dip_deep">Deep dip</option>
+                    <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
+                    <option value="washout" data-i18n="preset_dip_washout">Washout</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="dip-preset-hint" class="field-help dip-only" hidden data-i18n="dip_preset_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
+                <div class="bt-dip-windows dip-only" hidden>
+                  <label for="field-dip-buy"><span data-i18n="rsi_buy">RSI buy ≤</span>
+                    <input id="field-dip-buy" name="dip_rsi_buy" type="number" value="30" min="1" max="99" step="1" inputmode="decimal" />
+                  </label>
+                  <label for="field-dip-sell"><span data-i18n="rsi_sell">RSI sell ≥</span>
+                    <input id="field-dip-sell" name="dip_rsi_sell" type="number" value="60" min="1" max="99" step="1" inputmode="decimal" />
+                  </label>
+                </div>
+                <label class="check stack dip-only" for="field-dip-skip-bearish" hidden>
+                  <input id="field-dip-skip-bearish" name="dip_skip_bearish" type="checkbox" checked />
+                  <span>
+                    <strong data-i18n="skip_bearish_trend">Skip bearish trend</strong>
+                    <span class="check-desc" data-i18n="skip_bearish_desc">Ignore dips when the SMA stack is bearish (fewer falling knives)</span>
+                  </span>
+                </label>
+                <p id="dip-hint" class="field-help dip-only" hidden data-i18n="dip_hint">Deep / Mild also buy when price tags the lower Bollinger band; Washout requires RSI.</p>
+
+                <!-- Long & Short Pair options -->
+                <label for="field-pair-preset" class="stack pair-only" hidden><span data-i18n="pair_preset">Pair preset</span>
+                  <select id="field-pair-preset" name="pair_preset">
+                    <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
+                    <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
+                    <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
+                    <option value="custom" data-i18n="preset_custom">Custom</option>
+                  </select>
+                </label>
+                <p id="pair-preset-hint" class="field-help pair-only" hidden data-i18n="bt_pair_hint">Long leg by default; short leg only on confirmed bear impulses below SMA.</p>
+                <div class="bt-pair-windows pair-only" hidden>
+                  <label for="field-pair-sma"><span data-i18n="sma_period">SMA period</span>
+                    <input id="field-pair-sma" name="pair_sma_period" type="number" min="2" value="50" inputmode="numeric" />
+                  </label>
+                  <label for="field-pair-lb"><span data-i18n="lookback_days">Lookback days</span>
+                    <input id="field-pair-lb" name="pair_lookback" type="number" min="1" value="7" inputmode="numeric" />
+                  </label>
+                  <label for="field-pair-imp"><span data-i18n="impulse_pct">Impulse % ≤−</span>
+                    <input id="field-pair-imp" name="pair_impulse_pct" type="number" min="0.1" max="99" step="0.1" value="5" inputmode="decimal" />
+                  </label>
+                  <label for="field-pair-weak"><span data-i18n="when_weak">When weak</span>
+                    <select id="field-pair-weak" name="pair_weak_side">
+                      <option value="LONG" selected data-i18n="stay_long">Stay long</option>
+                      <option value="CASH" data-i18n="cash">Cash</option>
+                    </select>
+                  </label>
+                </div>
+                <p id="pair-hint" class="field-help pair-only" hidden data-i18n="pair_hint">Enter two symbols in the watchlist (long first, short second). Daily bars; deploys available cash into the active leg.</p>
+
+                <!-- Regime Dual Momentum options -->
+                <p id="ls-hint" class="field-help ls-only" hidden data-i18n="bt_ls_hint">
+                  Long in bull EMA/ADX regimes; short in bear regimes on MACD histogram crosses.
+                  Holds through quiet bars; exits on flip, ATR stop, R:R target, or time stop. Daily bars.
+                </p>
+                <div class="bt-ls-windows ls-only" hidden>
+                  <label for="field-ls-fast"><span data-i18n="ema_fast">EMA fast</span>
+                    <input id="field-ls-fast" name="ls_ema_fast" type="number" min="2" value="21" inputmode="numeric" />
+                  </label>
+                  <label for="field-ls-slow"><span data-i18n="ema_slow">EMA slow</span>
+                    <input id="field-ls-slow" name="ls_ema_slow" type="number" min="3" value="55" inputmode="numeric" />
+                  </label>
+                  <label for="field-ls-adx"><span data-i18n="adx_min">ADX min</span>
+                    <input id="field-ls-adx" name="ls_adx_min" type="number" min="0" max="100" step="1" value="20" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-atr"><span data-i18n="atr_stop">ATR stop ×</span>
+                    <input id="field-ls-atr" name="ls_atr_stop_mult" type="number" min="0.1" max="10" step="0.1" value="1.5" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-risk"><span data-i18n="risk_pct_trade">Risk % / trade</span>
+                    <input id="field-ls-risk" name="ls_risk_pct" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-rr"><span data-i18n="reward_risk">Reward : risk</span>
+                    <input id="field-ls-rr" name="ls_rr" type="number" min="0.5" max="10" step="0.1" value="2" inputmode="decimal" />
+                  </label>
+                  <label for="field-ls-time"><span data-i18n="time_stop_bars">Time stop (bars)</span>
+                    <input id="field-ls-time" name="ls_time_stop_bars" type="number" min="1" max="60" value="15" inputmode="numeric" />
+                  </label>
+                </div>
+
+                <!-- AI trader options -->
+                <label for="field-provider" class="ai-only" hidden><span data-i18n="ai_provider">AI provider</span>
                   <select id="field-provider" name="ai_provider">
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Gemini</option>
@@ -156,7 +264,7 @@
                     <option value="xai">xAI</option>
                   </select>
                 </label>
-                <label for="field-openai-model" class="ai-only provider-openai"><span data-i18n="model">Model</span>
+                <label for="field-openai-model" class="ai-only provider-openai" hidden><span data-i18n="model">Model</span>
                   <select id="field-openai-model" name="openai_model">
                     <option value="gpt-5.6-sol" data-i18n="model_gpt_5_6_sol">GPT-5.6 Sol (flagship)</option>
                     <option value="gpt-5.6-terra" data-i18n="model_gpt_5_6_terra">GPT-5.6 Terra (balanced)</option>
@@ -190,7 +298,7 @@
                     <option value="grok-3-mini" selected data-i18n="model_grok_3_mini">Grok 3 Mini (fast / low cost)</option>
                   </select>
                 </label>
-                <div class="field-pair-row ai-only">
+                <div class="field-pair-row ai-only" hidden>
                   <label for="field-confidence"><span data-i18n="min_confidence">Min confidence</span>
                     <input id="field-confidence" name="ai_min_confidence" type="number" value="0.55" min="0" max="1" step="0.05" inputmode="decimal" />
                   </label>
@@ -208,7 +316,7 @@
                     </select>
                   </label>
                 </div>
-                <p id="preset-hint" class="field-help ai-only" data-i18n="preset_hint">Hold when mixed; respect calendar; no chase.</p>
+                <p id="preset-hint" class="field-help ai-only" hidden data-i18n="preset_hint">Hold when mixed; respect calendar; no chase.</p>
               </fieldset>
 
               <fieldset class="field-group">
@@ -235,156 +343,51 @@
                   <button type="button" id="btn-include-featured" class="ghost" data-i18n="include">Include</button>
                 </p>
                 <p id="watchlist-hint" class="field-help" data-i18n="watchlist_hint">Each cycle evaluates this list. Featured is highlighted on the wall.</p>
-              </fieldset>
 
-              <fieldset class="field-group sma-only">
-                <legend data-i18n="sma_windows">SMA windows</legend>
-                <label for="field-sma-preset" class="stack"><span data-i18n="sma_preset">SMA preset</span>
-                  <select id="field-sma-preset" name="sma_preset">
-                    <option value="classic" data-i18n="preset_sma_classic">Classic 10/30</option>
-                    <option value="short_term" data-i18n="preset_sma_short_term">Short-term 5/20</option>
-                    <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
-                    <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
-                    <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
-                    <option value="custom" data-i18n="preset_custom">Custom</option>
-                  </select>
-                </label>
-                <p id="sma-preset-hint" class="field-help" data-i18n="sma_preset_hint">Default crossover — balanced signal frequency.</p>
-                <label for="field-fast"><span data-i18n="fast_sma">Fast SMA</span>
-                  <input id="field-fast" name="fast_sma" type="number" value="10" min="2" inputmode="numeric" />
-                </label>
-                <label for="field-slow"><span data-i18n="slow_sma">Slow SMA</span>
-                  <input id="field-slow" name="slow_sma" type="number" value="30" min="3" inputmode="numeric" />
-                </label>
-                <p id="sma-hint" class="field-help" data-i18n="sma_hint">Fast must be smaller than Slow (e.g. 10 &lt; 30).</p>
-              </fieldset>
-
-              <fieldset class="field-group dip-only">
-                <legend data-i18n="dip_thresholds">Dip thresholds</legend>
-                <label for="field-dip-preset" class="stack"><span data-i18n="dip_preset">Dip preset</span>
-                  <select id="field-dip-preset" name="dip_preset">
-                    <option value="deep" data-i18n="preset_dip_deep">Deep dip</option>
-                    <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
-                    <option value="washout" data-i18n="preset_dip_washout">Washout</option>
-                    <option value="custom" data-i18n="preset_custom">Custom</option>
-                  </select>
-                </label>
-                <p id="dip-preset-hint" class="field-help" data-i18n="dip_preset_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
-                <label for="field-dip-buy"><span data-i18n="rsi_buy">RSI buy ≤</span>
-                  <input id="field-dip-buy" name="dip_rsi_buy" type="number" value="30" min="1" max="99" step="1" inputmode="decimal" />
-                </label>
-                <label for="field-dip-sell"><span data-i18n="rsi_sell">RSI sell ≥</span>
-                  <input id="field-dip-sell" name="dip_rsi_sell" type="number" value="60" min="1" max="99" step="1" inputmode="decimal" />
-                </label>
-                <label class="check stack" for="field-dip-skip-bearish">
-                  <input id="field-dip-skip-bearish" name="dip_skip_bearish" type="checkbox" checked />
-                  <span>
-                    <strong data-i18n="skip_bearish_trend">Skip bearish trend</strong>
-                    <span class="check-desc" data-i18n="skip_bearish_desc">Ignore dips when the SMA stack is bearish (fewer falling knives)</span>
-                  </span>
-                </label>
-                <p id="dip-hint" class="field-help" data-i18n="dip_hint">Deep / Mild also buy when price tags the lower Bollinger band; Washout requires RSI.</p>
-              </fieldset>
-
-              <fieldset class="field-group pair-only" hidden>
-                <legend data-i18n="pair_title">Long &amp; Short Pair</legend>
-                <label for="field-pair-preset" class="stack"><span data-i18n="pair_preset">Pair preset</span>
-                  <select id="field-pair-preset" name="pair_preset">
-                    <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
-                    <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
-                    <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
-                    <option value="custom" data-i18n="preset_custom">Custom</option>
-                  </select>
-                </label>
-                <p id="pair-preset-hint" class="field-help" data-i18n="bt_pair_hint">Long leg by default; short leg only on confirmed bear impulses below SMA.</p>
-                <div class="bt-pair-windows">
-                  <label for="field-pair-sma"><span data-i18n="sma_period">SMA period</span>
-                    <input id="field-pair-sma" name="pair_sma_period" type="number" min="2" value="50" inputmode="numeric" />
-                  </label>
-                  <label for="field-pair-lb"><span data-i18n="lookback_days">Lookback days</span>
-                    <input id="field-pair-lb" name="pair_lookback" type="number" min="1" value="7" inputmode="numeric" />
-                  </label>
-                  <label for="field-pair-imp"><span data-i18n="impulse_pct">Impulse % ≤−</span>
-                    <input id="field-pair-imp" name="pair_impulse_pct" type="number" min="0.1" max="99" step="0.1" value="5" inputmode="decimal" />
-                  </label>
-                  <label for="field-pair-weak"><span data-i18n="when_weak">When weak</span>
-                    <select id="field-pair-weak" name="pair_weak_side">
-                      <option value="LONG" selected data-i18n="stay_long">Stay long</option>
-                      <option value="CASH" data-i18n="cash">Cash</option>
-                    </select>
-                  </label>
-                </div>
-                <p id="pair-hint" class="field-help" data-i18n="pair_hint">Enter two symbols in the watchlist (long first, short second). Daily bars; deploys available cash into the active leg.</p>
-              </fieldset>
-
-              <fieldset class="field-group ls-only" hidden>
-                <legend data-i18n="ls_title">Regime Dual Momentum</legend>
-                <p id="ls-hint" class="field-help" data-i18n="bt_ls_hint">
-                  Long in bull EMA/ADX regimes; short in bear regimes on MACD histogram crosses.
-                  Holds through quiet bars; exits on flip, ATR stop, R:R target, or time stop. Daily bars.
-                </p>
-                <div class="bt-ls-windows">
-                  <label for="field-ls-fast"><span data-i18n="ema_fast">EMA fast</span>
-                    <input id="field-ls-fast" name="ls_ema_fast" type="number" min="2" value="21" inputmode="numeric" />
-                  </label>
-                  <label for="field-ls-slow"><span data-i18n="ema_slow">EMA slow</span>
-                    <input id="field-ls-slow" name="ls_ema_slow" type="number" min="3" value="55" inputmode="numeric" />
-                  </label>
-                  <label for="field-ls-adx"><span data-i18n="adx_min">ADX min</span>
-                    <input id="field-ls-adx" name="ls_adx_min" type="number" min="0" max="100" step="1" value="20" inputmode="decimal" />
-                  </label>
-                  <label for="field-ls-atr"><span data-i18n="atr_stop">ATR stop ×</span>
-                    <input id="field-ls-atr" name="ls_atr_stop_mult" type="number" min="0.1" max="10" step="0.1" value="1.5" inputmode="decimal" />
-                  </label>
-                  <label for="field-ls-risk"><span data-i18n="risk_pct_trade">Risk % / trade</span>
-                    <input id="field-ls-risk" name="ls_risk_pct" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" />
-                  </label>
-                  <label for="field-ls-rr"><span data-i18n="reward_risk">Reward : risk</span>
-                    <input id="field-ls-rr" name="ls_rr" type="number" min="0.5" max="10" step="0.1" value="2" inputmode="decimal" />
-                  </label>
-                  <label for="field-ls-time"><span data-i18n="time_stop_bars">Time stop (bars)</span>
-                    <input id="field-ls-time" name="ls_time_stop_bars" type="number" min="1" max="60" value="15" inputmode="numeric" />
-                  </label>
-                </div>
-              </fieldset>
-
-              <fieldset class="field-group">
-                <legend data-i18n="size_and_cadence">Size &amp; cadence</legend>
-                <div class="size-control">
-                  <label class="size-field-label" id="size-field-label" for="field-qty" data-i18n="order_size">Order size</label>
-                  <div class="size-input-shell" role="group" aria-labelledby="size-field-label" data-size-mode="qty">
-                    <div class="size-input-values">
-                      <span class="size-unit-glyph" aria-hidden="true">
-                        <svg class="size-unit-ai-icon" viewBox="0 0 24 24" width="16" height="16" focusable="false">
-                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3v3M12 18v3M3 12h3M18 12h3M6.2 6.2l2.1 2.1M15.7 15.7l2.1 2.1M17.8 6.2l-2.1 2.1M8.3 15.7l-2.1 2.1"/>
-                        </svg>
-                      </span>
-                      <input id="field-qty" name="trade_qty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal" aria-label="Shares quantity" data-i18n-aria-label="shares_qty" />
-                      <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" hidden />
-                      <p id="size-ai-placeholder" class="size-ai-placeholder" hidden data-i18n="size_ai_placeholder">Model picks shares</p>
+                <div class="manual-qty-field auto-qty-field" id="auto-size-block">
+                  <div class="qty-field-head">
+                    <div class="qty-field-copy">
+                      <label class="qty-field-label" id="size-field-label" for="field-qty" data-i18n="quantity">Quantity</label>
+                      <span id="auto-size-avail" class="qty-field-avail"></span>
                     </div>
-                    <div class="size-toggle" role="group" aria-label="Size unit" data-i18n-aria-label="size_and_cadence">
-                      <button type="button" id="size-mode-qty" class="size-toggle-btn is-active" data-size-mode="qty" aria-pressed="true" title="Shares" aria-label="Size by shares" data-i18n-title="shares_title" data-i18n-aria-label="shares_aria">
-                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>
-                        </svg>
-                        <span class="size-toggle-text" data-i18n="qty_short">Qty</span>
-                      </button>
-                      <button type="button" id="size-mode-notional" class="size-toggle-btn" data-size-mode="notional" aria-pressed="false" title="Dollars" aria-label="Size by dollars" data-i18n-title="dollars_title" data-i18n-aria-label="dollars_aria">
-                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 3 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3"/>
-                        </svg>
-                        <span class="size-toggle-text" data-i18n="usd_short">USD</span>
-                      </button>
-                      <button type="button" id="size-mode-ai" class="size-toggle-btn" data-size-mode="ai" aria-pressed="false" title="AI sizes from market conditions" aria-label="Let AI decide quantity" hidden data-i18n-title="size_ai_title" data-i18n-aria-label="size_ai_aria">
-                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-                          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3v3M12 18v3M3 12h3M18 12h3M6.2 6.2l2.1 2.1M15.7 15.7l2.1 2.1M17.8 6.2l-2.1 2.1M8.3 15.7l-2.1 2.1"/>
-                        </svg>
-                        <span class="size-toggle-text" data-i18n="ai_short">AI</span>
-                      </button>
+                    <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
+                      <label class="qty-unit" data-tooltip="Shares" data-i18n-tooltip="shares_title">
+                        <input type="radio" name="size_mode" value="qty" checked />
+                        <span aria-hidden="true">#</span>
+                        <span class="sr-only" data-i18n="shares_title">Shares</span>
+                      </label>
+                      <label class="qty-unit" data-tooltip="Dollars" data-i18n-tooltip="dollars_title">
+                        <input type="radio" name="size_mode" value="notional" />
+                        <span aria-hidden="true">$</span>
+                        <span class="sr-only" data-i18n="dollars_title">Dollars</span>
+                      </label>
+                      <label class="qty-unit" id="size-unit-ai" data-tooltip="AI" data-i18n-tooltip="size_ai_title" hidden>
+                        <input type="radio" name="size_mode" value="ai" />
+                        <span aria-hidden="true">AI</span>
+                        <span class="sr-only" data-i18n="size_ai_title">AI decides</span>
+                      </label>
                     </div>
                   </div>
-                  <input type="hidden" id="field-size-mode" name="size_mode" value="qty" />
+
+                  <div class="qty-field-input" id="auto-qty-label">
+                    <div class="price-input-shell">
+                      <input id="field-qty" name="trade_qty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal" placeholder="1" aria-label="Shares quantity" data-i18n-aria-label="shares_qty" />
+                    </div>
+                    <p class="field-error" role="alert" hidden></p>
+                  </div>
+
+                  <div class="qty-field-input" id="auto-notional-label" hidden>
+                    <div class="price-input-shell">
+                      <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" placeholder="100" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" />
+                    </div>
+                    <p class="field-error" role="alert" hidden></p>
+                  </div>
+
+                  <div class="qty-field-input" id="auto-ai-label" hidden>
+                    <div class="price-input-shell is-readonly">
+                      <p id="size-ai-placeholder" class="size-ai-placeholder" data-i18n="size_ai_placeholder">Model picks shares each cycle</p>
+                    </div>
+                  </div>
                 </div>
                 <label for="field-poll"><span data-i18n="poll_interval_sec">Poll interval (sec)</span>
                   <input id="field-poll" name="poll_seconds" type="number" value="20" min="10" inputmode="numeric" />
@@ -393,112 +396,144 @@
                 <p id="size-hint" class="field-help" data-i18n="size_hint">Orders use share qty. Switch to dollars to size buys/sells in USD at the live mark.</p>
               </fieldset>
 
-              <fieldset class="field-group risk-engine-panel">
-                <legend data-i18n="risk_engine">Risk engine</legend>
-                <p class="field-help" data-i18n="risk_engine_help">Position size, stop distance, and the guards that stop a bad day compounding. Applies to AI, SMA, dip, and pair (LS has its own ATR fields). Edit any value to override a preset.</p>
-                <div class="field-pair-row">
-                  <label for="field-ai-risk-pct"><span data-i18n="label_risk_per_trade">Risk per trade %</span>
-                    <input id="field-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0" max="10" step="0.05" inputmode="decimal" />
+              <!-- Risk Engine Accordion -->
+              <details class="field-group desk-accordion risk-engine-panel" id="desk-risk-engine-group">
+                <summary class="desk-accordion-head">
+                  <span class="desk-fold-caret" aria-hidden="true"></span>
+                  <span class="desk-accordion-title" data-i18n="risk_engine">Risk engine</span>
+                  <span id="desk-risk-summary-badge" class="desk-accordion-badge"></span>
+                </summary>
+                <div class="desk-accordion-body">
+                  <p class="field-help" data-i18n="risk_engine_help">Position size, stop distance, and the guards that stop a bad day compounding. Applies to AI, SMA, dip, and pair (LS has its own ATR fields). Edit any value to override a preset.</p>
+                  <label class="check stack" for="field-risk-engine-enabled">
+                    <input id="field-risk-engine-enabled" name="risk_engine_enabled" type="checkbox" checked />
+                    <span>
+                      <strong data-i18n="risk_engine_enabled">Enable risk engine</strong>
+                      <span class="check-desc" data-i18n="risk_engine_enabled_desc">Dynamic sizing, ATR stops, profit targets, and daily loss caps</span>
+                    </span>
                   </label>
-                  <label for="field-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
-                    <input id="field-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0" max="10" step="0.1" inputmode="decimal" />
-                  </label>
+                  <div id="desk-risk-engine-fields">
+                    <div class="field-pair-row">
+                      <label for="field-ai-risk-pct"><span data-i18n="label_risk_per_trade">Risk per trade %</span>
+                        <input id="field-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0" max="10" step="0.05" inputmode="decimal" />
+                      </label>
+                      <label for="field-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
+                        <input id="field-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0" max="10" step="0.1" inputmode="decimal" />
+                      </label>
+                    </div>
+                    <p class="field-help" data-i18n="risk_size_help">Size is set so a stop-out costs that % of equity. Stop distance scales with volatility via ATR × (0 turns ATR stops off).</p>
+                    <div class="field-pair-row">
+                      <label for="field-ai-tp-r"><span data-i18n="label_take_profit_r">Take profit at R</span>
+                        <input id="field-ai-tp-r" name="ai_take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" />
+                      </label>
+                      <label for="field-ai-trail-r"><span data-i18n="label_trail_after_r">Trail after R</span>
+                        <input id="field-ai-trail-r" name="ai_trail_after_r" type="number" value="1" min="0" max="20" step="0.1" inputmode="decimal" />
+                      </label>
+                    </div>
+                    <label for="field-stop-limit-offset"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
+                      <input id="field-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" />
+                    </label>
+                    <p class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit.</p>
+                    <p class="field-help" data-i18n="risk_rr_help">R is one unit of initial risk. Half the position is trimmed at the take-profit multiple (0 = never trim, let winners run). Past the trail multiple the stop moves to breakeven, then follows price.</p>
+                    <div class="field-pair-row">
+                      <label for="field-ai-max-pos"><span data-i18n="label_max_open_pos">Max open positions</span>
+                        <input id="field-ai-max-pos" name="ai_max_positions" type="number" value="3" min="0" max="50" step="1" inputmode="numeric" />
+                      </label>
+                      <label for="field-ai-daily-loss"><span data-i18n="label_daily_loss_limit">Daily loss limit %</span>
+                        <input id="field-ai-daily-loss" name="ai_daily_loss_limit_pct" type="number" value="3" min="0" max="100" step="0.5" inputmode="decimal" />
+                      </label>
+                    </div>
+                    <p class="field-help" data-i18n="risk_caps_help">New entries stop once either cap is reached. Exits and covers are never blocked. 0 turns a cap off.</p>
+                    <div class="field-pair-row">
+                      <label for="field-ai-min-hold"><span data-i18n="label_min_hold">Min hold (min)</span>
+                        <input id="field-ai-min-hold" name="ai_min_hold_minutes" type="number" value="15" min="0" max="1440" step="1" inputmode="numeric" />
+                      </label>
+                      <label for="field-ai-cooldown"><span data-i18n="label_cooldown_after_stop">Cooldown after stop (min)</span>
+                        <input id="field-ai-cooldown" name="ai_cooldown_minutes" type="number" value="60" min="0" max="1440" step="1" inputmode="numeric" />
+                      </label>
+                    </div>
+                    <label for="field-ai-spread"><span data-i18n="label_max_spread">Max spread (bps)</span>
+                      <input id="field-ai-spread" name="ai_max_spread_bps" type="number" value="25" min="0" max="1000" step="1" inputmode="numeric" />
+                    </label>
+                    <p class="field-help" data-i18n="risk_churn_help">Churn guards: a fresh position will not be flipped, a stopped-out symbol rests before re-entry, and wide spreads block new entries. The protective stop still works throughout.</p>
+                  </div>
                 </div>
-                <p class="field-help" data-i18n="risk_size_help">Size is set so a stop-out costs that % of equity. Stop distance scales with volatility via ATR × (0 turns ATR stops off).</p>
-                <div class="field-pair-row">
-                  <label for="field-ai-tp-r"><span data-i18n="label_take_profit_r">Take profit at R</span>
-                    <input id="field-ai-tp-r" name="ai_take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" />
-                  </label>
-                  <label for="field-ai-trail-r"><span data-i18n="label_trail_after_r">Trail after R</span>
-                    <input id="field-ai-trail-r" name="ai_trail_after_r" type="number" value="1" min="0" max="20" step="0.1" inputmode="decimal" />
-                  </label>
-                </div>
-                <label for="field-stop-limit-offset"><span data-i18n="label_stop_limit_offset">Stop-limit cushion %</span>
-                  <input id="field-stop-limit-offset" name="stop_limit_offset_pct" type="number" value="0" min="0" max="50" step="0.1" inputmode="decimal" />
-                </label>
-                <p class="field-help" data-i18n="help_stop_limit_offset">After the stop triggers, sell/cover at a limit this % past it (long: below; short: above). 0 sells at market unless you set a sell limit.</p>
-                <p class="field-help" data-i18n="risk_rr_help">R is one unit of initial risk. Half the position is trimmed at the take-profit multiple (0 = never trim, let winners run). Past the trail multiple the stop moves to breakeven, then follows price.</p>
-                <div class="field-pair-row">
-                  <label for="field-ai-max-pos"><span data-i18n="label_max_open_pos">Max open positions</span>
-                    <input id="field-ai-max-pos" name="ai_max_positions" type="number" value="3" min="0" max="50" step="1" inputmode="numeric" />
-                  </label>
-                  <label for="field-ai-daily-loss"><span data-i18n="label_daily_loss_limit">Daily loss limit %</span>
-                    <input id="field-ai-daily-loss" name="ai_daily_loss_limit_pct" type="number" value="3" min="0" max="100" step="0.5" inputmode="decimal" />
-                  </label>
-                </div>
-                <p class="field-help" data-i18n="risk_caps_help">New entries stop once either cap is reached. Exits and covers are never blocked. 0 turns a cap off.</p>
-                <div class="field-pair-row">
-                  <label for="field-ai-min-hold"><span data-i18n="label_min_hold">Min hold (min)</span>
-                    <input id="field-ai-min-hold" name="ai_min_hold_minutes" type="number" value="15" min="0" max="1440" step="1" inputmode="numeric" />
-                  </label>
-                  <label for="field-ai-cooldown"><span data-i18n="label_cooldown_after_stop">Cooldown after stop (min)</span>
-                    <input id="field-ai-cooldown" name="ai_cooldown_minutes" type="number" value="60" min="0" max="1440" step="1" inputmode="numeric" />
-                  </label>
-                </div>
-                <label for="field-ai-spread"><span data-i18n="label_max_spread">Max spread (bps)</span>
-                  <input id="field-ai-spread" name="ai_max_spread_bps" type="number" value="25" min="0" max="1000" step="1" inputmode="numeric" />
-                </label>
-                <p class="field-help" data-i18n="risk_churn_help">Churn guards: a fresh position will not be flipped, a stopped-out symbol rests before re-entry, and wide spreads block new entries. The protective stop still works throughout.</p>
-              </fieldset>
+              </details>
 
-              <fieldset class="field-group options-overlay-panel">
-                <legend data-i18n="options_overlay">Options overlay</legend>
-                <p class="field-help" data-i18n="options_overlay_help">Every strategy cycle also trades Alpaca options on the same view. Default is a defined-risk vertical (bull call on longs, bear put on shorts).</p>
-                <label class="check stack" for="field-options-enabled">
-                  <input id="field-options-enabled" name="options_enabled" type="checkbox" checked />
-                  <span>
-                    <strong data-i18n="options_enabled">Trade options on every strategy</strong>
-                    <span class="check-desc" data-i18n="options_enabled_desc">Maps each SMA, dip, pair, LS, and AI signal onto Alpaca options</span>
-                  </span>
-                </label>
-                <label for="field-options-style"><span data-i18n="options_style">Structure</span>
-                  <select id="field-options-style" name="options_style">
-                    <option value="vertical" data-i18n="options_style_vertical" selected>Vertical debit spread</option>
-                    <option value="long_option" data-i18n="options_style_long">Long ATM call / put</option>
-                    <option value="hedge" data-i18n="options_style_hedge">Protective hedge (+ covered call)</option>
-                  </select>
-                </label>
-                <div class="field-pair-row">
-                  <label for="field-options-dte-min"><span data-i18n="options_dte_min">Min DTE</span>
-                    <input id="field-options-dte-min" name="options_dte_min" type="number" value="21" min="1" max="180" step="1" inputmode="numeric" />
+              <!-- Options Overlay Accordion -->
+              <details class="field-group desk-accordion options-overlay-panel" id="desk-options-overlay-group">
+                <summary class="desk-accordion-head">
+                  <span class="desk-fold-caret" aria-hidden="true"></span>
+                  <span class="desk-accordion-title" data-i18n="options_overlay">Options overlay</span>
+                  <span id="desk-options-summary-badge" class="desk-accordion-badge"></span>
+                </summary>
+                <div class="desk-accordion-body">
+                  <p class="field-help" data-i18n="options_overlay_help">Every strategy cycle also trades Alpaca options on the same view. Default is a defined-risk vertical (bull call on longs, bear put on shorts).</p>
+                  <label class="check stack" for="field-options-enabled">
+                    <input id="field-options-enabled" name="options_enabled" type="checkbox" checked />
+                    <span>
+                      <strong data-i18n="options_enabled">Trade options on every strategy</strong>
+                      <span class="check-desc" data-i18n="options_enabled_desc">Maps each SMA, dip, pair, LS, and AI signal onto Alpaca options</span>
+                    </span>
                   </label>
-                  <label for="field-options-dte-max"><span data-i18n="options_dte_max">Max DTE</span>
-                    <input id="field-options-dte-max" name="options_dte_max" type="number" value="45" min="1" max="365" step="1" inputmode="numeric" />
-                  </label>
+                  <div id="desk-options-overlay-fields">
+                    <label for="field-options-style"><span data-i18n="options_style">Structure</span>
+                      <select id="field-options-style" name="options_style">
+                        <option value="vertical" data-i18n="options_style_vertical" selected>Vertical debit spread</option>
+                        <option value="long_option" data-i18n="options_style_long">Long ATM call / put</option>
+                        <option value="hedge" data-i18n="options_style_hedge">Protective hedge (+ covered call)</option>
+                      </select>
+                    </label>
+                    <div class="field-pair-row">
+                      <label for="field-options-dte-min"><span data-i18n="options_dte_min">Min DTE</span>
+                        <input id="field-options-dte-min" name="options_dte_min" type="number" value="21" min="1" max="180" step="1" inputmode="numeric" />
+                      </label>
+                      <label for="field-options-dte-max"><span data-i18n="options_dte_max">Max DTE</span>
+                        <input id="field-options-dte-max" name="options_dte_max" type="number" value="45" min="1" max="365" step="1" inputmode="numeric" />
+                      </label>
+                    </div>
+                    <div class="field-pair-row">
+                      <label for="field-options-otm"><span data-i18n="options_otm_pct">OTM %</span>
+                        <input id="field-options-otm" name="options_otm_pct" type="number" value="5" min="0.5" max="25" step="0.5" inputmode="decimal" />
+                      </label>
+                      <label for="field-options-contracts"><span data-i18n="options_max_contracts">Max contracts</span>
+                        <input id="field-options-contracts" name="options_max_contracts" type="number" value="1" min="1" max="20" step="1" inputmode="numeric" />
+                      </label>
+                    </div>
+                    <label for="field-options-premium"><span data-i18n="options_max_premium">Max premium % of equity</span>
+                      <input id="field-options-premium" name="options_max_premium_pct" type="number" value="1" min="0" max="10" step="0.1" inputmode="decimal" />
+                    </label>
+                    <p class="field-help" data-i18n="options_overlay_help_detail">0 premium cap turns the budget check off. Overlay errors never block the equity engine.</p>
+                  </div>
                 </div>
-                <div class="field-pair-row">
-                  <label for="field-options-otm"><span data-i18n="options_otm_pct">OTM %</span>
-                    <input id="field-options-otm" name="options_otm_pct" type="number" value="5" min="0.5" max="25" step="0.5" inputmode="decimal" />
-                  </label>
-                  <label for="field-options-contracts"><span data-i18n="options_max_contracts">Max contracts</span>
-                    <input id="field-options-contracts" name="options_max_contracts" type="number" value="1" min="1" max="20" step="1" inputmode="numeric" />
-                  </label>
-                </div>
-                <label for="field-options-premium"><span data-i18n="options_max_premium">Max premium % of equity</span>
-                  <input id="field-options-premium" name="options_max_premium_pct" type="number" value="1" min="0" max="10" step="0.1" inputmode="decimal" />
-                </label>
-                <p class="field-help" data-i18n="options_overlay_help_detail">0 premium cap turns the budget check off. Overlay errors never block the equity engine.</p>
-              </fieldset>
+              </details>
 
-              <fieldset class="field-group ai-only">
-                <legend data-i18n="ai_instructions">AI instructions</legend>
-                <label for="field-instructions" class="stack">
-                  <span class="sr-only" data-i18n="ai_instructions">AI instructions</span>
-                  <textarea id="field-instructions" name="ai_instructions" rows="4" placeholder="Preset playbook loads here. Edit to switch to Custom." data-i18n-placeholder="ai_instructions_placeholder"></textarea>
-                </label>
-                <p class="field-help" data-i18n="ai_instructions_help">Sent to the model each cycle with TA, news, calendar, and earnings. Editing text switches the preset to Custom.</p>
-              </fieldset>
+              <!-- AI Instructions Accordion -->
+              <details class="field-group desk-accordion ai-only" id="desk-ai-instructions-group">
+                <summary class="desk-accordion-head">
+                  <span class="desk-fold-caret" aria-hidden="true"></span>
+                  <span class="desk-accordion-title" data-i18n="ai_instructions">AI instructions</span>
+                  <span id="desk-ai-instructions-badge" class="desk-accordion-badge"></span>
+                </summary>
+                <div class="desk-accordion-body">
+                  <label for="field-instructions" class="stack">
+                    <span class="sr-only" data-i18n="ai_instructions">AI instructions</span>
+                    <textarea id="field-instructions" name="ai_instructions" rows="4" placeholder="Preset playbook loads here. Edit to switch to Custom." data-i18n-placeholder="ai_instructions_placeholder"></textarea>
+                  </label>
+                  <p class="field-help" data-i18n="ai_instructions_help">Sent to the model each cycle with TA, news, calendar, and earnings. Editing text switches the preset to Custom.</p>
+                </div>
+              </details>
 
               <p id="form-error" class="form-error" role="alert" hidden></p>
 
               <div class="run-zone" id="run-zone">
                 <div class="run-zone-bar">
-                  <p id="loop-elapsed" class="loop-elapsed" hidden>0:00</p>
-                </div>
-                <div class="actions">
-                  <button type="button" id="btn-once" class="primary" title="Evaluate the strategy once" data-i18n="run_once" data-i18n-title="title_run_once">Run once</button>
-                  <button type="button" id="btn-loop" class="copper" aria-pressed="false" title="Poll on an interval" data-i18n="start_loop" data-i18n-title="title_start_loop">Start loop</button>
-                  <a href="/backtest" class="ghost run-backtest-link" id="link-backtest" title="Open Backtest with this watchlist (AI falls back to SMA)" data-i18n="test_on_history" data-i18n-title="title_test_history">Test on history</a>
+                  <div class="actions">
+                    <button type="button" id="btn-once" class="primary" title="Evaluate the strategy once" data-i18n="run_once" data-i18n-title="title_run_once">Run once</button>
+                    <button type="button" id="btn-loop" class="copper" aria-pressed="false" title="Poll on an interval" data-i18n="start_loop" data-i18n-title="title_start_loop">Start loop</button>
+                    <p id="loop-elapsed" class="loop-elapsed" hidden>0:00</p>
+                  </div>
+                  <a href="/backtest" class="btn btn-secondary run-backtest-link" id="link-backtest" title="Open Backtest with this watchlist (AI falls back to SMA)" data-i18n="test_on_history" data-i18n-title="title_test_history">Test on history</a>
                 </div>
                 <details class="run-notes" id="run-notes">
                   <summary>

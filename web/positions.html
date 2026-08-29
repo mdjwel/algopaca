@@ -173,29 +173,16 @@
                 <span class="pos-sync-dot" aria-hidden="true"></span>
                 <span id="pos-last-updated-text" class="pos-sync-time">Live</span>
               </div>
-              <!-- On desktop this wrapper dissolves (display: contents) so its
-                   buttons sit inline exactly as before; on mobile it becomes a
-                   trigger + popover so three buttons stop crowding the header. -->
-              <div class="pos-actions-menu-wrap" id="pos-actions-menu-wrap">
-                <button type="button" id="btn-pos-actions-toggle" class="ghost pos-actions-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="pos-actions-menu" title="Actions" data-i18n-title="actions">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
-                    <circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>
-                  </svg>
-                  <span class="sr-only" data-i18n="actions">Actions</span>
-                </button>
-                <div id="pos-actions-menu" class="pos-actions-menu">
-                  <button type="button" id="btn-refresh-positions" class="ghost" title="Refresh positions" data-i18n-title="refresh_positions">
-                    <span data-i18n="refresh_positions">Refresh</span>
-                  </button>
-                  <span class="pos-actions-divider" aria-hidden="true"></span>
-                  <button type="button" id="btn-liquidate-selected" class="ghost ghost-danger" hidden title="Liquidate selected positions" data-i18n-title="liquidate_selected">
-                    <span id="btn-liquidate-selected-text" data-i18n="liquidate_selected">Close Selected</span>
-                  </button>
-                  <button type="button" id="btn-liquidate-all" class="ghost ghost-danger" disabled title="Liquidate all positions" data-i18n-title="liquidate_all">
-                    <span data-i18n="liquidate_all">Liquidate all</span>
-                  </button>
-                </div>
-              </div>
+              <button type="button" id="btn-refresh-positions" class="ghost" title="Refresh positions" data-i18n-title="refresh_positions">
+                <span data-i18n="refresh_positions">Refresh</span>
+              </button>
+              <span class="pos-actions-divider" aria-hidden="true"></span>
+              <button type="button" id="btn-liquidate-selected" class="ghost ghost-danger" hidden title="Liquidate selected positions" data-i18n-title="liquidate_selected">
+                <span id="btn-liquidate-selected-text" data-i18n="liquidate_selected">Close Selected</span>
+              </button>
+              <button type="button" id="btn-liquidate-all" class="ghost ghost-danger" disabled title="Liquidate all positions" data-i18n-title="liquidate_all">
+                <span data-i18n="liquidate_all">Liquidate all</span>
+              </button>
             </div>
           </div>
 
@@ -353,6 +340,23 @@
             <button type="button" id="btn-empty-clear-filters" class="ghost" hidden data-i18n="reset_filters">Reset filters</button>
           </div>
         </section>
+
+        <!-- Floating Multi-select Batch Action Bar -->
+        <div id="pos-batch-floating-bar" class="pos-batch-floating-bar" role="toolbar" aria-label="Selected positions actions" hidden>
+          <div class="pos-batch-floating-inner">
+            <div class="pos-batch-floating-info">
+              <span class="pos-batch-badge"><span id="pos-batch-count">0</span>&nbsp;<span data-i18n="pos_lots_selected_label">selected</span></span>
+              <span class="pos-batch-metric mono" id="pos-batch-mv">$0.00</span>
+              <strong class="pos-batch-metric mono" id="pos-batch-pnl">$0.00</strong>
+            </div>
+            <div class="pos-batch-floating-actions">
+              <button type="button" id="btn-batch-deselect" class="ghost btn-sm" data-i18n="pos_lots_deselect">Deselect</button>
+              <button type="button" id="btn-batch-liquidate" class="primary primary-danger btn-sm">
+                <span id="btn-batch-liquidate-text" data-i18n="liquidate_selected">Close Selected</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
       </div>
     </main>
