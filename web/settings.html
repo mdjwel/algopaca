@@ -535,7 +535,7 @@
 
               <!-- Switch Toggles Row -->
               <div class="settings-switches-grid">
-                <div class="switch-item">
+                <label class="switch-item" for="check-sound-alerts">
                   <div class="switch-item-text">
                     <strong class="switch-title" data-i18n="settings_sound_alerts">Audio Alerts & Execution Chimes</strong>
                     <span class="switch-desc" data-i18n="settings_sound_alerts_desc">Play audio tone when orders execute, dip hunts trigger, or risk limits hit.</span>
@@ -548,25 +548,25 @@
                       </svg>
                       <span data-i18n="settings_test_sound">Preview Chime</span>
                     </button>
-                    <label class="toggle-switch">
+                    <span class="toggle-switch">
                       <input type="checkbox" id="check-sound-alerts" checked />
                       <span class="toggle-slider"></span>
-                    </label>
+                    </span>
                   </div>
-                </div>
+                </label>
 
-                <div class="switch-item">
+                <label class="switch-item" for="check-compact-mode">
                   <div class="switch-item-text">
                     <strong class="switch-title" data-i18n="settings_compact_mode">Compact Blotter Density</strong>
                     <span class="switch-desc" data-i18n="settings_compact_mode_desc">Reduces table row heights and paddings for maximum screen data density.</span>
                   </div>
                   <div class="switch-item-actions">
-                    <label class="toggle-switch">
+                    <span class="toggle-switch">
                       <input type="checkbox" id="check-compact-mode" />
                       <span class="toggle-slider"></span>
-                    </label>
+                    </span>
                   </div>
-                </div>
+                </label>
               </div>
 
               <div class="form-actions">
@@ -628,31 +628,31 @@
                 </div>
 
                 <div class="settings-switches-grid">
-                  <div class="switch-item">
+                  <label class="switch-item" for="check-confirm-orders">
                     <div class="switch-item-text">
                       <strong class="switch-title" data-i18n="settings_confirm_manual">Require Confirmation for Manual Orders</strong>
                       <span class="switch-desc" data-i18n="settings_confirm_manual_desc">Shows a review modal before dispatching buy, sell, short, or cover tickets.</span>
                     </div>
                     <div class="switch-item-actions">
-                      <label class="toggle-switch">
+                      <span class="toggle-switch">
                         <input type="checkbox" id="check-confirm-orders" checked />
                         <span class="toggle-slider"></span>
-                      </label>
+                      </span>
                     </div>
-                  </div>
+                  </label>
 
-                  <div class="switch-item">
+                  <label class="switch-item" for="check-confirm-close-all">
                     <div class="switch-item-text">
                       <strong class="switch-title" data-i18n="settings_confirm_close_all">Double Confirmation on "Close All Positions"</strong>
                       <span class="switch-desc" data-i18n="settings_confirm_close_all_desc">Requires explicit safety confirmation before liquidating all open positions simultaneously.</span>
                     </div>
                     <div class="switch-item-actions">
-                      <label class="toggle-switch">
+                      <span class="toggle-switch">
                         <input type="checkbox" id="check-confirm-close-all" checked />
                         <span class="toggle-slider"></span>
-                      </label>
+                      </span>
                     </div>
-                  </div>
+                  </label>
                 </div>
 
                 <div class="panel-divider"></div>
@@ -663,49 +663,49 @@
                 </div>
 
                 <div class="settings-switches-grid">
-                  <div class="switch-item">
+                  <label class="switch-item" for="check-settings-require-approval">
                     <div class="switch-item-text">
                       <strong class="switch-title" data-i18n="require_approval">Require Order Approval</strong>
                       <span class="switch-desc" data-i18n="require_approval_desc">Hold auto-trade signals in pending state until you click Approve</span>
                     </div>
                     <div class="switch-item-actions">
-                      <label class="toggle-switch">
+                      <span class="toggle-switch">
                         <input type="checkbox" id="check-settings-require-approval" />
                         <span class="toggle-slider"></span>
-                      </label>
+                      </span>
                     </div>
-                  </div>
+                  </label>
 
-                  <div class="switch-item">
+                  <label class="switch-item" for="check-settings-notify-browser">
                     <div class="switch-item-text">
                       <strong class="switch-title" data-i18n="notify_browser">Browser Push Notifications</strong>
                       <span class="switch-desc" data-i18n="notify_browser_desc">Receive desktop browser push notifications when a signal or approval is ready</span>
                     </div>
                     <div class="switch-item-actions">
-                      <label class="toggle-switch">
+                      <span class="toggle-switch">
                         <input type="checkbox" id="check-settings-notify-browser" checked />
                         <span class="toggle-slider"></span>
-                      </label>
+                      </span>
                     </div>
-                  </div>
+                  </label>
 
-                  <div class="switch-item">
+                  <label class="switch-item" for="check-settings-notify-email">
                     <div class="switch-item-text">
                       <strong class="switch-title" data-i18n="notify_email">Email Notifications</strong>
                       <span class="switch-desc" data-i18n="notify_email_desc">Send email alerts with order details and quick action links</span>
                     </div>
                     <div class="switch-item-actions">
-                      <label class="toggle-switch">
+                      <span class="toggle-switch">
                         <input type="checkbox" id="check-settings-notify-email" />
                         <span class="toggle-slider"></span>
-                      </label>
+                      </span>
                     </div>
-                  </div>
+                  </label>
                 </div>
 
                 <div class="settings-form-row" id="wrap-settings-notification-email" hidden>
                   <div class="field-wrap">
-                    <label for="input-settings-notification-email" data-i18n="notification_email">Custom Notification Email (optional)</label>
+                    <label for="input-settings-notification-email" data-i18n="notification_email">Notification Email (Optional)</label>
                     <input type="email" id="input-settings-notification-email" class="field-input" placeholder="Leave empty to use account email" data-i18n-placeholder="notification_email_placeholder" />
                     <p class="field-hint" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
                   </div>
@@ -808,6 +808,22 @@
                     <span class="integration-badge" id="badge-status-xai" data-status="checking">Checking…</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Setup Wizard Quick Action Card -->
+            <div class="panel setup-wizard-card">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title" data-i18n="settings_wizard_title">Getting Started & Setup Wizard</h3>
+                  <p class="panel-desc" data-i18n="settings_wizard_desc">Re-run the step-by-step onboarding walkthrough to reconfigure broker connections, AI providers, strategies, and safety guardrails.</p>
+                </div>
+                <a href="/setup-wizard" class="btn btn-primary btn-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  </svg>
+                  <span data-i18n="settings_launch_wizard_btn">Launch Setup Wizard</span>
+                </a>
               </div>
             </div>
 

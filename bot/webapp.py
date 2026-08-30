@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from bot.alpaca_errors import humanize_alpaca_error
+from bot.ai_models import catalog_payload
 from bot.auth import AUTH_STORE, is_admin_or_owner
 from bot.backtest_store import summarize_entry
 from bot.config import MIN_ATR_STOP_MULT
@@ -498,6 +499,32 @@ class AdminCreateUserIn(BaseModel):
     display_name: Optional[str] = None
 
 
+class SetupCompleteIn(BaseModel):
+    # Owner credentials (required if instance is fresh/unconfigured)
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    display_name: Optional[str] = None
+
+    # SMTP Configuration (Optional)
+    smtp_host: Optional[str] = ""
+    smtp_port: Optional[int] = 587
+    smtp_username: Optional[str] = ""
+    smtp_password: Optional[str] = ""
+    smtp_from_email: Optional[str] = ""
+    smtp_sender_name: Optional[str] = "AlgoPaca"
+    smtp_use_ssl: bool = False
+
+    # Platform Preferences & Customization
+    theme: str = "obsidian"
+    lang: str = "en"
+    default_page: str = "auto-trade"
+    timezone_display: str = "local"
+    sound_alerts: bool = True
+    notify_browser: bool = True
+    notify_email: bool = False
+
+
 class AdminSmtpConfigIn(BaseModel):
     # A blank host used to save happily and then report "UNCONFIGURED" in the
     # same breath, so the required fields are enforced here rather than only
@@ -689,6 +716,7 @@ PAGE_FILES = {
     "api-keys": "api-keys.html",
     "admin": "admin.html",
     "settings": "settings.html",
+    "setup-wizard": "setup-wizard.html",
 }
 
 
@@ -703,6 +731,10 @@ def _page_response(name: str) -> FileResponse:
 
 
 def _protected_page(request: Request, name: str) -> Response:
+    if AUTH_STORE.needs_setup():
+        if name in ("setup-wizard", "wizard"):
+            return _page_response("setup-wizard")
+        return RedirectResponse(url="/setup-wizard", status_code=302)
     user = _get_current_user(request)
     if not user:
         from urllib.parse import quote
@@ -713,6 +745,8 @@ def _protected_page(request: Request, name: str) -> Response:
 
 @app.get("/")
 def index(request: Request) -> RedirectResponse:
+    if AUTH_STORE.needs_setup():
+        return RedirectResponse(url="/setup-wizard", status_code=302)
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
@@ -721,6 +755,8 @@ def index(request: Request) -> RedirectResponse:
 
 @app.get("/login")
 def page_login(request: Request) -> Response:
+    if AUTH_STORE.needs_setup():
+        return RedirectResponse(url="/setup-wizard", status_code=302)
     user = _get_current_user(request)
     if user:
         next_url = request.query_params.get("next")
@@ -732,6 +768,8 @@ def page_login(request: Request) -> Response:
 
 @app.get("/signup")
 def page_signup(request: Request) -> Response:
+    if AUTH_STORE.needs_setup():
+        return RedirectResponse(url="/setup-wizard", status_code=302)
     user = _get_current_user(request)
     if user:
         next_url = request.query_params.get("next")
@@ -797,6 +835,12 @@ def page_api_keys(request: Request) -> Response:
 @app.get("/user-settings")
 def page_settings(request: Request) -> Response:
     return _protected_page(request, "settings")
+
+
+@app.get("/setup-wizard")
+@app.get("/wizard")
+def page_setup_wizard(request: Request) -> Response:
+    return _protected_page(request, "setup-wizard")
 
 
 @app.get("/admin")
@@ -940,6 +984,151 @@ def api_auth_me(request: Request) -> dict:
     if user:
         return {"ok": True, "authenticated": True, "user": user}
     return {"ok": True, "authenticated": False, "user": None}
+
+
+# ---------------------------------------------------------------------------
+# Setup Wizard & Onboarding API Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/setup/status")
+def api_setup_status(request: Request) -> dict:
+    user = _get_current_user(request)
+    needs_setup = AUTH_STORE.needs_setup()
+    state = get_user_state(user["id"]) if user else STATE
+    default_settings = state.snapshot().get("settings", {})
+    smtp_cfg = get_smtp_config(masked=True)
+    return {
+        "ok": True,
+        "needs_setup": needs_setup,
+        "is_authenticated": user is not None,
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+        } if user else None,
+        "smtp": smtp_cfg,
+        "settings": default_settings,
+    }
+
+
+@app.post("/api/setup/test-smtp")
+def api_setup_test_smtp(body: AdminSmtpTestIn, request: Request) -> dict:
+    lang = request.cookies.get("algopaca_lang", "en")
+    custom_cfg = None
+    if body.host:
+        custom_cfg = {
+            "host": body.host,
+            "port": body.port or 587,
+            "username": body.username or "",
+            "password": body.password or "",
+            "from_email": body.from_email or body.username or "",
+            "sender_name": body.sender_name or "AlgoPaca",
+            "use_ssl": bool(body.use_ssl),
+        }
+    result = test_smtp_connection(
+        test_to_email=body.to_email,
+        custom_config=custom_cfg,
+        lang=lang,
+    )
+    AUTH_STORE.record_email(
+        body.to_email, "smtp_test", bool(result.get("ok")), str(result.get("error") or "")
+    )
+    return result
+
+
+@app.post("/api/setup/complete")
+def api_setup_complete(body: SetupCompleteIn, request: Request, response: Response) -> dict:
+    needs_setup = AUTH_STORE.needs_setup()
+    current_user = _get_current_user(request)
+
+    if needs_setup:
+        username = (body.username or "").strip()
+        email = (body.email or "").strip().lower()
+        password = body.password or ""
+        display_name = (body.display_name or username).strip()
+
+        if not username:
+            raise HTTPException(status_code=400, detail="Username is required for the owner account.")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email address is required for the owner account.")
+        if not password or len(password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+        try:
+            created = AUTH_STORE.register_user(
+                username=username,
+                email=email,
+                password=password,
+                display_name=display_name,
+                role="owner",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        user_id = created["id"]
+        user_agent = request.headers.get("user-agent", "")
+        token, _ = AUTH_STORE.create_session(user_id, remember_me=True, user_agent=user_agent)
+        _set_session_cookie(response, token, 30)
+    else:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        user_id = current_user["id"]
+
+    # 1. Save SMTP credentials if host provided
+    smtp_host = (body.smtp_host or "").strip()
+    if smtp_host:
+        try:
+            save_smtp_config({
+                "host": smtp_host,
+                "port": int(body.smtp_port or 587),
+                "username": (body.smtp_username or "").strip(),
+                "password": (body.smtp_password or "").strip(),
+                "from_email": (body.smtp_from_email or body.smtp_username or "").strip(),
+                "sender_name": (body.smtp_sender_name or "AlgoPaca").strip(),
+                "use_ssl": bool(body.smtp_use_ssl),
+            })
+        except Exception as exc:
+            log.warning("Could not save SMTP configuration during setup: %s", exc)
+
+    # 2. Save User Preferences
+    prefs_payload: dict[str, Any] = {
+        "theme": body.theme or "obsidian",
+        "language": body.lang or "en",
+        "default_page": body.default_page or "auto-trade",
+        "timezone_display": body.timezone_display or "local",
+        "sound_alerts": int(bool(body.sound_alerts)),
+        "notify_browser": int(bool(body.notify_browser)),
+        "notify_email": int(bool(body.notify_email)),
+        "notification_email": body.email if needs_setup else (current_user.get("email") or ""),
+    }
+    try:
+        AUTH_STORE.save_user_preferences(user_id, prefs_payload)
+    except Exception as exc:
+        log.warning("Could not save user preferences during setup: %s", exc)
+
+    # Set theme & lang cookies on response
+    response.set_cookie(
+        key="algopaca_theme",
+        value=body.theme or "obsidian",
+        max_age=365 * 86400,
+        path="/",
+        samesite="lax",
+    )
+    response.set_cookie(
+        key="algopaca_lang",
+        value=body.lang or "en",
+        max_age=365 * 86400,
+        path="/",
+        samesite="lax",
+    )
+
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "redirect": f"/{body.default_page or 'auto-trade'}",
+        "message": "Setup completed successfully.",
+    }
 
 
 # ---------------------------------------------------------------------------

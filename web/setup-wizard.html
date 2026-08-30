@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d131f" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
+  <meta name="color-scheme" content="dark" />
+  <title>Administration Setup Wizard · AlgoPaca</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
+  <link rel="stylesheet" href="/static/css/common.css?v=2.2" />
+  <link rel="stylesheet" href="/static/css/desk-shell.css?v=2.2" media="(min-width: 769px)" />
+  <link rel="stylesheet" href="/static/css/mobile-shell.css?v=2.2" media="(max-width: 768px)" />
+  <link rel="stylesheet" href="/static/css/setup-wizard.css?v=2.2" />
+</head>
+<body data-page="setup-wizard">
+  <a class="skip-link" href="#wizard-main" data-i18n="skip_to_desk">Skip to desk</a>
+  <div class="atmosphere" aria-hidden="true"></div>
+
+  <div class="app wizard-app-container">
+    <!-- Wizard Masthead -->
+    <header class="masthead wizard-masthead">
+      <div class="masthead-top">
+        <div class="masthead-brand">
+          <div class="masthead-brand-header">
+            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+            </a>
+            <div class="masthead-brand-text">
+              <div class="wizard-badge-wrap">
+                <p class="eyebrow" data-i18n="wizard_eyebrow">AlgoPaca · Administration</p>
+                <span class="wizard-step-tag" id="wizard-progress-counter">Step 1 of 4</span>
+              </div>
+              <h1 data-i18n="wizard_title">Setup Wizard</h1>
+            </div>
+          </div>
+          <p id="page-tagline" class="tagline" data-i18n="wizard_tagline">Configure your primary owner profile, outbound SMTP server, and platform defaults.</p>
+        </div>
+        <div class="masthead-right">
+          <div class="wizard-header-actions">
+            <a href="/auto-trade" class="btn btn-secondary btn-sm" id="btn-skip-wizard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+              <span data-i18n="wizard_exit_to_desk">Exit to Desk</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <!-- Main Wizard Content Shell -->
+    <main id="wizard-main" class="wizard-main">
+      <div class="wizard-card-shell">
+
+        <!-- Visual Stepper Progress Bar -->
+        <nav class="wizard-stepper" aria-label="Wizard Steps">
+          <ol class="stepper-track" id="wizard-stepper-track">
+            <li class="stepper-step is-active" data-step="1" id="step-nav-1">
+              <button type="button" class="stepper-step-btn" data-step-target="1" aria-current="step">
+                <span class="step-num">1</span>
+                <span class="step-check" aria-hidden="true">✓</span>
+                <span class="step-label" data-i18n="wizard_step_owner">Owner Account</span>
+              </button>
+            </li>
+            <li class="stepper-divider" aria-hidden="true"></li>
+            <li class="stepper-step" data-step="2" id="step-nav-2">
+              <button type="button" class="stepper-step-btn" data-step-target="2">
+                <span class="step-num">2</span>
+                <span class="step-check" aria-hidden="true">✓</span>
+                <span class="step-label" data-i18n="wizard_step_smtp">Mail & SMTP</span>
+              </button>
+            </li>
+            <li class="stepper-divider" aria-hidden="true"></li>
+            <li class="stepper-step" data-step="3" id="step-nav-3">
+              <button type="button" class="stepper-step-btn" data-step-target="3">
+                <span class="step-num">3</span>
+                <span class="step-check" aria-hidden="true">✓</span>
+                <span class="step-label" data-i18n="wizard_step_preferences">Platform Options</span>
+              </button>
+            </li>
+            <li class="stepper-divider" aria-hidden="true"></li>
+            <li class="stepper-step" data-step="4" id="step-nav-4">
+              <button type="button" class="stepper-step-btn" data-step-target="4">
+                <span class="step-num">4</span>
+                <span class="step-check" aria-hidden="true">✓</span>
+                <span class="step-label" data-i18n="wizard_step_launch">Launchpad</span>
+              </button>
+            </li>
+          </ol>
+        </nav>
+
+        <!-- Dynamic Step View Container -->
+        <div class="wizard-panels-container">
+
+          <!-- ============================================================ -->
+          <!-- STEP 1: OWNER ACCOUNT PROFILE -->
+          <!-- ============================================================ -->
+          <section class="wizard-step-panel is-active" id="panel-step-1" data-step="1" role="region" aria-labelledby="step-1-heading">
+            <div class="step-head">
+              <div class="step-head-badge">
+                <span class="step-badge-icon">👑</span>
+                <span data-i18n="wizard_step1_badge">Administration</span>
+              </div>
+              <h2 id="step-1-heading" class="step-title" data-i18n="wizard_owner_title">Create Desk Owner Account</h2>
+              <p class="step-desc" data-i18n="wizard_owner_desc">Set up the primary administrator account. The Owner possesses full platform privileges, user management, and security controls.</p>
+            </div>
+
+            <!-- Owner Form Card -->
+            <div class="wizard-form-box wizard-owner-card">
+              <div class="wizard-owner-header">
+                <div class="wizard-owner-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                  </svg>
+                  <span data-i18n="wizard_owner_badge">Primary Administrator</span>
+                </div>
+              </div>
+
+              <div class="wizard-owner-grid">
+                <!-- Username -->
+                <div class="wizard-field-group">
+                  <div class="field-label-row">
+                    <label for="wizard-field-username" class="wizard-input-label">
+                      <span data-i18n="wizard_owner_username">Username</span>
+                      <span class="req" aria-hidden="true">*</span>
+                    </label>
+                  </div>
+                  <div class="wizard-input-wrap">
+                    <svg class="wizard-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <input type="text" id="wizard-field-username" class="field-input font-mono" placeholder="admin" autocomplete="username" spellcheck="false" required />
+                  </div>
+                  <p id="wizard-err-username" class="wizard-field-error" role="status" hidden></p>
+                </div>
+
+                <!-- Display Name -->
+                <div class="wizard-field-group">
+                  <div class="field-label-row">
+                    <label for="wizard-field-display-name" class="wizard-input-label">
+                      <span data-i18n="wizard_owner_display_name">Display Name</span>
+                    </label>
+                  </div>
+                  <div class="wizard-input-wrap">
+                    <svg class="wizard-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                      <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                      <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    </svg>
+                    <input type="text" id="wizard-field-display-name" class="field-input" placeholder="Lead Trader" autocomplete="name" />
+                  </div>
+                </div>
+
+                <!-- Email Address -->
+                <div class="wizard-field-group">
+                  <div class="field-label-row">
+                    <label for="wizard-field-email" class="wizard-input-label">
+                      <span data-i18n="wizard_owner_email">Email Address</span>
+                      <span class="req" aria-hidden="true">*</span>
+                    </label>
+                  </div>
+                  <div class="wizard-input-wrap">
+                    <svg class="wizard-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                      <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                    <input type="email" id="wizard-field-email" class="field-input" placeholder="admin@domain.com" autocomplete="email" required />
+                  </div>
+                  <p id="wizard-err-email" class="wizard-field-error" role="status" hidden></p>
+                </div>
+
+                <!-- Password -->
+                <div class="wizard-field-group">
+                  <div class="field-label-row">
+                    <label for="wizard-field-password" class="wizard-input-label">
+                      <span data-i18n="wizard_owner_pw">Password</span>
+                      <span class="req" aria-hidden="true">*</span>
+                    </label>
+                  </div>
+                  <div class="wizard-input-wrap">
+                    <svg class="wizard-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <input type="password" id="wizard-field-password" class="field-input font-mono" placeholder="••••••••" autocomplete="new-password" required />
+                    <button type="button" class="wizard-pw-toggle" id="btn-toggle-owner-pw" aria-label="Toggle password visibility">
+                      <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                      <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true" hidden>
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- Password Strength Meter -->
+                  <div class="wizard-pw-meter" id="wizard-pw-meter">
+                    <div class="pw-meter-bar" id="pw-meter-bar"></div>
+                    <span class="pw-meter-label" id="pw-meter-label"></span>
+                  </div>
+                  <p id="wizard-err-password" class="wizard-field-error" role="status" hidden></p>
+                </div>
+
+                <!-- Confirm Password -->
+                <div class="wizard-field-group">
+                  <div class="field-label-row">
+                    <label for="wizard-field-confirm-password" class="wizard-input-label">
+                      <span data-i18n="wizard_owner_confirm_pw">Confirm Password</span>
+                      <span class="req" aria-hidden="true">*</span>
+                    </label>
+                  </div>
+                  <div class="wizard-input-wrap">
+                    <svg class="wizard-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <input type="password" id="wizard-field-confirm-password" class="field-input font-mono" placeholder="••••••••" autocomplete="new-password" required />
+                    <button type="button" class="wizard-pw-toggle" id="btn-toggle-confirm-pw" aria-label="Toggle password visibility">
+                      <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                      <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" aria-hidden="true" hidden>
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  <p id="wizard-confirm-hint" class="wizard-match-hint" hidden></p>
+                  <p id="wizard-err-confirm-password" class="wizard-field-error" role="status" hidden></p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================ -->
+          <!-- STEP 2: SMTP MAIL SERVER -->
+          <!-- ============================================================ -->
+          <section class="wizard-step-panel" id="panel-step-2" data-step="2" role="region" aria-labelledby="step-2-heading" hidden>
+            <div class="step-head">
+              <div class="step-head-badge">
+                <span class="step-badge-icon">✉️</span>
+                <span data-i18n="wizard_step2_badge">Outbound Mail</span>
+              </div>
+              <h2 id="step-2-heading" class="step-title" data-i18n="wizard_step2_title">Configure Outbound SMTP Server</h2>
+              <p class="step-desc" data-i18n="wizard_step2_desc">Configure SMTP settings to enable automated password resets, system alerts, and notification dispatches.</p>
+            </div>
+
+            <!-- Optional Callout -->
+            <div class="wizard-callout is-info">
+              <div class="callout-icon">💡</div>
+              <div class="callout-content">
+                <strong data-i18n="wizard_smtp_optional_badge">Optional Mail Server</strong>
+                <p data-i18n="wizard_smtp_optional_desc">SMTP is optional. You can configure it now with a live connection test or skip this step and configure it later in the Admin Console.</p>
+              </div>
+            </div>
+
+            <div class="wizard-form-box">
+              <div class="settings-form-row">
+                <!-- Host -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-host" data-i18n="smtp_host_label">SMTP Host / Server</label>
+                  </div>
+                  <input type="text" id="wizard-smtp-host" class="field-input font-mono" placeholder="smtp.mailgun.org or smtp.gmail.com" autocomplete="off" spellcheck="false" />
+                  <p class="field-hint" data-i18n="smtp_host_hint">Fully qualified domain name or IP address of your outgoing mail server.</p>
+                </div>
+
+                <!-- Port -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-port" data-i18n="smtp_port_label">SMTP Port</label>
+                  </div>
+                  <select id="wizard-smtp-port" class="field-select font-mono">
+                    <option value="587" selected>587 (STARTTLS - Standard Submission)</option>
+                    <option value="465">465 (SSL / TLS Direct)</option>
+                    <option value="25">25 (Standard Relay)</option>
+                    <option value="2525">2525 (Alternative SMTP)</option>
+                  </select>
+                  <p class="field-hint" data-i18n="smtp_port_hint">Port 587 uses STARTTLS encryption; port 465 uses SSL/TLS.</p>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <!-- Username -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-user" data-i18n="smtp_username_label">SMTP Username</label>
+                  </div>
+                  <input type="text" id="wizard-smtp-user" class="field-input font-mono" placeholder="postmaster@yourdomain.com" autocomplete="off" spellcheck="false" />
+                </div>
+
+                <!-- Password -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-pass" data-i18n="smtp_password_label">SMTP Password / App Password</label>
+                    <button type="button" class="btn-text-action" id="btn-toggle-smtp-pw" data-i18n="wizard_show">Show</button>
+                  </div>
+                  <input type="password" id="wizard-smtp-pass" class="field-input font-mono" placeholder="••••••••••••" autocomplete="off" spellcheck="false" />
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <!-- From Email -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-from" data-i18n="smtp_from_email_label">From Email Address</label>
+                  </div>
+                  <input type="email" id="wizard-smtp-from" class="field-input" placeholder="noreply@yourdomain.com" autocomplete="off" />
+                </div>
+
+                <!-- Sender Name -->
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-smtp-sender-name" data-i18n="smtp_sender_name_label">Sender Display Name</label>
+                  </div>
+                  <input type="text" id="wizard-smtp-sender-name" class="field-input" placeholder="AlgoPaca Desk" />
+                </div>
+              </div>
+
+              <!-- SSL Toggle -->
+              <label class="wizard-toggle-item" for="check-wizard-smtp-ssl">
+                <div class="toggle-text">
+                  <strong class="toggle-title" data-i18n="smtp_use_ssl_label">Direct SSL/TLS Connection</strong>
+                  <span class="toggle-desc" data-i18n="smtp_use_ssl_desc">Enable when connecting over port 465 or when required by your provider.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="check-wizard-smtp-ssl" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <!-- SMTP Diagnostic Test Box -->
+              <div class="wizard-test-box">
+                <div class="wizard-test-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  </svg>
+                  <span data-i18n="smtp_test_section_title">Test SMTP Connection</span>
+                </div>
+                <div class="wizard-test-row">
+                  <div class="field-wrap" style="flex: 1; min-width: 220px;">
+                    <input type="email" id="wizard-smtp-test-email" class="field-input" placeholder="recipient@example.com" />
+                  </div>
+                  <button type="button" class="btn btn-secondary" id="btn-wizard-test-smtp">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    <span data-i18n="btn_test_smtp">Send Test Email</span>
+                  </button>
+                </div>
+                <div class="wizard-smtp-test-feedback" id="wizard-smtp-test-msg" hidden></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================================ -->
+          <!-- STEP 3: PLATFORM & INTERFACE DEFAULTS -->
+          <!-- ============================================================ -->
+          <section class="wizard-step-panel" id="panel-step-3" data-step="3" role="region" aria-labelledby="step-3-heading" hidden>
+            <div class="step-head">
+              <div class="step-head-badge">
+                <span class="step-badge-icon">🎨</span>
+                <span data-i18n="wizard_step3_badge">Customization</span>
+              </div>
+              <h2 id="step-3-heading" class="step-title" data-i18n="wizard_step3_title">Personalize Terminal & Regional Defaults</h2>
+              <p class="step-desc" data-i18n="wizard_step3_desc">Select your color scheme, interface language, clock display, and startup defaults.</p>
+            </div>
+
+            <!-- Theme Selection -->
+            <div class="wizard-section">
+              <label class="wizard-field-title" data-i18n="settings_theme_title">Terminal Color Theme</label>
+              <p class="wizard-field-desc" data-i18n="settings_theme_desc">Switch live themes dynamically across dark high-contrast and light views.</p>
+
+              <div class="theme-cards-grid">
+                <label class="theme-card is-selected" for="theme-obsidian">
+                  <input type="radio" name="wizard_theme" id="theme-obsidian" value="obsidian" checked />
+                  <div class="theme-swatch theme-swatch-obsidian">
+                    <div class="swatch-accent"></div>
+                    <div class="swatch-panel"></div>
+                  </div>
+                  <span class="theme-name">Obsidian</span>
+                  <span class="theme-tag">Dark Default</span>
+                </label>
+
+                <label class="theme-card" for="theme-midnight">
+                  <input type="radio" name="wizard_theme" id="theme-midnight" value="midnight" />
+                  <div class="theme-swatch theme-swatch-midnight">
+                    <div class="swatch-accent"></div>
+                    <div class="swatch-panel"></div>
+                  </div>
+                  <span class="theme-name">Midnight</span>
+                  <span class="theme-tag">Deep Blue</span>
+                </label>
+
+                <label class="theme-card" for="theme-emerald">
+                  <input type="radio" name="wizard_theme" id="theme-emerald" value="emerald" />
+                  <div class="theme-swatch theme-swatch-emerald">
+                    <div class="swatch-accent"></div>
+                    <div class="swatch-panel"></div>
+                  </div>
+                  <span class="theme-name">Emerald</span>
+                  <span class="theme-tag">Quant Green</span>
+                </label>
+
+                <label class="theme-card" for="theme-daylight">
+                  <input type="radio" name="wizard_theme" id="theme-daylight" value="daylight" />
+                  <div class="theme-swatch theme-swatch-daylight">
+                    <div class="swatch-accent"></div>
+                    <div class="swatch-panel"></div>
+                  </div>
+                  <span class="theme-name">Daylight</span>
+                  <span class="theme-tag">Clean Light</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Regional & Interface Settings -->
+            <div class="wizard-form-box">
+              <div class="settings-form-row">
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-select-lang" data-i18n="settings_language">Interface Language</label>
+                  </div>
+                  <select id="wizard-select-lang" class="field-select">
+                    <option value="en" selected>English (US / UK)</option>
+                    <option value="bn">বাংলা (Bengali)</option>
+                    <option value="es">Español (Spanish)</option>
+                    <option value="fr">Français (French)</option>
+                    <option value="hi">हिन्दी (Hindi)</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_language_hint">Switches interface terminology and translation catalogs immediately.</p>
+                </div>
+
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-default-page" data-i18n="settings_default_page">Default Starting Page</label>
+                  </div>
+                  <select id="wizard-default-page" class="field-select">
+                    <option value="auto-trade" selected data-i18n="nav_auto_trade">Auto Trade</option>
+                    <option value="manual-order" data-i18n="nav_manual_order">Advanced Order</option>
+                    <option value="positions" data-i18n="nav_positions">Positions</option>
+                    <option value="orders" data-i18n="nav_orders">Orders Blotter</option>
+                    <option value="history" data-i18n="nav_history">History Insights</option>
+                    <option value="admin" data-i18n="nav_admin">Admin Console</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_default_page_hint">Determines where the desk opens upon initial navigation.</p>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="wizard-timezone-display" data-i18n="settings_timezone_display">Timezone & Clock Display</label>
+                  </div>
+                  <select id="wizard-timezone-display" class="field-select">
+                    <option value="local" selected data-i18n="tz_local">Local Browser Time</option>
+                    <option value="exchange" data-i18n="tz_exchange">US Eastern (NYSE/NASDAQ Market Time)</option>
+                    <option value="utc" data-i18n="tz_utc">UTC / GMT</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Notification Options -->
+              <label class="wizard-toggle-item" for="check-wizard-sound">
+                <div class="toggle-text">
+                  <strong class="toggle-title" data-i18n="settings_sound_alerts">Audio Alerts & Execution Chimes</strong>
+                  <span class="toggle-desc" data-i18n="settings_sound_alerts_desc">Play audio chimes when orders execute, triggers fire, or limits hit.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="check-wizard-sound" checked />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <label class="wizard-toggle-item" for="check-wizard-browser-notify">
+                <div class="toggle-text">
+                  <strong class="toggle-title" data-i18n="notify_browser">Desktop Browser Notifications</strong>
+                  <span class="toggle-desc" data-i18n="notify_browser_desc">Receive browser push alerts for trade approvals and security events.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="check-wizard-browser-notify" checked />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <label class="wizard-toggle-item" for="check-wizard-email-notify">
+                <div class="toggle-text">
+                  <strong class="toggle-title" data-i18n="notify_email">Email Security & Admin Alerts</strong>
+                  <span class="toggle-desc" data-i18n="notify_email_desc">Dispatch critical alerts via configured SMTP server.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="check-wizard-email-notify" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <!-- ============================================================ -->
+          <!-- STEP 4: LAUNCHPAD & REVIEW -->
+          <!-- ============================================================ -->
+          <section class="wizard-step-panel" id="panel-step-4" data-step="4" role="region" aria-labelledby="step-4-heading" hidden>
+            <div class="step-head">
+              <div class="step-head-badge">
+                <span class="step-badge-icon">🚀</span>
+                <span data-i18n="wizard_step4_badge">Ready to Launch</span>
+              </div>
+              <h2 id="step-4-heading" class="step-title" data-i18n="wizard_step4_title">Review Configuration & Initialize Desk</h2>
+              <p class="step-desc" data-i18n="wizard_step4_desc">Review your administrator profile and platform configuration before completing setup.</p>
+            </div>
+
+            <!-- Configuration Summary Card -->
+            <div class="wizard-summary-card">
+              <div class="summary-card-header">
+                <h3 data-i18n="wizard_summary_heading">Setup Summary</h3>
+                <span class="summary-status-tag" data-i18n="wizard_summary_ready">Ready</span>
+              </div>
+
+              <div class="summary-grid">
+                <!-- Owner Profile Tile -->
+                <div class="summary-tile">
+                  <div class="summary-tile-icon">👑</div>
+                  <div class="summary-tile-body">
+                    <span class="summary-label" data-i18n="wizard_owner_summary_label">Owner Account</span>
+                    <strong class="summary-value" id="summary-owner-name">admin (Owner)</strong>
+                    <span class="summary-sub" id="summary-owner-email">admin@domain.com</span>
+                  </div>
+                  <button type="button" class="btn-summary-jump" data-step-target="1" data-i18n="wizard_summary_edit" title="Edit">Edit</button>
+                </div>
+
+                <!-- SMTP Server Tile -->
+                <div class="summary-tile">
+                  <div class="summary-tile-icon">✉️</div>
+                  <div class="summary-tile-body">
+                    <span class="summary-label" data-i18n="wizard_summary_smtp">Outbound Mail</span>
+                    <strong class="summary-value" id="summary-smtp-status">Configured</strong>
+                    <span class="summary-sub" id="summary-smtp-detail">smtp.mailgun.org:587</span>
+                  </div>
+                  <button type="button" class="btn-summary-jump" data-step-target="2" data-i18n="wizard_summary_edit" title="Edit">Edit</button>
+                </div>
+
+                <!-- Platform Theme Tile -->
+                <div class="summary-tile">
+                  <div class="summary-tile-icon">🎨</div>
+                  <div class="summary-tile-body">
+                    <span class="summary-label" data-i18n="wizard_summary_theme">Theme & Language</span>
+                    <strong class="summary-value" id="summary-theme">Obsidian</strong>
+                    <span class="summary-sub" id="summary-lang">English (US)</span>
+                  </div>
+                  <button type="button" class="btn-summary-jump" data-step-target="3" data-i18n="wizard_summary_edit" title="Edit">Edit</button>
+                </div>
+
+                <!-- Default Starting Page Tile -->
+                <div class="summary-tile">
+                  <div class="summary-tile-icon">🖥️</div>
+                  <div class="summary-tile-body">
+                    <span class="summary-label" data-i18n="wizard_summary_default_page">Starting Desk Page</span>
+                    <strong class="summary-value" id="summary-default-page">Auto Trade</strong>
+                    <span class="summary-sub" id="summary-timezone">Local Browser Time</span>
+                  </div>
+                  <button type="button" class="btn-summary-jump" data-step-target="3" data-i18n="wizard_summary_edit" title="Edit">Edit</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- Wizard Navigation Footer Buttons -->
+        <footer class="wizard-nav-footer">
+          <div class="wizard-footer-left">
+            <button type="button" class="btn btn-secondary" id="btn-wizard-prev" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span data-i18n="wizard_btn_back">Back</span>
+            </button>
+          </div>
+
+          <div class="wizard-footer-right">
+            <button type="button" class="btn btn-secondary" id="btn-wizard-skip">
+              <span data-i18n="wizard_btn_skip">Skip Step</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-wizard-next">
+              <span id="btn-next-label" data-i18n="wizard_btn_next">Continue</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </button>
+          </div>
+        </footer>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/i18n.js?v=2.2"></script>
+  <script src="/static/js/common.js?v=2.2"></script>
+  <script src="/static/js/setup-wizard.js?v=2.2"></script>
+</body>
+</html>

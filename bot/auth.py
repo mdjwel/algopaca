@@ -336,6 +336,24 @@ class AuthStore:
                 raise ValueError("An account with this email address already exists") from exc
             raise ValueError("Username or email already in use") from exc
 
+    def has_owner(self) -> bool:
+        """Check if at least one owner account exists."""
+        try:
+            with _get_connection(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1")
+                return cursor.fetchone() is not None
+        except sqlite3.OperationalError:
+            self._init_db()
+            with _get_connection(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1")
+                return cursor.fetchone() is not None
+
+    def needs_setup(self) -> bool:
+        """Check if the desk is in a fresh/unconfigured state requiring initial setup."""
+        return not self.has_owner()
+
     def get_user_by_id(self, user_id: int) -> Optional[dict[str, Any]]:
         """Retrieve user profile by ID without password hash."""
         now_str = _now_iso()

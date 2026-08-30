@@ -1,11 +1,10 @@
-"""Tests for AlgoPaca standalone web trading desk and API."""
-
-from __future__ import annotations
-
+import tempfile
+from pathlib import Path
 import unittest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
+from bot.auth import AuthStore
 from bot.config import MAX_ATR_STOP_MULT, MIN_ATR_STOP_MULT
 from bot.webapp import ManualOrderIn, app
 
@@ -13,6 +12,22 @@ from bot.webapp import ManualOrderIn, app
 class DeskWebappTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.tmp_dir = tempfile.TemporaryDirectory()
+        cls.db_path = Path(cls.tmp_dir.name) / "auth.db"
+        cls.auth_store = AuthStore(db_path=cls.db_path)
+
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        cls._orig_webapp_auth = webapp_module.AUTH_STORE
+        cls._orig_web_state_auth = web_state_module.AUTH_STORE
+        cls._orig_auth_store = auth_module.AUTH_STORE
+
+        webapp_module.AUTH_STORE = cls.auth_store
+        web_state_module.AUTH_STORE = cls.auth_store
+        auth_module.AUTH_STORE = cls.auth_store
+
         cls.anon_client = TestClient(app, follow_redirects=False)
         cls.auth_client = TestClient(app, follow_redirects=False)
         # Register and login a dedicated test user for authenticated tests
@@ -27,6 +42,18 @@ class DeskWebappTestCase(unittest.TestCase):
                 "display_name": "Desk Tester",
             },
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        webapp_module.AUTH_STORE = cls._orig_webapp_auth
+        web_state_module.AUTH_STORE = cls._orig_web_state_auth
+        auth_module.AUTH_STORE = cls._orig_auth_store
+
+        cls.tmp_dir.cleanup()
 
     def test_unauthenticated_root_redirects_to_login(self):
         res = self.anon_client.get("/")

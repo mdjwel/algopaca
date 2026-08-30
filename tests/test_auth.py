@@ -115,7 +115,42 @@ class TestAuthStore(unittest.TestCase):
 
 class TestAuthAPI(unittest.TestCase):
     def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp_dir.name) / "auth.db"
+        self.auth_store = AuthStore(db_path=self.db_path)
+
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        self._orig_webapp_auth = webapp_module.AUTH_STORE
+        self._orig_web_state_auth = web_state_module.AUTH_STORE
+        self._orig_auth_store = auth_module.AUTH_STORE
+
+        webapp_module.AUTH_STORE = self.auth_store
+        web_state_module.AUTH_STORE = self.auth_store
+        auth_module.AUTH_STORE = self.auth_store
+
+        # Create an owner user so setup wizard does not intercept login/signup page tests
+        self.owner = self.auth_store.register_user(
+            username="test_owner",
+            email="owner@test.local",
+            password="OwnerPassword123!",
+            role="owner",
+        )
+
         self.client = TestClient(app)
+
+    def tearDown(self):
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        webapp_module.AUTH_STORE = self._orig_webapp_auth
+        web_state_module.AUTH_STORE = self._orig_web_state_auth
+        auth_module.AUTH_STORE = self._orig_auth_store
+
+        self.tmp_dir.cleanup()
 
     def test_page_routes_return_200(self):
         login_res = self.client.get("/login")
@@ -353,31 +388,31 @@ class TestAuthAPI(unittest.TestCase):
 
     def test_password_reset_token_generation_and_usage(self):
         uid = uuid.uuid4().hex[:6]
-        user = AUTH_STORE.register_user(
+        user = self.auth_store.register_user(
             username=f"reset_user_{uid}",
             email=f"reset_{uid}@example.com",
             password="OriginalPassword123!",
         )
         # Create token
-        token_info = AUTH_STORE.create_password_reset_token(f"reset_user_{uid}")
+        token_info = self.auth_store.create_password_reset_token(f"reset_user_{uid}")
         self.assertIsNotNone(token_info)
         token = token_info["token"]
 
         # Reset password
-        updated_user = AUTH_STORE.verify_and_use_reset_token(token, "NewPassword456!")
+        updated_user = self.auth_store.verify_and_use_reset_token(token, "NewPassword456!")
         self.assertEqual(updated_user["id"], user["id"])
 
         # Authenticate with new password
-        auth_user = AUTH_STORE.authenticate_user(f"reset_user_{uid}", "NewPassword456!")
+        auth_user = self.auth_store.authenticate_user(f"reset_user_{uid}", "NewPassword456!")
         self.assertEqual(auth_user["id"], user["id"])
 
         # Old password should no longer work
         with self.assertRaises(ValueError):
-            AUTH_STORE.authenticate_user(f"reset_user_{uid}", "OriginalPassword123!")
+            self.auth_store.authenticate_user(f"reset_user_{uid}", "OriginalPassword123!")
 
         # Reusing the token must fail
         with self.assertRaises(ValueError):
-            AUTH_STORE.verify_and_use_reset_token(token, "AnotherPassword789!")
+            self.auth_store.verify_and_use_reset_token(token, "AnotherPassword789!")
 
     def test_api_forgot_and_reset_password(self):
         from unittest.mock import patch
@@ -404,7 +439,7 @@ class TestAuthAPI(unittest.TestCase):
             mock_email.assert_called_once()
 
         # Retrieve token directly from auth store to simulate clicking link
-        token_info = AUTH_STORE.create_password_reset_token(f"api_reset_{uid}")
+        token_info = self.auth_store.create_password_reset_token(f"api_reset_{uid}")
         token = token_info["token"]
 
         # Reset password via API

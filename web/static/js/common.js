@@ -142,6 +142,7 @@ const PAGE_PATHS = {
   history: "/history",
   "api-keys": "/api-keys",
   admin: "/admin",
+  "setup-wizard": "/setup-wizard",
 };
 
 function isBacktestFamily(page = currentPage) {
@@ -183,8 +184,12 @@ function normalizePage(raw) {
     return "positions";
   if (p === "orders") return "orders";
   if (p === "history" || p === "trades") return "history";
-  if (p === "configuration" || p === "config" || p === "api-keys" || p === "settings")
+  if (p === "configuration" || p === "config" || p === "api-keys")
     return "api-keys";
+  if (p === "settings" || p === "user-settings")
+    return "settings";
+  if (p === "setup-wizard" || p === "wizard" || p === "setup" || p === "onboarding")
+    return "setup-wizard";
   return PAGES.includes(p) ? p : "auto-trade";
 }
 
@@ -458,9 +463,12 @@ async function api(path, options = {}) {
     ...options,
   });
   if (res.status === 401) {
+    const curPath = window.location.pathname;
     if (
-      !window.location.pathname.startsWith("/login") &&
-      !window.location.pathname.startsWith("/signup")
+      !curPath.startsWith("/login") &&
+      !curPath.startsWith("/signup") &&
+      !curPath.startsWith("/setup-wizard") &&
+      !curPath.startsWith("/wizard")
     ) {
       const next = encodeURIComponent(
         window.location.pathname + window.location.search
@@ -1226,6 +1234,16 @@ let currentPollInterval = 2000;
 let pollTimerId = null;
 
 async function doPoll() {
+  const curPath = window.location.pathname;
+  if (
+    curPath.startsWith("/login") ||
+    curPath.startsWith("/signup") ||
+    curPath.startsWith("/setup-wizard") ||
+    curPath.startsWith("/wizard")
+  ) {
+    return;
+  }
+
   if (document.hidden) {
     pollTimerId = setTimeout(doPoll, 2000);
     return;
@@ -1252,7 +1270,15 @@ async function doPoll() {
   pollTimerId = setTimeout(doPoll, currentPollInterval);
 }
 
-pollTimerId = setTimeout(doPoll, currentPollInterval);
+const curPathOnLoad = window.location.pathname;
+if (
+  !curPathOnLoad.startsWith("/login") &&
+  !curPathOnLoad.startsWith("/signup") &&
+  !curPathOnLoad.startsWith("/setup-wizard") &&
+  !curPathOnLoad.startsWith("/wizard")
+) {
+  pollTimerId = setTimeout(doPoll, currentPollInterval);
+}
 
 // Global Language change listener
 window.addEventListener("languageChange", () => {
@@ -1302,7 +1328,12 @@ async function initUserAuthStatus() {
 
   if (!user) {
     const path = window.location.pathname;
-    if (!path.startsWith("/login") && !path.startsWith("/signup")) {
+    if (
+      !path.startsWith("/login") &&
+      !path.startsWith("/signup") &&
+      !path.startsWith("/setup-wizard") &&
+      !path.startsWith("/wizard")
+    ) {
       const next = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?next=${next}`;
       return;
@@ -1323,7 +1354,7 @@ async function initUserAuthStatus() {
     const roleLower = String(user.role || "trader").toLowerCase();
     const isAdmin = roleLower === "admin" || roleLower === "owner";
     const currentPath = window.location.pathname;
-    const isUserMenuActive = ["/settings", "/api-keys", "/admin"].includes(currentPath);
+    const isUserMenuActive = ["/settings", "/api-keys", "/admin", "/setup-wizard"].includes(currentPath);
 
     widget.innerHTML = `
       <div class="masthead-user-widget">
@@ -1339,6 +1370,12 @@ async function initUserAuthStatus() {
             <div class="masthead-info-name">${displayName}</div>
             <span class="masthead-info-role ${isAdmin ? 'is-admin-role' : ''}">${role}</span>
           </div>
+          <a href="/setup-wizard" data-page="setup-wizard" class="masthead-menu-item ${currentPath === "/setup-wizard" ? "is-active" : ""}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span data-i18n="nav_setup_wizard">Setup Wizard</span>
+          </a>
           <a href="/settings" data-page="settings" class="masthead-menu-item ${currentPath === "/settings" ? "is-active" : ""}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>

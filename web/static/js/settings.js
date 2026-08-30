@@ -902,7 +902,9 @@
     });
   });
 
-  btnTestSound?.addEventListener("click", () => {
+  btnTestSound?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     playDeskChime("success");
   });
 

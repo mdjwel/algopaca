@@ -18,7 +18,11 @@ class TestUserSettings(unittest.TestCase):
         # Patch global store for webapp testing
         self._orig_auth_store = app.dependency_overrides.get("AUTH_STORE")
         import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
         webapp_module.AUTH_STORE = self.auth_store
+        web_state_module.AUTH_STORE = self.auth_store
+        auth_module.AUTH_STORE = self.auth_store
 
         self.client = TestClient(app)
 
@@ -44,7 +48,11 @@ class TestUserSettings(unittest.TestCase):
 
     def tearDown(self) -> None:
         import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
         webapp_module.AUTH_STORE = AUTH_STORE
+        web_state_module.AUTH_STORE = AUTH_STORE
+        auth_module.AUTH_STORE = AUTH_STORE
         self.tmp_dir.cleanup()
 
     def test_unauthenticated_requests_blocked(self) -> None:
@@ -331,6 +339,142 @@ class TestUserSettings(unittest.TestCase):
         self.assertTrue(data["ai_key_status"]["anthropic"]["set"])
 
 
+    def test_setup_wizard_page_routing(self) -> None:
+        """Verify /setup-wizard and /wizard routes require auth and render for authenticated user."""
+        # Unauthenticated redirect
+        res = self.client.get("/setup-wizard", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue("/login" in res.headers["location"])
+
+        res = self.client.get("/wizard", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue("/login" in res.headers["location"])
+
+        # Authenticated access renders HTML
+        res = self.client.get(
+            "/setup-wizard",
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("Setup Wizard", res.text)
+        self.assertIn("setup-wizard.js", res.text)
+        self.assertIn("setup-wizard.css", res.text)
+
+        res = self.client.get(
+            "/wizard",
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("Setup Wizard", res.text)
+
+
+class TestFreshInstanceSetup(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp_dir.name) / "auth.db"
+        self.auth_store = AuthStore(db_path=self.db_path)
+
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+        webapp_module.AUTH_STORE = self.auth_store
+        web_state_module.AUTH_STORE = self.auth_store
+        auth_module.AUTH_STORE = self.auth_store
+
+        self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+        webapp_module.AUTH_STORE = AUTH_STORE
+        web_state_module.AUTH_STORE = AUTH_STORE
+        auth_module.AUTH_STORE = AUTH_STORE
+        self.tmp_dir.cleanup()
+
+    def test_fresh_instance_redirections(self) -> None:
+        """In a fresh instance without an owner, all pages redirect to /setup-wizard."""
+        self.assertTrue(self.auth_store.needs_setup())
+
+        # / redirects to /setup-wizard
+        res = self.client.get("/", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.headers["location"], "/setup-wizard")
+
+        # /login redirects to /setup-wizard
+        res = self.client.get("/login", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.headers["location"], "/setup-wizard")
+
+        # /signup redirects to /setup-wizard
+        res = self.client.get("/signup", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.headers["location"], "/setup-wizard")
+
+        # /auto-trade redirects to /setup-wizard
+        res = self.client.get("/auto-trade", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.headers["location"], "/setup-wizard")
+
+        # /setup-wizard renders 200 without login
+        res = self.client.get("/setup-wizard")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("Setup Wizard", res.text)
+        self.assertIn("wizard-owner-card", res.text)
+
+    def test_setup_status_api(self) -> None:
+        """API setup status reports needs_setup=True in fresh environment."""
+        res = self.client.get("/api/setup/status")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["needs_setup"])
+        self.assertFalse(data["is_authenticated"])
+        self.assertIsNone(data["user"])
+
+    def test_complete_setup_flow(self) -> None:
+        """Completing setup creates owner account, returns session cookie, and clears needs_setup."""
+        payload = {
+            "username": "superowner",
+            "email": "superowner@example.com",
+            "password": "Password12345!",
+            "display_name": "Super Owner",
+            "environment": "paper",
+            "style": "ai",
+            "ai_provider": "openai",
+            "ai_api_key": "sk-test12345",
+            "strategy": "ai",
+            "symbols": "AAPL, NVDA",
+            "theme": "copper",
+            "lang": "en",
+            "default_page": "auto-trade",
+        }
+        res = self.client.post("/api/setup/complete", json=payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["redirect"], "/auto-trade")
+        self.assertIn("algopaca_session", res.cookies)
+
+        # After setup completion, needs_setup is False
+        self.assertFalse(self.auth_store.needs_setup())
+        owner = self.auth_store.get_user_by_session(res.cookies["algopaca_session"])
+        self.assertIsNotNone(owner)
+        self.assertEqual(owner["username"], "superowner")
+        self.assertEqual(owner["role"], "owner")
+
+        # Visiting / with the session cookie redirects to /auto-trade
+        res = self.client.get("/", follow_redirects=False)
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.headers["location"], "/auto-trade")
+
+        # Visiting /login when unauthenticated now serves login page
+        anon = TestClient(app)
+        res = anon.get("/login", follow_redirects=False)
+        self.assertEqual(res.status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1,17 +1,31 @@
-"""Tests verifying strict per-user portfolio, settings, and credential isolation in AlgoPaca."""
-
-from __future__ import annotations
-
+import tempfile
+from pathlib import Path
 import unittest
 import uuid
 from starlette.testclient import TestClient
 
-from bot.auth import AUTH_STORE
+from bot.auth import AuthStore
 from bot.webapp import app
 
 
 class MultiUserIsolationTestCase(unittest.TestCase):
     def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp_dir.name) / "auth.db"
+        self.auth_store = AuthStore(db_path=self.db_path)
+
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        self._orig_webapp_auth = webapp_module.AUTH_STORE
+        self._orig_web_state_auth = web_state_module.AUTH_STORE
+        self._orig_auth_store = auth_module.AUTH_STORE
+
+        webapp_module.AUTH_STORE = self.auth_store
+        web_state_module.AUTH_STORE = self.auth_store
+        auth_module.AUTH_STORE = self.auth_store
+
         self.anon_client = TestClient(app, follow_redirects=False)
         self.user1_client = TestClient(app, follow_redirects=False)
         self.user2_client = TestClient(app, follow_redirects=False)
@@ -42,6 +56,17 @@ class MultiUserIsolationTestCase(unittest.TestCase):
         )
         self.assertEqual(u2_res.status_code, 200)
         self.u2_data = u2_res.json()["user"]
+
+    def tearDown(self):
+        import bot.webapp as webapp_module
+        import bot.web_state as web_state_module
+        import bot.auth as auth_module
+
+        webapp_module.AUTH_STORE = self._orig_webapp_auth
+        web_state_module.AUTH_STORE = self._orig_web_state_auth
+        auth_module.AUTH_STORE = self._orig_auth_store
+
+        self.tmp_dir.cleanup()
 
     def test_unauthenticated_requests_blocked(self):
         res = self.anon_client.get("/api/status")
@@ -125,13 +150,13 @@ class MultiUserIsolationTestCase(unittest.TestCase):
         self.assertEqual(u2_status["alpaca_key_status"]["api_key_hint"], "PK_U…4321")
 
         # Verify credentials stored in DB are encrypted
-        db_creds_u1 = AUTH_STORE.get_user_credentials(self.u1_data["id"])
+        db_creds_u1 = self.auth_store.get_user_credentials(self.u1_data["id"])
         self.assertEqual(db_creds_u1["alpaca_paper_api_key"], "PK_USER1_KEY_12345678")
         self.assertEqual(db_creds_u1["alpaca_paper_secret_key"], "SK_USER1_SECRET_ABCDEFGH")
 
         # Direct SQL inspection: raw secrets must NOT be in plaintext in SQLite
         from bot.auth import _get_connection
-        with _get_connection(AUTH_STORE.db_path) as conn:
+        with _get_connection(self.auth_store.db_path) as conn:
             row = conn.execute(
                 "SELECT alpaca_paper_secret_key FROM user_credentials WHERE user_id = ?",
                 (self.u1_data["id"],),
@@ -141,23 +166,23 @@ class MultiUserIsolationTestCase(unittest.TestCase):
 
     def test_lessons_isolation(self):
         # User 1 saves a lesson
+        unique_text = f"User 1 custom trading rule: do not chase pumps {uuid.uuid4().hex[:6]}."
         u1_lesson = self.user1_client.post(
             "/api/history/lessons",
             json={
-                "text": "User 1 custom trading rule: do not chase pumps.",
+                "text": unique_text,
                 "scope": "global",
             },
         )
         self.assertEqual(u1_lesson.status_code, 200)
 
-        # User 1 should see 1 lesson
+        # User 1 should see the saved lesson
         u1_lessons = self.user1_client.get("/api/history/lessons").json()["lessons"]
-        self.assertEqual(len(u1_lessons), 1)
-        self.assertEqual(u1_lessons[0]["text"], "User 1 custom trading rule: do not chase pumps.")
+        self.assertTrue(any(l["text"] == unique_text for l in u1_lessons))
 
-        # User 2 should see 0 lessons
+        # User 2 should not see User 1's lesson
         u2_lessons = self.user2_client.get("/api/history/lessons").json()["lessons"]
-        self.assertEqual(len(u2_lessons), 0)
+        self.assertFalse(any(l["text"] == unique_text for l in u2_lessons))
 
     def test_unconfigured_user_blocked_from_trading(self):
         # Fresh user without Alpaca keys

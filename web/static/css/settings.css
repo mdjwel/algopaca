@@ -332,10 +332,16 @@
   gap: 0.35rem;
 }
 
-.field-wrap label {
+.field-wrap label,
+.field-label-row label,
+.page-settings .form label:not(.switch-item) {
+  font-family: var(--ui);
   font-size: 0.82rem;
   font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text);
+  display: block;
 }
 
 .field-input,
@@ -717,8 +723,12 @@
   margin-top: 1rem;
 }
 
-.switch-item {
-  display: flex;
+.switch-item,
+label.switch-item,
+.form label.switch-item {
+  position: static;
+  display: flex !important;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 1.2rem;
@@ -726,6 +736,24 @@
   background: rgba(14, 20, 28, 0.6);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--ui);
+  text-transform: none;
+  letter-spacing: normal;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.switch-item:hover,
+label.switch-item:hover {
+  background: rgba(22, 32, 44, 0.75);
+  border-color: rgba(212, 137, 76, 0.35);
+}
+
+.switch-item:has(input:focus-visible),
+label.switch-item:has(input:focus-visible) {
+  border-color: var(--copper);
+  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.25);
 }
 
 .switch-item-text {
@@ -737,7 +765,7 @@
 
 .switch-title {
   font-size: 0.88rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
 }
 
@@ -751,6 +779,8 @@
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Toggle Switch Component */
@@ -802,6 +832,11 @@
 .toggle-switch input:checked + .toggle-slider:before {
   transform: translateX(20px);
   background: #120b05;
+}
+
+#wrap-settings-notification-email {
+  margin-top: 0.85rem;
+  margin-bottom: 1.2rem;
 }
 
 /* -------------------------------------------------------------------------- */
