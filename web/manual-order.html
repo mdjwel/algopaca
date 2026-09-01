@@ -560,30 +560,24 @@
                 </fieldset>
                 <p id="manual-followon-market-hint" class="field-help" hidden data-i18n="followon_market_hint">Fills at the then-current price once the close fills. Market tickets only send during regular hours.</p>
 
-                <div class="field-pair-row" id="manual-followon-price-row">
-                  <label for="manual-followon-limit" id="manual-followon-limit-label"><span data-i18n="followon_limit_price">Target limit price</span>
-                    <div class="price-input-shell">
-                      <input id="manual-followon-limit" name="followon_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-followon-offset" />
-                      <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
-                        <button type="button" id="btn-followon-bid" class="ghost small" data-i18n="use_bid">Bid</button>
-                        <button type="button" id="btn-followon-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
-                        <button type="button" id="btn-followon-mark" class="ghost small" data-i18n="use_mark">Mark</button>
-                        <button type="button" id="btn-followon-ask" class="ghost small" data-i18n="use_ask">Ask</button>
-                      </div>
+                <div class="manual-limit-row" id="manual-followon-price-row">
+                  <label for="manual-followon-limit" id="manual-followon-limit-label"><span data-i18n="followon_limit_price">Target limit price</span></label>
+                  <div class="price-input-shell">
+                    <input id="manual-followon-limit" name="followon_limit_price" type="number" min="0.0001" step="0.0001" inputmode="decimal" placeholder="0.00" data-i18n-placeholder="placeholder_limit_price" aria-describedby="manual-followon-offset" />
+                    <div class="price-fill-group" role="group" aria-label="Fill from quote" data-i18n-aria-label="fill_from_quote">
+                      <button type="button" id="btn-followon-bid" class="ghost small" data-i18n="use_bid">Bid</button>
+                      <button type="button" id="btn-followon-mid" class="ghost small" data-i18n="use_mid" title="Midpoint between Bid and Ask">Mid</button>
+                      <button type="button" id="btn-followon-mark" class="ghost small" data-i18n="use_mark">Mark</button>
+                      <button type="button" id="btn-followon-ask" class="ghost small" data-i18n="use_ask">Ask</button>
                     </div>
-                    <p id="manual-followon-offset" class="field-help" aria-live="polite"></p>
-                    <p class="field-error" role="alert" hidden></p>
-                  </label>
-                  <label for="manual-followon-expire" id="manual-followon-expire-label"><span data-i18n="followon_expire">Wait up to (minutes)</span>
-                    <input id="manual-followon-expire" name="followon_expire_minutes" type="number" min="1" max="1440" step="1" value="120" inputmode="numeric" aria-describedby="help-followon-expire" />
-                    <p id="help-followon-expire" class="field-help" data-i18n="help_followon_expire">After the close fills, how long the desk may take to send the next ticket. Max 1440 (24h).</p>
-                    <p class="field-error" role="alert" hidden></p>
-                  </label>
+                  </div>
+                  <p id="manual-followon-offset" class="field-help" aria-live="polite"></p>
+                  <p class="field-error" role="alert" hidden></p>
                 </div>
 
                 <p id="manual-followon-summary" class="field-help info" aria-live="polite"></p>
                 <p id="manual-followon-partial" class="field-help warn" hidden data-i18n="followon_partial_warn">Reverse needs the whole position closed. Enter the full available quantity, or the next ticket cannot fire.</p>
-                <p class="field-help info" data-i18n="followon_runtime_note">Waiting next tickets are saved and resume after a restart until they expire.</p>
+                <p class="field-help info" data-i18n="followon_runtime_note">Waiting next tickets are saved and resume after a restart until the close fills.</p>
               </div>
             </fieldset>
 

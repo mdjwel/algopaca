@@ -80,6 +80,7 @@ from bot.config import (
     live_allowed_from_env,
     normalize_lang,
     paper_mode_from_env,
+    resolve_alpaca_credentials,
     resolve_size_mode,
 )
 from bot.desk_risk import (
@@ -268,12 +269,12 @@ _REINVEST_LIVE_STATUSES = frozenset({"waiting", "placing", "awaiting_fill"})
 _FOLLOWON_LIVE_STATUSES = frozenset({"waiting", "placing"})
 
 # Next ticket after a close: same poll cadence as a buy-back.
-# expire_minutes is the send window after the close fills, not a fill timeout.
+# Next tickets do not expire automatically; they wait until the close fills.
 _FOLLOWON_POLL_SECONDS = 5.0
 _FOLLOWON_DEFAULT_MINUTES = 120
 _FOLLOWON_MAX_MINUTES = 1440
-_FOLLOWON_MAX_ERRORS = 12
-_FOLLOWON_FLAT_MAX_CHECKS = 6
+_FOLLOWON_MAX_ERRORS = 30
+_FOLLOWON_FLAT_MAX_CHECKS = 60
 
 # Dip hunt: same poll cadence as re-investment — a stop-out fills in seconds,
 # a parked limit may rest for hours.
@@ -1498,6 +1499,14 @@ class AppState:
         else:
             api_key = creds.get("alpaca_live_api_key", "")
             secret_key = creds.get("alpaca_live_secret_key", "")
+
+        if not api_key or not secret_key:
+            user = AUTH_STORE.get_user_by_id(self.user_id)
+            if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                env_api, env_sec, _ = resolve_alpaca_credentials(paper=paper_mode)
+                if env_api and env_sec:
+                    api_key = env_api
+                    secret_key = env_sec
 
         openai_key = self._openai_api_key or creds.get("openai_api_key", "")
         gemini_key = self._gemini_api_key or creds.get("gemini_api_key", "")
@@ -6156,7 +6165,7 @@ class AppState:
 
     @staticmethod
     def _followon_send_window_started(plan: dict[str, Any]) -> bool:
-        """True once the close has filled and the send clock is running."""
+        """True once the close has filled."""
         if plan.get("wait_started_at") not in (None, ""):
             return True
         return float(plan.get("close_filled_qty") or 0) > 0
@@ -6164,26 +6173,18 @@ class AppState:
     def _arm_followon_send_window_locked(
         self, plan: dict[str, Any], *, now: float | None = None
     ) -> None:
-        """Start expire_minutes from this moment — the close just filled."""
-        if plan.get("expires_at") not in (None, "") and self._followon_send_window_started(
-            plan
-        ):
+        """Record fill timestamp when the close fills."""
+        if plan.get("wait_started_at") not in (None, ""):
             return
         stamp = float(now if now is not None else time.time())
-        minutes = float(plan.get("expire_minutes") or _FOLLOWON_DEFAULT_MINUTES)
         plan["wait_started_at"] = stamp
-        plan["expires_at"] = stamp + minutes * 60.0
 
     @staticmethod
     def _followon_send_window_expired(
         plan: dict[str, Any], *, now: float | None = None
     ) -> bool:
-        if not AppState._followon_send_window_started(plan):
-            return False
-        expires_at = plan.get("expires_at")
-        if expires_at in (None, ""):
-            return False
-        return float(now if now is not None else time.time()) > float(expires_at)
+        # Next tickets do not expire automatically; they wait until the close fills.
+        return False
 
     @staticmethod
     def _followon_request_order_type(raw: dict[str, Any]) -> str:
@@ -6282,16 +6283,14 @@ class AppState:
             )
 
         minutes_raw = raw.get("expire_minutes")
-        if minutes_raw in (None, ""):
-            minutes = float(_FOLLOWON_DEFAULT_MINUTES)
-        else:
+        minutes: float | None = None
+        if minutes_raw not in (None, ""):
             try:
                 minutes = float(minutes_raw)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    "Next-ticket wait must be a number of minutes"
-                ) from exc
-        minutes = max(1.0, min(float(_FOLLOWON_MAX_MINUTES), minutes))
+            except (TypeError, ValueError):
+                pass
+            if minutes is not None:
+                minutes = max(1.0, min(float(_FOLLOWON_MAX_MINUTES), minutes))
 
         tif_raw = raw.get("time_in_force") if isinstance(raw, dict) else None
         tif = str(tif_raw or "day").strip().lower()
@@ -6348,25 +6347,13 @@ class AppState:
             return 0
         if not stored:
             return 0
-        now = time.time()
         resumed = 0
         with self.lock:
             for plan_id, plan in stored.items():
                 if plan.get("status") == "waiting":
-                    if not self._followon_send_window_started(plan):
-                        # Older builds stamped expires_at when the close was
-                        # placed. That clock does not apply until the fill.
-                        plan["expires_at"] = None
-                        plan["wait_started_at"] = None
-                        resumed += 1
-                    elif self._followon_send_window_expired(plan, now=now):
-                        plan["status"] = "expired"
-                        plan["message"] = (
-                            "Expired while the desk was closed — the next "
-                            "ticket was not sent in time after the close filled."
-                        )
-                    else:
-                        resumed += 1
+                    plan["expires_at"] = None
+                    plan["wait_started_at"] = None
+                    resumed += 1
                 self.followon_plans[plan_id] = plan
             self._followon_seq = max(
                 self._followon_seq, followon_store.max_sequence(self.followon_plans)
@@ -6404,7 +6391,7 @@ class AppState:
                 "qty": plan["qty"],
                 "order_type": plan.get("order_type") or "limit",
                 "limit_price": plan.get("limit_price"),
-                "expire_minutes": plan["expire_minutes"],
+                "expire_minutes": plan.get("expire_minutes"),
                 "time_in_force": plan.get("time_in_force", "day"),
                 "extended_hours": bool(plan.get("extended_hours")),
                 "created_at": now,
@@ -6515,29 +6502,6 @@ class AppState:
             order = service.get_order_snapshot(str(snapshot["close_order_id"]))
             order = self._follow_replaced_order(service, order)
         except Exception as exc:
-            if self._followon_send_window_expired(snapshot):
-                close_filled = float(snapshot.get("close_filled_qty") or 0)
-                if close_filled > 0:
-                    self._settle_followon_plan(
-                        plan_id,
-                        "failed",
-                        (
-                            f"The close filled {close_filled:g} shares, but the "
-                            "position could not be verified safe before the "
-                            "next-ticket wait ended."
-                        ),
-                    )
-                else:
-                    self._settle_followon_plan(
-                        plan_id,
-                        "expired",
-                        (
-                            "The next ticket could not be sent within "
-                            f"{snapshot['expire_minutes']:g} minutes after "
-                            "the close filled."
-                        ),
-                    )
-                return
             self._note_plan_broker_error(
                 plans=self.followon_plans,
                 persist=self._persist_followon_plans,
@@ -6575,28 +6539,14 @@ class AppState:
         terminal = bool(order.get("is_terminal"))
 
         if filled > 0:
-            already_trying = False
             with self.lock:
                 live = self.followon_plans.get(plan_id)
                 if live is None or live.get("status") != "waiting":
                     return
-                already_trying = self._followon_send_window_started(live)
                 self._arm_followon_send_window_locked(live)
                 live["close_filled_qty"] = filled
                 snapshot = dict(live)
             self._persist_followon_plans()
-            if already_trying and self._followon_send_window_expired(snapshot):
-                self._settle_followon_plan(
-                    plan_id,
-                    "failed",
-                    (
-                        f"The close filled {filled:g} shares, but the "
-                        "position could not be verified safe before the "
-                        "next-ticket wait ended."
-                    ),
-                    close_filled_qty=filled,
-                )
-                return
             self._place_followon_order(plan_id, snapshot, service, filled_qty=filled)
             return
 
@@ -6919,17 +6869,11 @@ class AppState:
                 if p.get("symbol") == symbol or p.get("target_symbol") == symbol
             ]
         plans.sort(key=lambda p: p.get("created_at") or 0.0, reverse=True)
-        now = time.time()
         for plan in plans:
             plan.pop("error_count", None)
             if plan.get("status") == "waiting":
-                started = self._followon_send_window_started(plan)
-                plan["wait_started"] = started
-                expires_at = plan.get("expires_at")
-                if started and expires_at not in (None, ""):
-                    plan["seconds_left"] = max(0.0, float(expires_at) - now)
-                else:
-                    plan["seconds_left"] = None
+                plan["wait_started"] = False
+                plan["seconds_left"] = None
         return plans
 
     def cancel_followon_plan(self, plan_id: str) -> dict[str, Any]:

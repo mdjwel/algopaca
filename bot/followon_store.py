@@ -110,9 +110,15 @@ def _sanitize(plan: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def save_plans(plans: dict[str, dict[str, Any]], *, paper: bool = True) -> None:
+def save_plans(
+    plans: dict[str, dict[str, Any]],
+    *,
+    paper: bool = True,
+    path: Path | None = None,
+) -> None:
     """Write the ledger. Never raises — a full disk must not kill a ticket."""
-    path = plans_path_for(paper=paper)
+    if path is None:
+        path = plans_path_for(paper=paper)
     rows = []
     for plan in (plans or {}).values():
         clean = _sanitize(plan)
@@ -135,9 +141,12 @@ def save_plans(plans: dict[str, dict[str, Any]], *, paper: bool = True) -> None:
         logger.warning("could not persist follow-on plans: %s", exc)
 
 
-def load_plans(*, paper: bool = True) -> dict[str, dict[str, Any]]:
+def load_plans(
+    *, paper: bool = True, path: Path | None = None
+) -> dict[str, dict[str, Any]]:
     """Read the ledger back, downgrading states that a restart invalidated."""
-    path = plans_path_for(paper=paper)
+    if path is None:
+        path = plans_path_for(paper=paper)
     if not path.exists():
         return {}
     try:

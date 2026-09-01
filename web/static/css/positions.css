@@ -2600,11 +2600,13 @@ button.primary.primary-danger:focus-visible {
     gap: 0.6rem;
   }
 
-  #pos-filters-bar {
+  #pos-filters-bar,
+  #ord-filters-bar {
     display: none;
   }
 
-  #pos-filters-bar.is-open {
+  #pos-filters-bar.is-open,
+  #ord-filters-bar.is-open {
     display: flex;
   }
 

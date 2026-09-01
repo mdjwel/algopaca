@@ -1023,7 +1023,7 @@ class Config:
             else:
                 p_sma = int(pair_sma_env or pair_def.sma_period)
                 p_lb = int(pair_lb_env or pair_def.lookback)
-                p_imp = float(pair_imp_env or pair_def.impulse_pct)
+                p_imp = abs(float(pair_imp_env or pair_def.impulse_pct))
                 p_weak = pair_weak_env or pair_def.weak_side
                 p_long = pair_long_env or pair_def.long_symbol
                 p_short = pair_short_env or pair_def.short_symbol
@@ -1042,7 +1042,7 @@ class Config:
             pair_def = get_pair_preset(DEFAULT_PAIR_PRESET_ID)
             p_sma = int(pair_sma_env or pair_def.sma_period)
             p_lb = int(pair_lb_env or pair_def.lookback)
-            p_imp = float(pair_imp_env or pair_def.impulse_pct)
+            p_imp = abs(float(pair_imp_env or pair_def.impulse_pct))
             p_weak = pair_weak_env or pair_def.weak_side
             p_long = pair_long_env or pair_def.long_symbol
             p_short = pair_short_env or pair_def.short_symbol

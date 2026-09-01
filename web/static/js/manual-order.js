@@ -12,6 +12,7 @@
 
 let formDirtyManual = false;
 let manualContext = null;
+let manualContextError = null;
 let manualContextTimer = null;
 let lastManualTicket = null;
 let manualBusyLabel = null;
@@ -603,14 +604,6 @@ function manualFollowOnLimit() {
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 
-function manualFollowOnExpireMinutes() {
-  const raw = Number(manualFormValue("followon_expire_minutes", ""));
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  // Clamped like the buy-back and the dip hunt — the three waits are the same
-  // control and used to disagree about their own ceiling.
-  return Math.min(1440, raw);
-}
-
 function manualFollowOnTargetSymbol() {
   const closeSymbol = String(manualFormValue("symbol", "") || "")
     .trim()
@@ -632,10 +625,6 @@ function manualFollowOnPayload() {
     order_type: orderType,
     ticket_type: orderType,
     market: orderType === "market",
-    expire_minutes:
-      orderType === "market"
-        ? manualFollowOnExpireMinutes() || 120
-        : manualFollowOnExpireMinutes(),
     // Inherit the main ticket's trading session so "24 hour market" parent
     // produces a 24 hour market next-ticket.
     time_in_force: manualTimeInForce(),
@@ -896,15 +885,6 @@ function validateManualLocal() {
       }
       if (p.followon.qty_mode === "custom" && !(p.followon.qty > 0)) {
         return tx("err_followon_qty", "Enter how many shares the next ticket should send.");
-      }
-      if (
-        !followonIsMarket(p.followon) &&
-        (!(p.followon.expire_minutes >= 1) || p.followon.expire_minutes > 1440)
-      ) {
-        return tx(
-          "err_followon_expire",
-          "The next-ticket wait must be between 1 and 1440 minutes."
-        );
       }
       if (p.followon.kind === "rotate") {
         const target = String(p.followon.target_symbol || "").trim().toUpperCase();
@@ -1170,7 +1150,7 @@ async function cancelRestingOrder(orderId) {
   }
 }
 
-function applyManualContext(data) {
+function applyManualContext(data, errorMsg = null) {
   manualContext = data || null;
   manualContextFetchedAt = data ? Date.now() : 0;
   const markEl = $("manual-ctx-mark");
@@ -1191,10 +1171,24 @@ function applyManualContext(data) {
       }
     );
     if (metaEl) {
-      metaEl.textContent = tx(
-        "enter_symbol_hint",
-        "Enter a symbol to load mark and position."
-      );
+      if (errorMsg) {
+        metaEl.className = "manual-ctx-meta is-error";
+        if (
+          errorMsg.includes("API credentials are not configured") ||
+          errorMsg.includes("API Keys") ||
+          errorMsg.includes("API keys")
+        ) {
+          metaEl.innerHTML = `<span class="ctx-err-text">⚠️ ${escapeHtml(errorMsg)}</span> <a href="/api-keys" class="ctx-err-link">${escapeHtml(tx("nav_api_keys", "API Keys"))} →</a>`;
+        } else {
+          metaEl.textContent = `⚠️ ${errorMsg}`;
+        }
+      } else {
+        metaEl.className = "manual-ctx-meta";
+        metaEl.textContent = tx(
+          "enter_symbol_hint",
+          "Enter a symbol to load mark and position."
+        );
+      }
     }
     renderContextOrders([]);
     renderDayRange(null);
@@ -1318,6 +1312,7 @@ function applyManualContext(data) {
   }
 
   if (metaEl) {
+    metaEl.className = "manual-ctx-meta";
     const source = (quote.source || "quote").replaceAll("_", " ");
     const age =
       typeof quote.age_seconds === "number" ? ` · ${formatAge(quote.age_seconds)}` : "";
@@ -1683,32 +1678,43 @@ async function refreshManualContext() {
   const symbol = manualSymbol();
   if (!symbol) {
     manualContextRequestId += 1;
+    manualContextError = null;
     applyManualContext(null);
+    updateSizeEstimate();
     return null;
   }
   const requestId = ++manualContextRequestId;
   const metaEl = $("manual-ctx-meta");
-  if (metaEl) metaEl.textContent = tx("loading_symbol", "Loading {symbol}…", { symbol });
+  const refreshBtn = $("btn-manual-refresh");
+  if (refreshBtn) refreshBtn.classList.add("is-loading");
+  if (metaEl && !manualContext) {
+    metaEl.className = "manual-ctx-meta";
+    metaEl.textContent = tx("loading_symbol", "Loading {symbol}…", { symbol });
+  }
   try {
     const data = await api(`/api/manual-context?symbol=${encodeURIComponent(symbol)}`);
     if (requestId !== manualContextRequestId) return null; // superseded by a newer request
+    manualContextError = null;
     applyManualContext(data);
     if (data.account) applyAccount(data.account);
+    updateSizeEstimate();
     return data;
   } catch (err) {
     if (requestId !== manualContextRequestId) return null; // superseded by a newer request
-    if (metaEl) {
-      const errMsg = err.message || tx("could_not_load", "Could not load data");
-      const suggestion = err.message?.includes("not found")
-        ? ` • ${tx("check_symbol_spelling", "Check symbol spelling")}`
-        : err.message?.includes("network")
-          ? ` • ${tx("check_connection", "Check your connection")}`
-          : "";
-      metaEl.textContent = `${errMsg}${suggestion}`;
-    }
+    const errMsg = err.message || tx("could_not_load", "Could not load data");
+    const suggestion = err.message?.includes("not found")
+      ? ` • ${tx("check_symbol_spelling", "Check symbol spelling")}`
+      : err.message?.includes("network")
+        ? ` • ${tx("check_connection", "Check your connection")}`
+        : "";
+    manualContextError = `${errMsg}${suggestion}`;
+    applyManualContext(null, manualContextError);
     // Keep prior context values but refresh session-aware controls.
     syncManualUi();
+    updateSizeEstimate();
     throw err;
+  } finally {
+    if (refreshBtn) refreshBtn.classList.remove("is-loading");
   }
 }
 
@@ -2120,6 +2126,7 @@ function syncManualLoopBanner() {
  */
 function calculateSizeEstimate() {
   const side = manualSide();
+  const symbol = manualSymbol();
   const mark = Number(manualContext?.quote?.price);
   const limit = Number(manualFormValue("limit_price", ""));
   const trigger = manualTriggerPrice();
@@ -2128,8 +2135,28 @@ function calculateSizeEstimate() {
     manualNeedsLimit() && limit > 0 ? limit : trigger > 0 ? trigger : mark;
   const buyingPower = Number(manualContext?.buying_power);
 
-  if (!manualContext) return null;
-  if (!(mark > 0)) return null;
+  if (!symbol) return null;
+
+  if (!manualContext || !(mark > 0)) {
+    const isMissingKeys =
+      manualContextError?.includes("credentials") ||
+      manualContextError?.includes("API Keys") ||
+      manualContextError?.includes("API keys") ||
+      lastAlpacaStatus?.set === false;
+    const msg = isMissingKeys
+      ? tx(
+          "err_alpaca_keys_required",
+          "Alpaca API credentials are not configured. Connect your API keys on API Keys to preview and size orders."
+        )
+      : manualContextError
+        ? manualContextError
+        : tx("err_waiting_quote", "Fetching live quote for {symbol}…", { symbol });
+    return {
+      side,
+      blocked: true,
+      blockedMessage: msg,
+    };
+  }
 
   if (manualIsExit()) {
     const held = manualPositionQty();
@@ -2506,7 +2533,20 @@ function updateSizeEstimate() {
     if (bracketVisualizer) bracketVisualizer.hidden = true;
     const inlineBadge = $("manual-inline-sizing-badge");
     if (inlineBadge) inlineBadge.hidden = true;
-    note.textContent = calc?.blockedMessage || tx("estimate_pending", "Enter a symbol and the desk will size the ticket.");
+    const blockedMsg = calc?.blockedMessage;
+    if (blockedMsg) {
+      if (
+        blockedMsg.includes("credentials") ||
+        blockedMsg.includes("API Keys") ||
+        blockedMsg.includes("API keys")
+      ) {
+        note.innerHTML = `<span class="estimate-warn-text">⚠️ ${escapeHtml(blockedMsg)}</span> <a href="/api-keys" class="estimate-link">${escapeHtml(tx("nav_api_keys", "API Keys"))} →</a>`;
+      } else {
+        note.textContent = blockedMsg;
+      }
+    } else {
+      note.textContent = tx("estimate_pending", "Enter a symbol and the desk will size the ticket.");
+    }
     note.classList.toggle("warn", !!calc?.blocked);
     announceEstimate(valueEl.textContent, note.textContent);
     syncManualPlaceButtons();
@@ -2918,11 +2958,6 @@ function validateManualField(fieldName) {
     ) {
       error = tx("err_field_gt_zero", "Must be greater than 0");
     }
-  } else if (fieldName === "followon_expire_minutes") {
-    if (manualFollowOnEnabled() && manualFollowOnOrderType() !== "market") {
-      if (!(val >= 1)) error = tx("err_field_min_1", "Minimum 1 minute");
-      else if (val > 1440) error = tx("err_field_max_1440", "Max 1440 (24h)");
-    }
   } else if (fieldName === "followon_target_symbol") {
     if (manualFollowOnEnabled() && manualFollowOnKind() === "rotate") {
       const target = String(field.value || "").trim().toUpperCase();
@@ -3295,8 +3330,6 @@ function syncManualFollowOnUi() {
   const market = manualFollowOnOrderType() === "market";
   const limitLabel = $("manual-followon-limit-label");
   if (limitLabel) limitLabel.hidden = !enabled || market;
-  const expireLabel = $("manual-followon-expire-label");
-  if (expireLabel) expireLabel.hidden = !enabled || market;
   const priceRow = $("manual-followon-price-row");
   if (priceRow) {
     priceRow.hidden = !enabled || market;
@@ -3304,8 +3337,6 @@ function syncManualFollowOnUi() {
   }
   const limitInput = $("manual-followon-limit");
   if (limitInput) limitInput.disabled = !enabled || market || loopRunning || busy;
-  const expireInput = $("manual-followon-expire");
-  if (expireInput) expireInput.disabled = !enabled || market || loopRunning || busy;
   const marketHint = $("manual-followon-market-hint");
   if (marketHint) marketHint.hidden = !enabled || !market;
 
@@ -3686,7 +3717,6 @@ const MANUAL_SAVED_NUMBERS = [
   "reinvest_expire_minutes",
   "followon_qty",
   "followon_limit_price",
-  "followon_expire_minutes",
   "followon_target_symbol",
   "dip_hunt_wait_minutes",
   "dip_hunt_pct",
@@ -5231,10 +5261,6 @@ function renderConfirmationModal(payload) {
           ? "—"
           : `≈ ${money(nextQty * payload.followon.limit_price)}`,
       ]);
-      rows.push([
-        tx("reinvest_expire", "Wait up to (minutes)"),
-        String(payload.followon.expire_minutes),
-      ]);
     }
   }
 
@@ -6210,7 +6236,6 @@ manualForm?.addEventListener("input", (ev) => {
       "reinvest_expire_minutes",
       "followon_qty",
       "followon_limit_price",
-      "followon_expire_minutes",
       "followon_target_symbol",
       "dip_hunt_wait_minutes",
       "dip_hunt_pct",
@@ -6241,7 +6266,6 @@ manualForm?.addEventListener("change", (ev) => {
   }
   if (name === "followon_order_type") {
     validateManualField("followon_limit_price");
-    validateManualField("followon_expire_minutes");
   }
   if (name === "sell_mode") {
     convertSellQtyOnUnitToggle(ev.target?.value);
