@@ -2846,6 +2846,21 @@ class AlpacaService:
 
         chosen = self._pick_fresher_mark(alpaca, live)
         if chosen is None:
+            try:
+                bars = self.get_bars(symbol, limit=1)
+                if bars:
+                    last_bar = bars[-1]
+                    bar_px = float(last_bar.get("close") or last_bar.get("c") or 0)
+                    if bar_px > 0:
+                        chosen = {
+                            "price": bar_px,
+                            "asof": last_bar.get("timestamp") or last_bar.get("t"),
+                            "source": "alpaca_bar_fallback",
+                        }
+            except Exception:
+                pass
+
+        if chosen is None:
             raise ValueError(f"No quote available for {symbol}")
 
         payload = self._mark_payload(symbol, session_info, alpaca, live, chosen)

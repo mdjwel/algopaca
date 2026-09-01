@@ -213,7 +213,20 @@
             <a href="/auto-trade" data-i18n="nav_auto_trade">Auto Trade</a>
           </p>
 
-          <div class="pos-filters-bar" role="group" aria-label="Orders filters" data-i18n-aria-label="filter_orders">
+          <!-- Mobile-only: the filters bar collapses behind this so the panel
+               opens on the orders list, not a wall of controls. -->
+          <button type="button" id="btn-toggle-ord-filters" class="pos-filters-toggle" aria-expanded="false" aria-controls="ord-filters-bar">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M7 12h10M10 18h4"/>
+            </svg>
+            <span data-i18n="filter_orders">Filter orders</span>
+            <span id="ord-filters-active-count" class="pos-filters-badge" hidden>0</span>
+            <svg class="pos-filters-toggle-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
+              <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+
+          <div class="pos-filters-bar" id="ord-filters-bar" role="group" aria-label="Orders filters" data-i18n-aria-label="filter_orders">
             <div class="pos-search-wrap">
               <svg class="pos-search-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -387,6 +400,22 @@
             <button type="button" id="btn-empty-clear-ord-filters" class="ghost" hidden data-i18n="reset_filters">Reset filters</button>
           </div>
         </section>
+
+        <!-- Floating Multi-select Batch Action Bar -->
+        <div id="ord-batch-floating-bar" class="pos-batch-floating-bar" role="toolbar" aria-label="Selected orders actions" data-i18n-aria-label="ord_cancel_selected" hidden>
+          <div class="pos-batch-floating-inner">
+            <div class="pos-batch-floating-info">
+              <span class="pos-batch-badge"><span id="ord-batch-count">0</span>&nbsp;<span data-i18n="pos_lots_selected_label">selected</span></span>
+              <span class="pos-batch-metric mono" id="ord-batch-val">—</span>
+            </div>
+            <div class="pos-batch-floating-actions">
+              <button type="button" id="btn-ord-batch-deselect" class="ghost btn-sm" data-i18n="pos_lots_deselect">Deselect</button>
+              <button type="button" id="btn-ord-batch-cancel" class="primary primary-danger btn-sm">
+                <span id="btn-ord-batch-cancel-text" data-i18n="ord_cancel_selected">Cancel selected</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
 

@@ -1110,7 +1110,6 @@ a.button:focus-visible {
   text-transform: none;
   color: var(--muted);
   line-height: 1.4;
-  margin-top: -5px;
 }
 
 .strategy-intro {

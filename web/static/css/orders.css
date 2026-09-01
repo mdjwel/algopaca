@@ -236,18 +236,6 @@ button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-val {
   background: rgba(227, 93, 93, 0.08);
 }
 
-/* Symbol, side, and status share the card head; the symbol keeps the left and
-   the two badges ride the right edge together. */
-.page-orders .pos-card-head {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 0.4rem;
-}
-
-.page-orders .pos-card-head .side-badge {
-  margin-left: auto;
-}
-
 /* Positions paints this edge from data-side="long|short"; a blotter row's side
    is buy|sell, so the same signal needs its own mapping or every row would
    fall back to the neutral hold colour. */
@@ -1094,70 +1082,59 @@ button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
   }
 }
 
-@media (max-width: 860px) {
-  .ord-replace-form {
-    grid-template-columns: 1fr;
+/* Mobile KPI Grid for Orders (≤ 768px): 2x2 rail grid with clean borders */
+@media (max-width: 768px) {
+  .ord-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .ord-kpi-grid .pos-kpi-hero {
+    padding: 0.95rem 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ord-kpi-grid .ord-kpi-split {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0 0 0;
+    border-top: 1px solid var(--line);
+    border-left: none;
+    justify-content: flex-start;
+    gap: 0.5rem 1.5rem;
+  }
+
+  .ord-kpi-grid .pos-kpi-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: var(--radius-md);
+  }
+
+  .ord-kpi-grid .pos-kpi-tile {
+    flex: none;
+    margin: 0;
+    border: none;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 0.7rem 0.8rem;
+  }
+
+  .ord-kpi-grid .pos-kpi-tile:nth-child(2n) {
+    border-right: none;
+  }
+
+  .ord-kpi-grid .pos-kpi-tile:nth-child(3),
+  .ord-kpi-grid .pos-kpi-tile:nth-child(4) {
+    border-bottom: none;
   }
 }
 
-/* The filter rail itself lives in positions.css — Orders shares that markup,
-   and a second copy of these rules here is what left the groups double-boxed:
-   a bordered `.pos-seg-group` wrapped around the bordered `.pos-seg-pill`. */
-
-/* ── Mobile Order Cards Layout ──────────────────────────────────── */
-.pos-cards-list {
-  display: none;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.pos-card {
-  background: var(--panel, #121a24);
-  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
-  border-radius: var(--radius-md, 8px);
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  position: relative;
-  transition: border-color 0.2s ease, transform 0.15s ease;
-}
-
-.pos-card:hover {
-  border-color: color-mix(in srgb, var(--line) 70%, var(--copper));
-}
-
-.pos-card.is-selected {
-  border-color: rgba(212, 137, 76, 0.45);
-  background: rgba(212, 137, 76, 0.06);
-}
-
-.pos-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
-  padding-bottom: 0.55rem;
-  gap: 0.5rem;
-}
-
-.pos-card-head strong {
-  font-size: 1.1rem;
-}
-
-.pos-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.04));
-}
-
-.pos-card-actions button,
-.pos-card-actions a {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.75rem;
+/* ── Mobile Order Cards & Filters (≤ 860px) ─────────────────────── */
+.ord-card-qty-sub {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: normal;
 }
 
 @media (max-width: 860px) {
@@ -1167,6 +1144,18 @@ button.ord-plan-fold-toggle[aria-expanded="true"] .ord-plan-fold-caret {
 
   #ord-cards-list:not([hidden]) {
     display: flex !important;
+  }
+
+  #ord-filters-bar {
+    display: none;
+  }
+
+  #ord-filters-bar.is-open {
+    display: flex;
+  }
+
+  .ord-replace-form {
+    grid-template-columns: 1fr;
   }
 }
 

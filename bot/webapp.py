@@ -239,7 +239,7 @@ class FollowOnIn(BaseModel):
     # Distinct from the close's ``order_type``. True means skip limit_price.
     market: bool = False
     limit_price: Optional[float] = Field(None, gt=0)
-    expire_minutes: Optional[float] = Field(None, gt=0, le=1440)
+    expire_minutes: Optional[float] = None
 
     @model_validator(mode="before")
     @classmethod

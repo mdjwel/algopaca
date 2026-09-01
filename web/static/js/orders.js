@@ -67,6 +67,7 @@ let ordFilterUntil = "";
 let ordSortKey = localStorage.getItem("desk_ord_sort_key") || "submitted";
 let ordSortDir = localStorage.getItem("desk_ord_sort_dir") || "desc";
 let ordSelectedIds = new Set();
+let ordExpandedCardActions = new Set();
 // Ids the broker has been told to drop but has not reported on yet; the row
 // says so immediately instead of looking untouched until the next poll.
 let ordCancelingIds = new Set();
@@ -682,7 +683,28 @@ function syncOrdFiltersUi() {
   if (until && until.value !== ordFilterUntil) until.value = ordFilterUntil;
   const reset = $("btn-reset-ord-filters");
   if (reset) reset.disabled = !filtersActive();
+  const badge = $("ord-filters-active-count");
+  if (badge) {
+    const count =
+      (String(ordFilterSearch || "").trim() ? 1 : 0) +
+      (ordFilterStatus !== "open" ? 1 : 0) +
+      (ordFilterSide !== "all" ? 1 : 0) +
+      (ordFilterKind !== "all" ? 1 : 0) +
+      (ordFilterType !== "all" ? 1 : 0) +
+      (ordFilterAfter || ordFilterUntil ? 1 : 0);
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  }
   updateOrdSortUi();
+}
+
+function toggleOrdFiltersBar() {
+  const bar = $("ord-filters-bar");
+  const btn = $("btn-toggle-ord-filters");
+  if (!bar || !btn) return;
+  const open = !bar.classList.contains("is-open");
+  bar.classList.toggle("is-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function resetOrdFilters() {
@@ -857,38 +879,74 @@ function renderOrderCard(order) {
   const kind = order.is_stop
     ? `<span class="ord-kind-badge">${escapeHtml(tx("orders_conditional", "Conditional"))}</span>`
     : "";
+  const desk = deskBadge(order);
+  const klass = orderClassBadge(order);
   const canceling = orderIsCanceling(order);
   const selected = ordSelectedIds.has(String(order.id || ""));
+  const actionsOpen = ordExpandedCardActions.has(String(order.id || ""));
+  const eventTime = orderEventTime(order);
+
   return `<div class="pos-card${canceling ? " is-canceling" : ""}${
     selected ? " is-selected" : ""
   }" role="listitem" data-order-id="${escapeHtml(order.id || "")}">
     <div class="pos-card-head">
-      ${orderCheckboxMarkup(order)}
-      <strong title="${escapeHtml(order.id || "")}">${orderSymbolLink(order)}</strong>
-      <span class="side-badge ${escapeHtml(side)}">${escapeHtml(
-        side === "sell" ? tx("sell", "Sell") : tx("buy", "Buy")
-      )}</span>
-      <span class="ord-status ${canceling ? "is-open" : statusClass(order.status)}">${escapeHtml(
-        canceling ? tx("ord_status_pending_cancel", "Canceling") : statusLabel(order.status)
-      )}</span>
+      <div class="pos-card-sym-wrap">
+        ${orderCheckboxMarkup(order)}
+        <strong class="pos-card-sym" title="${escapeHtml(order.id || "")}">${orderSymbolLink(order)}</strong>
+        ${kind}
+        ${desk}
+        ${klass}
+        <span class="side-badge ${escapeHtml(side)}">${escapeHtml(
+          side === "sell" ? tx("sell", "Sell") : tx("buy", "Buy")
+        )}</span>
+      </div>
+      <div class="pos-card-mv">
+        <span class="ord-status ${canceling ? "is-open" : statusClass(order.status)}">${escapeHtml(
+          canceling ? tx("ord_status_pending_cancel", "Canceling") : statusLabel(order.status)
+        )}</span>
+      </div>
     </div>
-    <p class="ord-time">${escapeHtml(ordTime(orderEventTime(order)))} · ${escapeHtml(
-      orderTypeLabel(order.type)
-    )} · ${escapeHtml(orderTifLabel(order))}</p>
-    ${kind}${deskBadge(order)}${orderClassBadge(order)}
-    <p class="mono">${escapeHtml(qty.main)}${qty.sub ? ` · ${escapeHtml(qty.sub)}` : ""}</p>
-    ${fillProgressMarkup(qty)}
-    <p>${prices.length ? escapeHtml(prices.join(" · ")) : "—"}</p>
-    <p class="ord-card-mark">
-      <span class="ord-card-mark-label">${escapeHtml(
-        tx("current_price_label", "Current Price")
-      )}</span>
-      <span class="ord-price-stack">
-        ${markPriceMarkup(order)}
-        ${triggerDistanceMarkup(order)}
-      </span>
-    </p>
-    <div class="pos-card-actions">${orderActions(order, "card")}</div>
+    <div class="pos-card-grid mono">
+      <div>
+        <span>${escapeHtml(tx("order_type", "Order type"))}</span>
+        <strong>${escapeHtml(orderTypeLabel(order.type))} · ${escapeHtml(orderTifLabel(order))}</strong>
+      </div>
+      <div>
+        <span>${escapeHtml(tx("shares_qty", "Shares / Qty"))}</span>
+        <strong>${escapeHtml(qty.main)}${qty.sub ? ` <small class="ord-card-qty-sub">${escapeHtml(qty.sub)}</small>` : ""}</strong>
+        ${fillProgressMarkup(qty)}
+      </div>
+      <div>
+        <span>${escapeHtml(tx("order_price", "Price"))}</span>
+        <strong>${prices.length ? escapeHtml(prices.join(" · ")) : "—"}</strong>
+      </div>
+      <div>
+        <span>${escapeHtml(tx("current_price_label", "Current Price"))}</span>
+        <div class="pos-kpi-valrow">
+          ${markPriceMarkup(order)}
+          ${triggerDistanceMarkup(order)}
+        </div>
+      </div>
+      <div>
+        <span>${escapeHtml(tx("submitted_at", "Submitted"))}</span>
+        <span class="ord-time">${escapeHtml(ordTime(eventTime))}</span>
+      </div>
+      <div>
+        <span>${escapeHtml(tx("status", "Status"))}</span>
+        <span class="ord-status ${canceling ? "is-open" : statusClass(order.status)}">${escapeHtml(
+          canceling ? tx("ord_status_pending_cancel", "Canceling") : statusLabel(order.status)
+        )}</span>
+      </div>
+    </div>
+    <button type="button" class="pos-card-actions-toggle" aria-expanded="${actionsOpen ? "true" : "false"}">
+      <span>${escapeHtml(tx("actions", "Actions"))}</span>
+      <svg class="pos-card-actions-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
+        <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+      </svg>
+    </button>
+    <div class="pos-card-actions" ${actionsOpen ? "" : "hidden"}>
+      ${orderActions(order, "card")}
+    </div>
     ${renderOrderPlanCards(order)}
   </div>`;
 }
@@ -1228,24 +1286,10 @@ function formatFollowOnPlan(plan) {
     head,
   };
   if (status === "waiting") {
-    const started = plan.wait_started === true || plan.seconds_left != null;
-    if (!started) {
-      return {
-        ...base,
-        kind: "waiting",
-        note: tx("followon_state_waiting", "Waiting for the close to fill"),
-        cancellable: true,
-      };
-    }
-    const mins = Math.max(0, Math.ceil(Number(plan.seconds_left || 0) / 60));
     return {
       ...base,
       kind: "waiting",
-      note: tx(
-        "followon_state_wait_after_fill",
-        "Close filled · {mins}m left to send",
-        { mins: String(mins) }
-      ),
+      note: tx("followon_state_waiting", "Waiting for the close to fill"),
       cancellable: true,
     };
   }
@@ -1720,6 +1764,32 @@ function syncSelectionUi() {
   if (btn) btn.hidden = selected.length < 1;
   if (text) {
     text.textContent = `${tx("ord_cancel_selected", "Cancel selected")} (${selected.length})`;
+  }
+
+  const floatingBar = $("ord-batch-floating-bar");
+  const floatingCount = $("ord-batch-count");
+  const floatingVal = $("ord-batch-val");
+  const floatingBtnText = $("btn-ord-batch-cancel-text");
+
+  if (floatingBar) floatingBar.hidden = selected.length < 1;
+  if (floatingCount) floatingCount.textContent = String(selected.length);
+  if (floatingBtnText) {
+    floatingBtnText.textContent = `${tx("ord_cancel_selected", "Cancel selected")} (${selected.length})`;
+  }
+  if (floatingVal) {
+    let totalVal = 0;
+    let hasVal = false;
+    for (const o of selected) {
+      if (o.notional != null) {
+        totalVal += Number(o.notional || 0);
+        hasVal = true;
+      } else if (o.qty != null && (o.limit_price != null || o.mark_price != null)) {
+        const px = Number(o.limit_price ?? o.mark_price ?? 0);
+        totalVal += Number(o.qty || 0) * px;
+        hasVal = true;
+      }
+    }
+    floatingVal.textContent = hasVal ? orderMoney(totalVal) : "—";
   }
 }
 
@@ -2640,8 +2710,28 @@ function initOrdersUi() {
     e.preventDefault();
     confirmReplace();
   });
+  $("btn-toggle-ord-filters")?.addEventListener("click", toggleOrdFiltersBar);
+  $("btn-ord-batch-deselect")?.addEventListener("click", () => {
+    ordSelectedIds.clear();
+    syncSelectionUi();
+    renderOrdersPage();
+  });
+  $("btn-ord-batch-cancel")?.addEventListener("click", openCancelSelectedModal);
 
   document.addEventListener("click", (e) => {
+    const actionsToggle = e.target.closest?.(".pos-card-actions-toggle");
+    if (actionsToggle) {
+      const actions = actionsToggle.nextElementSibling;
+      const orderId = actionsToggle.closest(".pos-card")?.dataset.orderId;
+      if (actions?.classList.contains("pos-card-actions") && orderId) {
+        const open = actions.hidden;
+        actions.hidden = !open;
+        actionsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) ordExpandedCardActions.add(orderId);
+        else ordExpandedCardActions.delete(orderId);
+      }
+      return;
+    }
     const foldToggle = e.target.closest?.("[data-toggle-plan]");
     if (foldToggle) {
       e.preventDefault();

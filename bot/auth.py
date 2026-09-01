@@ -251,8 +251,15 @@ class AuthStore:
                 conn.execute("ALTER TABLE user_preferences ADD COLUMN notification_email TEXT DEFAULT ''")
 
             conn.commit()
-        # Seed demo user if table is empty
-        self.get_or_create_demo_user()
+        # Seed demo user and check for owner accounts needing env credentials
+        demo_user = self.get_or_create_demo_user()
+        try:
+            with _get_connection(self.db_path) as conn:
+                owners = conn.execute("SELECT id FROM users WHERE role = 'owner'").fetchall()
+                for row in owners:
+                    self.seed_env_credentials_if_empty(row["id"])
+        except Exception:
+            pass
 
     @staticmethod
     def _hash_password(password: str, salt: str) -> str:
@@ -1133,31 +1140,93 @@ class AuthStore:
             conn.commit()
             return cursor.rowcount > 0
 
+    def seed_env_credentials_if_empty(self, user_id: int) -> bool:
+        """Seed credentials from environment variables if the user has none saved."""
+        current = self.get_user_credentials(user_id)
+        has_any_key = any(
+            bool(current.get(k))
+            for k in [
+                "alpaca_paper_api_key",
+                "alpaca_live_api_key",
+                "openai_api_key",
+                "gemini_api_key",
+                "anthropic_api_key",
+                "xai_api_key",
+            ]
+        )
+        if has_any_key:
+            return False
+
+        paper_key = (
+            os.getenv("ALPACA_PAPER_API_KEY", "").strip()
+            or os.getenv("ALPACA_API_KEY", "").strip()
+        )
+        paper_secret = (
+            os.getenv("ALPACA_PAPER_SECRET_KEY", "").strip()
+            or os.getenv("ALPACA_SECRET_KEY", "").strip()
+        )
+        live_key = os.getenv("ALPACA_LIVE_API_KEY", "").strip()
+        live_secret = os.getenv("ALPACA_LIVE_SECRET_KEY", "").strip()
+        openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        xai_key = os.getenv("XAI_API_KEY", "").strip()
+
+        updates = {}
+        if paper_key:
+            updates["alpaca_paper_api_key"] = paper_key
+        if paper_secret:
+            updates["alpaca_paper_secret_key"] = paper_secret
+        if live_key:
+            updates["alpaca_live_api_key"] = live_key
+        if live_secret:
+            updates["alpaca_live_secret_key"] = live_secret
+        if openai_key:
+            updates["openai_api_key"] = openai_key
+        if gemini_key:
+            updates["gemini_api_key"] = gemini_key
+        if anthropic_key:
+            updates["anthropic_api_key"] = anthropic_key
+        if xai_key:
+            updates["xai_api_key"] = xai_key
+
+        if updates:
+            self.save_user_credentials(user_id, updates)
+            return True
+        return False
+
     def get_or_create_demo_user(self) -> dict[str, Any]:
+        demo = None
         with _get_connection(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id, username, email, display_name, role, created_at FROM users WHERE username = 'demo'")
             row = cursor.fetchone()
             if row:
-                return dict(row)
+                demo = dict(row)
 
-        # Create demo account
-        try:
-            return self.register_user(
-                username="demo",
-                email="demo@algopaca.local",
-                password="AlgoPaca2026!",
-                display_name="Demo Trader",
-                role="trader",
-            )
-        except ValueError:
-            with _get_connection(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, username, email, display_name, role, created_at FROM users WHERE username = 'demo'")
-                row = cursor.fetchone()
-                if row:
-                    return dict(row)
-                raise
+        if not demo:
+            # Create demo account
+            try:
+                demo = self.register_user(
+                    username="demo",
+                    email="demo@algopaca.local",
+                    password="AlgoPaca2026!",
+                    display_name="Demo Trader",
+                    role="trader",
+                )
+            except ValueError:
+                with _get_connection(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, username, email, display_name, role, created_at FROM users WHERE username = 'demo'")
+                    row = cursor.fetchone()
+                    if row:
+                        demo = dict(row)
+                    else:
+                        raise
+
+        if demo and "id" in demo:
+            self.seed_env_credentials_if_empty(demo["id"])
+        return demo
 
     def get_user_credentials(self, user_id: int) -> dict[str, Any]:
         """Retrieve and decrypt credentials for a specific user."""

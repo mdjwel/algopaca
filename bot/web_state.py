@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -80,6 +81,7 @@ from bot.config import (
     live_allowed_from_env,
     normalize_lang,
     paper_mode_from_env,
+    resolve_alpaca_credentials,
     resolve_size_mode,
 )
 from bot.desk_risk import (
@@ -268,12 +270,12 @@ _REINVEST_LIVE_STATUSES = frozenset({"waiting", "placing", "awaiting_fill"})
 _FOLLOWON_LIVE_STATUSES = frozenset({"waiting", "placing"})
 
 # Next ticket after a close: same poll cadence as a buy-back.
-# expire_minutes is the send window after the close fills, not a fill timeout.
+# Next tickets do not expire automatically; they wait until the close fills.
 _FOLLOWON_POLL_SECONDS = 5.0
 _FOLLOWON_DEFAULT_MINUTES = 120
 _FOLLOWON_MAX_MINUTES = 1440
-_FOLLOWON_MAX_ERRORS = 12
-_FOLLOWON_FLAT_MAX_CHECKS = 6
+_FOLLOWON_MAX_ERRORS = 30
+_FOLLOWON_FLAT_MAX_CHECKS = 60
 
 # Dip hunt: same poll cadence as re-investment — a stop-out fills in seconds,
 # a parked limit may rest for hours.
@@ -1498,6 +1500,14 @@ class AppState:
         else:
             api_key = creds.get("alpaca_live_api_key", "")
             secret_key = creds.get("alpaca_live_secret_key", "")
+
+        if not api_key or not secret_key:
+            user = AUTH_STORE.get_user_by_id(self.user_id)
+            if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                env_api, env_sec, _ = resolve_alpaca_credentials(paper=paper_mode)
+                if env_api and env_sec:
+                    api_key = env_api
+                    secret_key = env_sec
 
         openai_key = self._openai_api_key or creds.get("openai_api_key", "")
         gemini_key = self._gemini_api_key or creds.get("gemini_api_key", "")
@@ -3596,35 +3606,78 @@ class AppState:
             raise ValueError("Symbol is required")
         config = self._base_config()
         service = AlpacaService(config)
-        try:
-            mark = service.get_mark_price(symbol)
-        except Exception as exc:
-            raise ValueError(f"Could not quote {symbol}: {exc}") from exc
-        session_info = service.market_session()
-        atr, bar_stats = self._manual_bar_read(service, symbol)
-        # `get_position_qty` stays the authority on size — the detail read is
-        # for the avg entry and open P&L the rail shows beside it, and a failure
-        # there must not change what the ticket believes it is holding.
-        try:
-            position = float(service.get_position_qty(symbol))
-        except Exception:
-            position = 0.0
-        try:
-            position_detail = service.get_position_detail(symbol)
-        except Exception:
-            position_detail = None
-        if not isinstance(position_detail, dict):
-            position_detail = {}
-        position_detail = {**position_detail, "qty": position}
-        try:
-            summary = service.account_summary()
-        except Exception:
-            summary = None
-        try:
-            orders_by_symbol = service.get_open_orders_summary()
-        except Exception:
-            orders_by_symbol = {}
-        open_orders = orders_by_symbol.get(symbol, [])
+
+        # Run independent broker queries and external lookups concurrently so a single
+        # slow or degraded dependency cannot bottleneck ticket context or preview.
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            fut_mark = executor.submit(service.get_mark_price, symbol)
+            fut_session = executor.submit(service.market_session)
+            fut_bars = executor.submit(self._manual_bar_read, service, symbol)
+            fut_pos = executor.submit(service.get_position_detail, symbol)
+            fut_acct = executor.submit(service.account_summary)
+            fut_orders = executor.submit(service.get_open_orders_summary)
+            fut_heat = executor.submit(self._manual_portfolio_heat, service)
+            fut_asset = executor.submit(self._manual_asset_info, service, symbol)
+            fut_earnings = executor.submit(self._manual_earnings, symbol)
+            fut_activity = executor.submit(service.recent_activity, symbol)
+
+            try:
+                mark = fut_mark.result()
+            except Exception as exc:
+                raise ValueError(f"Could not quote {symbol}: {exc}") from exc
+
+            try:
+                session_info = fut_session.result() or {}
+            except Exception:
+                session_info = {}
+
+            try:
+                atr, bar_stats = fut_bars.result()
+            except Exception:
+                atr, bar_stats = None, {}
+
+            try:
+                position_detail = fut_pos.result() or {}
+            except Exception:
+                position_detail = {}
+            if not isinstance(position_detail, dict):
+                position_detail = {}
+            position = float(position_detail.get("qty", 0.0) or 0.0)
+            position_detail = {**position_detail, "qty": position}
+
+            try:
+                summary = fut_acct.result()
+            except Exception:
+                summary = None
+
+            try:
+                orders_by_symbol = fut_orders.result() or {}
+            except Exception:
+                orders_by_symbol = {}
+            if not isinstance(orders_by_symbol, dict):
+                orders_by_symbol = {}
+            open_orders = orders_by_symbol.get(symbol, [])
+
+            try:
+                heat = fut_heat.result() or {}
+            except Exception:
+                heat = {}
+
+            try:
+                asset = fut_asset.result() or {}
+            except Exception:
+                asset = {}
+
+            try:
+                earnings = fut_earnings.result() or {}
+            except Exception:
+                earnings = {}
+
+            try:
+                activity = fut_activity.result() or {}
+            except Exception:
+                activity = {}
+
         with self.lock:
             if summary is not None:
                 self.account = summary
@@ -3636,9 +3689,6 @@ class AppState:
             account = self.account
             desk_stop_pct = float(self.settings.stop_loss_pct or 0)
 
-        heat = self._manual_portfolio_heat(service)
-        asset = self._manual_asset_info(service, symbol)
-        earnings = self._manual_earnings(symbol)
         # The resting stop is what the "move to breakeven" control acts on, so
         # it is published as its own field rather than left for the browser to
         # dig back out of the open-orders list.
@@ -3653,15 +3703,20 @@ class AppState:
             ),
             None,
         )
-        breaches = self._manual_ticket_breaches(
+
+        positions_count = int((heat or {}).get("positions") or 0)
+        breaches = manual_entry_breaches(
             config,
-            service,
-            symbol,
             mark=mark,
+            open_positions=positions_count,
+            day_pl_pct=(account or {}).get("day_pl_pct"),
+            activity=activity if isinstance(activity, dict) else {},
+            adding_to_position=position != 0,
             heat=heat,
-            holds_position=position != 0,
-            account=account,
+            ticket_risk=None,
+            equity=(account or {}).get("equity"),
         )
+
         return {
             "symbol": symbol,
             "quote": mark,
@@ -3697,6 +3752,7 @@ class AppState:
         holds_position: bool,
         account: dict[str, Any] | None,
         ticket_risk: float | None = None,
+        activity: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Desk limits a new entry in this symbol would cross, as advisory rows.
 
@@ -3705,10 +3761,11 @@ class AppState:
         lookups here are best-effort: a guard that cannot be evaluated must not
         take the whole ticket down with it.
         """
-        try:
-            activity = service.recent_activity(symbol)
-        except Exception:
-            activity = None
+        if activity is None:
+            try:
+                activity = service.recent_activity(symbol)
+            except Exception:
+                activity = None
         if not isinstance(activity, dict):
             activity = {}
         positions = int((heat or {}).get("positions") or 0)
@@ -6156,7 +6213,7 @@ class AppState:
 
     @staticmethod
     def _followon_send_window_started(plan: dict[str, Any]) -> bool:
-        """True once the close has filled and the send clock is running."""
+        """True once the close has filled."""
         if plan.get("wait_started_at") not in (None, ""):
             return True
         return float(plan.get("close_filled_qty") or 0) > 0
@@ -6164,26 +6221,18 @@ class AppState:
     def _arm_followon_send_window_locked(
         self, plan: dict[str, Any], *, now: float | None = None
     ) -> None:
-        """Start expire_minutes from this moment — the close just filled."""
-        if plan.get("expires_at") not in (None, "") and self._followon_send_window_started(
-            plan
-        ):
+        """Record fill timestamp when the close fills."""
+        if plan.get("wait_started_at") not in (None, ""):
             return
         stamp = float(now if now is not None else time.time())
-        minutes = float(plan.get("expire_minutes") or _FOLLOWON_DEFAULT_MINUTES)
         plan["wait_started_at"] = stamp
-        plan["expires_at"] = stamp + minutes * 60.0
 
     @staticmethod
     def _followon_send_window_expired(
         plan: dict[str, Any], *, now: float | None = None
     ) -> bool:
-        if not AppState._followon_send_window_started(plan):
-            return False
-        expires_at = plan.get("expires_at")
-        if expires_at in (None, ""):
-            return False
-        return float(now if now is not None else time.time()) > float(expires_at)
+        # Next tickets do not expire automatically; they wait until the close fills.
+        return False
 
     @staticmethod
     def _followon_request_order_type(raw: dict[str, Any]) -> str:
@@ -6282,16 +6331,14 @@ class AppState:
             )
 
         minutes_raw = raw.get("expire_minutes")
-        if minutes_raw in (None, ""):
-            minutes = float(_FOLLOWON_DEFAULT_MINUTES)
-        else:
+        minutes: float | None = None
+        if minutes_raw not in (None, ""):
             try:
                 minutes = float(minutes_raw)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    "Next-ticket wait must be a number of minutes"
-                ) from exc
-        minutes = max(1.0, min(float(_FOLLOWON_MAX_MINUTES), minutes))
+            except (TypeError, ValueError):
+                pass
+            if minutes is not None:
+                minutes = max(1.0, min(float(_FOLLOWON_MAX_MINUTES), minutes))
 
         tif_raw = raw.get("time_in_force") if isinstance(raw, dict) else None
         tif = str(tif_raw or "day").strip().lower()
@@ -6348,25 +6395,13 @@ class AppState:
             return 0
         if not stored:
             return 0
-        now = time.time()
         resumed = 0
         with self.lock:
             for plan_id, plan in stored.items():
                 if plan.get("status") == "waiting":
-                    if not self._followon_send_window_started(plan):
-                        # Older builds stamped expires_at when the close was
-                        # placed. That clock does not apply until the fill.
-                        plan["expires_at"] = None
-                        plan["wait_started_at"] = None
-                        resumed += 1
-                    elif self._followon_send_window_expired(plan, now=now):
-                        plan["status"] = "expired"
-                        plan["message"] = (
-                            "Expired while the desk was closed — the next "
-                            "ticket was not sent in time after the close filled."
-                        )
-                    else:
-                        resumed += 1
+                    plan["expires_at"] = None
+                    plan["wait_started_at"] = None
+                    resumed += 1
                 self.followon_plans[plan_id] = plan
             self._followon_seq = max(
                 self._followon_seq, followon_store.max_sequence(self.followon_plans)
@@ -6404,7 +6439,7 @@ class AppState:
                 "qty": plan["qty"],
                 "order_type": plan.get("order_type") or "limit",
                 "limit_price": plan.get("limit_price"),
-                "expire_minutes": plan["expire_minutes"],
+                "expire_minutes": plan.get("expire_minutes"),
                 "time_in_force": plan.get("time_in_force", "day"),
                 "extended_hours": bool(plan.get("extended_hours")),
                 "created_at": now,
@@ -6515,29 +6550,6 @@ class AppState:
             order = service.get_order_snapshot(str(snapshot["close_order_id"]))
             order = self._follow_replaced_order(service, order)
         except Exception as exc:
-            if self._followon_send_window_expired(snapshot):
-                close_filled = float(snapshot.get("close_filled_qty") or 0)
-                if close_filled > 0:
-                    self._settle_followon_plan(
-                        plan_id,
-                        "failed",
-                        (
-                            f"The close filled {close_filled:g} shares, but the "
-                            "position could not be verified safe before the "
-                            "next-ticket wait ended."
-                        ),
-                    )
-                else:
-                    self._settle_followon_plan(
-                        plan_id,
-                        "expired",
-                        (
-                            "The next ticket could not be sent within "
-                            f"{snapshot['expire_minutes']:g} minutes after "
-                            "the close filled."
-                        ),
-                    )
-                return
             self._note_plan_broker_error(
                 plans=self.followon_plans,
                 persist=self._persist_followon_plans,
@@ -6575,28 +6587,14 @@ class AppState:
         terminal = bool(order.get("is_terminal"))
 
         if filled > 0:
-            already_trying = False
             with self.lock:
                 live = self.followon_plans.get(plan_id)
                 if live is None or live.get("status") != "waiting":
                     return
-                already_trying = self._followon_send_window_started(live)
                 self._arm_followon_send_window_locked(live)
                 live["close_filled_qty"] = filled
                 snapshot = dict(live)
             self._persist_followon_plans()
-            if already_trying and self._followon_send_window_expired(snapshot):
-                self._settle_followon_plan(
-                    plan_id,
-                    "failed",
-                    (
-                        f"The close filled {filled:g} shares, but the "
-                        "position could not be verified safe before the "
-                        "next-ticket wait ended."
-                    ),
-                    close_filled_qty=filled,
-                )
-                return
             self._place_followon_order(plan_id, snapshot, service, filled_qty=filled)
             return
 
@@ -6919,17 +6917,11 @@ class AppState:
                 if p.get("symbol") == symbol or p.get("target_symbol") == symbol
             ]
         plans.sort(key=lambda p: p.get("created_at") or 0.0, reverse=True)
-        now = time.time()
         for plan in plans:
             plan.pop("error_count", None)
             if plan.get("status") == "waiting":
-                started = self._followon_send_window_started(plan)
-                plan["wait_started"] = started
-                expires_at = plan.get("expires_at")
-                if started and expires_at not in (None, ""):
-                    plan["seconds_left"] = max(0.0, float(expires_at) - now)
-                else:
-                    plan["seconds_left"] = None
+                plan["wait_started"] = False
+                plan["seconds_left"] = None
         return plans
 
     def cancel_followon_plan(self, plan_id: str) -> dict[str, Any]:

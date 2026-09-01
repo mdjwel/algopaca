@@ -151,7 +151,7 @@ def _fetch_yahoo(sym: str) -> dict[str, Any]:
 
 def _http_get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=8) as resp:
+    with urllib.request.urlopen(req, timeout=2.5) as resp:
         return json.loads(resp.read().decode())
 
 

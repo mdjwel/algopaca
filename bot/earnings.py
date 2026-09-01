@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -153,42 +154,67 @@ def _upcoming_for(symbol: str) -> dict[str, Any] | None:
     return calendar.get(symbol.upper())
 
 
+_CAL_CACHE_LOCK = threading.Lock()
+_CAL_CACHE_LOADING = False
+
+
+def _trigger_background_calendar_load() -> None:
+    global _CAL_CACHE_LOADING
+    with _CAL_CACHE_LOCK:
+        if _CAL_CACHE_LOADING:
+            return
+        _CAL_CACHE_LOADING = True
+
+    def _worker() -> None:
+        global _CAL_CACHE, _CAL_CACHE_LOADING
+        try:
+            by_symbol: dict[str, dict[str, Any]] = {}
+            today = datetime.now(_ET).date()
+            days = [
+                today + timedelta(days=offset)
+                for offset in range(_CAL_LOOKAHEAD_DAYS + 1)
+                if (today + timedelta(days=offset)).weekday() < 5
+            ]
+            rows_by_day: dict[date, list[dict[str, Any]]] = {}
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futures = {pool.submit(_fetch_calendar_day, day): day for day in days}
+                for fut in as_completed(futures):
+                    day = futures[fut]
+                    try:
+                        rows_by_day[day] = fut.result()
+                    except Exception as exc:
+                        logger.warning("earnings calendar fetch failed for %s: %s", day, exc)
+                        rows_by_day[day] = []
+            for day in sorted(rows_by_day):
+                for row in rows_by_day[day]:
+                    if not isinstance(row, dict):
+                        continue
+                    sym = str(row.get("symbol") or "").upper().strip()
+                    if not sym or sym in by_symbol:
+                        continue
+                    normalized = _normalize_upcoming(row, day)
+                    if normalized:
+                        by_symbol[sym] = normalized
+            now = time.time()
+            _CAL_CACHE = (now + (_CAL_TTL_SEC if by_symbol else 300.0), by_symbol)
+        finally:
+            with _CAL_CACHE_LOCK:
+                _CAL_CACHE_LOADING = False
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+
 def _load_upcoming_calendar() -> dict[str, dict[str, Any]]:
     global _CAL_CACHE
     now = time.time()
     if _CAL_CACHE and _CAL_CACHE[0] > now:
         return _CAL_CACHE[1]
 
-    by_symbol: dict[str, dict[str, Any]] = {}
-    today = datetime.now(_ET).date()
-    days = [
-        today + timedelta(days=offset)
-        for offset in range(_CAL_LOOKAHEAD_DAYS + 1)
-        if (today + timedelta(days=offset)).weekday() < 5
-    ]
-    rows_by_day: dict[date, list[dict[str, Any]]] = {}
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {pool.submit(_fetch_calendar_day, day): day for day in days}
-        for fut in as_completed(futures):
-            day = futures[fut]
-            try:
-                rows_by_day[day] = fut.result()
-            except Exception as exc:
-                logger.warning("earnings calendar fetch failed for %s: %s", day, exc)
-                rows_by_day[day] = []
-    for day in sorted(rows_by_day):
-        for row in rows_by_day[day]:
-            if not isinstance(row, dict):
-                continue
-            sym = str(row.get("symbol") or "").upper().strip()
-            if not sym or sym in by_symbol:
-                continue
-            normalized = _normalize_upcoming(row, day)
-            if normalized:
-                by_symbol[sym] = normalized
-
-    _CAL_CACHE = (now + _CAL_TTL_SEC, by_symbol)
-    return by_symbol
+    _trigger_background_calendar_load()
+    if _CAL_CACHE:
+        return _CAL_CACHE[1]
+    return {}
 
 
 def _fetch_calendar_day(day: date) -> list[dict[str, Any]]:
@@ -213,6 +239,7 @@ def _surprise_history(symbol: str) -> list[dict[str, Any]]:
         )
     except Exception as exc:
         logger.warning("earnings surprise fetch failed for %s: %s", symbol, exc)
+        _SURPRISE_CACHE[symbol] = (now + 300.0, [])
         return []
     rows = (
         ((payload.get("data") or {}).get("earningsSurpriseTable") or {}).get("rows")
@@ -397,7 +424,7 @@ def _nasdaq_get(url: str, *, referer: str) -> dict[str, Any]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
             payload = json.loads(resp.read().decode())
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise ValueError(f"Nasdaq request failed: {exc}") from exc
