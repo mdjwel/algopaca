@@ -49,7 +49,7 @@ from bot.backtest import (
     run_portfolio_backtest,
     summary_from_result,
 )
-from bot import backtest_store, dip_hunt_store, followon_store, reinvest_store
+from bot import backtest_store, dip_hunt_store, followon_store, reinvest_store, custom_engine_store
 from bot.dip_hunt import (
     ACTIVE_STATUSES as _DIP_HUNT_ACTIVE,
     CANCELLABLE_STATUSES as _DIP_HUNT_CANCELLABLE,
@@ -202,6 +202,7 @@ class RunSettings:
     notify_browser: bool = True
     notify_email: bool = False
     notification_email: str = ""
+    custom_engine_id: str = ""
 
 
 ALLOWED_TIMEFRAMES = ("1Min", "5Min", "15Min", "1Hour", "1Day")
@@ -486,6 +487,7 @@ class AppState:
                 "sma_presets": list_sma_presets(),
                 "dip_presets": list_dip_presets(),
                 "pair_presets": list_pair_presets(),
+                "custom_engines": custom_engine_store.list_custom_engines(self.user_id),
                 "ai_models": catalog_payload(),
             }
 
@@ -1504,6 +1506,9 @@ class AppState:
             notification_email = str(
                 data.get("notification_email", self.settings.notification_email) or ""
             ).strip()
+            custom_engine_id = str(
+                data.get("custom_engine_id", self.settings.custom_engine_id) or ""
+            ).strip()
 
             self.settings = RunSettings(
                 symbol=symbol,
@@ -1569,6 +1574,7 @@ class AppState:
                 notify_browser=notify_browser,
                 notify_email=notify_email,
                 notification_email=notification_email,
+                custom_engine_id=custom_engine_id,
             )
             if self.settings.fast_sma >= self.settings.slow_sma:
                 raise ValueError("Fast SMA must be smaller than Slow SMA")

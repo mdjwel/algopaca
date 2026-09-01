@@ -192,6 +192,16 @@ class ClearAiKeysIn(BaseModel):
     clear_env: bool = True
 
 
+class CustomEngineIn(BaseModel):
+    id: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field("", max_length=500)
+    base_engine: str = "ai"
+    instructions: Optional[str] = ""
+    choices: Optional[dict[str, Any]] = None
+    is_blueprint: Optional[bool] = False
+
+
 class ReinvestIn(BaseModel):
     """Buy the shares back after the sell on this ticket fills.
 
@@ -1565,6 +1575,75 @@ def clear_keys(body: ClearAiKeysIn, user: dict = Depends(require_auth)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/custom-engines")
+def get_custom_engines(
+    include_blueprints: bool = True, user: dict = Depends(require_auth)
+) -> dict:
+    from bot import custom_engine_store
+
+    engines = custom_engine_store.list_custom_engines(
+        user["id"], include_blueprints=include_blueprints
+    )
+    return {"ok": True, "engines": engines}
+
+
+@app.get("/api/custom-engines/{engine_id}")
+def get_single_custom_engine(
+    engine_id: str, user: dict = Depends(require_auth)
+) -> dict:
+    from bot import custom_engine_store
+
+    engine = custom_engine_store.get_custom_engine(engine_id, user["id"])
+    if not engine:
+        raise HTTPException(status_code=404, detail="Custom engine not found")
+    return {"ok": True, "engine": engine}
+
+
+@app.post("/api/custom-engines")
+def create_or_save_custom_engine(
+    body: CustomEngineIn, user: dict = Depends(require_auth)
+) -> dict:
+    from bot import custom_engine_store
+
+    try:
+        data = body.model_dump()
+        saved = custom_engine_store.save_custom_engine(data, user["id"])
+        return {"ok": True, "engine": saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/custom-engines/{engine_id}")
+def delete_custom_engine_endpoint(
+    engine_id: str, user: dict = Depends(require_auth)
+) -> dict:
+    from bot import custom_engine_store
+
+    deleted = custom_engine_store.delete_custom_engine(engine_id, user["id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not delete custom engine (blueprints cannot be deleted)",
+        )
+    return {"ok": True, "id": engine_id}
+
+
+@app.post("/api/custom-engines/{engine_id}/duplicate")
+def duplicate_custom_engine_endpoint(
+    engine_id: str, user: dict = Depends(require_auth)
+) -> dict:
+    from bot import custom_engine_store
+
+    cloned = custom_engine_store.duplicate_custom_engine(engine_id, user["id"])
+    if not cloned:
+        raise HTTPException(
+            status_code=404, detail="Custom engine not found for duplication"
+        )
+    return {"ok": True, "engine": cloned}
 
 
 @app.get("/api/trades")

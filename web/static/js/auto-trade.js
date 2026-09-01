@@ -40,6 +40,9 @@ let suppressWatchlistUntilStop = false;
 let smaPresets = [];
 let dipPresets = [];
 let pairPresets = [];
+let customEngines = [];
+let activeCustomEngineId = null;
+let activeCustomEngine = null;
 let aiModels = { openai: [], gemini: [], anthropic: [], xai: [], defaults: {} };
 let applyingPreset = false;
 let resultHistory = [];
@@ -175,6 +178,7 @@ function formPayload() {
       formValue("xai_model", aiModels.defaults?.xai || FALLBACK_XAI_MODEL) ||
         FALLBACK_XAI_MODEL
     ).trim(),
+    custom_engine_id: activeCustomEngineId || "",
     lang: typeof i18n !== "undefined" ? i18n.getCurrentLanguage() : "en",
   };
 }
@@ -1262,6 +1266,484 @@ function syncSmaHint() {
   }
 }
 
+/* ── Custom Engine Management ────────────────────────────────── */
+
+function findCustomEngine(id) {
+  return customEngines.find((e) => e.id === id) || null;
+}
+
+function populateCustomEngineSelect(engines) {
+  const select = $("field-custom-engine-select");
+  if (!select) return;
+  const list = Array.isArray(engines) ? engines : [];
+  const current = activeCustomEngineId || select.value || "";
+
+  const blueprints = list.filter((e) => e.is_blueprint);
+  const userEngines = list.filter((e) => !e.is_blueprint);
+
+  let html = `<option value="">${escapeHtml(tx("select_custom_engine", "— Standard Engines / Select Custom —"))}</option>`;
+
+  if (userEngines.length > 0) {
+    html += `<optgroup label="${escapeHtml(tx("my_custom_engines", "My Custom Engines"))}">`;
+    userEngines.forEach((e) => {
+      const type = (e.base_engine || "AI").toUpperCase();
+      html += `<option value="${escapeHtml(e.id)}" data-display="${escapeHtml(e.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(e.name)}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+
+  if (blueprints.length > 0) {
+    html += `<optgroup label="${escapeHtml(tx("starter_blueprints", "Starter Blueprints"))}">`;
+    blueprints.forEach((b) => {
+      const type = (b.base_engine || "AI").toUpperCase();
+      html += `<option value="${escapeHtml(b.id)}" data-display="${escapeHtml(b.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(b.name)}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+
+  select.innerHTML = html;
+  select.value = current;
+  if (select._niceSelect) {
+    refreshNiceSelect(select);
+  } else if (typeof ensureNiceSelect === "function") {
+    ensureNiceSelect(select);
+  }
+}
+
+function applyCustomEngine(engineId, { syncPersist = true } = {}) {
+  const engine = findCustomEngine(engineId);
+  const form = $("settings");
+  if (!engine || !form) return;
+
+  activeCustomEngineId = engine.id;
+  activeCustomEngine = engine;
+
+  const select = $("field-custom-engine-select");
+  if (select && select.value !== engine.id) {
+    select.value = engine.id;
+    refreshNiceSelect(select);
+  }
+
+  const choices = engine.choices || {};
+  const baseMode = engine.base_engine || choices.strategy_mode || "ai";
+
+  applyingPreset = true;
+
+  if (form.strategy_mode) {
+    form.strategy_mode.value = baseMode;
+    refreshNiceSelect(form.strategy_mode);
+  }
+
+  // AI fields & models
+  if (baseMode === "ai") {
+    if (form.ai_preset) {
+      form.ai_preset.value = "custom";
+      refreshNiceSelect(form.ai_preset);
+    }
+    if (form.ai_instructions) {
+      form.ai_instructions.value = engine.instructions || choices.ai_instructions || "";
+    }
+    if (form.ai_provider && choices.ai_provider) {
+      form.ai_provider.value = choices.ai_provider;
+      refreshNiceSelect(form.ai_provider);
+    }
+    if (form.ai_min_confidence && choices.ai_min_confidence !== undefined) {
+      form.ai_min_confidence.value = choices.ai_min_confidence;
+    }
+    if (choices.openai_model && form.openai_model) {
+      form.openai_model.value = choices.openai_model;
+      refreshNiceSelect(form.openai_model);
+    }
+    if (choices.gemini_model && form.gemini_model) {
+      form.gemini_model.value = choices.gemini_model;
+      refreshNiceSelect(form.gemini_model);
+    }
+    if (choices.anthropic_model && form.anthropic_model) {
+      form.anthropic_model.value = choices.anthropic_model;
+      refreshNiceSelect(form.anthropic_model);
+    }
+    if (choices.xai_model && form.xai_model) {
+      form.xai_model.value = choices.xai_model;
+      refreshNiceSelect(form.xai_model);
+    }
+  }
+
+  // Market & Sizing
+  if (choices.symbol && form.symbol) form.symbol.value = choices.symbol;
+  if (choices.symbols && form.symbols) form.symbols.value = choices.symbols;
+  if (choices.bar_timeframe && form.bar_timeframe) {
+    form.bar_timeframe.value = choices.bar_timeframe;
+    refreshNiceSelect(form.bar_timeframe);
+  }
+  if (choices.size_mode) {
+    selectSizeMode(choices.size_mode);
+  }
+  if (choices.trade_qty !== undefined && form.trade_qty) form.trade_qty.value = choices.trade_qty;
+  if (choices.trade_notional !== undefined && form.trade_notional) form.trade_notional.value = choices.trade_notional;
+  if (choices.poll_seconds !== undefined && form.poll_seconds) form.poll_seconds.value = choices.poll_seconds;
+
+  // Technical fields
+  if (choices.fast_sma !== undefined && form.fast_sma) form.fast_sma.value = choices.fast_sma;
+  if (choices.slow_sma !== undefined && form.slow_sma) form.slow_sma.value = choices.slow_sma;
+  if (choices.sma_preset && form.sma_preset) {
+    form.sma_preset.value = choices.sma_preset;
+    refreshNiceSelect(form.sma_preset);
+  }
+  if (choices.dip_rsi_buy !== undefined && form.dip_rsi_buy) form.dip_rsi_buy.value = choices.dip_rsi_buy;
+  if (choices.dip_rsi_sell !== undefined && form.dip_rsi_sell) form.dip_rsi_sell.value = choices.dip_rsi_sell;
+  if (choices.dip_skip_bearish !== undefined && form.dip_skip_bearish) form.dip_skip_bearish.checked = !!choices.dip_skip_bearish;
+  if (choices.pair_preset && form.pair_preset) {
+    form.pair_preset.value = choices.pair_preset;
+    refreshNiceSelect(form.pair_preset);
+  }
+  if (choices.pair_sma_period !== undefined && form.pair_sma_period) form.pair_sma_period.value = choices.pair_sma_period;
+  if (choices.pair_lookback !== undefined && form.pair_lookback) form.pair_lookback.value = choices.pair_lookback;
+  if (choices.pair_impulse_pct !== undefined && form.pair_impulse_pct) form.pair_impulse_pct.value = choices.pair_impulse_pct;
+  if (choices.pair_weak_side && form.pair_weak_side) {
+    form.pair_weak_side.value = choices.pair_weak_side;
+    refreshNiceSelect(form.pair_weak_side);
+  }
+  if (choices.ls_ema_fast !== undefined && form.ls_ema_fast) form.ls_ema_fast.value = choices.ls_ema_fast;
+  if (choices.ls_ema_slow !== undefined && form.ls_ema_slow) form.ls_ema_slow.value = choices.ls_ema_slow;
+  if (choices.ls_adx_min !== undefined && form.ls_adx_min) form.ls_adx_min.value = choices.ls_adx_min;
+  if (choices.ls_atr_stop_mult !== undefined && form.ls_atr_stop_mult) form.ls_atr_stop_mult.value = choices.ls_atr_stop_mult;
+  if (choices.ls_risk_pct !== undefined && form.ls_risk_pct) form.ls_risk_pct.value = choices.ls_risk_pct;
+  if (choices.ls_rr !== undefined && form.ls_rr) form.ls_rr.value = choices.ls_rr;
+  if (choices.ls_time_stop_bars !== undefined && form.ls_time_stop_bars) form.ls_time_stop_bars.value = choices.ls_time_stop_bars;
+
+  // Risk Engine
+  if (choices.risk_engine_enabled !== undefined && $("field-risk-engine-enabled")) {
+    $("field-risk-engine-enabled").checked = !!choices.risk_engine_enabled;
+  }
+  if (choices.ai_risk_pct !== undefined && form.ai_risk_pct) form.ai_risk_pct.value = choices.ai_risk_pct;
+  if (choices.ai_atr_stop_mult !== undefined && form.ai_atr_stop_mult) form.ai_atr_stop_mult.value = choices.ai_atr_stop_mult;
+  if (choices.ai_take_profit_r !== undefined && form.ai_take_profit_r) form.ai_take_profit_r.value = choices.ai_take_profit_r;
+  if (choices.ai_trail_after_r !== undefined && form.ai_trail_after_r) form.ai_trail_after_r.value = choices.ai_trail_after_r;
+  if (choices.ai_max_positions !== undefined && form.ai_max_positions) form.ai_max_positions.value = choices.ai_max_positions;
+  if (choices.ai_daily_loss_limit_pct !== undefined && form.ai_daily_loss_limit_pct) form.ai_daily_loss_limit_pct.value = choices.ai_daily_loss_limit_pct;
+  if (choices.ai_min_hold_minutes !== undefined && form.ai_min_hold_minutes) form.ai_min_hold_minutes.value = choices.ai_min_hold_minutes;
+  if (choices.ai_cooldown_minutes !== undefined && form.ai_cooldown_minutes) form.ai_cooldown_minutes.value = choices.ai_cooldown_minutes;
+  if (choices.ai_max_spread_bps !== undefined && form.ai_max_spread_bps) form.ai_max_spread_bps.value = choices.ai_max_spread_bps;
+  if (choices.stop_limit_offset_pct !== undefined && form.stop_limit_offset_pct) form.stop_limit_offset_pct.value = choices.stop_limit_offset_pct;
+
+  // Options
+  if (choices.options_enabled !== undefined && $("field-options-enabled")) {
+    $("field-options-enabled").checked = !!choices.options_enabled;
+  }
+  if (choices.options_style && form.options_style) {
+    form.options_style.value = choices.options_style;
+    refreshNiceSelect(form.options_style);
+  }
+  if (choices.options_dte_min !== undefined && form.options_dte_min) form.options_dte_min.value = choices.options_dte_min;
+  if (choices.options_dte_max !== undefined && form.options_dte_max) form.options_dte_max.value = choices.options_dte_max;
+  if (choices.options_otm_pct !== undefined && form.options_otm_pct) form.options_otm_pct.value = choices.options_otm_pct;
+  if (choices.options_max_contracts !== undefined && form.options_max_contracts) form.options_max_contracts.value = choices.options_max_contracts;
+  if (choices.options_max_premium_pct !== undefined && form.options_max_premium_pct) form.options_max_premium_pct.value = choices.options_max_premium_pct;
+
+  // Execution & Notifications
+  if (choices.require_approval !== undefined && $("field-require-approval")) {
+    $("field-require-approval").checked = !!choices.require_approval;
+  }
+  if (choices.notify_browser !== undefined && $("field-notify-browser")) {
+    $("field-notify-browser").checked = !!choices.notify_browser;
+  }
+  if (choices.notify_email !== undefined && $("field-notify-email")) {
+    $("field-notify-email").checked = !!choices.notify_email;
+  }
+  if (choices.notification_email !== undefined && $("field-notification-email")) {
+    $("field-notification-email").value = choices.notification_email;
+  }
+
+  // Active banner UI
+  const banner = $("active-custom-engine-pill");
+  const bannerName = $("active-custom-engine-name");
+  const bannerType = $("active-custom-engine-type");
+  if (banner && bannerName && bannerType) {
+    bannerName.textContent = engine.name;
+    bannerType.textContent = (engine.base_engine || "AI").toUpperCase();
+    banner.hidden = false;
+  }
+  const modifiedBadge = $("active-custom-engine-modified");
+  if (modifiedBadge) modifiedBadge.hidden = true;
+
+  applyingPreset = false;
+
+  syncModeUi();
+  syncDeskAccordions();
+  syncPresetHint();
+  syncWatchlistComposer();
+  syncRunZone();
+
+  if (syncPersist) {
+    formDirty = true;
+    schedulePersistSettings();
+  }
+
+  showToast(tx("applied_custom_engine_toast", `Custom Engine '${engine.name}' applied to desk.`, { name: engine.name }), "ok");
+}
+
+function detachCustomEngine({ syncPersist = true } = {}) {
+  activeCustomEngineId = null;
+  activeCustomEngine = null;
+  const banner = $("active-custom-engine-pill");
+  if (banner) banner.hidden = true;
+  const modifiedBadge = $("active-custom-engine-modified");
+  if (modifiedBadge) modifiedBadge.hidden = true;
+  const select = $("field-custom-engine-select");
+  if (select) {
+    select.value = "";
+    refreshNiceSelect(select);
+  }
+  if (syncPersist) {
+    formDirty = true;
+    schedulePersistSettings();
+  }
+}
+
+let inlineCeIsNewCopy = false;
+
+function openInlineSaveEngineDrawer({ isNewCopy = false } = {}) {
+  inlineCeIsNewCopy = !!isNewCopy;
+  const drawer = $("inline-custom-engine-drawer");
+  const titleEl = $("inline-ce-drawer-title");
+  const nameInput = $("inline-ce-name");
+  const descInput = $("inline-ce-desc");
+  const errEl = $("inline-ce-error");
+  if (!drawer) return;
+
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.hidden = true;
+  }
+
+  const deskP = formPayload();
+
+  if (titleEl) {
+    titleEl.textContent = isNewCopy
+      ? tx("save_as_new_copy", "Save as New Custom Engine")
+      : tx("save_as_custom_engine", "Save as Custom Trading Engine");
+  }
+
+  if (nameInput) {
+    if (activeCustomEngine && isNewCopy) {
+      nameInput.value = `${activeCustomEngine.name} (Copy)`;
+    } else if (activeCustomEngine && !isNewCopy) {
+      nameInput.value = activeCustomEngine.name;
+    } else {
+      nameInput.value = `${deskP.symbol || "Custom"} Strategy Engine`;
+    }
+  }
+
+  if (descInput) {
+    descInput.value = activeCustomEngine?.description || "";
+  }
+
+  drawer.hidden = false;
+  if (nameInput) {
+    setTimeout(() => {
+      nameInput.focus();
+      nameInput.select();
+    }, 50);
+  }
+}
+
+function closeInlineSaveEngineDrawer() {
+  const drawer = $("inline-custom-engine-drawer");
+  if (drawer) drawer.hidden = true;
+  const errEl = $("inline-ce-error");
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.hidden = true;
+  }
+}
+
+async function handleSaveDeskAsCustomEngine() {
+  const errEl = $("inline-ce-error");
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.hidden = true;
+  }
+
+  const nameInput = $("inline-ce-name");
+  const descInput = $("inline-ce-desc");
+  const name = (nameInput?.value || "").trim();
+  const description = (descInput?.value || "").trim();
+
+  if (!name) {
+    if (errEl) {
+      errEl.textContent = tx("engine_name_required", "Engine name is required.");
+      errEl.hidden = false;
+    }
+    nameInput?.focus();
+    return;
+  }
+
+  const deskP = formPayload();
+  const payload = {
+    name,
+    description,
+    base_engine: deskP.strategy_mode || "ai",
+    instructions: deskP.ai_instructions || "",
+    choices: deskP,
+  };
+
+  try {
+    setBusy(true, tx("saving_custom_engine", "Saving custom trading engine…"));
+    const res = await api("/api/custom-engines", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok || !res.engine) {
+      throw new Error(res.detail || "Could not save custom engine.");
+    }
+
+    const saved = res.engine;
+    showToast(tx("custom_engine_saved", `Custom engine '${saved.name}' saved.`, { name: saved.name }), "ok");
+
+    closeInlineSaveEngineDrawer();
+    await refreshCustomEngines();
+    applyCustomEngine(saved.id, { syncPersist: true });
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message || "Failed to save custom engine.";
+      errEl.hidden = false;
+    }
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleUpdateActiveCustomEngine() {
+  if (!activeCustomEngineId) return;
+
+  const current = findCustomEngine(activeCustomEngineId);
+  if (!current) return;
+
+  if (current.is_blueprint) {
+    // Starter blueprint cannot be overwritten directly, open save as new copy
+    openInlineSaveEngineDrawer({ isNewCopy: true });
+    return;
+  }
+
+  const deskP = formPayload();
+  const payload = {
+    id: current.id,
+    name: current.name,
+    description: current.description,
+    base_engine: deskP.strategy_mode || "ai",
+    instructions: deskP.ai_instructions || "",
+    choices: deskP,
+  };
+
+  try {
+    setBusy(true, tx("updating_custom_engine", `Updating engine '${current.name}'…`, { name: current.name }));
+    const res = await api("/api/custom-engines", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok || !res.engine) {
+      throw new Error(res.detail || "Could not update custom engine.");
+    }
+
+    const updated = res.engine;
+    activeCustomEngine = updated;
+
+    const modifiedBadge = $("active-custom-engine-modified");
+    if (modifiedBadge) modifiedBadge.hidden = true;
+
+    await refreshCustomEngines();
+    showToast(tx("custom_engine_updated", `Custom engine '${updated.name}' updated with current desk settings.`, { name: updated.name }), "ok");
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+
+async function refreshCustomEngines() {
+  try {
+    const res = await api("/api/custom-engines");
+    if (res.ok && Array.isArray(res.engines)) {
+      customEngines = res.engines;
+      populateCustomEngineSelect(customEngines);
+      if (activeCustomEngineId) {
+        const eng = findCustomEngine(activeCustomEngineId);
+        if (eng) {
+          activeCustomEngine = eng;
+          const banner = $("active-custom-engine-pill");
+          const bannerName = $("active-custom-engine-name");
+          const bannerType = $("active-custom-engine-type");
+          if (banner && bannerName && bannerType) {
+            bannerName.textContent = eng.name;
+            bannerType.textContent = (eng.base_engine || "AI").toUpperCase();
+            banner.hidden = false;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Could not refresh custom engines:", err);
+  }
+}
+
+async function duplicateActiveCustomEngine(engineId) {
+  if (!engineId) return;
+  try {
+    setBusy(true, tx("duplicating_engine", "Duplicating custom engine…"));
+    const res = await api(`/api/custom-engines/${encodeURIComponent(engineId)}/duplicate`, {
+      method: "POST",
+    });
+    if (!res.ok || !res.engine) {
+      throw new Error(res.detail || "Could not duplicate custom engine.");
+    }
+    await refreshCustomEngines();
+    applyCustomEngine(res.engine.id, { syncPersist: true });
+    showToast(tx("engine_duplicated", `Duplicated as '${res.engine.name}'.`, { name: res.engine.name }), "ok");
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deleteActiveCustomEngine(engineId) {
+  if (!engineId) return;
+  const engine = findCustomEngine(engineId);
+  if (!engine) return;
+
+  if (engine.is_blueprint) {
+    showToast(tx("cannot_delete_blueprint", "Starter blueprints cannot be deleted."), "warn");
+    return;
+  }
+
+  const confirmMsg = tx("confirm_delete_engine", `Delete custom engine '${engine.name}'?`, { name: engine.name });
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    setBusy(true, tx("deleting_engine", "Deleting custom engine…"));
+    const res = await api(`/api/custom-engines/${encodeURIComponent(engineId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      throw new Error(res.detail || "Could not delete custom engine.");
+    }
+    if (activeCustomEngineId === engineId) {
+      detachCustomEngine({ syncPersist: true });
+    }
+    await refreshCustomEngines();
+    showToast(tx("engine_deleted", `Custom engine '${engine.name}' deleted.`, { name: engine.name }), "ok");
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+
 function applySettings(settings, { force = false } = {}) {
   if (!settings) return;
   lastDeskSettings = settings;
@@ -1396,6 +1878,29 @@ function applySettings(settings, { force = false } = {}) {
       settings.xai_model || aiModels.defaults?.xai || FALLBACK_XAI_MODEL
     );
   }
+  if (settings.custom_engine_id) {
+    activeCustomEngineId = settings.custom_engine_id;
+    const eng = findCustomEngine(activeCustomEngineId);
+    if (eng) {
+      activeCustomEngine = eng;
+      const banner = $("active-custom-engine-pill");
+      const bannerName = $("active-custom-engine-name");
+      const bannerType = $("active-custom-engine-type");
+      if (banner && bannerName && bannerType) {
+        bannerName.textContent = eng.name;
+        bannerType.textContent = (eng.base_engine || "AI").toUpperCase();
+        banner.hidden = false;
+      }
+      const select = $("field-custom-engine-select");
+      if (select && select.value !== eng.id) {
+        select.value = eng.id;
+        refreshNiceSelect(select);
+      }
+    }
+  } else if (settings.custom_engine_id === "") {
+    detachCustomEngine({ syncPersist: false });
+  }
+
   formDirty = false;
   lastPrimarySymbol = String(settings.symbol || "AAPL").trim().toUpperCase();
   persistStatus = "ready";
@@ -1981,6 +2486,10 @@ function render(state, { forceSettings = false } = {}) {
   if (Array.isArray(state.pair_presets)) {
     pairPresets = state.pair_presets;
   }
+  if (Array.isArray(state.custom_engines)) {
+    customEngines = state.custom_engines;
+    populateCustomEngineSelect(customEngines);
+  }
   applySettings(state.settings, { force: forceSettings });
   applyAccount(state.account);
   applyAiKeys(state.ai_ready, state.ai_key_status);
@@ -2289,6 +2798,10 @@ function schedulePersistSettings() {
 if (form) {
   form.addEventListener("input", (ev) => {
     formDirty = true;
+    if (activeCustomEngineId) {
+      const mod = $("active-custom-engine-modified");
+      if (mod) mod.hidden = false;
+    }
     const name = ev.target?.name;
     markPresetCustomIfEdited(ev);
     maybeSyncWatchlistFromPrimary(ev);
@@ -2316,6 +2829,10 @@ if (form) {
   });
   form.addEventListener("change", (ev) => {
     formDirty = true;
+    if (activeCustomEngineId) {
+      const mod = $("active-custom-engine-modified");
+      if (mod) mod.hidden = false;
+    }
     const name = ev.target?.name;
     if (name === "ai_preset") {
       applyAiPreset(ev.target.value, { forceInstructions: true });
@@ -2365,6 +2882,7 @@ if (form) {
     }, 0);
   });
 }
+
 
 $("btn-refresh")?.addEventListener("click", onRefresh);
 $("btn-once")?.addEventListener("click", onOnce);
@@ -2659,14 +3177,90 @@ $("field-notify-email")?.addEventListener("change", (ev) => {
   }
 });
 
+/* ── Custom Engine Event Listeners ───────────────────────────── */
+$("field-custom-engine-select")?.addEventListener("change", (ev) => {
+  const val = ev.target.value;
+  if (val) {
+    applyCustomEngine(val, { syncPersist: true });
+  } else {
+    detachCustomEngine();
+  }
+});
+
+$("btn-save-current-as-custom")?.addEventListener("click", () => {
+  openInlineSaveEngineDrawer({ isNewCopy: false });
+});
+
+$("btn-save-as-new-custom-engine")?.addEventListener("click", () => {
+  openInlineSaveEngineDrawer({ isNewCopy: true });
+});
+
+$("btn-update-active-custom-engine")?.addEventListener("click", () => {
+  handleUpdateActiveCustomEngine();
+});
+
+$("btn-duplicate-active-custom-engine")?.addEventListener("click", () => {
+  if (activeCustomEngineId) {
+    duplicateActiveCustomEngine(activeCustomEngineId);
+  }
+});
+
+$("btn-delete-active-custom-engine")?.addEventListener("click", () => {
+  if (activeCustomEngineId) {
+    deleteActiveCustomEngine(activeCustomEngineId);
+  }
+});
+
+$("btn-detach-custom-engine")?.addEventListener("click", () => {
+  detachCustomEngine();
+});
+
+$("btn-confirm-inline-ce")?.addEventListener("click", () => {
+  handleSaveDeskAsCustomEngine();
+});
+
+$("btn-cancel-inline-ce")?.addEventListener("click", () => {
+  closeInlineSaveEngineDrawer();
+});
+
+$("inline-ce-name")?.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    handleSaveDeskAsCustomEngine();
+  } else if (ev.key === "Escape") {
+    closeInlineSaveEngineDrawer();
+  }
+});
+
+$("inline-ce-desc")?.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+    ev.preventDefault();
+    handleSaveDeskAsCustomEngine();
+  } else if (ev.key === "Escape") {
+    closeInlineSaveEngineDrawer();
+  }
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    const drawer = $("inline-custom-engine-drawer");
+    if (drawer && !drawer.hidden) {
+      closeInlineSaveEngineDrawer();
+    }
+  }
+});
+
+
 // Auto-trade event listeners and initialization
 document.addEventListener("DOMContentLoaded", () => {
   syncModeUi();
   refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));
+  refreshCustomEngines().catch((err) => console.error("Custom engines fetch error:", err));
 });
 if (document.readyState === "interactive" || document.readyState === "complete") {
   syncModeUi();
   refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));
+  refreshCustomEngines().catch((err) => console.error("Custom engines fetch error:", err));
 }
 
 function onDeskStatusUpdate(state, { forceSettings } = {}) {
@@ -2695,6 +3289,9 @@ function onDeskLanguageChange() {
   }
   if (Array.isArray(dipPresets) && dipPresets.length) {
     populateDipPresetOptions(dipPresets);
+  }
+  if (Array.isArray(customEngines) && customEngines.length) {
+    populateCustomEngineSelect(customEngines);
   }
 
   const loopBtn = $("btn-loop");

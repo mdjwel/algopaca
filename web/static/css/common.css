@@ -918,7 +918,8 @@ a.ghost.bt-link-btn {
 }
 
 /* ── Forms & Nice Select ───────────────────────────────────────── */
-/* Nice Select 2 — match desk form fields */
+/* Nice Select 2 — match desk form fields & fintech dark UI */
+.nice-select,
 .form .nice-select,
 .history-filter-fields .nice-select,
 .page-settings .nice-select,
@@ -929,29 +930,39 @@ a.ghost.bt-link-btn {
   width: 100%;
   height: auto;
   min-height: 2.75rem;
-  line-height: 1.3;
-  padding: 0.65rem 1.85rem 0.65rem 0.7rem;
+  line-height: 1.35;
+  padding: 0.65rem 2.2rem 0.65rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background-color: var(--input-bg);
   color: var(--text);
-  font-family: var(--mono);
-  font-size: 0.95rem;
-  font-weight: 400;
+  font-family: var(--ui);
+  font-size: 0.9rem;
+  font-weight: 500;
   text-transform: none;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
+.nice-select:hover,
 .form .nice-select:hover,
 .history-filter-fields .nice-select:hover,
 .page-settings .nice-select:hover,
 .bt-detail-pick .nice-select:hover,
 .pos-sort-group .nice-select:hover {
-  border-color: color-mix(in srgb, var(--copper) 60%, var(--line));
+  border-color: color-mix(in srgb, var(--copper) 65%, var(--line));
+  background-color: color-mix(in srgb, var(--panel) 45%, var(--input-bg));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
+.nice-select:active,
+.nice-select:focus,
+.nice-select.open,
 .form .nice-select:active,
 .form .nice-select:focus,
 .form .nice-select.open,
@@ -968,42 +979,68 @@ a.ghost.bt-link-btn {
 .pos-sort-group .nice-select:focus,
 .pos-sort-group .nice-select.open {
   border-color: var(--copper);
-  box-shadow: 0 0 0 2px var(--glow);
+  background-color: color-mix(in srgb, var(--panel) 65%, var(--input-bg));
+  box-shadow: 0 0 0 2px var(--glow), 0 4px 16px rgba(0, 0, 0, 0.35);
+  outline: none;
 }
 
+.nice-select:after,
 .form .nice-select:after,
 .history-filter-fields .nice-select:after,
 .page-settings .nice-select:after,
 .bt-detail-pick .nice-select:after,
 .pos-sort-group .nice-select:after {
-  border-bottom-color: var(--muted);
-  border-right-color: var(--muted);
+  content: "";
+  display: block;
+  position: absolute;
   right: 14px;
-  height: 6px;
+  top: 50%;
   width: 6px;
-  margin-top: -5px;
+  height: 6px;
+  border-bottom: 2px solid var(--muted);
+  border-right: 2px solid var(--muted);
+  transform: translateY(-70%) rotate(45deg);
+  transform-origin: 66% 66%;
+  pointer-events: none;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease;
+  margin-top: 0;
 }
 
+.nice-select:hover:after,
+.form .nice-select:hover:after,
+.history-filter-fields .nice-select:hover:after,
+.page-settings .nice-select:hover:after,
+.bt-detail-pick .nice-select:hover:after,
+.pos-sort-group .nice-select:hover:after {
+  border-bottom-color: var(--text);
+  border-right-color: var(--text);
+}
+
+.nice-select.open:after,
+.form .nice-select.open:after,
+.history-filter-fields .nice-select.open:after,
+.page-settings .nice-select.open:after,
+.bt-detail-pick .nice-select.open:after,
+.pos-sort-group .nice-select.open:after {
+  transform: translateY(-30%) rotate(-135deg);
+  border-bottom-color: var(--copper);
+  border-right-color: var(--copper);
+}
+
+.nice-select.disabled,
 .form .nice-select.disabled,
 .history-filter-fields .nice-select.disabled,
 .page-settings .nice-select.disabled,
 .bt-detail-pick .nice-select.disabled,
 .pos-sort-group .nice-select.disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   border-color: var(--line);
   color: var(--muted);
   cursor: not-allowed;
+  pointer-events: none;
 }
 
-.form .nice-select.disabled:after,
-.history-filter-fields .nice-select.disabled:after,
-.page-settings .nice-select.disabled:after,
-.bt-detail-pick .nice-select.disabled:after,
-.pos-sort-group .nice-select.disabled:after {
-  border-bottom-color: var(--muted);
-  border-right-color: var(--muted);
-}
-
+.nice-select .current,
 .form .nice-select .current,
 .history-filter-fields .nice-select .current,
 .page-settings .nice-select .current,
@@ -1012,51 +1049,118 @@ a.ghost.bt-link-btn {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Without this the label wraps and spills over the next field. */
   white-space: nowrap;
+  width: 100%;
 }
 
+.nice-select .nice-select-dropdown,
 .form .nice-select .nice-select-dropdown,
 .history-filter-fields .nice-select .nice-select-dropdown,
 .page-settings .nice-select .nice-select-dropdown,
 .bt-detail-pick .nice-select .nice-select-dropdown,
 .pos-sort-group .nice-select .nice-select-dropdown {
-  top: calc(100% + 4px);
-  margin-top: 0;
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
   width: 100%;
   min-width: 100%;
-  max-height: min(16rem, 50vh);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background-color: var(--panel);
-  box-shadow: var(--shadow-md);
+  margin-top: 0;
+  background-color: color-mix(in srgb, var(--panel) 96%, transparent);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, var(--line));
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 24px rgba(212, 137, 76, 0.08);
+  max-height: min(18rem, 55vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  z-index: 120;
+  padding: 0.35rem;
   transform-origin: top center;
-  z-index: 30;
+  transform: scale(0.98) translateY(-4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.nice-select.open .nice-select-dropdown,
+.form .nice-select.open .nice-select-dropdown,
+.history-filter-fields .nice-select.open .nice-select-dropdown,
+.page-settings .nice-select.open .nice-select-dropdown,
+.bt-detail-pick .nice-select.open .nice-select-dropdown,
+.pos-sort-group .nice-select.open .nice-select-dropdown {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nice-select .list,
 .form .nice-select .list,
 .history-filter-fields .nice-select .list,
 .page-settings .nice-select .list,
 .bt-detail-pick .nice-select .list,
 .pos-sort-group .nice-select .list {
   margin: 0;
-  padding: 0.25rem 0;
+  padding: 0;
+  list-style: none;
 }
 
+/* Optgroup section header */
+.nice-select .optgroup,
+.form .nice-select .optgroup,
+.history-filter-fields .nice-select .optgroup,
+.page-settings .nice-select .optgroup {
+  padding: 0.55rem 0.65rem 0.25rem;
+  font-family: var(--ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nice-select .optgroup:not(:first-child),
+.form .nice-select .optgroup:not(:first-child) {
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Option items */
+.nice-select .option,
 .form .nice-select .option,
 .history-filter-fields .nice-select .option,
 .page-settings .nice-select .option,
 .bt-detail-pick .nice-select .option,
 .pos-sort-group .nice-select .option {
-  min-height: 2.4rem;
-  line-height: 1.3;
-  padding: 0.55rem 0.75rem;
+  min-height: 2.25rem;
+  line-height: 1.35;
+  padding: 0.48rem 0.65rem;
   color: var(--text);
-  font-family: var(--mono);
-  font-size: 0.88rem;
+  font-family: var(--ui);
+  font-size: 0.86rem;
+  font-weight: 500;
   white-space: normal;
+  cursor: pointer;
+  border-radius: calc(var(--radius-sm) - 2px);
+  margin: 1px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
+.nice-select .option:hover,
+.nice-select .option.focus,
+.nice-select .option.selected.focus,
 .form .nice-select .option:hover,
 .form .nice-select .option.focus,
 .form .nice-select .option.selected.focus,
@@ -1072,9 +1176,11 @@ a.ghost.bt-link-btn {
 .pos-sort-group .nice-select .option:hover,
 .pos-sort-group .nice-select .option.focus,
 .pos-sort-group .nice-select .option.selected.focus {
-  background-color: color-mix(in srgb, var(--copper) 16%, transparent);
+  background-color: color-mix(in srgb, var(--copper) 14%, rgba(255, 255, 255, 0.04));
+  color: var(--text);
 }
 
+.nice-select .option.selected,
 .form .nice-select .option.selected,
 .history-filter-fields .nice-select .option.selected,
 .page-settings .nice-select .option.selected,
@@ -1082,33 +1188,88 @@ a.ghost.bt-link-btn {
 .pos-sort-group .nice-select .option.selected {
   font-weight: 600;
   color: var(--copper);
+  background-color: color-mix(in srgb, var(--copper) 18%, transparent);
 }
 
+.nice-select .option.disabled,
 .form .nice-select .option.disabled,
 .history-filter-fields .nice-select .option.disabled,
 .page-settings .nice-select .option.disabled,
 .bt-detail-pick .nice-select .option.disabled,
 .pos-sort-group .nice-select .option.disabled {
-  color: #6a7788;
+  color: var(--muted);
+  opacity: 0.55;
   cursor: not-allowed;
+  font-size: 0.82rem;
 }
 
-.form .nice-select .list::-webkit-scrollbar,
-.history-filter-fields .nice-select .list::-webkit-scrollbar,
-.page-settings .nice-select .list::-webkit-scrollbar,
-.bt-detail-pick .nice-select .list::-webkit-scrollbar,
-.pos-sort-group .nice-select .list::-webkit-scrollbar {
-  width: 6px;
+/* Extra tags (e.g. [AI], [SMA], etc. badges) */
+.nice-select .extra {
+  float: right;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
+.nice-tag {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.25;
+  display: inline-block;
+}
+
+.nice-tag.tag-ai {
+  background: rgba(192, 132, 252, 0.16);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.35);
+}
+
+.nice-tag.tag-sma {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.nice-tag.tag-dip {
+  background: rgba(240, 198, 116, 0.16);
+  color: #f0c674;
+  border: 1px solid rgba(240, 198, 116, 0.35);
+}
+
+.nice-tag.tag-pair {
+  background: rgba(63, 191, 143, 0.16);
+  color: #3fbf8f;
+  border: 1px solid rgba(63, 191, 143, 0.35);
+}
+
+.nice-tag.tag-ls {
+  background: rgba(212, 137, 76, 0.16);
+  color: #d4894c;
+  border: 1px solid rgba(212, 137, 76, 0.35);
+}
+
+/* Dropdown scrollbars */
+.nice-select .nice-select-dropdown::-webkit-scrollbar,
 .form .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .history-filter-fields .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .page-settings .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .bt-detail-pick .nice-select .nice-select-dropdown::-webkit-scrollbar,
 .pos-sort-group .nice-select .nice-select-dropdown::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
+.nice-select .nice-select-dropdown::-webkit-scrollbar-track,
+.form .nice-select .nice-select-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
 .form .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
 .history-filter-fields .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
 .page-settings .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb,
@@ -1116,6 +1277,11 @@ a.ghost.bt-link-btn {
 .pos-sort-group .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 999px;
+}
+
+.nice-select .nice-select-dropdown::-webkit-scrollbar-thumb:hover,
+.form .nice-select .nice-select-dropdown::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }
 
 .form input:focus-visible,

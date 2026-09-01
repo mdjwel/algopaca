@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Autonomous Algorithmic Paper &amp; Live Trading Desk</strong><br>
-  <em>5 Algorithmic Engines • Options Overlay • 4 AI Providers • Auto-Trade Approval Queue • Multi-User Auth &amp; Admin • Mobile PWA &amp; Web Desk</em>
+  <em>5 Algorithmic Engines • Custom Blueprints • Options Overlay • 4 AI Providers • Auto-Trade Approval Queue • Multi-User Auth &amp; Admin • Mobile PWA &amp; Web Desk</em>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 
 ---
 
-AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, an **Alpaca options overlay**, **multi-provider AI reasoning** (OpenAI, Google Gemini, Anthropic Claude, xAI Grok), **mechanical risk guardrails**, an **auto-trade approval queue**, an interactive **walk-forward backtesting suite**, a **multi-user authentication & admin dashboard**, and a fast, responsive **web & mobile trading desk**.
+AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, **customizable strategy blueprints**, an **Alpaca options overlay**, **multi-provider AI reasoning** (OpenAI, Google Gemini, Anthropic Claude, xAI Grok), **mechanical risk guardrails**, an **auto-trade approval queue**, an interactive **walk-forward backtesting suite**, a **multi-user authentication & admin dashboard**, and a fast, responsive **web & mobile trading desk**.
 
 > [!NOTE]
 > 💸 **100% Free Platform & Commission-Free Trading**:
@@ -65,6 +65,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 - 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
 - 🧠 **Multi-Provider AI Intelligence**: Seamlessly switch between top-tier LLMs—**OpenAI** (GPT-4o, GPT-4o-mini, o3-mini), **Google Gemini** (Gemini 2.0 Flash, Gemini 1.5 Pro), **Anthropic Claude** (Claude 3.7 Sonnet, Claude 3.5 Sonnet, Claude 3.5 Haiku), and **xAI Grok** (Grok-2, Grok-beta)—to fuse quantitative technical indicators, financial news sentiment, Nasdaq earnings surprises, and macroeconomic calendar events into reasoned JSON trading decisions.
+- 🛠️ **Custom Trading Engines & Starter Blueprints**: Save any active desk setup—strategy parameters, custom AI prompts, risk limits, and indicator gates—as a reusable Custom Engine, or launch instantly from 7 pre-built starter blueprints.
 - 🎯 **Alpaca Options Overlay**: Automatically map algorithmic and AI signals onto defined-risk options strategies (vertical debit spreads, long calls/puts, and covered hedges) with automated strike and DTE selection.
 - 🚦 **Auto-Trade & Human-in-the-Loop Approval Queue**: Choose between full autonomous continuous execution or **Approval Mode**, where candidate trades are staged in an approval queue with full reasoning, entry/exit levels, and risk metrics for single-click review.
 - 📱 **Mobile-First App Experience (PWA)**: Complete responsive mobile shell featuring a native-feeling top app header, bottom navigation bar, slide-out drawer, mobile order ticketing, and fast touch interactions.
@@ -79,12 +80,17 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 ## ✨ Key Features
 
-- 📈 **5 Algorithmic Trading Engines**:
+- 📈 **5 Algorithmic Trading Engines & Custom Strategy Blueprints**:
   1. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple proven presets (Golden Cross, Swing, Fibonacci, etc.).
   2. **Buy the Dip** — Oversold mean-reversion with RSI + lower Bollinger wash entries and recovery exits.
   3. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
   4. **Regime Dual Momentum (L/S)** — Daily EMA + ADX regime gate with MACD histogram triggers and ATR-based risk sizing.
   5. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
+  6. **Custom Trading Engines & Starter Blueprints** — Save, duplicate, customize, and switch between named custom trading engines with tailored rules, AI instructions, and mechanical risk parameters.
+- 🛠️ **Custom Trading Engines & Starter Blueprints**:
+  - Save any combination of strategy parameters, prompt instructions, indicator triggers, and risk rules as a persistent, user-isolated **Custom Engine**.
+  - Includes ready-to-trade **Starter Blueprints**: *AI Trend & Volatility Surfer*, *AI Deep Dip Hunter*, *Earnings Catalyst & News Momentum*, *Dynamic SMA ATR Shield*, *Regime Momentum L/S*, *Quant RSI Dip Hunter*, and *Statistical Relative Strength Pair*.
+  - Instant 1-click loading, dirty state detection with "Modified" badge indicators, in-place updating, blueprint duplication, and safe deletion.
 - 🎯 **Alpaca Options Overlay**:
   - Automatically translates equity signals into defined-risk options contracts.
   - Supports **Vertical Debit Spreads** (Call/Put spreads for capped risk/reward), **Long Options** (ATM calls/puts), and **Covered Hedges** (Protective puts and covered calls).
@@ -130,6 +136,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 | **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
 | **LS** | Dual Momentum | Trend strength momentum (Long/Short) | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target. |
 | **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
+| **Custom Engines** | User-Defined & Blueprints | Composable strategies & starter templates | Save, clone, and switch custom rules, custom AI directives, and risk parameters across any base engine. |
 | **Options Overlay** | Defined-Risk Derivatives | Maps equity signals directly to Alpaca options | **Vertical Debit Spreads** (Bull Call / Bear Put spreads), **Long Options** (ATM calls/puts), **Covered Hedges** (Protective puts / Covered calls). |
 
 ### 🎯 Options Overlay in Action
@@ -477,6 +484,7 @@ algopaca/
 │   ├── backtest_store.py    # Backtest results persistence
 │   ├── client.py            # Alpaca API client & market data wrapper
 │   ├── config.py            # Configuration loader & validator
+│   ├── custom_engine_store.py # User custom engines & starter blueprint persistence
 │   ├── desk_risk.py         # Multi-engine risk verification
 │   ├── dip_hunt.py          # Buy-the-dip engine
 │   ├── earnings.py          # Nasdaq earnings calendar & EPS surprise parser

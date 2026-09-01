@@ -95,3 +95,5 @@ yarn-error.log*
 .reinvest_plans.live.json
 .approvals.paper.json
 .approvals.live.json
+.custom_engines.*.json
+.custom_engines.json

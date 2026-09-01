@@ -154,6 +154,73 @@
               <p class="field-help strategy-intro" data-i18n="strategy_intro">Pick an engine, set the symbols to evaluate, then Run once. Buy/sell signals place paper or live orders.</p>
               <fieldset class="field-group">
                 <legend data-i18n="engine">Engine</legend>
+
+                <div class="custom-engine-header-row">
+                  <div class="custom-engine-selector-wrap">
+                    <label for="field-custom-engine-select" class="sr-only" data-i18n="custom_engines">Custom Engines</label>
+                    <select id="field-custom-engine-select" aria-label="Custom Engines" data-i18n-aria-label="custom_engines">
+                      <option value="" data-i18n="select_custom_engine">— Standard / Custom Strategy —</option>
+                    </select>
+                  </div>
+                  <div class="custom-engine-actions">
+                    <button type="button" id="btn-save-current-as-custom" class="btn btn-sm btn-copper custom-engine-btn" title="Save current desk configuration as a custom engine" data-i18n-title="btn_save_as_custom" aria-label="Save as custom engine" data-i18n-aria-label="btn_save_as_custom">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                      <span data-i18n="save_as_engine">Save Engine</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Active Custom Engine Banner -->
+                <div id="active-custom-engine-pill" class="active-custom-engine-banner" hidden>
+                  <div class="custom-engine-banner-info">
+                    <span class="custom-engine-badge-tag" data-i18n="active_custom_engine">Active Engine</span>
+                    <strong id="active-custom-engine-name" class="custom-engine-banner-name">Custom Engine Name</strong>
+                    <span id="active-custom-engine-type" class="custom-engine-banner-type">AI</span>
+                    <span id="active-custom-engine-modified" class="custom-engine-modified-tag" hidden data-i18n="modified">Modified</span>
+                  </div>
+                  <div class="custom-engine-banner-actions">
+                    <button type="button" id="btn-update-active-custom-engine" class="btn btn-xs btn-copper custom-engine-save-btn" title="Update and save changes to this engine" data-i18n-title="update_active_engine" aria-label="Update active engine">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <span data-i18n="save_changes">Save Changes</span>
+                    </button>
+                    <button type="button" id="btn-save-as-new-custom-engine" class="btn-icon-tiny" title="Save as a new custom engine copy" data-i18n-title="save_as_new_copy" aria-label="Save as new copy">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                    </button>
+                    <button type="button" id="btn-duplicate-active-custom-engine" class="btn-icon-tiny" title="Duplicate this custom engine" data-i18n-title="duplicate_custom_engine" aria-label="Duplicate custom engine">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                    <button type="button" id="btn-delete-active-custom-engine" class="btn-icon-tiny text-danger" title="Delete this custom engine" data-i18n-title="delete_custom_engine" aria-label="Delete custom engine">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                    <button type="button" id="btn-detach-custom-engine" class="btn-icon-tiny" title="Detach / Switch to unlinked desk" data-i18n-title="detach_custom_engine" aria-label="Detach custom engine">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Inline Save Custom Engine Drawer -->
+                <div id="inline-custom-engine-drawer" class="inline-ce-drawer" hidden>
+                  <div class="inline-ce-drawer-head">
+                    <strong class="inline-ce-drawer-title" id="inline-ce-drawer-title" data-i18n="save_as_custom_engine">Save as Custom Trading Engine</strong>
+                    <p class="inline-ce-drawer-subtitle" data-i18n="inline_ce_drawer_desc">Saves all current desk parameters, risk guards, and trading instructions into your engine library.</p>
+                  </div>
+                  <div class="inline-ce-drawer-fields">
+                    <label for="inline-ce-name" class="stack">
+                      <span data-i18n="engine_name">Engine Name</span>
+                      <input type="text" id="inline-ce-name" maxlength="100" placeholder="e.g. Tech Alpha Momentum" data-i18n-placeholder="placeholder_engine_name" />
+                    </label>
+                    <label for="inline-ce-desc" class="stack">
+                      <span data-i18n="description_optional">Description (optional)</span>
+                      <input type="text" id="inline-ce-desc" maxlength="300" placeholder="Brief strategy summary" data-i18n-placeholder="placeholder_engine_desc" />
+                    </label>
+                  </div>
+                  <div id="inline-ce-error" class="inline-ce-error form-error" role="alert" hidden></div>
+                  <div class="inline-ce-drawer-actions">
+                    <button type="button" id="btn-cancel-inline-ce" class="btn btn-sm ghost" data-i18n="cancel">Cancel</button>
+                    <button type="button" id="btn-confirm-inline-ce" class="btn btn-sm btn-copper primary" data-i18n="save_engine">Save Engine</button>
+                  </div>
+                </div>
+
                 <label for="field-mode" class="stack"><span data-i18n="mode">Mode</span>
                   <select id="field-mode" name="strategy_mode" aria-describedby="mode-hint engine-side">
                     <option value="sma" data-i18n="mode_sma">SMA crossover</option>
@@ -674,6 +741,7 @@
       </div>
     </footer>
   </div>
+
   <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
   <script src="/static/i18n.js"></script>
   <script src="/static/js/common.js"></script>

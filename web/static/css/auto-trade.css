@@ -644,3 +644,292 @@ details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
   border-color: #10b981;
 }
 
+/* ── Custom Engine Controls & Banner ────────────────────────── */
+.custom-engine-header-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.custom-engine-selector-wrap {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.custom-engine-selector-wrap .nice-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-weight: 600;
+}
+
+.custom-engine-selector-wrap .nice-select .current {
+  max-width: calc(100% - 1.8rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.custom-engine-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.custom-engine-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.custom-engine-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.5rem;
+  min-width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.active-custom-engine-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--copper) 40%, transparent);
+  margin-bottom: 0.35rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  animation: fadeIn 0.2s ease;
+}
+
+.custom-engine-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.custom-engine-badge-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: var(--copper);
+  color: #0b0f19;
+}
+
+.custom-engine-banner-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-engine-banner-type {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.custom-engine-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.btn-icon-tiny {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-tiny:hover {
+  background: color-mix(in srgb, var(--line) 80%, transparent);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.btn-icon-tiny.text-danger:hover {
+  background: color-mix(in srgb, var(--sell) 20%, transparent);
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 40%, transparent);
+}
+
+/* ── Inline Custom Engine Drawer ────────────────────────────── */
+.inline-ce-drawer {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 90%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--copper) 50%, var(--line));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--copper) 15%, transparent);
+  animation: inlineDrawerSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.inline-ce-drawer[hidden] {
+  display: none !important;
+}
+
+@keyframes inlineDrawerSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inline-ce-drawer-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.inline-ce-drawer-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--copper);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inline-ce-drawer-subtitle {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.inline-ce-drawer-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 0.85rem;
+}
+
+.inline-ce-drawer-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.inline-ce-drawer-fields input {
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--ui);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-ce-drawer-fields input:focus {
+  border-color: var(--copper);
+  box-shadow: 0 0 0 2px var(--glow);
+  outline: none;
+}
+
+.inline-ce-error {
+  font-size: 0.76rem;
+  color: var(--sell);
+  background: color-mix(in srgb, var(--sell) 12%, transparent);
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--sell) 30%, transparent);
+}
+
+.inline-ce-error[hidden] {
+  display: none !important;
+}
+
+.inline-ce-drawer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.custom-engine-modified-tag {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.custom-engine-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .inline-ce-drawer-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
