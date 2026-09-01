@@ -71,7 +71,7 @@
   padding: 1rem 1.05rem 0.9rem;
   border: 1px dashed var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.4);
+  background: var(--surface-soft);
   container-type: inline-size;
   container-name: date-range;
 }
@@ -248,7 +248,7 @@
   padding: 0.6rem 0.75rem;
   border-left: 2px solid var(--hold);
   border-radius: var(--radius-sm);
-  background: rgba(12, 18, 25, 0.5);
+  background: var(--surface-soft);
   font-family: var(--mono);
   font-size: 0.72rem;
   line-height: 1.5;
@@ -258,7 +258,7 @@
 .history-warning[data-tone="warn"] {
   border-left-color: var(--copper);
   color: var(--text);
-  background: rgba(212, 137, 76, 0.08);
+  background: color-mix(in srgb, var(--copper) 10%, transparent);
 }
 
 /* ── Closed-trade stats ───────────────────────────────────────────── */
@@ -276,7 +276,7 @@
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.4);
+  background: var(--surface-soft);
 }
 
 .history-stats > div {
@@ -384,7 +384,7 @@
   padding: 0.6rem 0.5rem 0.3rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.4);
+  background: color-mix(in srgb, var(--panel-bg) 65%, var(--ink));
 }
 
 /* ── Day grouping (accordion) ───────────────────────────────────── */
@@ -550,8 +550,8 @@
      the numbers above it, not another number. */
   background: linear-gradient(
     180deg,
-    rgba(212, 137, 76, 0.05),
-    rgba(12, 18, 25, 0.4)
+    color-mix(in srgb, var(--copper) 6%, transparent),
+    var(--surface-soft)
   );
 }
 
@@ -605,7 +605,7 @@
   padding: 0.55rem 0.7rem;
   border-left: 2px solid var(--hold);
   border-radius: var(--radius-sm);
-  background: rgba(12, 18, 25, 0.55);
+  background: var(--surface-soft);
   font-family: var(--mono);
   font-size: 0.72rem;
   line-height: 1.5;
@@ -669,9 +669,9 @@
 .review-narrative.is-filled {
   margin: 0 0 0.9rem;
   padding: 0.85rem 0.95rem;
-  border: 1px solid rgba(212, 137, 76, 0.28);
+  border: 1px solid color-mix(in srgb, var(--copper) 28%, var(--line));
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.55);
+  background: var(--surface-soft);
 }
 
 .review-narrative p {
@@ -711,7 +711,7 @@
      a single number. */
   border-left: 3px solid var(--hold);
   border-radius: var(--radius-sm);
-  background: rgba(12, 18, 25, 0.45);
+  background: var(--surface-soft);
 }
 
 .review-pm[data-outcome="win"] { border-left-color: var(--buy); }
@@ -850,7 +850,7 @@
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(12, 18, 25, 0.45);
+  background: var(--surface-soft);
 }
 
 .review-lesson.is-saved {

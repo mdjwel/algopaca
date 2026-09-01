@@ -342,12 +342,22 @@
       btn.addEventListener("click", () => {
         const themeVal = btn.getAttribute("data-theme-val");
         if (themeVal) {
-          document.documentElement.setAttribute("data-theme", themeVal);
-          try { localStorage.setItem("algopaca_theme", themeVal); } catch (e) {}
+          if (typeof setDeskTheme === "function") {
+            setDeskTheme(themeVal);
+          } else {
+            document.documentElement.setAttribute("data-theme", themeVal);
+            try {
+              localStorage.setItem("algopaca_theme", themeVal);
+              document.cookie = `algopaca_theme=${encodeURIComponent(themeVal)}; path=/; max-age=31536000; SameSite=Lax`;
+            } catch (e) {}
+            window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: themeVal } }));
+          }
           syncMobileThemeButtons();
         }
       });
     });
+
+    window.addEventListener("themechange", syncMobileThemeButtons);
 
     // Language selector in sheet
     function syncMobileLangSelect() {

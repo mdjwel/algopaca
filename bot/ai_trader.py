@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from alpaca.trading.enums import OrderSide
@@ -51,65 +53,115 @@ class AiTradingBot:
             xai_model=config.xai_model,
         )
         self.brain = AiBrain(config, self.service, provider)
+        self._execution_lock = threading.Lock()
+        self._open_positions = 0
 
     def run_once(
         self,
         should_stop: Callable[[], bool] | None = None,
+        on_progress: Callable[[list[dict[str, Any]]], None] | None = None,
     ) -> dict[str, Any]:
         symbols = self.config.primary_symbols()
         stopping = should_stop or (lambda: False)
         if stopping():
             return self._empty_bundle()
-        # Portfolio state is read once so every symbol this cycle is judged
-        # against the same exposure picture.
-        open_positions = 0
+
+        # Portfolio state and market session are read once per cycle so every
+        # symbol shares the same exposure picture and avoids redundant network calls.
         day_pl_pct: float | None = None
+        shared_account: dict[str, Any] = {}
+        shared_session: dict[str, Any] = {}
         try:
-            account = self.service.account_summary()
-            day_pl_pct = account.get("day_pl_pct")
-            open_positions = sum(
+            shared_account = self.service.account_summary()
+            day_pl_pct = shared_account.get("day_pl_pct")
+            self._open_positions = sum(
                 1 for s in symbols if self.service.get_position_qty(s) != 0
             )
         except Exception as exc:
             logger.warning("could not read portfolio state: %s", exc)
 
-        results: list[dict[str, Any]] = []
-        for symbol in symbols:
-            # Stop is checked per symbol so the watchlist tail is skipped
-            # instead of waiting out a full pass of LLM round trips.
+        try:
+            shared_session = self.service.market_session()
+        except Exception:
+            shared_session = {}
+
+        results_by_symbol: dict[str, dict[str, Any]] = {}
+        results_lock = threading.Lock()
+
+        def _evaluate(sym: str) -> dict[str, Any]:
             if stopping():
-                logger.info("AI cycle stopped before %s", symbol)
-                break
-            try:
-                result = self._run_symbol(
-                    symbol,
-                    open_positions=open_positions,
-                    day_pl_pct=day_pl_pct,
-                    should_stop=stopping,
-                )
-                intent = result.get("intent")
-                if intent in {"open_long", "open_short"}:
-                    open_positions += 1
-                elif intent in {"close_long", "cover"}:
-                    # A slot freed earlier this cycle must be spendable later in
-                    # it, the same way one taken is counted against later symbols.
-                    open_positions = max(0, open_positions - 1)
-                results.append(result)
-            except CycleStopped:
-                logger.info("AI cycle stopped during %s", symbol)
-                break
-            except Exception as exc:
-                logger.exception("AI iteration failed for %s", symbol)
-                results.append(
-                    {
-                        "symbol": symbol,
-                        "signal": Signal.HOLD.value,
-                        "price": 0.0,
-                        "reason": f"error: {exc}",
-                        "error": str(exc),
-                        "provider": self.config.ai_provider,
-                    }
-                )
+                raise CycleStopped(sym)
+            return self._run_symbol(
+                sym,
+                day_pl_pct=day_pl_pct,
+                shared_account=shared_account,
+                shared_session=shared_session,
+                should_stop=stopping,
+            )
+
+        def _publish_progress() -> None:
+            if on_progress:
+                current = [results_by_symbol[s] for s in symbols if s in results_by_symbol]
+                try:
+                    on_progress(current)
+                except Exception as exc:
+                    logger.debug("on_progress notification failed: %s", exc)
+
+        workers = min(8, len(symbols)) if len(symbols) > 1 else 1
+
+        if workers <= 1:
+            for symbol in symbols:
+                if stopping():
+                    logger.info("AI cycle stopped before %s", symbol)
+                    break
+                try:
+                    res = _evaluate(symbol)
+                    with results_lock:
+                        results_by_symbol[symbol] = res
+                        _publish_progress()
+                except CycleStopped:
+                    logger.info("AI cycle stopped during %s", symbol)
+                    break
+                except Exception as exc:
+                    logger.exception("AI iteration failed for %s", symbol)
+                    with results_lock:
+                        results_by_symbol[symbol] = {
+                            "symbol": symbol,
+                            "signal": Signal.HOLD.value,
+                            "price": 0.0,
+                            "reason": f"error: {exc}",
+                            "error": str(exc),
+                            "provider": self.config.ai_provider,
+                        }
+                        _publish_progress()
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_evaluate, s): s for s in symbols}
+                for fut in as_completed(futures):
+                    sym = futures[fut]
+                    if stopping():
+                        logger.info("AI cycle stopped while evaluating %s", sym)
+                        continue
+                    try:
+                        res = fut.result()
+                    except CycleStopped:
+                        logger.info("AI cycle stopped during %s", sym)
+                        continue
+                    except Exception as exc:
+                        logger.exception("AI iteration failed for %s", sym)
+                        res = {
+                            "symbol": sym,
+                            "signal": Signal.HOLD.value,
+                            "price": 0.0,
+                            "reason": f"error: {exc}",
+                            "error": str(exc),
+                            "provider": self.config.ai_provider,
+                        }
+                    with results_lock:
+                        results_by_symbol[sym] = res
+                        _publish_progress()
+
+        results = [results_by_symbol[s] for s in symbols if s in results_by_symbol]
         primary = results[0] if results else self._empty_bundle()["primary"]
         apply_options_overlays(self.config, self.service, results)
         if results:
@@ -131,12 +183,17 @@ class AiTradingBot:
         self,
         symbol: str,
         *,
-        open_positions: int = 0,
         day_pl_pct: float | None = None,
+        shared_account: dict[str, Any] | None = None,
+        shared_session: dict[str, Any] | None = None,
         should_stop: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         stopping = should_stop or (lambda: False)
-        context = self.brain.build_context(symbol)
+        context = self.brain.build_context(
+            symbol,
+            shared_account=shared_account,
+            shared_session=shared_session,
+        )
 
         # Manage what is already open before asking the model anything. Stops and
         # take-profits are mechanical and must not depend on an LLM round trip.
@@ -146,330 +203,337 @@ class AiTradingBot:
         elif float(context.get("position_qty") or 0) == 0:
             clear_trade_state(symbol, paper=bool(self.config.paper))
 
-        gate = entry_gates(
-            self.config,
-            context,
-            open_positions=open_positions,
-            day_pl_pct=day_pl_pct,
-        )
-
         # Open risk is managed above because stops are mechanical; the model
         # round trip below is the slow part and is worth skipping on Stop.
         if stopping():
             raise CycleStopped(symbol)
 
         decision, context = self.brain.decide(symbol, context)
+        if stopping():
+            raise CycleStopped(symbol)
+
         mark = context.get("mark") or {}
         price = float(mark.get("price") or context.get("technicals", {}).get("price") or 0)
+        display_price = price
         position_qty = float(context.get("position_qty") or 0)
         session = (context.get("session") or {}).get("session", "?")
 
-        # Portfolio guards only ever block *new* risk — closing and covering stay open.
-        opens_new_risk = position_qty == 0 and decision.action in {
-            Signal.BUY.value,
-            Signal.SELL.value,
-        }
-        blocked_reason = ""
-        if opens_new_risk and not gate.allowed:
-            blocked_reason = gate.reason
-            decision = self.brain.hold_decision(decision, gate.reason)
-
-        reason = (
-            f"[{decision.provider}/{decision.model}] conf={decision.confidence:.2f} "
-            f"ta={decision.ta_bias} news={decision.news_bias} | {decision.thesis}"
-        )
-        if decision.risks:
-            reason += f" | risks: {decision.risks}"
-        if managed.get("actions"):
-            reason += " | " + "; ".join(managed["actions"])
-
-        logger.info(
-            "%s | AI signal=%s mark=%.2f session=%s pos=%.4f conf=%.2f | %s",
-            symbol,
-            decision.action,
-            price,
-            session,
-            position_qty,
-            decision.confidence,
-            decision.thesis,
-        )
-
-        payload: dict[str, Any] = {
-            "symbol": symbol,
-            "signal": decision.action,
-            "price": price,
-            "bar_close": context.get("technicals", {}).get("price"),
-            "session": session,
-            "is_open": mark.get("is_open"),
-            "price_source": mark.get("source"),
-            "price_asof": mark.get("asof"),
-            "fast_sma": (context.get("technicals") or {}).get("sma", {}).get("10") or 0,
-            "slow_sma": (context.get("technicals") or {}).get("sma", {}).get("50") or 0,
-            "rsi": (context.get("technicals") or {}).get("rsi_14"),
-            "trend_bias": (context.get("technicals") or {}).get("trend_bias"),
-            "atr_pct": (context.get("technicals") or {}).get("atr_pct"),
-            "adx": (context.get("technicals") or {}).get("adx_14"),
-            "regime": (context.get("technicals") or {}).get("regime"),
-            "htf_bias": (context.get("higher_timeframe") or {}).get("bias"),
-            "spread_bps": context.get("spread_bps"),
-            "r_multiple": (context.get("position") or {}).get("r_multiple"),
-            "avg_entry": (context.get("position") or {}).get("avg_entry"),
-            "unrealized_pct": (context.get("position") or {}).get("unrealized_pct"),
-            "risk_blocked": blocked_reason or None,
-            "managed": managed or None,
-            "reason": reason,
-            "position": position_qty,
-            "position_side": (
-                "long" if position_qty > 0 else "short" if position_qty < 0 else "flat"
-            ),
-            "confidence": decision.confidence,
-            "provider": decision.provider,
-            "model": decision.model,
-            "thesis": decision.thesis,
-            "risks": decision.risks,
-            # The English originals plus the language the localized pair is in,
-            # so the UI can render either without re-running the model.
-            "thesis_en": decision.thesis_en,
-            "risks_en": decision.risks_en,
-            "note_lang": normalize_lang(getattr(self.config, "lang", None)),
-            "news_bias": decision.news_bias,
-            "ta_bias": decision.ta_bias,
-            "news_count": len(context.get("news") or []),
-            "calendar_count": len(context.get("economic_calendar") or []),
-            "earnings_stance": (context.get("earnings") or {}).get("stance"),
-            "earnings_result": (context.get("earnings") or {}).get("last_result"),
-            "earnings_blackout": bool((context.get("earnings") or {}).get("blackout")),
-            "stop_loss_pct": self.config.stop_loss_pct,
-            "context_summary": {
-                "rsi": (context.get("technicals") or {}).get("rsi_14"),
-                "trend": (context.get("technicals") or {}).get("trend_bias"),
-                "sma10": (context.get("technicals") or {}).get("sma", {}).get("10"),
-                "sma50": (context.get("technicals") or {}).get("sma", {}).get("50"),
-                "earnings": {
-                    "stance": (context.get("earnings") or {}).get("stance"),
-                    "blackout": (context.get("earnings") or {}).get("blackout"),
-                    "plan": (context.get("earnings") or {}).get("plan"),
-                    "next": (context.get("earnings") or {}).get("next"),
-                    "last_result": (context.get("earnings") or {}).get("last_result"),
-                },
-                "upcoming_events": [
-                    {
-                        "title": e.get("title"),
-                        "when_et": e.get("when_et"),
-                        "impact": e.get("impact"),
-                    }
-                    for e in (context.get("economic_calendar") or [])[:5]
-                ],
-                "headlines": [n.get("title") for n in (context.get("news") or [])[:5]],
-            },
-        }
-
-        if decision.action == Signal.HOLD.value:
-            if position_qty != 0:
-                self._arm_stop(symbol, payload)
-            return payload
-
-        session_info = self.service.market_session()
-        if session_info["session"] == "closed":
-            logger.warning(
-                "skipping order — market closed until %s",
-                session_info.get("next_open"),
+        with self._execution_lock:
+            gate = entry_gates(
+                self.config,
+                context,
+                open_positions=self._open_positions,
+                day_pl_pct=day_pl_pct,
             )
-            payload["reason"] += " | skipped: market closed"
-            return payload
 
-        if self.service.has_open_orders(symbol):
-            logger.warning("skipping — open orders already exist for %s", symbol)
-            payload["reason"] += " | skipped: open orders"
-            return payload
+            # Portfolio guards only ever block *new* risk — closing and covering stay open.
+            opens_new_risk = position_qty == 0 and decision.action in {
+                Signal.BUY.value,
+                Signal.SELL.value,
+            }
+            blocked_reason = ""
+            if opens_new_risk and not gate.allowed:
+                blocked_reason = gate.reason
+                decision = self.brain.hold_decision(decision, gate.reason)
 
-        qty = decision.qty
-        stop_distance = (context.get("risk") or {}).get("stop_distance") or 0
-        entry_stop_long = (
-            round(price - float(stop_distance), 2)
-            if (stop_distance and price > 0)
-            else None
-        )
-        entry_stop_short = (
-            round(price + float(stop_distance), 2)
-            if (stop_distance and price > 0)
-            else None
-        )
-        if decision.action == Signal.BUY.value and position_qty < 0:
-            cover_qty = min(abs(position_qty), qty if qty > 0 else abs(position_qty))
-            sized = self._qty_for_session(cover_qty, whole=abs(position_qty) >= 1)
-            if sized is None:
-                payload["reason"] += " | skipped: qty"
+            reason = (
+                f"[{decision.provider}/{decision.model}] conf={decision.confidence:.2f} "
+                f"ta={decision.ta_bias} news={decision.news_bias} | {decision.thesis}"
+            )
+            if decision.risks:
+                reason += f" | risks: {decision.risks}"
+            if managed.get("actions"):
+                reason += " | " + "; ".join(managed["actions"])
+
+            logger.info(
+                "%s | AI signal=%s mark=%.2f session=%s pos=%.4f conf=%.2f | %s",
+                symbol,
+                decision.action,
+                price,
+                session,
+                position_qty,
+                decision.confidence,
+                decision.thesis,
+            )
+
+            payload: dict[str, Any] = {
+                "symbol": symbol,
+                "signal": decision.action,
+                "price": price,
+                "bar_close": context.get("technicals", {}).get("price"),
+                "session": session,
+                "is_open": mark.get("is_open"),
+                "price_source": mark.get("source"),
+                "price_asof": mark.get("asof"),
+                "fast_sma": (context.get("technicals") or {}).get("sma", {}).get("10") or 0,
+                "slow_sma": (context.get("technicals") or {}).get("sma", {}).get("50") or 0,
+                "rsi": (context.get("technicals") or {}).get("rsi_14"),
+                "trend_bias": (context.get("technicals") or {}).get("trend_bias"),
+                "atr_pct": (context.get("technicals") or {}).get("atr_pct"),
+                "adx": (context.get("technicals") or {}).get("adx_14"),
+                "regime": (context.get("technicals") or {}).get("regime"),
+                "htf_bias": (context.get("higher_timeframe") or {}).get("bias"),
+                "spread_bps": context.get("spread_bps"),
+                "r_multiple": (context.get("position") or {}).get("r_multiple"),
+                "avg_entry": (context.get("position") or {}).get("avg_entry"),
+                "unrealized_pct": (context.get("position") or {}).get("unrealized_pct"),
+                "risk_blocked": blocked_reason or None,
+                "managed": managed or None,
+                "reason": reason,
+                "position": position_qty,
+                "position_side": (
+                    "long" if position_qty > 0 else "short" if position_qty < 0 else "flat"
+                ),
+                "confidence": decision.confidence,
+                "provider": decision.provider,
+                "model": decision.model,
+                "thesis": decision.thesis,
+                "risks": decision.risks,
+                "thesis_en": decision.thesis_en,
+                "risks_en": decision.risks_en,
+                "note_lang": normalize_lang(getattr(self.config, "lang", None)),
+                "news_bias": decision.news_bias,
+                "ta_bias": decision.ta_bias,
+                "news_count": len(context.get("news") or []),
+                "calendar_count": len(context.get("economic_calendar") or []),
+                "earnings_stance": (context.get("earnings") or {}).get("stance"),
+                "earnings_result": (context.get("earnings") or {}).get("last_result"),
+                "earnings_blackout": bool((context.get("earnings") or {}).get("blackout")),
+                "stop_loss_pct": self.config.stop_loss_pct,
+                "context_summary": {
+                    "rsi": (context.get("technicals") or {}).get("rsi_14"),
+                    "trend": (context.get("technicals") or {}).get("trend_bias"),
+                    "sma10": (context.get("technicals") or {}).get("sma", {}).get("10"),
+                    "sma50": (context.get("technicals") or {}).get("sma", {}).get("50"),
+                    "earnings": {
+                        "stance": (context.get("earnings") or {}).get("stance"),
+                        "blackout": (context.get("earnings") or {}).get("blackout"),
+                        "plan": (context.get("earnings") or {}).get("plan"),
+                        "next": (context.get("earnings") or {}).get("next"),
+                        "last_result": (context.get("earnings") or {}).get("last_result"),
+                    },
+                    "upcoming_events": [
+                        {
+                            "title": e.get("title"),
+                            "when_et": e.get("when_et"),
+                            "impact": e.get("impact"),
+                        }
+                        for e in (context.get("economic_calendar") or [])[:5]
+                    ],
+                    "headlines": [n.get("title") for n in (context.get("news") or [])[:5]],
+                },
+            }
+
+            if decision.action == Signal.HOLD.value:
+                if position_qty != 0:
+                    self._arm_stop(symbol, payload)
                 return payload
-            if self.config.require_approval and self.approval_handler:
-                # Stage before pulling the resting stop — the ticket may wait in
-                # the queue, and a cancelled stop leaves the short unprotected.
-                appr = self.approval_handler(
-                    symbol=symbol,
-                    action="COVER",
-                    qty=sized,
-                    price=display_price,
-                    protect=False,
-                    reason=decision.reason,
-                    engine="ai",
-                    thesis=decision.thesis,
-                    confidence=decision.confidence,
-                    cancel_stops=True,
+
+            session_info = self.service.market_session()
+            if session_info.get("session") == "closed":
+                logger.warning(
+                    "skipping order — market closed until %s",
+                    session_info.get("next_open"),
                 )
-                logger.info("AI COVER pending approval: id=%s qty=%s", appr.get("id"), sized)
-                payload["order_id"] = None
-                payload["order_qty"] = sized
-                payload["pending_approval_id"] = appr.get("id")
-                payload["approval_required"] = True
-                payload["signal"] = Signal.BUY.value
-                payload["intent"] = "cover"
-                payload["reason"] += " | Pending user approval"
-            else:
-                cancelled = self.service.cancel_open_stop_orders(symbol)
-                if cancelled:
-                    logger.info(
-                        "cancelled %s protective stop(s) before COVER", cancelled
+                payload["reason"] += " | skipped: market closed"
+                return payload
+
+            if self.service.has_open_orders(symbol):
+                logger.warning("skipping — open orders already exist for %s", symbol)
+                payload["reason"] += " | skipped: open orders"
+                return payload
+
+            qty = decision.qty
+            stop_distance = (context.get("risk") or {}).get("stop_distance") or 0
+            entry_stop_long = (
+                round(price - float(stop_distance), 2)
+                if (stop_distance and price > 0)
+                else None
+            )
+            entry_stop_short = (
+                round(price + float(stop_distance), 2)
+                if (stop_distance and price > 0)
+                else None
+            )
+            if decision.action == Signal.BUY.value and position_qty < 0:
+                cover_qty = min(abs(position_qty), qty if qty > 0 else abs(position_qty))
+                sized = self._qty_for_session(cover_qty, whole=abs(position_qty) >= 1)
+                if sized is None:
+                    payload["reason"] += " | skipped: qty"
+                    return payload
+                if self.config.require_approval and self.approval_handler:
+                    appr = self.approval_handler(
+                        symbol=symbol,
+                        action="COVER",
+                        qty=sized,
+                        price=display_price,
+                        protect=False,
+                        reason=decision.reason,
+                        engine="ai",
+                        thesis=decision.thesis,
+                        confidence=decision.confidence,
+                        cancel_stops=True,
                     )
-                order = self.service.submit_order(
-                    symbol, sized, OrderSide.BUY, protect=False
-                )
-                logger.info("AI COVER submitted: id=%s qty=%s", order.id, sized)
-                payload["order_id"] = str(order.id)
-                payload["order_qty"] = sized
-                payload["signal"] = Signal.BUY.value
-                payload["intent"] = "cover"
-        elif decision.action == Signal.BUY.value and position_qty == 0:
-            sized = self._qty_for_session(qty)
-            if sized is None:
-                payload["reason"] += " | skipped: qty"
-                return payload
-            if self.config.require_approval and self.approval_handler:
-                appr = self.approval_handler(
-                    symbol=symbol,
-                    action="BUY",
-                    qty=sized,
-                    price=display_price,
-                    stop_price=entry_stop_long,
-                    stop_distance=stop_distance,
-                    reason=decision.reason,
-                    engine="ai",
-                    thesis=decision.thesis,
-                    confidence=decision.confidence,
-                )
-                logger.info("AI BUY pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_long)
-                payload["order_id"] = None
-                payload["order_qty"] = sized
-                payload["pending_approval_id"] = appr.get("id")
-                payload["approval_required"] = True
-                payload["intent"] = "open_long"
-                payload["reason"] += " | Pending user approval"
-            else:
-                order = self.service.submit_order(
-                    symbol, sized, OrderSide.BUY, stop_price=entry_stop_long
-                )
-                logger.info(
-                    "AI BUY submitted: id=%s qty=%s stop=%s",
-                    order.id,
-                    sized,
-                    entry_stop_long or f"{self.config.stop_loss_pct or 0}%",
-                )
-                payload["order_id"] = str(order.id)
-                payload["order_qty"] = sized
-                payload["intent"] = "open_long"
-                self._arm_stop(symbol, payload, stop_distance)
-        elif decision.action == Signal.SELL.value and position_qty > 0:
-            sell_qty = min(position_qty, qty if qty > 0 else position_qty)
-            sized = self._qty_for_session(sell_qty)
-            if sized is None:
-                payload["reason"] += " | skipped: qty"
-                return payload
-            if self.config.require_approval and self.approval_handler:
-                # Stage before pulling the resting stop — the ticket may wait in
-                # the queue, and a cancelled stop leaves the long unprotected.
-                appr = self.approval_handler(
-                    symbol=symbol,
-                    action="SELL",
-                    qty=sized,
-                    price=display_price,
-                    protect=False,
-                    reason=decision.reason,
-                    engine="ai",
-                    thesis=decision.thesis,
-                    confidence=decision.confidence,
-                    cancel_stops=True,
-                )
-                logger.info("AI SELL pending approval: id=%s qty=%s", appr.get("id"), sized)
-                payload["order_id"] = None
-                payload["order_qty"] = sized
-                payload["pending_approval_id"] = appr.get("id")
-                payload["approval_required"] = True
-                payload["intent"] = "close_long"
-                payload["reason"] += " | Pending user approval"
-            else:
-                cancelled = self.service.cancel_open_stop_orders(symbol)
-                if cancelled:
-                    logger.info(
-                        "cancelled %s protective stop(s) before SELL", cancelled
+                    logger.info("AI COVER pending approval: id=%s qty=%s", appr.get("id"), sized)
+                    payload["order_id"] = None
+                    payload["order_qty"] = sized
+                    payload["pending_approval_id"] = appr.get("id")
+                    payload["approval_required"] = True
+                    payload["signal"] = Signal.BUY.value
+                    payload["intent"] = "cover"
+                    payload["reason"] += " | Pending user approval"
+                    self._open_positions = max(0, self._open_positions - 1)
+                else:
+                    cancelled = self.service.cancel_open_stop_orders(symbol)
+                    if cancelled:
+                        logger.info(
+                            "cancelled %s protective stop(s) before COVER", cancelled
+                        )
+                    order = self.service.submit_order(
+                        symbol, sized, OrderSide.BUY, protect=False
                     )
-                order = self.service.submit_order(
-                    symbol, sized, OrderSide.SELL, protect=False
-                )
-                logger.info("AI SELL submitted: id=%s qty=%s", order.id, sized)
-                payload["order_id"] = str(order.id)
-                payload["order_qty"] = sized
-                payload["intent"] = "close_long"
-        elif decision.action == Signal.SELL.value and position_qty == 0:
-            # Alpaca does not short fractionals — whole shares only.
-            sized = self._qty_for_session(qty, whole=True)
-            if sized is None:
-                payload["reason"] += " | skipped: qty (shorts need whole shares)"
-                return payload
-            if self.config.require_approval and self.approval_handler:
-                appr = self.approval_handler(
-                    symbol=symbol,
-                    action="SHORT",
-                    qty=sized,
-                    price=display_price,
-                    stop_price=entry_stop_short,
-                    stop_distance=stop_distance,
-                    protect=True,
-                    reason=decision.reason,
-                    engine="ai",
-                    thesis=decision.thesis,
-                    confidence=decision.confidence,
-                )
-                logger.info("AI SHORT pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_short)
-                payload["order_id"] = None
-                payload["order_qty"] = sized
-                payload["pending_approval_id"] = appr.get("id")
-                payload["approval_required"] = True
-                payload["intent"] = "open_short"
-                payload["reason"] += " | Pending user approval"
+                    logger.info("AI COVER submitted: id=%s qty=%s", order.id, sized)
+                    payload["order_id"] = str(order.id)
+                    payload["order_qty"] = sized
+                    payload["signal"] = Signal.BUY.value
+                    payload["intent"] = "cover"
+                    self._open_positions = max(0, self._open_positions - 1)
+            elif decision.action == Signal.BUY.value and position_qty == 0:
+                sized = self._qty_for_session(qty)
+                if sized is None:
+                    payload["reason"] += " | skipped: qty"
+                    return payload
+                if self.config.require_approval and self.approval_handler:
+                    appr = self.approval_handler(
+                        symbol=symbol,
+                        action="BUY",
+                        qty=sized,
+                        price=display_price,
+                        stop_price=entry_stop_long,
+                        stop_distance=stop_distance,
+                        reason=decision.reason,
+                        engine="ai",
+                        thesis=decision.thesis,
+                        confidence=decision.confidence,
+                    )
+                    logger.info("AI BUY pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_long)
+                    payload["order_id"] = None
+                    payload["order_qty"] = sized
+                    payload["pending_approval_id"] = appr.get("id")
+                    payload["approval_required"] = True
+                    payload["intent"] = "open_long"
+                    payload["reason"] += " | Pending user approval"
+                    self._open_positions += 1
+                else:
+                    order = self.service.submit_order(
+                        symbol, sized, OrderSide.BUY, stop_price=entry_stop_long
+                    )
+                    logger.info(
+                        "AI BUY submitted: id=%s qty=%s stop=%s",
+                        order.id,
+                        sized,
+                        entry_stop_long or f"{self.config.stop_loss_pct or 0}%",
+                    )
+                    payload["order_id"] = str(order.id)
+                    payload["order_qty"] = sized
+                    payload["intent"] = "open_long"
+                    self._open_positions += 1
+                    self._arm_stop(symbol, payload, stop_distance)
+            elif decision.action == Signal.SELL.value and position_qty > 0:
+                sell_qty = min(position_qty, qty if qty > 0 else position_qty)
+                sized = self._qty_for_session(sell_qty)
+                if sized is None:
+                    payload["reason"] += " | skipped: qty"
+                    return payload
+                if self.config.require_approval and self.approval_handler:
+                    appr = self.approval_handler(
+                        symbol=symbol,
+                        action="SELL",
+                        qty=sized,
+                        price=display_price,
+                        protect=False,
+                        reason=decision.reason,
+                        engine="ai",
+                        thesis=decision.thesis,
+                        confidence=decision.confidence,
+                        cancel_stops=True,
+                    )
+                    logger.info("AI SELL pending approval: id=%s qty=%s", appr.get("id"), sized)
+                    payload["order_id"] = None
+                    payload["order_qty"] = sized
+                    payload["pending_approval_id"] = appr.get("id")
+                    payload["approval_required"] = True
+                    payload["intent"] = "close_long"
+                    payload["reason"] += " | Pending user approval"
+                    self._open_positions = max(0, self._open_positions - 1)
+                else:
+                    cancelled = self.service.cancel_open_stop_orders(symbol)
+                    if cancelled:
+                        logger.info(
+                            "cancelled %s protective stop(s) before SELL", cancelled
+                        )
+                    order = self.service.submit_order(
+                        symbol, sized, OrderSide.SELL, protect=False
+                    )
+                    logger.info("AI SELL submitted: id=%s qty=%s", order.id, sized)
+                    payload["order_id"] = str(order.id)
+                    payload["order_qty"] = sized
+                    payload["intent"] = "close_long"
+                    self._open_positions = max(0, self._open_positions - 1)
+            elif decision.action == Signal.SELL.value and position_qty == 0:
+                # Alpaca does not short fractionals — whole shares only.
+                sized = self._qty_for_session(qty, whole=True)
+                if sized is None:
+                    payload["reason"] += " | skipped: qty (shorts need whole shares)"
+                    return payload
+                if self.config.require_approval and self.approval_handler:
+                    appr = self.approval_handler(
+                        symbol=symbol,
+                        action="SHORT",
+                        qty=sized,
+                        price=display_price,
+                        stop_price=entry_stop_short,
+                        stop_distance=stop_distance,
+                        protect=True,
+                        reason=decision.reason,
+                        engine="ai",
+                        thesis=decision.thesis,
+                        confidence=decision.confidence,
+                    )
+                    logger.info("AI SHORT pending approval: id=%s qty=%s stop=%s", appr.get("id"), sized, entry_stop_short)
+                    payload["order_id"] = None
+                    payload["order_qty"] = sized
+                    payload["pending_approval_id"] = appr.get("id")
+                    payload["approval_required"] = True
+                    payload["intent"] = "open_short"
+                    payload["reason"] += " | Pending user approval"
+                    self._open_positions += 1
+                else:
+                    order = self.service.submit_order(
+                        symbol,
+                        sized,
+                        OrderSide.SELL,
+                        protect=True,
+                        stop_price=entry_stop_short,
+                    )
+                    logger.info(
+                        "AI SHORT submitted: id=%s qty=%s stop=%s",
+                        order.id,
+                        sized,
+                        entry_stop_short or f"{self.config.stop_loss_pct or 0}%",
+                    )
+                    payload["order_id"] = str(order.id)
+                    payload["order_qty"] = sized
+                    payload["intent"] = "open_short"
+                    self._open_positions += 1
+                    self._arm_stop(symbol, payload, stop_distance)
             else:
-                order = self.service.submit_order(
-                    symbol,
-                    sized,
-                    OrderSide.SELL,
-                    protect=True,
-                    stop_price=entry_stop_short,
-                )
-                logger.info(
-                    "AI SHORT submitted: id=%s qty=%s stop=%s",
-                    order.id,
-                    sized,
-                    entry_stop_short or f"{self.config.stop_loss_pct or 0}%",
-                )
-                payload["order_id"] = str(order.id)
-                payload["order_qty"] = sized
-                payload["intent"] = "open_short"
-                self._arm_stop(symbol, payload, stop_distance)
-        else:
-            logger.info("no action (already in desired state)")
-            payload["reason"] += " | no action (position state)"
-            if position_qty != 0:
-                self._arm_stop(symbol, payload)
+                logger.info("no action (already in desired state)")
+                payload["reason"] += " | no action (position state)"
+                if position_qty != 0:
+                    self._arm_stop(symbol, payload)
 
-        return payload
+            return payload
 
     def _manage_open_position(
         self, symbol: str, context: dict[str, Any]

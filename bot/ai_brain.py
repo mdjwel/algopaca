@@ -220,16 +220,31 @@ class AiBrain:
             max_qty=decision.qty,
         )
 
-    def build_context(self, symbol: str) -> dict[str, Any]:
+    def build_context(
+        self,
+        symbol: str,
+        *,
+        shared_account: dict[str, Any] | None = None,
+        shared_calendar: list[dict[str, Any]] | None = None,
+        shared_session: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         symbol = symbol.upper().strip()
         bars = self.service.get_bars(symbol, limit=BAR_LOOKBACK)
         technicals = compute_technicals(bars)
         news = fetch_news(symbol, limit=8)
-        calendar = fetch_economic_calendar(hours_ahead=72, hours_behind=12)
+        calendar = (
+            shared_calendar
+            if shared_calendar is not None
+            else fetch_economic_calendar(hours_ahead=72, hours_behind=12)
+        )
         earnings = fetch_earnings(symbol)
         position = self.service.get_position_detail(symbol)
         position_qty = float(position.get("qty") or 0)
-        account = self.service.account_summary()
+        account = (
+            shared_account
+            if shared_account is not None
+            else self.service.account_summary()
+        )
         activity = self.service.recent_activity(symbol)
         try:
             mark = self.service.get_mark_price(symbol)
@@ -242,7 +257,11 @@ class AiBrain:
         ):
             technicals["price"] = round(float(mark["price"]), 4)
             technicals["price_kind"] = "live_mark"
-        session = self.service.market_session()
+        session = (
+            shared_session
+            if shared_session is not None
+            else self.service.market_session()
+        )
         position_side = (
             "long" if position_qty > 0 else "short" if position_qty < 0 else "flat"
         )

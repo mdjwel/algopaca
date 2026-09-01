@@ -59,7 +59,7 @@
     /* Stepper Track & Steps                                                  */
     /* ---------------------------------------------------------------------- */
     & .wizard-stepper {
-      background: rgba(0, 0, 0, 0.2);
+      background: var(--surface-soft);
       border-bottom: 1px solid var(--line);
       padding: 1.25rem 1.75rem;
 
@@ -262,11 +262,11 @@
         /* Owner Account Setup Card                                          */
         /* ------------------------------------------------------------------ */
         & .wizard-owner-card {
-          background: linear-gradient(145deg, rgba(20, 29, 44, 0.7) 0%, rgba(13, 19, 31, 0.85) 100%);
-          border: 1px solid rgba(212, 137, 76, 0.3);
+          background: var(--panel);
+          border: 1px solid var(--line);
           border-radius: var(--radius-md);
           padding: 1.5rem;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+          box-shadow: var(--shadow-sm);
           position: relative;
           overflow: hidden;
 
@@ -344,7 +344,7 @@
                 padding-left: 2.35rem;
                 padding-right: 2.5rem;
                 width: 100%;
-                background: rgba(14, 20, 28, 0.85);
+                background: var(--input-bg);
                 border: 1px solid var(--line);
                 border-radius: var(--radius-sm);
                 color: var(--text);
@@ -355,8 +355,8 @@
                 &:focus {
                   outline: none;
                   border-color: var(--copper);
-                  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.2);
-                  background: rgba(14, 20, 28, 0.95);
+                  box-shadow: 0 0 0 2px var(--glow);
+                  background: var(--input-bg);
 
                   & + .wizard-input-icon {
                     color: var(--copper);
@@ -470,7 +470,7 @@
         /* SMTP Test Tool Box                                                */
         /* ------------------------------------------------------------------ */
         & .wizard-test-box {
-          background: rgba(0, 0, 0, 0.25);
+          background: var(--surface-soft);
           border: 1px dashed var(--line);
           border-radius: var(--radius-sm);
           padding: 1.25rem;
@@ -500,7 +500,7 @@
             font-size: 0.82rem;
             font-family: var(--mono);
             line-height: 1.5;
-            background: rgba(14, 20, 28, 0.95);
+            background: var(--panel-bg);
             border: 1px solid var(--line);
             max-height: 180px;
             overflow-y: auto;
@@ -579,15 +579,15 @@
               }
 
               &.theme-swatch-emerald {
-                background: #061b14;
-                & .swatch-accent { background: #10b981; }
-                & .swatch-panel { background: #0c2e23; }
+                background: #07130e;
+                & .swatch-accent { background: #3fbf8f; }
+                & .swatch-panel { background: #132d23; }
               }
 
               &.theme-swatch-daylight {
                 background: #f8fafc;
-                & .swatch-accent { background: #d97706; }
-                & .swatch-panel { background: #ffffff; }
+                & .swatch-accent { background: #2563eb; }
+                & .swatch-panel { background: #ffffff; border: 1px solid #e2e8f0; }
               }
             }
 
@@ -604,14 +604,14 @@
             }
 
             &:hover {
-              border-color: var(--line-strong, rgba(255, 255, 255, 0.2));
+              border-color: var(--copper);
               transform: translateY(-2px);
             }
 
             &.is-selected {
               border-color: var(--copper);
-              background: rgba(212, 137, 76, 0.08);
-              box-shadow: 0 0 16px rgba(212, 137, 76, 0.2);
+              background: var(--surface-soft);
+              box-shadow: 0 0 16px var(--glow);
             }
           }
         }
@@ -624,7 +624,7 @@
           align-items: center;
           justify-content: space-between;
           padding: 0.85rem 1rem;
-          background: rgba(0, 0, 0, 0.15);
+          background: var(--surface-soft);
           border: 1px solid var(--line-soft);
           border-radius: var(--radius-sm);
           gap: 1rem;
@@ -633,7 +633,7 @@
           transition: background-color 0.15s ease, border-color 0.15s ease;
 
           &:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--line-soft);
             border-color: var(--line);
           }
 
@@ -707,10 +707,11 @@
         /* Launchpad & Review Summary Cards                                   */
         /* ------------------------------------------------------------------ */
         & .wizard-summary-card {
-          background: linear-gradient(145deg, rgba(20, 29, 44, 0.6) 0%, rgba(13, 19, 31, 0.8) 100%);
+          background: var(--panel);
           border: 1px solid var(--line);
           border-radius: var(--radius-md);
           padding: 1.5rem;
+          box-shadow: var(--shadow-sm);
 
           & .summary-card-header {
             display: flex;
@@ -765,7 +766,7 @@
                 width: 42px;
                 height: 42px;
                 border-radius: var(--radius-sm);
-                background: rgba(0, 0, 0, 0.25);
+                background: var(--line-soft);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -831,7 +832,7 @@
     /* Wizard Navigation Footer                                               */
     /* ---------------------------------------------------------------------- */
     & .wizard-nav-footer {
-      background: rgba(0, 0, 0, 0.25);
+      background: var(--surface-soft);
       border-top: 1px solid var(--line);
       padding: 1.25rem 2rem;
       display: flex;
@@ -921,7 +922,7 @@
     min-height: 42px;
     box-sizing: border-box;
     padding: 0.65rem 0.85rem;
-    background: rgba(14, 20, 28, 0.85);
+    background: var(--input-bg);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     color: var(--text);
@@ -933,8 +934,8 @@
     &:focus {
       outline: none;
       border-color: var(--copper);
-      box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.2);
-      background: rgba(14, 20, 28, 0.95);
+      box-shadow: 0 0 0 2px var(--glow);
+      background: var(--input-bg);
     }
 
     &.font-mono {
@@ -990,7 +991,7 @@ body[data-page="setup-wizard"] .nice-select,
   max-height: 42px;
   line-height: 40px;
   padding: 0 2.2rem 0 0.85rem;
-  background-color: rgba(14, 20, 28, 0.85);
+  background-color: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font-family: var(--ui);
@@ -1004,14 +1005,14 @@ body[data-page="setup-wizard"] .nice-select,
 
   &:hover {
     border-color: color-mix(in srgb, var(--text) 22%, transparent);
-    background-color: rgba(14, 20, 28, 0.9);
+    background-color: var(--slate);
   }
 
   &:focus,
   &.open {
     border-color: var(--copper);
-    background-color: rgba(14, 20, 28, 0.95);
-    box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.25);
+    background-color: var(--slate);
+    box-shadow: 0 0 0 2px var(--glow);
     outline: none;
   }
 
@@ -1246,9 +1247,9 @@ body[data-page="setup-wizard"] .nice-select,
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--line-soft);
   border-radius: 50%;
-  border-top-color: #ffffff;
+  border-top-color: currentColor;
   animation: spin 0.6s linear infinite;
   vertical-align: middle;
   margin-right: 0.35rem;

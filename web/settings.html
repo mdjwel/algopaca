@@ -20,6 +20,9 @@
   <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
   <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
   <link rel="stylesheet" href="/static/css/settings.css" />
+  <script>
+    (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
+  </script>
 </head>
 <body data-page="settings">
   <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
@@ -610,12 +613,14 @@
                   <div class="field-wrap" id="wrap-default-trade-qty">
                     <label for="input-default-trade-qty" data-i18n="settings_default_trade_qty">Default Share Quantity</label>
                     <input type="number" id="input-default-trade-qty" class="field-input" step="any" min="0.01" value="1.0" />
+                    <p class="field-error" id="settings-trade-qty-error" hidden></p>
                     <p class="field-hint" data-i18n="settings_trade_qty_hint">Standard number of shares pre-filled on order forms.</p>
                   </div>
 
                   <div class="field-wrap" id="wrap-default-trade-notional">
                     <label for="input-default-trade-notional" data-i18n="settings_default_trade_notional">Default Dollar Notional ($)</label>
                     <input type="number" id="input-default-trade-notional" class="field-input" step="10" min="1.0" value="100.0" />
+                    <p class="field-error" id="settings-trade-notional-error" hidden></p>
                     <p class="field-hint" data-i18n="settings_trade_notional_hint">Standard cash amount per trade when in Notional mode.</p>
                   </div>
                 </div>
@@ -707,6 +712,7 @@
                   <div class="field-wrap">
                     <label for="input-settings-notification-email" data-i18n="notification_email">Notification Email (Optional)</label>
                     <input type="email" id="input-settings-notification-email" class="field-input" placeholder="Leave empty to use account email" data-i18n-placeholder="notification_email_placeholder" />
+                    <p class="field-error" id="settings-notification-email-error" hidden></p>
                     <p class="field-hint" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
                   </div>
                 </div>

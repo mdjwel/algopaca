@@ -519,12 +519,53 @@ class AppState:
         anthropic = self._anthropic_api_key or saved_anthropic
         xai = self._xai_api_key or saved_xai
 
-        openai_source = "ui" if self._openai_api_key else ("saved" if saved_openai else "none")
-        gemini_source = "ui" if self._gemini_api_key else ("saved" if saved_gemini else "none")
-        anthropic_source = (
-            "ui" if self._anthropic_api_key else ("saved" if saved_anthropic else "none")
-        )
-        xai_source = "ui" if self._xai_api_key else ("saved" if saved_xai else "none")
+        user = AUTH_STORE.get_user_by_id(self.user_id)
+        is_admin_or_demo = user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo")
+        env_openai = os.getenv("OPENAI_API_KEY", "").strip() if is_admin_or_demo else ""
+        env_gemini = os.getenv("GEMINI_API_KEY", "").strip() if is_admin_or_demo else ""
+        env_anthropic = os.getenv("ANTHROPIC_API_KEY", "").strip() if is_admin_or_demo else ""
+        env_xai = os.getenv("XAI_API_KEY", "").strip() if is_admin_or_demo else ""
+
+        if not openai and env_openai:
+            openai = env_openai
+            openai_source = "env"
+        elif self._openai_api_key:
+            openai_source = "ui"
+        elif saved_openai:
+            openai_source = "saved"
+        else:
+            openai_source = "none"
+
+        if not gemini and env_gemini:
+            gemini = env_gemini
+            gemini_source = "env"
+        elif self._gemini_api_key:
+            gemini_source = "ui"
+        elif saved_gemini:
+            gemini_source = "saved"
+        else:
+            gemini_source = "none"
+
+        if not anthropic and env_anthropic:
+            anthropic = env_anthropic
+            anthropic_source = "env"
+        elif self._anthropic_api_key:
+            anthropic_source = "ui"
+        elif saved_anthropic:
+            anthropic_source = "saved"
+        else:
+            anthropic_source = "none"
+
+        if not xai and env_xai:
+            xai = env_xai
+            xai_source = "env"
+        elif self._xai_api_key:
+            xai_source = "ui"
+        elif saved_xai:
+            xai_source = "saved"
+        else:
+            xai_source = "none"
+
         self._openai_key_source = openai_source
         self._gemini_key_source = gemini_source
         self._anthropic_key_source = anthropic_source
@@ -673,6 +714,27 @@ class AppState:
 
         if updates:
             AUTH_STORE.save_user_credentials(self.user_id, updates)
+            if save_to_env:
+                user = AUTH_STORE.get_user_by_id(self.user_id)
+                if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                    env_updates = {}
+                    if target_paper:
+                        if key_in:
+                            env_updates["ALPACA_PAPER_API_KEY"] = key_in
+                            env_updates["ALPACA_API_KEY"] = key_in
+                        if secret_in:
+                            env_updates["ALPACA_PAPER_SECRET_KEY"] = secret_in
+                            env_updates["ALPACA_SECRET_KEY"] = secret_in
+                    else:
+                        if key_in:
+                            env_updates["ALPACA_LIVE_API_KEY"] = key_in
+                        if secret_in:
+                            env_updates["ALPACA_LIVE_SECRET_KEY"] = secret_in
+                    if env_updates:
+                        try:
+                            upsert_env_values(env_updates)
+                        except Exception:
+                            pass
 
         # Changing live credentials invalidates any prior Live session grant.
         if not target_paper and updates:
@@ -705,7 +767,12 @@ class AppState:
                 status = {**status, "account_error": str(exc)}
         return status
 
-    def clear_alpaca_keys(self, *, environment: str | None = None) -> dict[str, Any]:
+    def clear_alpaca_keys(
+        self,
+        *,
+        environment: str | None = None,
+        clear_env: bool = True,
+    ) -> dict[str, Any]:
         """Remove Alpaca credentials for one slot or both."""
         env_name = (environment or "all").strip().lower()
         if env_name not in {"paper", "live", "all"}:
@@ -715,6 +782,19 @@ class AppState:
         if env_name in {"live", "all"}:
             with self.lock:
                 self._live_session_authorized = False
+        if clear_env:
+            user = AUTH_STORE.get_user_by_id(self.user_id)
+            if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                env_removals = []
+                if env_name in {"paper", "all"}:
+                    env_removals.extend(["ALPACA_PAPER_API_KEY", "ALPACA_PAPER_SECRET_KEY", "ALPACA_API_KEY", "ALPACA_SECRET_KEY"])
+                if env_name in {"live", "all"}:
+                    env_removals.extend(["ALPACA_LIVE_API_KEY", "ALPACA_LIVE_SECRET_KEY"])
+                if env_removals:
+                    try:
+                        remove_env_keys(env_removals)
+                    except Exception:
+                        pass
         self._reset_runtime_for_mode_switch()
         with self.lock:
             self.account = None
@@ -1005,25 +1085,45 @@ class AppState:
     ) -> dict[str, Any]:
         """Update user's AI keys."""
         updates: dict[str, Any] = {}
+        env_updates: dict[str, str] = {}
         with self.lock:
             if openai_api_key is not None:
                 cleaned = openai_api_key.strip()
-                self._openai_api_key = cleaned or None
-                updates["openai_api_key"] = cleaned
+                if cleaned:
+                    self._openai_api_key = cleaned
+                    updates["openai_api_key"] = cleaned
+                    if save_to_env:
+                        env_updates["OPENAI_API_KEY"] = cleaned
             if gemini_api_key is not None:
                 cleaned = gemini_api_key.strip()
-                self._gemini_api_key = cleaned or None
-                updates["gemini_api_key"] = cleaned
+                if cleaned:
+                    self._gemini_api_key = cleaned
+                    updates["gemini_api_key"] = cleaned
+                    if save_to_env:
+                        env_updates["GEMINI_API_KEY"] = cleaned
             if anthropic_api_key is not None:
                 cleaned = anthropic_api_key.strip()
-                self._anthropic_api_key = cleaned or None
-                updates["anthropic_api_key"] = cleaned
+                if cleaned:
+                    self._anthropic_api_key = cleaned
+                    updates["anthropic_api_key"] = cleaned
+                    if save_to_env:
+                        env_updates["ANTHROPIC_API_KEY"] = cleaned
             if xai_api_key is not None:
                 cleaned = xai_api_key.strip()
-                self._xai_api_key = cleaned or None
-                updates["xai_api_key"] = cleaned
+                if cleaned:
+                    self._xai_api_key = cleaned
+                    updates["xai_api_key"] = cleaned
+                    if save_to_env:
+                        env_updates["XAI_API_KEY"] = cleaned
             if updates:
                 AUTH_STORE.save_user_credentials(self.user_id, updates)
+            if env_updates:
+                user = AUTH_STORE.get_user_by_id(self.user_id)
+                if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                    try:
+                        upsert_env_values(env_updates)
+                    except Exception:
+                        pass
             status = self._key_status_locked()
         return status
 
@@ -1040,21 +1140,37 @@ class AppState:
         if not openai and not gemini and not anthropic and not xai:
             raise ValueError("Choose OpenAI, Gemini, Anthropic, and/or xAI to clear.")
         updates: dict[str, Any] = {}
+        env_removals: list[str] = []
         with self.lock:
             if openai:
                 self._openai_api_key = None
                 updates["openai_api_key"] = ""
+                if clear_env:
+                    env_removals.append("OPENAI_API_KEY")
             if gemini:
                 self._gemini_api_key = None
                 updates["gemini_api_key"] = ""
+                if clear_env:
+                    env_removals.append("GEMINI_API_KEY")
             if anthropic:
                 self._anthropic_api_key = None
                 updates["anthropic_api_key"] = ""
+                if clear_env:
+                    env_removals.append("ANTHROPIC_API_KEY")
             if xai:
                 self._xai_api_key = None
                 updates["xai_api_key"] = ""
+                if clear_env:
+                    env_removals.append("XAI_API_KEY")
             if updates:
                 AUTH_STORE.save_user_credentials(self.user_id, updates)
+            if env_removals:
+                user = AUTH_STORE.get_user_by_id(self.user_id)
+                if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+                    try:
+                        remove_env_keys(env_removals)
+                    except Exception:
+                        pass
             return self._key_status_locked()
 
     def sync_key_sources_from_env(self) -> None:
@@ -1466,14 +1582,17 @@ class AppState:
                 self._quote_symbol = None
             self._persist_settings_locked()
 
-        # Keys can arrive with settings payloads from the web form.
-        self.apply_api_keys(
-            openai_api_key=data.get("openai_api_key"),
-            gemini_api_key=data.get("gemini_api_key"),
-            anthropic_api_key=data.get("anthropic_api_key"),
-            xai_api_key=data.get("xai_api_key"),
-            save_to_env=bool(data.get("save_keys_to_env", False)),
-        )
+        # Keys can arrive with settings payloads from the web form (only apply non-empty keys).
+        key_updates = {}
+        for k in ("openai_api_key", "gemini_api_key", "anthropic_api_key", "xai_api_key"):
+            v = data.get(k)
+            if v is not None and str(v).strip():
+                key_updates[k] = str(v).strip()
+        if key_updates:
+            self.apply_api_keys(
+                **key_updates,
+                save_to_env=bool(data.get("save_keys_to_env", False)),
+            )
         with self.lock:
             return self.settings
 
@@ -1513,6 +1632,17 @@ class AppState:
         gemini_key = self._gemini_api_key or creds.get("gemini_api_key", "")
         anthropic_key = self._anthropic_api_key or creds.get("anthropic_api_key", "")
         xai_key = self._xai_api_key or creds.get("xai_api_key", "")
+
+        user = AUTH_STORE.get_user_by_id(self.user_id)
+        if user and (user.get("role") in {"owner", "admin"} or user.get("username") == "demo"):
+            if not openai_key:
+                openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+            if not gemini_key:
+                gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+            if not anthropic_key:
+                anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+            if not xai_key:
+                xai_key = os.getenv("XAI_API_KEY", "").strip()
 
         with self.lock:
             s = self.settings
@@ -3159,7 +3289,14 @@ class AppState:
 
     def _run_ai_once(self) -> dict[str, Any]:
         bot = self._build_ai_bot()
-        bundle = bot.run_once(should_stop=self._cycle_cancelled)
+
+        def _on_ai_progress(partial_results: list[dict[str, Any]]) -> None:
+            self._set_last_ai_results(partial_results)
+
+        bundle = bot.run_once(
+            should_stop=self._cycle_cancelled,
+            on_progress=_on_ai_progress,
+        )
         primary = bundle["primary"]
         results = bundle["results"]
         if self._cycle_cancelled():

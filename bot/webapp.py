@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from bot.alpaca_errors import humanize_alpaca_error
 from bot.ai_models import catalog_payload
-from bot.auth import AUTH_STORE, is_admin_or_owner
+from bot.auth import AUTH_STORE, EMAIL_REGEX, is_admin_or_owner
 from bot.backtest_store import summarize_entry
 from bot.config import MIN_ATR_STOP_MULT
 from bot.email_service import (
@@ -101,10 +101,10 @@ class SettingsIn(BaseModel):
     gemini_model: Optional[str] = None
     anthropic_model: Optional[str] = None
     xai_model: Optional[str] = None
-    openai_api_key: str = ""
-    gemini_api_key: str = ""
-    anthropic_api_key: str = ""
-    xai_api_key: str = ""
+    openai_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    xai_api_key: Optional[str] = None
     save_keys_to_env: bool = False
     # None = leave unchanged (prevents older clients from wiping .env stop).
     stop_loss_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
@@ -181,6 +181,7 @@ class LiveAuthorizeIn(BaseModel):
 
 class ClearAlpacaKeysIn(BaseModel):
     environment: str = Field("all", pattern="(?i)^(paper|live|all)$")
+    clear_env: bool = True
 
 
 class ClearAiKeysIn(BaseModel):
@@ -584,6 +585,16 @@ class UserPreferencesIn(BaseModel):
     notify_browser: Optional[bool] = True
     notify_email: Optional[bool] = False
     notification_email: Optional[str] = ""
+
+    @field_validator("notification_email")
+    @classmethod
+    def validate_notification_email(cls, v: Optional[str]) -> Optional[str]:
+        if not v or not v.strip():
+            return ""
+        clean = v.strip()
+        if not EMAIL_REGEX.match(clean):
+            raise ValueError("Invalid notification email address format.")
+        return clean
 
 
 class UserTerminateSessionIn(BaseModel):
@@ -1490,7 +1501,7 @@ def clear_alpaca_keys(
     state = get_user_state(user["id"])
     try:
         environment = body.environment or "all"
-        status = state.clear_alpaca_keys(environment=environment)
+        status = state.clear_alpaca_keys(environment=environment, clear_env=body.clear_env)
         return {
             "ok": True,
             "alpaca_key_status": status,

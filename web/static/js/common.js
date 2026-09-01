@@ -3,15 +3,33 @@
  * Core utilities, state management, API client, NiceSelect, formatting, toasts, and status polling.
  */
 
-// Initialize global theme from localStorage if set
+// Initialize global theme from localStorage or cookies if set
 (function initGlobalTheme() {
   try {
-    const savedTheme = localStorage.getItem("algopaca_theme");
-    if (savedTheme && ["obsidian", "midnight", "emerald", "daylight"].includes(savedTheme)) {
+    const validThemes = ["obsidian", "midnight", "emerald", "daylight"];
+    let savedTheme = localStorage.getItem("algopaca_theme");
+    if (!savedTheme || !validThemes.includes(savedTheme)) {
+      const match = document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);
+      if (match && validThemes.includes(decodeURIComponent(match[1]))) {
+        savedTheme = decodeURIComponent(match[1]);
+      }
+    }
+    if (savedTheme && validThemes.includes(savedTheme)) {
       document.documentElement.setAttribute("data-theme", savedTheme);
     }
   } catch (e) {}
 })();
+
+function setDeskTheme(themeName) {
+  const validThemes = ["obsidian", "midnight", "emerald", "daylight"];
+  if (!validThemes.includes(themeName)) return;
+  document.documentElement.setAttribute("data-theme", themeName);
+  try {
+    localStorage.setItem("algopaca_theme", themeName);
+    document.cookie = `algopaca_theme=${encodeURIComponent(themeName)}; path=/; max-age=31536000; SameSite=Lax`;
+  } catch (e) {}
+  window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: themeName } }));
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,6 +68,13 @@ function initNiceSelects(root = document) {
     });
   });
 }
+
+// Whenever a <details> accordion is expanded, refresh its child nice-selects
+document.addEventListener("toggle", (ev) => {
+  if (ev.target instanceof HTMLDetailsElement && ev.target.open) {
+    refreshNiceSelects(ev.target);
+  }
+}, true);
 
 function refreshNiceSelect(el) {
   if (!el || !el._niceSelect) return;
@@ -406,6 +431,43 @@ function escapeHtml(s) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+const OCC_RE = /^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/;
+const OCC_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function isOccSymbol(symbol) {
+  return OCC_RE.test(String(symbol || "").trim().toUpperCase());
+}
+
+function parseOcc(symbol) {
+  const s = String(symbol || "").trim().toUpperCase();
+  const match = s.match(OCC_RE);
+  if (!match) return null;
+  const root = match[1];
+  const yy = parseInt(match[2], 10);
+  const mm = parseInt(match[3], 10);
+  const dd = parseInt(match[4], 10);
+  const year = yy < 80 ? 2000 + yy : 1900 + yy;
+  const cp = match[5];
+  const strike = parseInt(match[6], 10) / 1000;
+  const mon = OCC_MONTHS[mm - 1] || `${mm}`;
+  const formattedStrike = Number.isInteger(strike) ? `$${strike}` : `$${strike.toFixed(2).replace(/\.?0+$/, "")}`;
+  const formattedExpiry = `${dd} ${mon} ${String(year).slice(-2)}`;
+  const label = `${root} ${String(dd).padStart(2, "0")}${mon}${String(year).slice(-2)} ${Number.isInteger(strike) ? strike : strike.toFixed(2)}${cp}`;
+  return {
+    symbol: match[0],
+    root,
+    year,
+    month: mm,
+    day: dd,
+    type: cp === "C" ? "call" : "put",
+    cp,
+    strike,
+    formattedStrike,
+    formattedExpiry,
+    label,
+  };
 }
 
 /**

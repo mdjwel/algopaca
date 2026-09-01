@@ -652,7 +652,7 @@ a.ghost.small {
   padding: 0.6rem 0.75rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--surface-soft);
   transition: border-color 0.18s ease, background 0.18s ease;
   width: 100%;
   cursor: pointer;
@@ -660,7 +660,7 @@ a.ghost.small {
 
 .manual-form details.manual-accordion .manual-accordion-body > .check:hover {
   border-color: color-mix(in srgb, var(--copper) 30%, transparent);
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--line-soft);
 }
 
 .manual-form details.manual-accordion .manual-accordion-body > .check:focus-within {
@@ -1118,10 +1118,10 @@ a.ghost.small {
   border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
   border-left: 3px solid var(--copper);
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--copper) 8%, transparent) 0%, var(--panel-bg) 100%);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 var(--line-soft);
   font-family: var(--mono);
   font-size: 0.78rem;
   line-height: 1.4;
@@ -1138,20 +1138,20 @@ a.ghost.small {
 .manual-reinvest-item[data-kind="waiting"] {
   border-color: color-mix(in srgb, var(--copper) 35%, var(--line));
   border-left-color: var(--copper);
-  background: linear-gradient(135deg, rgba(212, 137, 76, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--copper) 8%, transparent) 0%, var(--panel-bg) 100%);
 }
 
 .manual-reinvest-item[data-kind="ok"] {
   border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
   border-left-color: var(--buy);
-  background: linear-gradient(135deg, rgba(63, 191, 143, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--buy) 8%, transparent) 0%, var(--panel-bg) 100%);
 }
 
 .manual-reinvest-item[data-kind="error"],
 .manual-reinvest-item[data-kind="warn"] {
   border-color: color-mix(in srgb, var(--sell) 35%, var(--line));
   border-left-color: var(--sell);
-  background: linear-gradient(135deg, rgba(227, 93, 93, 0.08) 0%, rgba(20, 28, 39, 0.75) 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--sell) 8%, transparent) 0%, var(--panel-bg) 100%);
 }
 
 .manual-last-heading {
@@ -2229,7 +2229,7 @@ body.modal-open {
 }
 
 .manual-recent-btn:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--line-soft);
 }
 
 .manual-recent-btn:focus-visible {

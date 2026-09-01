@@ -175,11 +175,7 @@ function formPayload() {
       formValue("xai_model", aiModels.defaults?.xai || FALLBACK_XAI_MODEL) ||
         FALLBACK_XAI_MODEL
     ).trim(),
-    openai_api_key: provider === "openai" ? openaiKey : "",
-    gemini_api_key: provider === "gemini" ? geminiKey : "",
     lang: typeof i18n !== "undefined" ? i18n.getCurrentLanguage() : "en",
-    // Only the dedicated Save keys button persists to disk.
-    save_keys_to_env: false,
   };
 }
 
@@ -2271,11 +2267,7 @@ function schedulePersistSettings() {
       syncStrategyHint("invalid");
       return;
     }
-    // Don't ship password fields on auto-save; keys use Save API key.
     const payload = formPayload();
-    payload.openai_api_key = "";
-    payload.gemini_api_key = "";
-    payload.save_keys_to_env = false;
     syncStrategyHint("saving");
     try {
       await api("/api/settings", {

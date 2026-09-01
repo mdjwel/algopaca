@@ -83,6 +83,9 @@
   const checkSettingsNotifyEmail = $("check-settings-notify-email");
   const wrapSettingsNotificationEmail = $("wrap-settings-notification-email");
   const inputSettingsNotificationEmail = $("input-settings-notification-email");
+  const tradeQtyError = $("settings-trade-qty-error");
+  const tradeNotionalError = $("settings-trade-notional-error");
+  const notificationEmailError = $("settings-notification-email-error");
 
   // DOM - Integrations & Data
   const badgeStatusPaper = $("badge-status-paper");
@@ -445,6 +448,32 @@
   const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   let profileBaseline = { display_name: "", email: "" };
 
+  function setButtonBusy(btn, isBusy, loadingText = null) {
+    if (!btn) return;
+    if (isBusy) {
+      const width = btn.getBoundingClientRect().width;
+      if (width > 0) {
+        btn.style.minWidth = `${width}px`;
+      }
+      btn.classList.add("is-loading");
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      if (loadingText) {
+        btn._origHtml = btn.innerHTML;
+        btn.innerHTML = `<div class="spinner spinner-xs"></div><span>${escapeHtml(loadingText)}</span>`;
+      }
+    } else {
+      btn.classList.remove("is-loading");
+      btn.removeAttribute("aria-busy");
+      btn.disabled = false;
+      if (btn._origHtml) {
+        btn.innerHTML = btn._origHtml;
+        delete btn._origHtml;
+      }
+      btn.style.minWidth = "";
+    }
+  }
+
   function setFieldError(input, errorEl, message) {
     if (input) {
       input.classList.add("is-invalid");
@@ -578,9 +607,7 @@
     }
     if (!isProfileDirty()) return;
 
-    const originalBtnHtml = btnSaveProfile.innerHTML;
-    btnSaveProfile.disabled = true;
-    btnSaveProfile.innerHTML = `<div class="spinner spinner-xs"></div><span>${escapeHtml(tr("saving", "Saving…"))}</span>`;
+    setButtonBusy(btnSaveProfile, true, tr("saving", "Saving…"));
 
     try {
       const payload = {
@@ -598,7 +625,6 @@
       if (!res.ok) throw new Error(extractApiError(data, tr("settings_profile_save_failed", "Failed to update profile.")));
 
       currentProfile = data.profile;
-      btnSaveProfile.innerHTML = originalBtnHtml;
       renderProfile(data.profile);
       showToast(data.message || tr("settings_profile_saved", "Profile updated successfully."), "success");
       syncMastheadIdentity(data.profile);
@@ -611,8 +637,8 @@
         setFieldError(inputProfileName, profileNameError, message);
       }
       showToast(message, "error");
-      btnSaveProfile.innerHTML = originalBtnHtml;
     } finally {
+      setButtonBusy(btnSaveProfile, false);
       updateProfileDirtyState();
     }
   });
@@ -883,9 +909,15 @@
   /* ------------------------------------------------------------------------ */
 
   function applyTheme(themeName) {
+    const validThemes = ["obsidian", "midnight", "emerald", "daylight"];
+    if (!validThemes.includes(themeName)) themeName = "obsidian";
+
     const root = document.documentElement;
     root.setAttribute("data-theme", themeName);
-    localStorage.setItem("algopaca_theme", themeName);
+    try {
+      localStorage.setItem("algopaca_theme", themeName);
+      document.cookie = `algopaca_theme=${encodeURIComponent(themeName)}; path=/; max-age=31536000; SameSite=Lax`;
+    } catch (e) {}
 
     themeCards.forEach((card) => {
       const isSelected = card.dataset.themeVal === themeName;
@@ -893,7 +925,13 @@
       const radio = card.querySelector("input[type='radio']");
       if (radio) radio.checked = isSelected;
     });
+
+    window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: themeName } }));
   }
+
+  // Synchronize theme cards immediately with active page theme
+  const initialDeskTheme = document.documentElement.getAttribute("data-theme") || localStorage.getItem("algopaca_theme") || "obsidian";
+  applyTheme(initialDeskTheme);
 
   themeCards.forEach((card) => {
     card.addEventListener("click", () => {
@@ -990,7 +1028,17 @@
         body: JSON.stringify(partialPayload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to save preferences");
+      if (!res.ok) {
+        let msg = "Failed to save preferences";
+        if (typeof data.detail === "string") {
+          msg = data.detail;
+        } else if (Array.isArray(data.detail) && data.detail[0]?.msg) {
+          msg = data.detail[0].msg;
+        } else if (data.message) {
+          msg = data.message;
+        }
+        throw new Error(msg);
+      }
 
       currentPreferences = data.preferences;
       showToast(successMsg, "success");
@@ -1001,10 +1049,80 @@
     }
   }
 
+  function validateTradeQty(showError = true) {
+    if (!inputDefaultTradeQty) return true;
+    const val = parseFloat(inputDefaultTradeQty.value);
+    if (isNaN(val) || val <= 0) {
+      if (showError) {
+        setFieldError(
+          inputDefaultTradeQty,
+          tradeQtyError,
+          tr("settings_err_trade_qty_invalid", "Default share quantity must be greater than 0.")
+        );
+      }
+      return false;
+    }
+    clearFieldError(inputDefaultTradeQty, tradeQtyError);
+    return true;
+  }
+
+  function validateTradeNotional(showError = true) {
+    if (!inputDefaultTradeNotional) return true;
+    const val = parseFloat(inputDefaultTradeNotional.value);
+    if (isNaN(val) || val <= 0) {
+      if (showError) {
+        setFieldError(
+          inputDefaultTradeNotional,
+          tradeNotionalError,
+          tr("settings_err_trade_notional_invalid", "Default dollar notional must be greater than 0.")
+        );
+      }
+      return false;
+    }
+    clearFieldError(inputDefaultTradeNotional, tradeNotionalError);
+    return true;
+  }
+
+  function validateNotificationEmail(showError = true) {
+    if (!inputSettingsNotificationEmail) return true;
+    const val = (inputSettingsNotificationEmail.value || "").trim();
+    if (val && !EMAIL_PATTERN.test(val)) {
+      if (showError) {
+        setFieldError(
+          inputSettingsNotificationEmail,
+          notificationEmailError,
+          tr("settings_err_notify_email_invalid", "Please enter a valid notification email address.")
+        );
+      }
+      return false;
+    }
+    clearFieldError(inputSettingsNotificationEmail, notificationEmailError);
+    return true;
+  }
+
+  inputDefaultTradeQty?.addEventListener("input", () => {
+    if (inputDefaultTradeQty.classList.contains("is-invalid")) validateTradeQty(true);
+  });
+  inputDefaultTradeQty?.addEventListener("blur", () => {
+    validateTradeQty(true);
+  });
+
+  inputDefaultTradeNotional?.addEventListener("input", () => {
+    if (inputDefaultTradeNotional.classList.contains("is-invalid")) validateTradeNotional(true);
+  });
+  inputDefaultTradeNotional?.addEventListener("blur", () => {
+    validateTradeNotional(true);
+  });
+
+  inputSettingsNotificationEmail?.addEventListener("input", () => {
+    if (inputSettingsNotificationEmail.classList.contains("is-invalid")) validateNotificationEmail(true);
+  });
+  inputSettingsNotificationEmail?.addEventListener("blur", () => {
+    validateNotificationEmail(true);
+  });
+
   btnSaveAppearance?.addEventListener("click", async () => {
-    const origHtml = btnSaveAppearance.innerHTML;
-    btnSaveAppearance.disabled = true;
-    btnSaveAppearance.innerHTML = `<div class="spinner spinner-xs"></div> Saving…`;
+    setButtonBusy(btnSaveAppearance, true, tr("saving", "Saving…"));
 
     try {
       const selectedTheme = document.querySelector(".theme-card.is-active")?.dataset.themeVal || "obsidian";
@@ -1032,8 +1150,7 @@
     } catch (e) {
       // toast shown
     } finally {
-      btnSaveAppearance.disabled = false;
-      btnSaveAppearance.innerHTML = origHtml;
+      setButtonBusy(btnSaveAppearance, false);
     }
   });
 
@@ -1042,9 +1159,18 @@
     const btn = $("btn-save-trading-defaults");
     if (!btn) return;
 
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<div class="spinner spinner-xs"></div> Saving…`;
+    const validQty = validateTradeQty(true);
+    const validNotional = validateTradeNotional(true);
+    const validEmail = validateNotificationEmail(true);
+
+    if (!validQty || !validNotional || !validEmail) {
+      if (!validQty) inputDefaultTradeQty?.focus();
+      else if (!validNotional) inputDefaultTradeNotional?.focus();
+      else if (!validEmail) inputSettingsNotificationEmail?.focus();
+      return;
+    }
+
+    setButtonBusy(btn, true, tr("saving", "Saving…"));
 
     try {
       const sizeMode = selectDefaultSizeMode?.value || "qty";
@@ -1059,26 +1185,28 @@
 
       await savePreferencesPayload({
         default_size_mode: sizeMode,
-        default_trade_qty: isNaN(qty) ? 1.0 : qty,
-        default_trade_notional: isNaN(notional) ? 100.0 : notional,
+        default_trade_qty: qty,
+        default_trade_notional: notional,
         confirm_orders: confirmOrders,
         confirm_close_all: confirmCloseAll,
         require_approval: requireApproval,
         notify_browser: notifyBrowser,
         notify_email: notifyEmail,
         notification_email: notificationEmail,
-      }, "Trading defaults saved successfully.");
+      }, tr("settings_trading_defaults_saved", "Trading defaults saved successfully."));
     } catch (err) {
       // toast shown
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
+      setButtonBusy(btn, false);
     }
   });
 
   checkSettingsNotifyEmail?.addEventListener("change", (ev) => {
     if (wrapSettingsNotificationEmail) {
       wrapSettingsNotificationEmail.hidden = !ev.target.checked;
+    }
+    if (!ev.target.checked && inputSettingsNotificationEmail) {
+      clearFieldError(inputSettingsNotificationEmail, notificationEmailError);
     }
   });
 

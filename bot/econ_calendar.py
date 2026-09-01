@@ -6,6 +6,8 @@ import json
 import logging
 import urllib.error
 import urllib.request
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,6 +21,17 @@ _ET = ZoneInfo("America/New_York")
 # Keep high-impact / USD-focused events that move equities.
 _IMPACT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Holiday": 0}
 
+_CAL_CACHE_TTL = 15 * 60  # 15 minutes
+_RAW_CAL_CACHE: tuple[float, list[dict[str, Any]]] | None = None
+_CAL_LOCK = threading.Lock()
+
+
+def reset_calendar_cache() -> None:
+    """Clear in-memory economic calendar cache (for testing)."""
+    global _RAW_CAL_CACHE
+    with _CAL_LOCK:
+        _RAW_CAL_CACHE = None
+
 
 def fetch_economic_calendar(
     hours_ahead: int = 72,
@@ -27,13 +40,25 @@ def fetch_economic_calendar(
     min_impact: str = "Medium",
 ) -> list[dict[str, Any]]:
     """Return nearby economic events relevant to US equities."""
-    try:
-        req = urllib.request.Request(_URL, headers={"User-Agent": _UA})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            events = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        logger.warning("economic calendar fetch failed: %s", exc)
-        return []
+    global _RAW_CAL_CACHE
+    now_ts = time.time()
+    events: list[dict[str, Any]] | None = None
+
+    with _CAL_LOCK:
+        if _RAW_CAL_CACHE is not None and _RAW_CAL_CACHE[0] > now_ts:
+            events = _RAW_CAL_CACHE[1]
+
+    if events is None:
+        try:
+            req = urllib.request.Request(_URL, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                loaded = json.loads(resp.read().decode("utf-8"))
+                if isinstance(loaded, list):
+                    events = loaded
+                    with _CAL_LOCK:
+                        _RAW_CAL_CACHE = (now_ts + _CAL_CACHE_TTL, events)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            logger.warning("economic calendar fetch failed: %s", exc)
 
     if not isinstance(events, list):
         return []

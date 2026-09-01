@@ -387,36 +387,36 @@ class AlpacaService:
             filled_at = getattr(order, "filled_at", None) or getattr(
                 order, "submitted_at", None
             )
-            out.append(
-                {
-                    "id": str(getattr(order, "id", "") or ""),
-                    "symbol": str(getattr(order, "symbol", "") or "").upper(),
-                    "side": side_s.lower(),
-                    "type": type_s.lower(),
-                    "status": status_s.lower(),
-                    "qty": filled_qty,
-                    "filled_avg_price": float(
-                        getattr(order, "filled_avg_price", 0) or 0
-                    )
-                    or None,
-                    "filled_at": (
-                        filled_at.isoformat()
-                        if hasattr(filled_at, "isoformat")
-                        else (str(filled_at) if filled_at else None)
-                    ),
-                    "submitted_at": (
-                        order.submitted_at.isoformat()
-                        if getattr(order, "submitted_at", None) is not None
-                        and hasattr(order.submitted_at, "isoformat")
-                        else None
-                    ),
-                    "notional": (
-                        round(filled_qty * float(getattr(order, "filled_avg_price", 0) or 0), 4)
-                        if getattr(order, "filled_avg_price", None)
-                        else None
-                    ),
-                }
-            )
+            item = {
+                "id": str(getattr(order, "id", "") or ""),
+                "symbol": str(getattr(order, "symbol", "") or "").upper(),
+                "side": side_s.lower(),
+                "type": type_s.lower(),
+                "status": status_s.lower(),
+                "qty": filled_qty,
+                "filled_avg_price": float(
+                    getattr(order, "filled_avg_price", 0) or 0
+                )
+                or None,
+                "filled_at": (
+                    filled_at.isoformat()
+                    if hasattr(filled_at, "isoformat")
+                    else (str(filled_at) if filled_at else None)
+                ),
+                "submitted_at": (
+                    order.submitted_at.isoformat()
+                    if getattr(order, "submitted_at", None) is not None
+                    and hasattr(order.submitted_at, "isoformat")
+                    else None
+                ),
+                "notional": (
+                    round(filled_qty * float(getattr(order, "filled_avg_price", 0) or 0), 4)
+                    if getattr(order, "filled_avg_price", None)
+                    else None
+                ),
+            }
+            self._enrich_option_fields(item)
+            out.append(item)
         return {
             "orders": out,
             "raw_count": len(orders),
@@ -559,23 +559,23 @@ class AlpacaService:
                     "buy_to_cover": "buy",
                     "sell_short": "sell",
                 }.get(raw_side, raw_side)
-                rows.append(
-                    {
-                        # Keep `id` as the order id: desk attribution and CSV
-                        # exports correlate against the order the desk placed.
-                        "id": order_id or activity_id,
-                        "activity_id": activity_id,
-                        "symbol": str(activity.get("symbol") or "").upper(),
-                        "side": side,
-                        "fill_type": str(activity.get("type") or "fill").lower(),
-                        "status": str(activity.get("order_status") or "filled").lower(),
-                        "qty": qty,
-                        "filled_avg_price": price,
-                        "filled_at": str(filled_at) if filled_at else None,
-                        "submitted_at": None,
-                        "notional": round(qty * price, 4),
-                    }
-                )
+                row = {
+                    # Keep `id` as the order id: desk attribution and CSV
+                    # exports correlate against the order the desk placed.
+                    "id": order_id or activity_id,
+                    "activity_id": activity_id,
+                    "symbol": str(activity.get("symbol") or "").upper(),
+                    "side": side,
+                    "fill_type": str(activity.get("type") or "fill").lower(),
+                    "status": str(activity.get("order_status") or "filled").lower(),
+                    "qty": qty,
+                    "filled_avg_price": price,
+                    "filled_at": str(filled_at) if filled_at else None,
+                    "submitted_at": None,
+                    "notional": round(qty * price, 4),
+                }
+                self._enrich_option_fields(row)
+                rows.append(row)
                 added += 1
 
             if len(activities) < size:

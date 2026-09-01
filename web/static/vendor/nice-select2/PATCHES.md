@@ -52,6 +52,18 @@ dropdown itself and the label bound to this select:
       r(this.dropdown,"open"),n(this.el)…
 ```
 
+## 4. `innerText` on hidden/collapsed `<select>` returns empty string
+
+When `<select>` is inside a closed `<details>` accordion or hidden container, `option.innerText` evaluates to `""` in standard browser DOM layout engines. NiceSelect used `t.dataset.display ?? t.innerText`, which resulted in empty options `{ text: "" }` if initialized or updated while hidden.
+
+Patch — in `#d(e)`:
+
+```js
+{text:t.dataset.display??t.innerText,value:t.value...}
+// becomes
+{text:t.dataset.display||(t.innerText||t.textContent).trim()||t.value,value:t.value...}
+```
+
 ## Notes
 
 - `//# sourceMappingURL=nice-select2.js.map` at the end of the bundle now points

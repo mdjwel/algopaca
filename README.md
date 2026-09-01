@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Autonomous Algorithmic Paper &amp; Live Trading Desk</strong><br>
-  <em>5 Algorithmic Engines • Multi-Modal AI Reasoning • Automated ATR Risk Guardrails • Interactive Backtesting • Modern Web Desk</em>
+  <em>5 Algorithmic Engines • Options Overlay • 4 AI Providers • Auto-Trade Approval Queue • Multi-User Auth &amp; Admin • Mobile PWA &amp; Web Desk</em>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/trading-100%25_free_%26_commission--free-success.svg" alt="100% Free & Commission-Free Trading">
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions">
   <img src="https://img.shields.io/badge/broker-Alpaca%20Markets-green.svg" alt="Alpaca Markets">
-  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Gemini-8A2BE2.svg" alt="AI Models">
+  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Gemini%20%7C%20Claude%20%7C%20xAI-8A2BE2.svg" alt="AI Models">
   <img src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker Ready">
   <img src="https://img.shields.io/badge/status-open%20source-success.svg" alt="Open Source">
 </p>
@@ -23,8 +23,9 @@
   <a href="https://algopaca.spiderdevs.xyz/">Live Demo</a> •
   <a href="#-watch-in-action-demo--walkthrough">Demo Video</a> •
   <a href="#-key-features">Features</a> •
-  <a href="#-strategy-engines-overview">Strategies</a> •
-  <a href="#%EF%B8%8F-system-architecture">Architecture</a> •
+  <a href="#-strategy-engines--options-overlay">Strategies &amp; Options</a> •
+  <a href="#-mobile-app--web-trading-desk">Mobile &amp; Web Desk</a> •
+  <a href="#-multi-user-workspaces-auth--admin">Auth &amp; Admin</a> •
   <a href="#-quickstart">Quickstart</a> •
   <a href="#-mcp-server-claude-cursor-and-other-ai-assistants">MCP Server</a> •
   <a href="#-cli--terminal-execution">CLI Usage</a> •
@@ -35,7 +36,7 @@
 
 ---
 
-AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, mechanical **risk guardrails**, an interactive **walk-forward backtesting suite**, and a clean, responsive **web trading desk**.
+AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, an **Alpaca options overlay**, **multi-provider AI reasoning** (OpenAI, Google Gemini, Anthropic Claude, xAI Grok), **mechanical risk guardrails**, an **auto-trade approval queue**, an interactive **walk-forward backtesting suite**, a **multi-user authentication & admin dashboard**, and a fast, responsive **web & mobile trading desk**.
 
 > [!NOTE]
 > 💸 **100% Free Platform & Commission-Free Trading**:
@@ -63,10 +64,15 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 ## 🌟 Why AlgoPaca?
 
 - 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
-- 🧠 **Multi-Factor AI Intelligence**: Leverages state-of-the-art LLMs (OpenAI GPT-4o / GPT-4o-mini and Google Gemini 2.0 Flash / Pro) to fuse quantitative technical indicators, financial news sentiment, earnings surprise history, and macroeconomic calendar events into reasoned trading decisions.
+- 🧠 **Multi-Provider AI Intelligence**: Seamlessly switch between top-tier LLMs—**OpenAI** (GPT-4o, GPT-4o-mini, o3-mini), **Google Gemini** (Gemini 2.0 Flash, Gemini 1.5 Pro), **Anthropic Claude** (Claude 3.7 Sonnet, Claude 3.5 Sonnet, Claude 3.5 Haiku), and **xAI Grok** (Grok-2, Grok-beta)—to fuse quantitative technical indicators, financial news sentiment, Nasdaq earnings surprises, and macroeconomic calendar events into reasoned JSON trading decisions.
+- 🎯 **Alpaca Options Overlay**: Automatically map algorithmic and AI signals onto defined-risk options strategies (vertical debit spreads, long calls/puts, and covered hedges) with automated strike and DTE selection.
+- 🚦 **Auto-Trade & Human-in-the-Loop Approval Queue**: Choose between full autonomous continuous execution or **Approval Mode**, where candidate trades are staged in an approval queue with full reasoning, entry/exit levels, and risk metrics for single-click review.
+- 📱 **Mobile-First App Experience (PWA)**: Complete responsive mobile shell featuring a native-feeling top app header, bottom navigation bar, slide-out drawer, mobile order ticketing, and fast touch interactions.
+- 👥 **Multi-User Workspace & Admin Suite**: Complete user isolation with secure signup, login, password resets via SMTP, setup wizard onboarding, Owner/Admin/Member role elevation, user-scoped API keys, and comprehensive audit logs.
+- 📋 **Advanced Order Execution & Lot Batch Liquidation**: Execute Market, Limit, Stop, Stop-Limit, Trailing Stops ($, %), Bracket, OCO, and OTO orders. Chain post-fill follow-on **Next-Tickets** and selectively batch-liquidate individual tax lots with FIFO calculation and resting order safeguards.
 - 🛡️ **Mechanical Risk Protection**: Removes emotional decision-making with strict volatility-based ATR position sizing, automatic trailing stops, profit scaling, spread checks, and daily drawdown circuit breakers.
-- 🔌 **MCP Server for AI Assistants**: A built-in [Model Context Protocol](https://modelcontextprotocol.io) server exposes AlgoPaca's engines as structured tools, so Claude, Cursor, and other AI assistants can check the account, run a strategy cycle, place/close orders, and backtest directly.
-- ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, order execution, cycle audit history, and multi-language internationalization.
+- 🔌 **MCP Server for AI Assistants**: A built-in [Model Context Protocol](https://modelcontextprotocol.io) server exposes AlgoPaca's engines and account tools, allowing Claude Desktop, Cursor, and AI agents to check portfolio status, run strategy cycles, place orders, and backtest directly.
+- ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, cycle audit logs, performance attribution, and multi-language internationalization (English, Bengali, Spanish, French, Hindi).
 - 🐳 **1-Click Deployment**: Get up and running in 60 seconds with Docker Compose or standard Python virtual environments.
 
 ---
@@ -79,22 +85,95 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
   3. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
   4. **Regime Dual Momentum (L/S)** — Daily EMA + ADX regime gate with MACD histogram triggers and ATR-based risk sizing.
   5. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
-- 🛡️ **Autonomous Mechanical Risk Engine**: Pre-execution risk gates enforcing position sizing (`equity × risk% ÷ ATR`), trailing stop-losses, take-profit scaling, max concurrent positions, daily drawdown circuit-breakers, spread checks, and post-loss cooldowns.
-- 🧪 **Interactive Backtest & Comparison Suite**: Walk-forward simulations on historical daily/minute bars with side-by-side run comparisons (CAGR, Sharpe Ratio, Max Drawdown, Win Rate, Profit Factor, Equity Curve visualization).
-- 🌐 **Modern Responsive Web Desk**: Real-time portfolio tracking, advanced order ticketing with risk guards, cycle audit logs, history analytics, and multi-language support (English, Bengali, Spanish, French, Hindi).
-- 🔒 **Dual-Slot Paper & Live Trading Safety**: Strict separation of Paper and Live credentials with hard killswitches, context resets, and automatic fallback safeguards.
+- 🎯 **Alpaca Options Overlay**:
+  - Automatically translates equity signals into defined-risk options contracts.
+  - Supports **Vertical Debit Spreads** (Call/Put spreads for capped risk/reward), **Long Options** (ATM calls/puts), and **Covered Hedges** (Protective puts and covered calls).
+  - Dynamic DTE filtering (21–45 DTE target range), delta/moneyness targeting, and maximum premium allocation caps.
+- 🤖 **4 Leading AI Providers**:
+  - Full support for **OpenAI**, **Google Gemini**, **Anthropic Claude**, and **xAI Grok**.
+  - Custom system prompts and named presets: *Balanced*, *Conservative*, *Momentum*, *Mean Reversion*, *News Aware*, *PEAD (Post-Earnings Announcement Drift)*, *ORB (Opening Range Breakout)*, and *Custom*.
+- 🚦 **Auto-Trade & Approval Queue**:
+  - **Autonomous Mode**: Runs scheduled strategy cycles and executes cleared signals automatically.
+  - **Approval Mode (Human-in-the-Loop)**: Places recommended trades into an interactive staging queue with full AI rationale, confidence score, technical breakdown, and position size for review before execution.
+- 📝 **Advanced Order Desk & Next-Ticket Chaining**:
+  - **Order Types**: Market, Limit, Stop, Stop-Limit, Trailing Stop ($ and %), Bracket (Take Profit + Stop Loss), OCO (One-Cancels-Other), and OTO (One-Triggers-Other).
+  - **Next-Ticket Lifecycle**: Configure conditional follow-on orders that automatically arm and execute once a primary order fills, without premature cancellation.
+- 📦 **Position Lots Modal & Batch Lot Liquidation**:
+  - Inspect individual tax lots for any open position (entry timestamp, qty, fill price, current value, unrealized P&L).
+  - Multi-select lots with real-time aggregate cost/gain calculation.
+  - Safe batch liquidation with FIFO disclaimers and automatic cancellation of conflicting resting stop/limit orders.
+- 👥 **Multi-User Isolation, Auth & Admin Suite**:
+  - Multi-user tenant architecture: user data, Alpaca paper/live keys, AI API keys, and trading settings are strictly isolated per user.
+  - First-time setup onboarding wizard for effortless deployment and Owner account creation.
+  - Role-Based Access Control (RBAC): *Owner*, *Admin*, and *Member* roles with permission elevation.
+  - Built-in SMTP email service for password reset delivery and system notifications with live test email dispatch.
+  - User Settings page for managing profile, password security, trade alerts, and workspace preferences.
+  - Comprehensive Admin Dashboard with user directory, role management, audit logs, and server configuration.
+- 📱 **Modern Responsive Web & Mobile App Shell (PWA)**:
+  - Mobile-first UX with fixed top app bar, bottom navigation, touch-optimized cards, and slide-out navigation drawer.
+  - Real-time portfolio tracking, cycle audit logs, trade history analytics, and multi-language support (English, Bengali, Spanish, French, Hindi).
+- 🛡️ **Autonomous Mechanical Risk Engine**:
+  - Pre-execution risk gates enforcing position sizing (`equity × risk% ÷ ATR`), trailing stop-losses, take-profit scaling, max concurrent positions, daily drawdown circuit-breakers, spread checks, and post-loss cooldowns.
+- 🧪 **Interactive Backtest & Comparison Suite**:
+  - Walk-forward simulations on historical daily/minute bars with side-by-side run comparisons (CAGR, Sharpe Ratio, Max Drawdown, Win Rate, Profit Factor, Equity Curve visualization).
+- 🔒 **Dual-Slot Paper & Live Trading Safety**:
+  - Strict separation of Paper and Live credentials with hard killswitches, context resets, and automatic fallback safeguards.
 
 ---
 
-## 📊 Strategy Engines Overview
+## 📊 Strategy Engines & Options Overlay
 
-| Engine      | Strategy Type      | Core Logic                                        | Highlights & Presets                                                                                                                                                                                         |
-| :---------- | :----------------- | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SMA**     | Trend Following    | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**.                                                                               |
-| **Dip**     | Mean Reversion     | Capitulation washouts & recovery bounces          | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**.                                                                                           |
-| **Pair**    | Regime Rotation    | Dynamic regime-impulse rotation across 2 symbols  | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA).                                                                                         |
-| **LS**      | Dual Momentum      | Trend strength momentum (Long/Short)              | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target.                                                                                                  |
-| **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning      | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
+| Engine | Strategy Type | Core Logic | Highlights & Presets |
+| :--- | :--- | :--- | :--- |
+| **SMA** | Trend Following | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**. |
+| **Dip** | Mean Reversion | Capitulation washouts & recovery bounces | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**. |
+| **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
+| **LS** | Dual Momentum | Trend strength momentum (Long/Short) | EMA fast/slow + ADX trend strength gate. Holds through chop, exits on signal flip, ATR stop, or R:R target. |
+| **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
+| **Options Overlay** | Defined-Risk Derivatives | Maps equity signals directly to Alpaca options | **Vertical Debit Spreads** (Bull Call / Bear Put spreads), **Long Options** (ATM calls/puts), **Covered Hedges** (Protective puts / Covered calls). |
+
+### 🎯 Options Overlay in Action
+
+When enabled, the Options Overlay automatically converts strategy signals into options trades:
+- **Defined Risk**: Vertical debit spreads cap maximum possible loss to the net premium paid.
+- **Expiry Targeting**: Scans the Alpaca option chain for optimal expirations (default: 21–45 DTE).
+- **Strike Selection**: Selects ATM/OTM strikes based on target moneyness (e.g., 5% OTM for wing legs).
+- **Risk Limits**: Caps maximum contracts and total premium as a percentage of account equity.
+
+---
+
+## 📱 Mobile App & Web Trading Desk
+
+AlgoPaca includes both a desktop trading terminal and an optimized **Mobile-First PWA Shell**:
+
+- **Mobile Shell**: Designed for smartphones and tablets with a sticky top bar, bottom navigation (Desk, Orders, Auto-Trade, Positions, Menu), and a slide-out navigation drawer.
+- **Positions Desk & Lot Liquidation**:
+  - View summary cards for all open equity and option positions.
+  - Drill down into individual tax lots (entry price, date, unrealized gain/loss).
+  - Select specific lots to liquidate in batch with real-time aggregate cost/gain calculation and automatic cancellation of conflicting resting orders.
+- **Orders Desk & Advanced Ticket Creation**:
+  - Manage open, filled, and cancelled orders in real time.
+  - Construct complex order tickets: Bracket, OCO, OTO, Trailing Stop ($ / %), Limit, and Stop-Limit.
+  - Set up chained **Next-Tickets** that arm upon order fill.
+- **API Keys & Configuration**:
+  - Manage user-isolated Alpaca Paper & Live keys, as well as OpenAI, Gemini, Anthropic, and xAI API keys with live connection verification.
+- **History & Performance Attribution**:
+  - Visual charts of equity growth, win/loss distribution, sector performance, and AI trade reflection audit logs.
+
+---
+
+## 👥 Multi-User Workspaces, Auth & Admin
+
+AlgoPaca provides complete multi-user isolation, making it suitable for single traders, teams, or hosted multi-tenant deployments:
+
+- **User Authentication**: Secure sign-up, session-based login, and password reset flows.
+- **Setup Wizard**: Automatically launches on initial setup to guide the administrator through creating the Owner account, configuring SMTP email, and setting default parameters.
+- **Role-Based Access Control (RBAC)**:
+  - **Owner**: Full system control, user management, role elevation, SMTP configuration, and global settings.
+  - **Admin**: User directory access, workspace monitoring, and operational controls.
+  - **Member**: Fully isolated trading workspace with dedicated Alpaca and AI API keys.
+- **User Settings**: Dedicated user settings portal for updating profile details, changing passwords, configuring trade notification preferences, and selecting default UI themes/languages.
+- **Admin Dashboard**: Centralized dashboard for user directory management, role promotion/demotion, system health statistics, SMTP server configuration, and test email delivery.
 
 ---
 
@@ -169,7 +248,7 @@ cd algopaca
 launch_web.bat
 ```
 
-Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** to access your trading desk.
+Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** to complete the setup wizard and access your trading desk.
 
 ---
 
@@ -188,16 +267,16 @@ run_mcp.bat           # Windows
 
 **Available tools:**
 
-| Tool                     | What it does                                                                 |
-| :----------------------- | :---------------------------------------------------------------------------- |
-| `get_account`             | Equity, cash, buying power, paper/live status, day P&L                       |
-| `get_positions`           | All open positions (stocks, ETFs, and options)                               |
-| `get_open_orders`         | Open orders grouped by symbol, with protective-stop metadata                 |
-| `list_strategy_presets`   | Named parameter presets for an engine (e.g. `sma` → `golden_cross`)          |
-| `run_strategy_cycle`      | Evaluate + (if a signal clears every risk gate) execute one engine's cycle, including its options overlay |
-| `place_manual_order`      | User-directed market/limit/stop order, with bracket/OTO stop-loss & take-profit |
-| `close_position`          | Liquidate a position fully or partially                                      |
-| `run_backtest`            | Walk-forward backtest an SMA or dip strategy on historical bars (no orders)  |
+| Tool | What it does |
+| :--- | :--- |
+| `get_account` | Equity, cash, buying power, paper/live status, day P&L |
+| `get_positions` | All open positions (stocks, ETFs, and options) |
+| `get_open_orders` | Open orders grouped by symbol, with protective-stop metadata |
+| `list_strategy_presets` | Named parameter presets for an engine (e.g. `sma` → `golden_cross`, `ai` → `balanced`) |
+| `run_strategy_cycle` | Evaluate + (if a signal clears every risk gate) execute one engine's cycle, including its options overlay |
+| `place_manual_order` | User-directed market/limit/stop/trailing order, with bracket/OTO stop-loss & take-profit |
+| `close_position` | Liquidate a position fully or partially |
+| `run_backtest` | Walk-forward backtest an SMA or dip strategy on historical bars (no orders) |
 
 Add it to Claude Desktop's `claude_desktop_config.json` (or Cursor's MCP settings) as a local stdio server:
 
@@ -233,6 +312,8 @@ AlgoPaca provides a full-featured terminal CLI for headless servers, automated c
 ./run.sh --once --mode ls
 ./run.sh --once --mode ai --provider openai --preset balanced
 ./run.sh --once --mode ai --provider gemini --preset momentum
+./run.sh --once --mode ai --provider anthropic --preset pead
+./run.sh --once --mode ai --provider xai --preset balanced
 
 # Run continuous autonomous loop (polls at configured intervals)
 ./run.sh --mode ai --provider gemini --preset balanced
@@ -247,7 +328,7 @@ _(On Windows, replace `./run.sh` with `run.bat`)_
 
 ## ⚙️ Configuration (`.env`)
 
-AlgoPaca uses environment variables for default configuration. All settings can also be modified in real-time via the **Configuration** page in the Web Desk.
+AlgoPaca uses environment variables for default configuration. All settings can also be modified in real-time via the **API Keys** and **Settings** pages in the Web Desk.
 
 ```env
 # ==========================================
@@ -265,12 +346,20 @@ ALPACA_LIVE_SECRET_KEY=...
 ALPACA_ALLOW_LIVE=false
 
 # ==========================================
-# AI Model Providers & Keys
+# AI Model Providers & Keys (OpenAI, Gemini, Anthropic, xAI)
 # ==========================================
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
+
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.0-flash
+
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-3-7-sonnet-latest
+
+XAI_API_KEY=xai-...
+XAI_MODEL=grok-2-latest
+
 AI_PROVIDER=openai
 
 # ==========================================
@@ -281,6 +370,17 @@ SYMBOLS=AAPL,MSFT,NVDA,SPY,QQQ
 SMA_PRESET=classic
 DIP_PRESET=deep
 AI_PRESET=balanced
+
+# ==========================================
+# Options Overlay Configuration
+# ==========================================
+OPTIONS_ENABLED=true
+OPTIONS_STYLE=vertical      # vertical (debit spread) | long_option | hedge
+OPTIONS_DTE_MIN=21
+OPTIONS_DTE_MAX=45
+OPTIONS_OTM_PCT=5.0
+OPTIONS_MAX_CONTRACTS=1
+OPTIONS_MAX_PREMIUM_PCT=1.0
 
 # ==========================================
 # Mechanical Risk Engine
@@ -295,10 +395,11 @@ AI_COOLDOWN_MINUTES=60      # Cooldown before re-entering a stopped ticker
 AI_MAX_ALLOC_PCT=25.0       # Max portfolio allocation per individual trade
 
 # ==========================================
-# Web Server Configuration
+# Web Server & Localization Configuration
 # ==========================================
 ALGOPACA_HOST=127.0.0.1
 ALGOPACA_PORT=8765
+LANG_CODE=en                # en | bn | es | fr | hi
 ```
 
 See [.env.example](.env.example) for the full list of options and default parameters.
@@ -342,7 +443,7 @@ AlgoPaca is architected from the ground up with mechanical risk controls that ex
 
 1. **Default Paper Mode**: Fresh installations always start in Paper mode using simulated capital.
 2. **Dedicated Credential Slots**: Paper keys (`ALPACA_API_KEY`) and Live keys (`ALPACA_LIVE_API_KEY`) are kept in separate slots to prevent accidental promotion.
-3. **Hard Killswitch**: Live trading requires setting `ALPACA_ALLOW_LIVE=true` and explicit user confirmation in the Configuration menu.
+3. **Hard Killswitch**: Live trading requires setting `ALPACA_ALLOW_LIVE=true` and explicit user confirmation in the API Keys menu.
 4. **Environment Isolation**: Switching between Paper and Live immediately cancels armed triggers, stops active loops, and clears portfolio caches.
 5. **Fail-Safe Fallback**: Any authentication or permission error on Live immediately reverts the system back to Paper mode.
 
@@ -364,12 +465,14 @@ The interactive Backtester enables testing strategies across historical daily an
 algopaca/
 ├── bot/                     # Core Python trading engines & backend
 │   ├── ai_brain.py          # AI prompt assembly & multi-modal context builder
-│   ├── ai_models.py         # Supported LLM model catalog
-│   ├── ai_presets.py        # Named AI strategy presets (Balanced, PEAD, etc.)
-│   ├── ai_providers.py      # OpenAI & Gemini client integrations
+│   ├── ai_models.py         # Supported LLM model catalog (OpenAI, Gemini, Claude, xAI)
+│   ├── ai_presets.py        # Named AI strategy presets (Balanced, PEAD, ORB, etc.)
+│   ├── ai_providers.py      # OpenAI, Gemini, Anthropic & xAI client integrations
 │   ├── ai_risk.py           # Mechanical ATR sizing & risk rules
 │   ├── ai_trader.py         # AI execution & post-trade reflection controller
 │   ├── analysis.py          # Technical indicators (RSI, MACD, Bollinger, ATR, ADX)
+│   ├── approval_store.py    # Auto-trade approval queue & staging store
+│   ├── auth.py              # Multi-user auth, session JWTs, RBAC & audit logging
 │   ├── backtest.py          # Walk-forward backtesting simulation engine
 │   ├── backtest_store.py    # Backtest results persistence
 │   ├── client.py            # Alpaca API client & market data wrapper
@@ -378,16 +481,38 @@ algopaca/
 │   ├── dip_hunt.py          # Buy-the-dip engine
 │   ├── earnings.py          # Nasdaq earnings calendar & EPS surprise parser
 │   ├── econ_calendar.py     # Economic calendar reader (Forex Factory USD)
+│   ├── email_service.py     # SMTP email service for password resets & notifications
+│   ├── followon_store.py    # Chained Next-Ticket lifecycle management
 │   ├── history_insights.py  # Trade history attribution & performance analytics
+│   ├── live_quote.py        # Live price quotes & spread checks
 │   ├── ls_strategy.py       # Regime Dual Momentum (L/S) engine
 │   ├── mcp_server.py        # MCP server exposing engines as AI assistant tools
+│   ├── options_chain.py     # Alpaca options chain querying & strike selection
+│   ├── options_overlay.py   # Options overlay engine (debit spreads, long calls/puts, hedges)
 │   ├── pair_strategy.py     # Long/Short pair rotation engine
+│   ├── settings_store.py    # User settings and preferences store
 │   ├── strategy.py          # SMA crossover engine
 │   ├── trader.py            # Execution dispatcher
-│   └── webapp.py            # FastAPI web server
-├── web/                     # Web Trading Desk frontend
-│   ├── static/css/          # Responsive styling & dark theme
-│   ├── static/js/           # Client-side trading desk interactions & charts
+│   ├── web_state.py         # Real-time desk state & background workers
+│   └── webapp.py            # FastAPI web server, REST routes & auth middleware
+├── web/                     # Web & Mobile Trading Desk frontend
+│   ├── admin.html           # Admin dashboard (user directory, RBAC, SMTP, audit logs)
+│   ├── api-keys.html        # API key management (Alpaca Paper/Live, AI keys)
+│   ├── auto-trade.html      # Auto-trade control center & approval queue desk
+│   ├── backtest.html        # Interactive backtester
+│   ├── backtest-compare.html# Side-by-side backtest run comparison
+│   ├── backtest-history.html# Saved backtest runs directory
+│   ├── history.html         # Trade history, reflections & performance attribution
+│   ├── login.html           # User authentication login
+│   ├── manual-order.html    # Advanced manual order desk & next-ticket builder
+│   ├── orders.html          # Active, filled & cancelled orders desk
+│   ├── positions.html       # Position tracking & tax lot batch liquidation
+│   ├── reset-password.html  # Secure token-based password reset
+│   ├── settings.html        # User profile, security & notification settings
+│   ├── setup-wizard.html    # First-time onboarding & Owner bootstrap wizard
+│   ├── signup.html          # User registration
+│   ├── static/css/          # Styling: desk-shell, mobile-shell, theme stylesheets
+│   ├── static/js/           # Frontend interactions, charts & responsive shell logic
 │   └── static/lang/         # i18n JSON language catalogs (EN, BN, ES, FR, HI)
 ├── tests/                   # Automated unit & integration test suite
 ├── scripts/                 # Analysis and strategy validation scripts
@@ -397,8 +522,8 @@ algopaca/
 ├── launch_web.bat           # Windows web launcher
 ├── run.sh                   # macOS / Linux CLI runner
 ├── run.bat                  # Windows CLI runner
-├── run_mcp.sh                # macOS / Linux MCP server launcher
-├── run_mcp.bat                # Windows MCP server launcher
+├── run_mcp.sh               # macOS / Linux MCP server launcher
+├── run_mcp.bat              # Windows MCP server launcher
 ├── requirements.txt         # Python dependencies
 ├── CONTRIBUTING.md          # Contribution guidelines
 ├── CODE_OF_CONDUCT.md       # Community code of conduct
@@ -418,6 +543,8 @@ python -m unittest discover -s tests
 
 # Run specific test modules with verbose output
 python -m unittest tests.test_desk -v
+python -m unittest tests.test_admin -v
+python -m unittest tests.test_user_settings -v
 ```
 
 ---

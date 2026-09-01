@@ -1141,21 +1141,8 @@ class AuthStore:
             return cursor.rowcount > 0
 
     def seed_env_credentials_if_empty(self, user_id: int) -> bool:
-        """Seed credentials from environment variables if the user has none saved."""
+        """Seed credentials from environment variables for missing keys."""
         current = self.get_user_credentials(user_id)
-        has_any_key = any(
-            bool(current.get(k))
-            for k in [
-                "alpaca_paper_api_key",
-                "alpaca_live_api_key",
-                "openai_api_key",
-                "gemini_api_key",
-                "anthropic_api_key",
-                "xai_api_key",
-            ]
-        )
-        if has_any_key:
-            return False
 
         paper_key = (
             os.getenv("ALPACA_PAPER_API_KEY", "").strip()
@@ -1173,21 +1160,21 @@ class AuthStore:
         xai_key = os.getenv("XAI_API_KEY", "").strip()
 
         updates = {}
-        if paper_key:
+        if not current.get("alpaca_paper_api_key") and paper_key:
             updates["alpaca_paper_api_key"] = paper_key
-        if paper_secret:
+        if not current.get("alpaca_paper_secret_key") and paper_secret:
             updates["alpaca_paper_secret_key"] = paper_secret
-        if live_key:
+        if not current.get("alpaca_live_api_key") and live_key:
             updates["alpaca_live_api_key"] = live_key
-        if live_secret:
+        if not current.get("alpaca_live_secret_key") and live_secret:
             updates["alpaca_live_secret_key"] = live_secret
-        if openai_key:
+        if not current.get("openai_api_key") and openai_key:
             updates["openai_api_key"] = openai_key
-        if gemini_key:
+        if not current.get("gemini_api_key") and gemini_key:
             updates["gemini_api_key"] = gemini_key
-        if anthropic_key:
+        if not current.get("anthropic_api_key") and anthropic_key:
             updates["anthropic_api_key"] = anthropic_key
-        if xai_key:
+        if not current.get("xai_api_key") and xai_key:
             updates["xai_api_key"] = xai_key
 
         if updates:

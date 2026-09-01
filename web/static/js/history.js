@@ -322,8 +322,14 @@ function filterTradeRows(rows) {
   const query = historyQueryFilter;
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     if (side && String(row.side || "").toLowerCase() !== side) return false;
-    if (symbol && !String(row.symbol || "").toUpperCase().startsWith(symbol)) {
-      return false;
+    if (symbol) {
+      const rowSym = String(row.symbol || "").toUpperCase();
+      const occ = parseOcc(rowSym);
+      const rootMatch = Boolean(occ && occ.root.startsWith(symbol));
+      const rawMatch = rowSym.startsWith(symbol);
+      if (!rawMatch && !rootMatch) {
+        return false;
+      }
     }
     if (!query) return true;
     // Outcome and P&L bounds only exist on fills the FIFO walk could close
@@ -363,7 +369,12 @@ function scopedRealized(payload) {
   if (!symbol) {
     return { value: payload?.realized_range_pnl ?? payload?.realized_pnl, scope: "range" };
   }
-  const exact = Object.keys(bySymbol).filter((s) => s.startsWith(symbol));
+  const exact = Object.keys(bySymbol).filter((s) => {
+    const sUpper = s.toUpperCase();
+    if (sUpper.startsWith(symbol)) return true;
+    const occ = parseOcc(sUpper);
+    return Boolean(occ && occ.root.startsWith(symbol));
+  });
   if (!exact.length) return { value: 0, scope: "symbol", symbols: [] };
   const total = exact.reduce((n, s) => n + Number(bySymbol[s] || 0), 0);
   return { value: total, scope: "symbol", symbols: exact };
@@ -628,7 +639,9 @@ function sessionInHistoryRange(session) {
 
 function renderAlpacaTrade(row, deskIndex) {
   const side = String(row.side || "").toLowerCase();
-  const symbol = String(row.symbol || "");
+  const rawSymbol = String(row.symbol || "");
+  const occ = parseOcc(rawSymbol);
+  const isOption = Boolean(occ || row.is_option);
   const px = row.filled_avg_price != null ? money(row.filled_avg_price) : "—";
   const when = escapeHtml(
     formatEtDate(row.filled_at || row.submitted_at, { withTime: true })
@@ -660,18 +673,40 @@ function renderAlpacaTrade(row, deskIndex) {
           tx("partial_fill_short", "Partial")
         )}</span>`
       : "";
+
+  let symbolMarkup = "";
+  if (occ) {
+    symbolMarkup =
+      `<span class="history-symbol history-symbol-opt" title="${escapeHtml(rawSymbol)}">` +
+      `<span class="history-opt-root">${escapeHtml(occ.root)}</span>` +
+      `<span class="history-opt-badge ${escapeHtml(occ.type)}" title="${escapeHtml(rawSymbol)}">` +
+      `<span class="opt-tag-type">${escapeHtml(occ.type.toUpperCase())}</span> ` +
+      `<span class="opt-tag-strike">${escapeHtml(occ.formattedStrike)}</span>` +
+      `<span class="opt-tag-dot">·</span>` +
+      `<span class="opt-tag-exp">${escapeHtml(occ.formattedExpiry)}</span>` +
+      `</span>` +
+      `</span>`;
+  } else {
+    symbolMarkup = `<span class="history-symbol">${escapeHtml(rawSymbol || "—")}</span>`;
+  }
+
+  const optMetaTag = isOption
+    ? `<span class="history-flag history-flag-opt" title="${escapeHtml(rawSymbol)}">${escapeHtml(tx("option_contract", "Option"))}</span>`
+    : "";
+
   // No `role="listitem"`: the day `<details>` around this row is the list item,
   // and nesting listitems inside one another is invalid.
   return (
-    `<div class="history-row" data-signal="${escapeHtml(side)}">` +
+    `<div class="history-row${isOption ? " is-option-row" : ""}" data-signal="${escapeHtml(side)}">` +
     `<div class="history-row-top">` +
     `<span class="history-time">${when}</span>` +
     `<span class="history-signal ${escapeHtml(side)}">${escapeHtml(side.toUpperCase() || "—")}</span>` +
-    `<span class="history-symbol">${escapeHtml(symbol || "—")}</span>` +
+    symbolMarkup +
     `<span class="history-price">${escapeHtml(px)}</span>` +
     `</div>` +
     `<div class="history-row-meta">` +
     (deskIndex ? renderTradeSourceBadge(row.id, deskIndex) + " · " : "") +
+    (optMetaTag ? optMetaTag + " · " : "") +
     `${escapeHtml(tx("qty_short", "Qty"))} ${escapeHtml(formatQty(row.qty))}` +
     (gross ? ` · ${gross}` : "") +
     (partial ? ` · ${partial}` : "") +
@@ -929,11 +964,15 @@ function applyHistorySymbolPnl(payload) {
   block.hidden = false;
   box.innerHTML = entries
     .map(([sym, value]) => {
-      const on = active && sym.startsWith(active);
+      const occ = parseOcc(sym);
+      const on = active && (sym.startsWith(active) || (occ && occ.root.startsWith(active)));
+      const symMarkup = occ
+        ? `<span class="symbol-pnl-sym">${escapeHtml(occ.root)}</span> <span class="history-opt-badge ${escapeHtml(occ.type)}"><span class="opt-tag-type">${escapeHtml(occ.type.toUpperCase())}</span> <span class="opt-tag-strike">${escapeHtml(occ.formattedStrike)}</span></span>`
+        : `<span class="symbol-pnl-sym">${escapeHtml(sym)}</span>`;
       return (
         `<button type="button" class="symbol-pnl-chip${on ? " is-active" : ""}" ` +
         `data-filter-symbol="${escapeHtml(sym)}" aria-pressed="${on ? "true" : "false"}">` +
-        `<span class="symbol-pnl-sym">${escapeHtml(sym)}</span>` +
+        symMarkup +
         `<span class="symbol-pnl-val ${value >= 0 ? "pos" : "neg"}">${escapeHtml(formatPnl(value))}</span>` +
         `</button>`
       );
@@ -1363,7 +1402,11 @@ function syncHistorySymbolOptions(payload) {
   const seen = new Set();
   alpacaTradeView(payload).all.forEach((row) => {
     const sym = String(row.symbol || "").toUpperCase();
-    if (sym) seen.add(sym);
+    if (sym) {
+      seen.add(sym);
+      const occ = parseOcc(sym);
+      if (occ && occ.root) seen.add(occ.root);
+    }
   });
   const options = [...seen].sort();
   const signature = options.join(",");
@@ -1753,6 +1796,12 @@ function pollLabel(poll) {
 }
 
 function renderHistoryResult(entry) {
+  const sym = String(entry?.symbol || "");
+  const occ = parseOcc(sym);
+  const symMarkup = occ
+    ? `<span class="history-symbol history-symbol-opt" title="${escapeHtml(sym)}"><span class="history-opt-root">${escapeHtml(occ.root)}</span><span class="history-opt-badge ${escapeHtml(occ.type)}"><span class="opt-tag-type">${escapeHtml(occ.type.toUpperCase())}</span> <span class="opt-tag-strike">${escapeHtml(occ.formattedStrike)}</span></span></span>`
+    : `<span class="history-symbol">${escapeHtml(sym || "—")}</span>`;
+
   if (entry?.kind === "error") {
     const pollBit =
       entry.poll != null ? `${pollLabel(entry.poll)} · ` : "";
@@ -1761,7 +1810,7 @@ function renderHistoryResult(entry) {
       `<div class="history-row-top">` +
       `<span class="history-time">${escapeHtml(formatEtDate(entry.iso || entry.ts, { withTime: true }))}</span>` +
       `<span class="history-signal error">ERR</span>` +
-      `<span class="history-symbol">${escapeHtml(entry.symbol || "—")}</span>` +
+      symMarkup +
       `<span class="history-price">—</span>` +
       `</div>` +
       `<div class="history-row-meta">${pollBit}` +
@@ -1788,7 +1837,7 @@ function renderHistoryResult(entry) {
     `<div class="history-row-top">` +
     `<span class="history-time">${escapeHtml(formatEtDate(entry.iso || entry.ts, { withTime: true }))}</span>` +
     `<span class="history-signal ${escapeHtml(signal)}">${escapeHtml(signal.toUpperCase())}</span>` +
-    `<span class="history-symbol">${escapeHtml(entry.symbol || "—")}</span>` +
+    symMarkup +
     `<span class="history-price">${escapeHtml(price)}</span>` +
     `</div>` +
     `<div class="history-row-meta">${poll}${qty}${conf}</div>` +

@@ -20,11 +20,12 @@
   top: 1rem;
   margin: 0;
   padding: 0.45rem;
-  background: rgba(16, 24, 35, 0.7);
+  background: var(--panel);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .admin-tab-btn {
@@ -520,7 +521,7 @@
 
 .filter-select-shell .nice-select .nice-select-dropdown,
 .modal-select-shell .nice-select .nice-select-dropdown {
-  background: var(--surface-card, #0f1622);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);

@@ -33,7 +33,7 @@
     padding: 1.25rem;
     border: 1px dashed var(--line);
     border-radius: var(--radius-md);
-    background: rgba(12, 18, 25, 0.25);
+    background: var(--surface-soft);
   }
 
   .bt-results[hidden]::before {
@@ -167,7 +167,7 @@
   padding: 0.7rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.35);
+  background: var(--surface-soft);
 }
 
 .bt-run-kind-wrap[hidden] {
@@ -434,7 +434,7 @@
   padding: 0.55rem 0.45rem 0.35rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.35);
+  background: color-mix(in srgb, var(--panel-bg) 65%, var(--ink));
   overflow: hidden;
 }
 
@@ -527,15 +527,15 @@ body.bt-chart-fs-open {
   padding: 0.7rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.28);
+  background: var(--surface-soft);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .bt-history-row:hover,
 .bt-history-row:focus-within {
-  border-color: rgba(212, 137, 76, 0.45);
-  background: rgba(12, 18, 25, 0.42);
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 8%, var(--surface-soft));
 }
 
 .bt-history-row.is-active {
@@ -662,7 +662,7 @@ body.bt-chart-fs-open {
   margin-bottom: 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(12, 18, 25, 0.28);
+  background: var(--surface-soft);
 }
 
 .bt-compare-table {

@@ -227,6 +227,52 @@ class TestUserSettings(unittest.TestCase):
         self.assertEqual(saved["default_size_mode"], "notional")
         self.assertEqual(saved["default_trade_notional"], 250.0)
 
+        # Update trading defaults with valid notification email
+        res = self.client.put(
+            "/api/user/preferences",
+            json={
+                "default_size_mode": "qty",
+                "default_trade_qty": 5.0,
+                "default_trade_notional": 500.0,
+                "require_approval": True,
+                "notify_browser": True,
+                "notify_email": True,
+                "notification_email": "trader.alerts@example.com",
+            },
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        saved = res.json()["preferences"]
+        self.assertEqual(saved["default_trade_qty"], 5.0)
+        self.assertEqual(saved["default_trade_notional"], 500.0)
+        self.assertTrue(saved["require_approval"])
+        self.assertTrue(saved["notify_email"])
+        self.assertEqual(saved["notification_email"], "trader.alerts@example.com")
+
+        # Invalid notification email format
+        res = self.client.put(
+            "/api/user/preferences",
+            json={"notification_email": "not-an-email"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 422)
+
+        # Invalid trade qty (<= 0)
+        res = self.client.put(
+            "/api/user/preferences",
+            json={"default_trade_qty": 0},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 422)
+
+        # Invalid trade notional (<= 0)
+        res = self.client.put(
+            "/api/user/preferences",
+            json={"default_trade_notional": -10.0},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 422)
+
     def test_user_sessions_management(self) -> None:
         # Add another session for trader
         second_token, _ = self.auth_store.create_session(self.trader["id"], user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)")
@@ -337,6 +383,53 @@ class TestUserSettings(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["state"]["settings"]["ai_provider"], "anthropic")
         self.assertTrue(data["ai_key_status"]["anthropic"]["set"])
+
+    def test_openai_api_key_persistence_across_settings_save(self) -> None:
+        """Verify saved OpenAI key is not wiped when settings or other desk forms are updated."""
+        # 1. Save OpenAI API key
+        res = self.client.post(
+            "/api/keys",
+            json={"ai_provider": "openai", "openai_api_key": "sk-proj-test-1234567890abcdef"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["ai_key_status"]["openai"]["set"])
+        self.assertTrue(data["state"]["ai_ready"]["openai"])
+
+        # 2. Update desk settings (e.g., auto-trade form auto-save with empty key fields)
+        res = self.client.post(
+            "/api/settings",
+            json={"symbol": "NVDA", "strategy_mode": "ai", "ai_provider": "openai"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        # Ensure OpenAI key remains saved and NOT wiped
+        self.assertTrue(data["ai_key_status"]["openai"]["set"])
+
+        # 3. Check status snapshot & base config
+        res = self.client.get(
+            "/api/status",
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        status_data = res.json()
+        self.assertTrue(status_data["ai_key_status"]["openai"]["set"])
+        self.assertTrue(status_data["ai_ready"]["openai"])
+
+        # 4. Explicit clear removes the key
+        res = self.client.post(
+            "/api/keys/clear",
+            json={"openai": True},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        clear_data = res.json()
+        self.assertFalse(clear_data["ai_key_status"]["openai"]["set"])
+        self.assertFalse(clear_data["state"]["ai_ready"]["openai"])
 
 
     def test_setup_wizard_page_routing(self) -> None:
