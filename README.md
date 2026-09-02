@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Autonomous Algorithmic Paper &amp; Live Trading Desk</strong><br>
-  <em>5 Algorithmic Engines • Custom Blueprints • Options Overlay • 4 AI Providers • Auto-Trade Approval Queue • Multi-User Auth &amp; Admin • Mobile PWA &amp; Web Desk</em>
+  <em>6 Algorithmic &amp; Intraday Engines • Exit Strategies &amp; Bracket Stops • Custom Blueprints • Options Overlay • 4 AI Providers • Auto-Trade Approval Queue • Multi-User Auth &amp; Admin • Mobile PWA &amp; Web Desk</em>
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 
 ---
 
-AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **5 algorithmic trading engines**, **customizable strategy blueprints**, an **Alpaca options overlay**, **multi-provider AI reasoning** (OpenAI, Google Gemini, Anthropic Claude, xAI Grok), **mechanical risk guardrails**, an **auto-trade approval queue**, an interactive **walk-forward backtesting suite**, a **multi-user authentication & admin dashboard**, and a fast, responsive **web & mobile trading desk**.
+AlgoPaca is a **100% free, MIT-licensed, full-stack quantitative trading desk** built natively for [Alpaca Markets](https://alpaca.markets) with **$0 commission stock & ETF trading**. It democratizes algorithmic and AI-driven trading by replacing expensive monthly SaaS bot subscriptions with a self-hosted, institutional-grade platform featuring **6 algorithmic & intraday trading engines**, **automated position exit strategies & bracket protection**, **customizable strategy blueprints**, an **Alpaca options overlay**, **multi-provider AI reasoning** (OpenAI, Google Gemini, Anthropic Claude, xAI Grok), **mechanical risk guardrails**, an **auto-trade approval queue**, an interactive **walk-forward daily & intraday backtesting suite**, a **multi-user authentication & admin dashboard**, and a fast, responsive **web & mobile trading desk**.
 
 > [!NOTE]
 > 💸 **100% Free Platform & Commission-Free Trading**:
@@ -64,14 +64,17 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 ## 🌟 Why AlgoPaca?
 
 - 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
+- ⚡ **Intraday Day Trading Engine**: High-frequency intraday engine designed for 1m, 5m, and 15m intervals with VWAP trend riding, Opening Range Breakout (ORB 15m), fast momentum scalping, and mean-reversion fading, paired with AI trade vetoes and automatic EOD position square-off.
+- 🛡️ **Automated Exit Strategies & Position Protection**: Interactive position management directly from the Positions desk — set fixed Stop Loss, Breakeven Ratchet ($entry ± $0.01), Trailing Stop Loss (%), Take Profit targets, or full Bracket orders with single-click execution.
 - 🧠 **Multi-Provider AI Intelligence**: Seamlessly switch between top-tier LLMs—**OpenAI** (GPT-4o, GPT-4o-mini, o3-mini), **Google Gemini** (Gemini 2.0 Flash, Gemini 1.5 Pro), **Anthropic Claude** (Claude 3.7 Sonnet, Claude 3.5 Sonnet, Claude 3.5 Haiku), and **xAI Grok** (Grok-2, Grok-beta)—to fuse quantitative technical indicators, financial news sentiment, Nasdaq earnings surprises, and macroeconomic calendar events into reasoned JSON trading decisions.
 - 🛠️ **Custom Trading Engines & Starter Blueprints**: Save any active desk setup—strategy parameters, custom AI prompts, risk limits, and indicator gates—as a reusable Custom Engine, or launch instantly from 7 pre-built starter blueprints.
 - 🎯 **Alpaca Options Overlay**: Automatically map algorithmic and AI signals onto defined-risk options strategies (vertical debit spreads, long calls/puts, and covered hedges) with automated strike and DTE selection.
 - 🚦 **Auto-Trade & Human-in-the-Loop Approval Queue**: Choose between full autonomous continuous execution or **Approval Mode**, where candidate trades are staged in an approval queue with full reasoning, entry/exit levels, and risk metrics for single-click review.
 - 📱 **Mobile-First App Experience (PWA)**: Complete responsive mobile shell featuring a native-feeling top app header, bottom navigation bar, slide-out drawer, mobile order ticketing, and fast touch interactions.
 - 👥 **Multi-User Workspace & Admin Suite**: Complete user isolation with secure signup, login, password resets via SMTP, setup wizard onboarding, Owner/Admin/Member role elevation, user-scoped API keys, and comprehensive audit logs.
-- 📋 **Advanced Order Execution & Lot Batch Liquidation**: Execute Market, Limit, Stop, Stop-Limit, Trailing Stops ($, %), Bracket, OCO, and OTO orders. Chain post-fill follow-on **Next-Tickets** and selectively batch-liquidate individual tax lots with FIFO calculation and resting order safeguards.
+- 📋 **Advanced Order Execution & Lot Batch Liquidation**: Execute Market, Limit, Stop, Stop-Limit, Trailing Stops ($, %), Bracket, OCO, and OTO orders. Chain post-fill follow-on **Next-Tickets**, partially scale out of positions (25%, 50%, 75%), and selectively batch-liquidate individual tax lots with FIFO calculation and resting order safeguards.
 - 🛡️ **Mechanical Risk Protection**: Removes emotional decision-making with strict volatility-based ATR position sizing, automatic trailing stops, profit scaling, spread checks, and daily drawdown circuit breakers.
+- 🧪 **Daily & Intraday Backtesting Suite**: Walk-forward simulations on historical daily or minute bars with realistic execution, intra-bar conservative stop-first resolution, slippage simulation, and side-by-side comparison analytics.
 - 🔌 **MCP Server for AI Assistants**: A built-in [Model Context Protocol](https://modelcontextprotocol.io) server exposes AlgoPaca's engines and account tools, allowing Claude Desktop, Cursor, and AI agents to check portfolio status, run strategy cycles, place orders, and backtest directly.
 - ⚡ **Zero-Build Web Desk**: Ultra-fast, lightweight Vanilla JS/CSS web desk with real-time portfolio metrics, cycle audit logs, performance attribution, and multi-language internationalization (English, Bengali, Spanish, French, Hindi).
 - 🐳 **1-Click Deployment**: Get up and running in 60 seconds with Docker Compose or standard Python virtual environments.
@@ -80,13 +83,22 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 ## ✨ Key Features
 
-- 📈 **5 Algorithmic Trading Engines & Custom Strategy Blueprints**:
-  1. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple proven presets (Golden Cross, Swing, Fibonacci, etc.).
-  2. **Buy the Dip** — Oversold mean-reversion with RSI + lower Bollinger wash entries and recovery exits.
-  3. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
-  4. **Regime Dual Momentum (L/S)** — Daily EMA + ADX regime gate with MACD histogram triggers and ATR-based risk sizing.
-  5. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
-  6. **Custom Trading Engines & Starter Blueprints** — Save, duplicate, customize, and switch between named custom trading engines with tailored rules, AI instructions, and mechanical risk parameters.
+- 📈 **6 Algorithmic & Intraday Trading Engines**:
+  1. **Intraday & Day Trading Engine** — High-speed intraday engine on 1m, 5m, or 15m intervals featuring VWAP trend following, Opening Range Breakout (ORB 15m), fast momentum scalping, and mean-reversion fading, backed by AI trade veto and automatic End-Of-Day (EOD) position square-off.
+  2. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple proven presets (Golden Cross, Swing, Fibonacci, etc.).
+  3. **Buy the Dip** — Oversold mean-reversion with RSI + lower Bollinger wash entries and recovery exits.
+  4. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
+  5. **Regime Dual Momentum (L/S)** — Daily EMA + ADX regime gate with MACD histogram triggers and ATR-based risk sizing.
+  6. **AI Quantitative Desk** — Multi-modal LLM engine synthesizing Technicals, News Sentiment, Nasdaq Earnings, and Forex Factory Economic Releases into structured JSON trading decisions.
+  7. **Custom Trading Engines & Starter Blueprints** — Save, duplicate, customize, and switch between named custom trading engines with tailored rules, AI instructions, and mechanical risk parameters.
+- 🛡️ **Automated Exit Strategies & Trade Management**:
+  - **Stop Loss**: Quick risk distance chips (1%, 2%, 3%, 5%, 8%, 10%) or custom dollar levels with instant GTC stop placement.
+  - **Zero-Risk Breakeven**: One-click ratchet that moves your protective stop to average entry price ($entry ± $0.01) to eliminate capital risk on profitable trades.
+  - **Trailing Stop Loss**: Dynamic percentage-based trailing stop ($1%–10%$) that locks in unrealized profits as price expands.
+  - **Take Profit Target**: Pre-set target limit price to secure gains at key resistance levels.
+  - **Full Bracket Protection**: Combined Take Profit and Stop Loss orders with automated synchronization.
+  - **Partial Liquidation**: Scale out of positions by exact share quantities or percentage presets (25%, 50%, 75%, 100%) with live proceeds and P&L estimation.
+  - **Resting Order Conflict Safeguards**: Automatically identifies and cancels conflicting resting stop/limit orders before executing position closures to prevent race conditions and duplicate executions.
 - 🛠️ **Custom Trading Engines & Starter Blueprints**:
   - Save any combination of strategy parameters, prompt instructions, indicator triggers, and risk rules as a persistent, user-isolated **Custom Engine**.
   - Includes ready-to-trade **Starter Blueprints**: *AI Trend & Volatility Surfer*, *AI Deep Dip Hunter*, *Earnings Catalyst & News Momentum*, *Dynamic SMA ATR Shield*, *Regime Momentum L/S*, *Quant RSI Dip Hunter*, and *Statistical Relative Strength Pair*.
@@ -131,6 +143,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 | Engine | Strategy Type | Core Logic | Highlights & Presets |
 | :--- | :--- | :--- | :--- |
+| **Day Trading** | Intraday & Scalping | High-frequency minute-bar execution (1m/5m/15m) using VWAP, Opening Range Breakout (ORB), and 9/21 EMA momentum | **AI Institutional VWAP & Momentum**, **AI Opening Range Sniper (15m)**, **AI Adaptive Intraday Scalper**, **VWAP Trend Rider**, **Opening Range Breakout**, **Intraday Momentum Scalp**, **VWAP Mean Reversion (Fade)**, or **Custom**. |
 | **SMA** | Trend Following | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**. |
 | **Dip** | Mean Reversion | Capitulation washouts & recovery bounces | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**. |
 | **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
@@ -138,6 +151,18 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 | **AI Desk** | Multi-Factor Quant | LLM multi-modal market synthesis & reasoning | TA (RSI, MACD, BB, ATR, ADX) + News + Earnings + Macro events → JSON decision → risk-sized orders. Presets: **Balanced**, **Conservative**, **Momentum**, **Mean Reversion**, **PEAD**, **ORB**, **Custom**. |
 | **Custom Engines** | User-Defined & Blueprints | Composable strategies & starter templates | Save, clone, and switch custom rules, custom AI directives, and risk parameters across any base engine. |
 | **Options Overlay** | Defined-Risk Derivatives | Maps equity signals directly to Alpaca options | **Vertical Debit Spreads** (Bull Call / Bear Put spreads), **Long Options** (ATM calls/puts), **Covered Hedges** (Protective puts / Covered calls). |
+
+### ⚡ Intraday Day Trading Engine & Presets
+
+The Day Trading engine is built specifically for intraday US equity and ETF market sessions with strict session risk rules:
+
+- **Sub-Modes**:
+  - `vwap_trend` — Trend following above intraday VWAP with fast 9/21 EMA alignment and 2R profit target.
+  - `orb` — Volume-confirmed 15-minute Opening Range Breakout with dynamic ATR trailing stops.
+  - `momentum_scalp` — Fast 9/21 EMA crossovers confirmed by RSI > 55 and ADX trend filters for quick intraday scalps.
+  - `vwap_fade` — Mean-reversion buying confirmed oversold bounces off the lower VWAP standard deviation band in range-bound markets.
+- **AI Second-Opinion Confirmation**: When enabled (`use_ai_confirm=True`), trading candidates are evaluated against real-time financial news sentiment and macro catalysts by your configured AI provider; setups with confidence below the threshold (default: 0.65–0.70) are safely vetoed.
+- **Market Open Buffer & EOD Square-Off**: Enforces an opening bell buffer (e.g. 15 minutes) to avoid opening volatility whipsaws, limits maximum round-trip trades per day, and automatically squares off open intraday positions before the closing bell (`day_eod_flatten_mins=15`).
 
 ### 🎯 Options Overlay in Action
 
@@ -154,10 +179,15 @@ When enabled, the Options Overlay automatically converts strategy signals into o
 AlgoPaca includes both a desktop trading terminal and an optimized **Mobile-First PWA Shell**:
 
 - **Mobile Shell**: Designed for smartphones and tablets with a sticky top bar, bottom navigation (Desk, Orders, Auto-Trade, Positions, Menu), and a slide-out navigation drawer.
-- **Positions Desk & Lot Liquidation**:
-  - View summary cards for all open equity and option positions.
+- **Positions Desk, Exit Strategies & Lot Liquidation**:
+  - View summary cards for all open equity and option positions with real-time mark-to-market prices and P&L.
+  - Open the **Exit Strategy Modal** to configure fixed Stop Loss, Breakeven Ratchet, Trailing Stops, Take Profit, or full Bracket orders.
+  - Scale out partially with the **Partial Close Modal** (25%, 50%, 75%, 100% or custom shares) with live proceeds previews.
   - Drill down into individual tax lots (entry price, date, unrealized gain/loss).
   - Select specific lots to liquidate in batch with real-time aggregate cost/gain calculation and automatic cancellation of conflicting resting orders.
+- **Auto-Trade Desk & Day Trading Control**:
+  - Seamlessly switch between Daily and Intraday Day Trading engines.
+  - Configure intraday intervals (1Min, 5Min, 15Min), strategy sub-modes, AI confirmation thresholds, and EOD square-off times directly from the web desk.
 - **Orders Desk & Advanced Ticket Creation**:
   - Manage open, filled, and cancelled orders in real time.
   - Construct complex order tickets: Bracket, OCO, OTO, Trailing Stop ($ / %), Limit, and Stop-Limit.
@@ -372,11 +402,29 @@ AI_PROVIDER=openai
 # ==========================================
 # Default Strategy Settings
 # ==========================================
-STRATEGY_MODE=sma
+STRATEGY_MODE=sma           # sma | dip | pair | ls | ai | day
 SYMBOLS=AAPL,MSFT,NVDA,SPY,QQQ
 SMA_PRESET=classic
 DIP_PRESET=deep
 AI_PRESET=balanced
+
+# ==========================================
+# Intraday Day Trading Configuration
+# ==========================================
+DAY_PRESET=ai_vwap_momentum # ai_vwap_momentum | ai_orb_breakout | ai_adaptive_scalp | vwap_trend | orb_breakout | momentum_scalp | vwap_fade | custom
+DAY_SUB_MODE=vwap_trend     # vwap_trend | orb | momentum_scalp | vwap_fade
+DAY_SIDE=long_only          # long_only | long_short
+DAY_EMA_FAST=9
+DAY_EMA_SLOW=21
+DAY_ORB_MINUTES=15          # Opening range duration (minutes)
+DAY_OPEN_BUFFER_MINS=15     # Minutes to wait after market open before trading
+DAY_EOD_FLATTEN=true        # Automatically close positions before market close
+DAY_EOD_FLATTEN_MINS=15     # Minutes before market close to square off positions
+DAY_MAX_TRADES_PER_DAY=5    # Maximum round-trip trades allowed per session
+DAY_PROFIT_TARGET_R=2.0     # Profit target (multiple of initial risk)
+DAY_STOP_ATR_MULT=1.5       # ATR stop-loss multiplier
+DAY_USE_AI_CONFIRM=true     # AI second-opinion catalyst validation
+DAY_AI_MIN_CONFIDENCE=0.70  # Minimum AI confidence required to execute trade
 
 # ==========================================
 # Options Overlay Configuration
@@ -460,6 +508,9 @@ AlgoPaca is architected from the ground up with mechanical risk controls that ex
 
 The interactive Backtester enables testing strategies across historical daily and minute bar datasets:
 
+- **Daily & Intraday Backtesting**: Test standard multi-day strategies (SMA, Dip, Pair, LS) or high-frequency intraday Day Trading rules on 1m, 5m, or 15m historical bars.
+- **Realistic Zero-Lookahead Simulation**: Signals computed at bar *i* are filled at bar *i+1*'s open; intraday stop-loss and profit targets are evaluated with conservative stop-first resolution and realistic slippage modeling (basis points).
+- **Session Rule Enforcement**: Accurately simulates opening range buffers, max trades per day caps, and End-of-Day (EOD) position square-offs.
 - **Metrics Computed**: Total Return (%), Buy & Hold Return (%), Benchmark Alpha, Sharpe Ratio, Max Drawdown (%), Win Rate (%), Profit Factor, Total Trades, and Average Trade Duration.
 - **Side-by-Side Comparison**: Save and compare multiple parameter runs side-by-side to eliminate curve-fitting.
 - **Visual Equity Curves**: Interactive charts depicting equity growth versus buy-and-hold benchmarks over time.
@@ -485,6 +536,11 @@ algopaca/
 │   ├── client.py            # Alpaca API client & market data wrapper
 │   ├── config.py            # Configuration loader & validator
 │   ├── custom_engine_store.py # User custom engines & starter blueprint persistence
+│   ├── day_ai.py            # Day trading AI catalyst evaluation & trade veto engine
+│   ├── day_backtest.py      # Walk-forward minute-bar intraday backtest simulation
+│   ├── day_presets.py       # Named day trading presets catalog (VWAP, ORB, Scalp, Fade)
+│   ├── day_strategy.py      # Intraday VWAP, Opening Range Breakout & EMA signal math
+│   ├── day_trader.py        # Day trading execution loop & EOD square-off controller
 │   ├── desk_risk.py         # Multi-engine risk verification
 │   ├── dip_hunt.py          # Buy-the-dip engine
 │   ├── earnings.py          # Nasdaq earnings calendar & EPS surprise parser
@@ -550,6 +606,9 @@ AlgoPaca includes automated unit and integration tests:
 python -m unittest discover -s tests
 
 # Run specific test modules with verbose output
+python -m unittest tests.test_day_trading -v
+python -m unittest tests.test_day_backtest -v
+python -m unittest tests.test_exit_strategy -v
 python -m unittest tests.test_desk -v
 python -m unittest tests.test_admin -v
 python -m unittest tests.test_user_settings -v
