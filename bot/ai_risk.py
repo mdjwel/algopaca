@@ -260,9 +260,22 @@ def desired_stop(
     return {"stop_price": target, "stage": stage, "r": r}
 
 
-def should_scale_out(config: Any, *, r: float | None, already_scaled: bool) -> bool:
-    """True when the position has earned its take-profit trim and has not taken it."""
-    target = float(getattr(config, "ai_take_profit_r", 0) or 0)
+def should_scale_out(
+    config: Any,
+    *,
+    r: float | None,
+    already_scaled: bool,
+    target_r: float | None = None,
+) -> bool:
+    """True when the position has earned its take-profit trim and has not taken it.
+
+    ``target_r`` overrides the desk-wide ``ai_take_profit_r`` for engines that carry
+    their own profit target (Day Trading's ``day_profit_target_r``).
+    """
+    if target_r is not None:
+        target = float(target_r or 0)
+    else:
+        target = float(getattr(config, "ai_take_profit_r", 0) or 0)
     if target <= 0 or already_scaled or r is None:
         return False
     return float(r) >= target

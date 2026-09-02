@@ -3,25 +3,37 @@
 /* ── Collapsible Accordions (Risk Engine & Options Overlay) ── */
 details.field-group.desk-accordion,
 details.desk-accordion {
-  display: block;
+  display: block !important;
   width: 100%;
-  padding: 0.55rem 0.85rem;
+  padding: 0.75rem 0.85rem !important;
   border-radius: var(--radius-md);
   margin-bottom: 0.75rem;
+  gap: 0 !important;
   transition: background 160ms ease, border-color 160ms ease;
+  box-sizing: border-box;
+}
+
+details.field-group.desk-accordion:not([open]),
+details.desk-accordion:not([open]) {
+  padding: 0.75rem 0.85rem !important;
+  gap: 0 !important;
 }
 
 details.field-group.desk-accordion[open],
 details.desk-accordion[open] {
-  padding: 0.65rem 0.85rem 0.85rem;
+  padding: 0.75rem 0.85rem 0.85rem !important;
 }
 
 details.desk-accordion > summary.desk-accordion-head {
-  display: flex;
-  align-items: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between;
   gap: 0.55rem;
   width: 100%;
-  padding: 0.15rem 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 1.35rem;
+  line-height: 1.2 !important;
   cursor: pointer;
   list-style: none;
   font-size: 0.75rem;
@@ -30,6 +42,7 @@ details.desk-accordion > summary.desk-accordion-head {
   text-transform: uppercase;
   color: var(--muted);
   user-select: none;
+  box-sizing: border-box;
 }
 
 details.desk-accordion > summary.desk-accordion-head::-webkit-details-marker {
@@ -54,6 +67,9 @@ details.desk-accordion > summary.desk-accordion-head .desk-accordion-title {
   flex: 1;
   min-width: 0;
   color: inherit;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
 }
 
 details.desk-accordion > summary.desk-accordion-head .desk-fold-caret {
@@ -66,6 +82,7 @@ details.desk-accordion > summary.desk-accordion-head .desk-fold-caret {
   transform: rotate(-45deg);
   transform-origin: 50% 50%;
   transition: transform 160ms ease;
+  margin-top: -1px;
 }
 
 details.desk-accordion[open] > summary.desk-accordion-head .desk-fold-caret {
@@ -77,12 +94,15 @@ details.desk-accordion > summary.desk-accordion-head .desk-accordion-badge {
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 0.1rem 0.45rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel) 80%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
   color: var(--muted);
   text-transform: none;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 details.desk-accordion > summary.desk-accordion-head .desk-accordion-badge:empty {
@@ -90,8 +110,8 @@ details.desk-accordion > summary.desk-accordion-head .desk-accordion-badge:empty
 }
 
 details.desk-accordion[open] > summary.desk-accordion-head {
-  margin-bottom: 0.6rem;
-  padding-bottom: 0.5rem;
+  margin-bottom: 0.65rem !important;
+  padding-bottom: 0.55rem !important;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
   color: var(--text);
 }
@@ -178,17 +198,132 @@ details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
   flex-wrap: wrap;
 }
 
-.run-zone-bar .loop-elapsed {
-  flex-shrink: 0;
-}
-
-.run-backtest-link {
+.run-zone #btn-once,
+.run-zone #btn-loop {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  text-decoration: none;
-  margin-left: auto;
+  gap: 0.45rem;
+  font-family: var(--ui);
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
+  padding: 0.55rem 1.15rem;
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
+}
+
+/* Run once - Sleek secondary execution action */
+.run-zone #btn-once {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 90%, var(--copper) 10%) 0%, color-mix(in srgb, var(--ink) 92%, var(--copper) 8%) 100%);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--copper) 45%, var(--line));
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.run-zone #btn-once::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background-color: var(--copper);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E%3C/svg%3E") no-repeat center / contain;
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.run-zone #btn-once:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--copper) 18%, var(--panel)) 0%, color-mix(in srgb, var(--copper) 9%, var(--panel)) 100%);
+  border-color: color-mix(in srgb, var(--copper) 85%, white 15%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(212, 137, 76, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.run-zone #btn-once:hover:not(:disabled)::before {
+  transform: scale(1.1);
+  background-color: #ffffff;
+}
+
+.run-zone #btn-once:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.run-zone #btn-once:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Start / Stop loop - Radiant Primary CTA */
+.run-zone #btn-loop {
+  background: linear-gradient(135deg, var(--copper) 0%, var(--copper-deep) 100%);
+  color: var(--copper-text, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--copper) 85%, white 15%);
+  font-weight: 700;
+  box-shadow: 0 3px 12px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.run-zone #btn-loop::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67'/%3E%3C/svg%3E") no-repeat center / contain;
+  transition: transform 0.25s ease;
+}
+
+.run-zone #btn-loop:hover:not(:disabled) {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--copper) 88%, white 12%) 0%, var(--copper) 100%);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 5px 18px rgba(212, 137, 76, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.run-zone #btn-loop:hover:not(:disabled)::before {
+  transform: rotate(45deg);
+}
+
+.run-zone #btn-loop:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.run-zone #btn-loop.danger,
+#page-auto-trade.is-loop-running .run-zone #btn-loop {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border-color: color-mix(in srgb, #ef4444 75%, white 25%) !important;
+  box-shadow: 0 3px 14px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+.run-zone #btn-loop.danger::before,
+#page-auto-trade.is-loop-running .run-zone #btn-loop::before {
+  background-color: #ffffff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Crect x='6' y='6' width='12' height='12' rx='1.5'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Crect x='6' y='6' width='12' height='12' rx='1.5'/%3E%3C/svg%3E") no-repeat center / contain;
+  transform: none;
+}
+
+.run-zone #btn-loop.danger:hover:not(:disabled),
+#page-auto-trade.is-loop-running .run-zone #btn-loop:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%) !important;
+  box-shadow: 0 5px 20px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+  border-color: #ffffff !important;
+}
+
+.run-zone-bar .loop-elapsed {
+  flex-shrink: 0;
 }
 
 .run-notes {
@@ -285,56 +420,68 @@ details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
 @media (max-width: 768px) {
   .run-zone {
     position: static;
-    margin-top: 1.15rem;
-    padding: 0.75rem;
+    margin-top: 0.85rem;
+    padding: 0.85rem;
     border-radius: var(--radius-md);
-    box-shadow: none;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 94%, var(--ink)) 0%, color-mix(in srgb, var(--panel) 98%, var(--ink)) 100%);
+    border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     width: 100%;
     box-sizing: border-box;
   }
 
   .run-zone-bar {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.5rem;
+    gap: 0.55rem;
+    width: 100%;
   }
 
   .run-zone .actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     width: 100%;
-    gap: 0.5rem;
+    gap: 0.55rem;
+    align-items: center;
   }
 
+  .run-zone .actions #btn-once,
   .run-zone .actions #btn-loop {
-    grid-column: auto;
-  }
-
-  .run-zone .actions .primary,
-  .run-zone .actions #btn-loop {
-    min-height: 48px;
+    min-height: 46px;
     font-size: 0.92rem;
-    font-weight: 600;
+    border-radius: var(--radius-sm);
     width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    box-sizing: border-box;
   }
 
   .run-zone .actions .loop-elapsed,
   .run-zone-bar .loop-elapsed {
-    grid-column: 1 / -1;
-    text-align: center;
+    display: none;
   }
 
-  .run-zone .run-backtest-link,
-  .run-zone .actions .run-backtest-link {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-height: 42px;
-    margin: 0.25rem 0 0;
-    text-align: center;
+  .run-notes {
+    margin-top: 0.45rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   }
 
   .run-notes summary {
     font-size: 0.76rem;
+    white-space: normal;
+    line-height: 1.4;
+    padding: 0.15rem 0;
+  }
+
+  .run-notes .loop-state {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.35;
   }
 
   .signal-wall {
@@ -348,8 +495,172 @@ details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
     text-align: center;
   }
 
+  #page-auto-trade,
+  #page-auto-trade.layout,
+  .desk-left,
+  .console,
+  .strategy-panel,
+  .panel,
+  .form,
+  .field-group {
+    max-width: 100% !important;
+    overflow-x: hidden;
+    box-sizing: border-box !important;
+  }
+
   .ai-watchlist {
     font-size: 0.75rem;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+  }
+
+  /* Custom engine mobile responsiveness to prevent horizontal overflow */
+  .custom-engine-header-row {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .custom-engine-selector-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .custom-engine-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .active-custom-engine-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .custom-engine-banner-info {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .custom-engine-banner-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .inline-ce-drawer {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .inline-ce-drawer-fields {
+    grid-template-columns: 1fr;
+  }
+
+  /* Hide the Account card on mobile devices */
+  .account-panel {
+    display: none !important;
+  }
+
+  /* Mobile Auto Trade running / idle states:
+     - When Auto Trade is OFF: hide signal wall card, show strategy options & run zone.
+     - When Auto Trade is RUNNING: show signal wall card, hide strategy options, just show run zone buttons. */
+  #page-auto-trade:not(.is-loop-running) .signal-wall {
+    display: none !important;
+  }
+
+  #page-auto-trade.is-loop-running .signal-wall {
+    display: block !important;
+  }
+
+  #page-auto-trade.is-loop-running .strategy-panel {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  #page-auto-trade.is-loop-running .strategy-panel .panel-head,
+  #page-auto-trade.is-loop-running .strategy-intro,
+  #page-auto-trade.is-loop-running #settings .field-group,
+  #page-auto-trade.is-loop-running #settings .desk-accordion {
+    display: none !important;
+  }
+
+  #page-auto-trade.is-loop-running .strategy-body {
+    padding: 0 !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone {
+    margin-top: 0.75rem !important;
+    border-color: color-mix(in srgb, var(--sell) 45%, var(--copper));
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--sell) 25%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, var(--ink)) 0%, color-mix(in srgb, var(--panel) 90%, var(--ink)) 100%);
+  }
+
+  #page-auto-trade.is-loop-running .run-zone #btn-once {
+    display: none !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone .actions {
+    display: grid !important;
+    grid-template-columns: 1.15fr 1fr !important;
+    gap: 0.55rem !important;
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone .actions #btn-loop {
+    grid-column: 1 !important;
+    min-height: 46px !important;
+    width: 100% !important;
+    font-size: 0.94rem !important;
+    font-weight: 700 !important;
+    background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid color-mix(in srgb, #ef4444 70%, white) !important;
+    box-shadow: 0 2px 10px rgba(239, 68, 68, 0.35) !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone .actions #btn-loop:hover,
+  #page-auto-trade.is-loop-running .run-zone .actions #btn-loop:active {
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%) !important;
+    box-shadow: 0 3px 14px rgba(239, 68, 68, 0.5) !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone .actions .loop-elapsed {
+    grid-column: 2 !important;
+    min-height: 46px !important;
+    margin: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--mono) !important;
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    background: color-mix(in srgb, var(--copper) 18%, var(--panel)) !important;
+    color: var(--copper) !important;
+    border: 1px solid color-mix(in srgb, var(--copper) 45%, transparent) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  }
+
+  #page-auto-trade.is-loop-running .run-zone .actions .loop-elapsed[data-kind="stopping"] {
+    background: color-mix(in srgb, var(--warn) 20%, var(--panel)) !important;
+    color: var(--warn) !important;
+    border-color: var(--warn) !important;
   }
 }
 
@@ -932,4 +1243,34 @@ details.desk-accordion .desk-accordion-body > .check:has(input:checked) {
     grid-template-columns: 1fr;
   }
 }
+
+.bt-day-windows {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .bt-day-windows {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eod-mins-row,
+.day-ai-confidence-row {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.eod-mins-row label,
+.day-ai-confidence-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 

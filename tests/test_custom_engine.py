@@ -99,6 +99,30 @@ class TestCustomEngine(unittest.TestCase):
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched["name"], "My Custom Scalper")
 
+    def test_save_blueprint_directly_creates_user_engine(self) -> None:
+        blueprint = custom_engine_store.get_custom_engine("blueprint_quant_dip_hunter", self.trader1["id"])
+        self.assertIsNotNone(blueprint)
+        self.assertTrue(blueprint.get("is_blueprint"))
+
+        payload = {
+            "id": blueprint["id"],
+            "name": blueprint["name"],
+            "description": blueprint.get("description", ""),
+            "base_engine": "dip",
+            "instructions": "Modified dip instructions",
+            "choices": {"strategy_mode": "dip", "dip_rsi_buy": 22},
+        }
+        saved = custom_engine_store.save_custom_engine(payload, self.trader1["id"])
+        self.assertTrue(saved["id"].startswith("ce_"))
+        self.assertFalse(saved.get("is_blueprint", False))
+        self.assertEqual(saved["instructions"], "Modified dip instructions")
+        self.assertEqual(saved["choices"]["dip_rsi_buy"], 22)
+
+        # Original blueprint remains unchanged
+        original_bp = custom_engine_store.get_custom_engine("blueprint_quant_dip_hunter", self.trader1["id"])
+        self.assertTrue(original_bp.get("is_blueprint"))
+        self.assertNotEqual(original_bp.get("instructions"), "Modified dip instructions")
+
     def test_duplicate_and_delete_engine(self) -> None:
         payload = {
             "name": "Original Engine",

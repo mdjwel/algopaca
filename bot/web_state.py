@@ -82,6 +82,7 @@ from bot.config import (
     normalize_lang,
     paper_mode_from_env,
     resolve_alpaca_credentials,
+    resolve_day_timeframe,
     resolve_size_mode,
 )
 from bot.desk_risk import (
@@ -133,6 +134,20 @@ from bot.sma_presets import (
 )
 from bot.strategy import StrategyResult
 from bot.trader import TradingBot
+from bot.day_backtest import (
+    DEFAULT_SLIPPAGE_BPS,
+    DayBacktestParams,
+    run_day_backtest,
+    run_day_portfolio_backtest,
+)
+from bot.day_presets import (
+    DEFAULT_PRESET_ID as DEFAULT_DAY_PRESET_ID,
+    get_preset as get_day_preset,
+    list_presets as list_day_presets,
+    match_preset_id as match_day_preset_id,
+    resolve_preset_id as resolve_day_preset_id,
+)
+from bot.day_trader import DayTradingBot
 
 
 @dataclass
@@ -166,6 +181,20 @@ class RunSettings:
     ls_risk_pct: float = 1.0
     ls_rr: float = 2.0
     ls_time_stop_bars: int = 15
+    day_preset: str = DEFAULT_DAY_PRESET_ID
+    day_sub_mode: str = "vwap_trend"
+    day_side: str = "long_only"
+    day_ema_fast: int = 9
+    day_ema_slow: int = 21
+    day_orb_minutes: int = 15
+    day_open_buffer_mins: int = 15
+    day_eod_flatten_mins: int = 15
+    day_eod_flatten: bool = True
+    day_max_trades_per_day: int = 5
+    day_profit_target_r: float = 2.0
+    day_stop_atr_mult: float = 1.5
+    day_use_ai_confirm: bool = True
+    day_ai_min_confidence: float = 0.70
     ai_provider: str = "openai"
     ai_preset: str = DEFAULT_PRESET_ID
     ai_instructions: str = ""
@@ -487,6 +516,7 @@ class AppState:
                 "sma_presets": list_sma_presets(),
                 "dip_presets": list_dip_presets(),
                 "pair_presets": list_pair_presets(),
+                "day_presets": list_day_presets(),
                 "custom_engines": custom_engine_store.list_custom_engines(self.user_id),
                 "ai_models": catalog_payload(),
             }
@@ -1194,8 +1224,12 @@ class AppState:
                     f"Bar timeframe must be one of: {', '.join(ALLOWED_TIMEFRAMES)}"
                 )
             mode = str(data.get("strategy_mode", self.settings.strategy_mode)).lower()
-            if mode not in {"sma", "dip", "ai", "pair", "ls"}:
-                raise ValueError("strategy_mode must be sma, dip, ai, pair, or ls")
+            if mode not in {"sma", "dip", "ai", "pair", "ls", "day"}:
+                raise ValueError("strategy_mode must be sma, dip, ai, pair, ls, or day")
+            if mode == "day":
+                # Keep the stored timeframe honest: Config forces Day Trading onto
+                # intraday bars, so daily bars would silently not be what runs.
+                timeframe = resolve_day_timeframe(timeframe)
             provider = str(data.get("ai_provider", self.settings.ai_provider)).lower()
             if provider not in {"openai", "gemini", "anthropic", "xai"}:
                 raise ValueError("ai_provider must be openai, gemini, anthropic, or xai")
@@ -1241,6 +1275,54 @@ class AppState:
             )
             if ls_ema_fast >= ls_ema_slow:
                 raise ValueError("ls_ema_fast must be < ls_ema_slow")
+
+            day_preset = resolve_day_preset_id(
+                str(data.get("day_preset", self.settings.day_preset))
+            )
+            day_def = get_day_preset(day_preset)
+            if day_preset != "custom" and "day_preset" in data:
+                day_sub_mode = day_def.sub_mode
+                day_side = day_def.side
+                day_ema_fast = day_def.ema_fast
+                day_ema_slow = day_def.ema_slow
+                day_orb_minutes = day_def.orb_minutes
+                day_open_buffer_mins = day_def.open_buffer_mins
+                day_eod_flatten_mins = day_def.eod_flatten_mins
+                day_eod_flatten = day_def.eod_flatten
+                day_max_trades_per_day = day_def.max_trades_per_day
+                day_profit_target_r = day_def.profit_target_r
+                day_stop_atr_mult = day_def.stop_atr_mult
+                day_use_ai_confirm = day_def.use_ai_confirm
+                day_ai_min_confidence = day_def.ai_min_confidence
+            else:
+                day_sub_mode = str(data.get("day_sub_mode", self.settings.day_sub_mode)).strip().lower() or "vwap_trend"
+                day_side = "long_short" if str(data.get("day_side", self.settings.day_side)).strip().lower() == "long_short" else "long_only"
+                day_ema_fast = int(data.get("day_ema_fast", self.settings.day_ema_fast))
+                day_ema_slow = int(data.get("day_ema_slow", self.settings.day_ema_slow))
+                day_orb_minutes = int(data.get("day_orb_minutes", self.settings.day_orb_minutes))
+                day_open_buffer_mins = int(data.get("day_open_buffer_mins", self.settings.day_open_buffer_mins))
+                day_eod_flatten_mins = int(data.get("day_eod_flatten_mins", self.settings.day_eod_flatten_mins))
+                day_eod_flatten = bool(data.get("day_eod_flatten", self.settings.day_eod_flatten))
+                day_max_trades_per_day = int(data.get("day_max_trades_per_day", self.settings.day_max_trades_per_day))
+                day_profit_target_r = float(data.get("day_profit_target_r", self.settings.day_profit_target_r))
+                day_stop_atr_mult = float(data.get("day_stop_atr_mult", self.settings.day_stop_atr_mult))
+                day_use_ai_confirm = bool(
+                    data.get("day_use_ai_confirm", self.settings.day_use_ai_confirm)
+                )
+                day_ai_min_confidence = float(
+                    data.get("day_ai_min_confidence", self.settings.day_ai_min_confidence)
+                )
+                # Matching without the AI knobs cannot resolve the AI presets, and
+                # mislabels an AI-confirmed desk as its technical-only twin.
+                day_preset = match_day_preset_id(
+                    day_sub_mode, day_ema_fast, day_ema_slow, day_orb_minutes,
+                    day_open_buffer_mins, day_eod_flatten_mins, day_eod_flatten,
+                    day_max_trades_per_day, day_profit_target_r, day_stop_atr_mult, day_side,
+                    day_use_ai_confirm, day_ai_min_confidence,
+                )
+            if day_ema_fast >= day_ema_slow:
+                raise ValueError("day_ema_fast must be < day_ema_slow")
+            day_ai_min_confidence = max(0.0, min(1.0, day_ai_min_confidence))
 
             symbols_raw = str(
                 data.get("symbols", data.get("symbol", self.settings.symbols))
@@ -1542,6 +1624,20 @@ class AppState:
                 ls_risk_pct=ls_risk_pct,
                 ls_rr=ls_rr,
                 ls_time_stop_bars=ls_time_stop_bars,
+                day_preset=day_preset,
+                day_sub_mode=day_sub_mode,
+                day_side=day_side,
+                day_ema_fast=day_ema_fast,
+                day_ema_slow=day_ema_slow,
+                day_orb_minutes=day_orb_minutes,
+                day_open_buffer_mins=day_open_buffer_mins,
+                day_eod_flatten_mins=day_eod_flatten_mins,
+                day_eod_flatten=day_eod_flatten,
+                day_max_trades_per_day=day_max_trades_per_day,
+                day_profit_target_r=day_profit_target_r,
+                day_stop_atr_mult=day_stop_atr_mult,
+                day_use_ai_confirm=day_use_ai_confirm,
+                day_ai_min_confidence=day_ai_min_confidence,
                 ai_provider=provider,
                 ai_preset=preset,
                 ai_instructions=instructions,
@@ -1700,6 +1796,20 @@ class AppState:
             ls_risk_pct=s.ls_risk_pct,
             ls_rr=s.ls_rr,
             ls_time_stop_bars=s.ls_time_stop_bars,
+            day_preset=s.day_preset,
+            day_sub_mode=s.day_sub_mode,
+            day_side=s.day_side,
+            day_ema_fast=s.day_ema_fast,
+            day_ema_slow=s.day_ema_slow,
+            day_orb_minutes=s.day_orb_minutes,
+            day_open_buffer_mins=s.day_open_buffer_mins,
+            day_eod_flatten_mins=s.day_eod_flatten_mins,
+            day_eod_flatten=s.day_eod_flatten,
+            day_max_trades_per_day=s.day_max_trades_per_day,
+            day_profit_target_r=s.day_profit_target_r,
+            day_stop_atr_mult=s.day_stop_atr_mult,
+            day_use_ai_confirm=s.day_use_ai_confirm,
+            day_ai_min_confidence=s.day_ai_min_confidence,
             ai_provider=s.ai_provider,
             ai_preset=s.ai_preset,
             ai_instructions=s.ai_instructions,
@@ -1751,6 +1861,11 @@ class AppState:
 
     def _build_ls_bot(self) -> LsTradingBot:
         return LsTradingBot(
+            self._base_config(), approval_handler=self.create_pending_approval
+        )
+
+    def _build_day_bot(self) -> DayTradingBot:
+        return DayTradingBot(
             self._base_config(), approval_handler=self.create_pending_approval
         )
 
@@ -1919,6 +2034,260 @@ class AppState:
         }
         # History is persisted by the /api/backtest handler (same as sma/dip).
         return result
+
+    def _run_day_backtest(
+        self,
+        *,
+        days: int,
+        bar_timeframe: str,
+        initial_cash: float,
+        symbols: str | None,
+        symbol: str,
+        run_kind: str = "per_symbol",
+        slip_bps: float | None = None,
+        day_sub_mode: str | None = None,
+        day_preset: str | None = None,
+        day_ema_fast: int | None = None,
+        day_ema_slow: int | None = None,
+        day_orb_minutes: int | None = None,
+        day_side: str | None = None,
+        day_stop_atr_mult: float | None = None,
+        day_profit_target_r: float | None = None,
+        day_max_trades_per_day: int | None = None,
+        day_open_buffer_mins: int | None = None,
+        day_eod_flatten_mins: int | None = None,
+        day_eod_flatten: bool | None = None,
+    ) -> dict[str, Any]:
+        """Replay Day Trading rules over recent intraday bars."""
+        kind = str(run_kind or "per_symbol").strip().lower().replace("-", "_")
+        if kind not in {"per_symbol", "portfolio"}:
+            raise ValueError("run_kind must be per_symbol or portfolio")
+
+        symbol_list = parse_backtest_symbols(symbols, symbol)
+        days_i = int(days)
+        if days_i < 1 or days_i > 60:
+            raise ValueError("Day Trading backtests cover 1 to 60 days of intraday bars")
+
+        tf = resolve_day_timeframe(bar_timeframe)
+        cash = float(initial_cash)
+        if cash < 100:
+            raise ValueError("initial_cash must be at least 100")
+
+        with self.lock:
+            s = self.settings
+            sub_m = str(day_sub_mode).strip().lower() if day_sub_mode else s.day_sub_mode
+            e_fast = int(day_ema_fast) if day_ema_fast is not None else s.day_ema_fast
+            e_slow = int(day_ema_slow) if day_ema_slow is not None else s.day_ema_slow
+            orb_m = int(day_orb_minutes) if day_orb_minutes is not None else s.day_orb_minutes
+            s_side = str(day_side).strip().lower() if day_side else s.day_side
+            stop_atr = float(day_stop_atr_mult) if day_stop_atr_mult is not None else s.day_stop_atr_mult
+            tp_r = float(day_profit_target_r) if day_profit_target_r is not None else s.day_profit_target_r
+            max_t = int(day_max_trades_per_day) if day_max_trades_per_day is not None else s.day_max_trades_per_day
+            buf_m = int(day_open_buffer_mins) if day_open_buffer_mins is not None else s.day_open_buffer_mins
+            flat_m = int(day_eod_flatten_mins) if day_eod_flatten_mins is not None else s.day_eod_flatten_mins
+            flat = bool(day_eod_flatten) if day_eod_flatten is not None else s.day_eod_flatten
+
+            params = DayBacktestParams(
+                sub_mode=sub_m,
+                ema_fast=e_fast,
+                ema_slow=e_slow,
+                orb_minutes=orb_m,
+                side=s_side,
+                stop_atr_mult=stop_atr,
+                profit_target_r=tp_r,
+                max_trades_per_day=max_t,
+                open_buffer_mins=buf_m,
+                eod_flatten_mins=flat_m,
+                eod_flatten=flat,
+                initial_cash=cash,
+                risk_pct=s.ai_risk_pct,
+                slippage_bps=float(slip_bps) if slip_bps is not None else DEFAULT_SLIPPAGE_BPS,
+            )
+            preset_id = day_preset or s.day_preset
+
+        service = AlpacaService(self._base_config())
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=max(days_i * 2, days_i + 7))
+
+        bars_by_symbol: dict[str, pd.DataFrame] = {}
+        errors: list[dict[str, Any]] = []
+        for sym in symbol_list:
+            try:
+                bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
+                if bars.empty:
+                    raise ValueError(f"No bar data returned for {sym}")
+                bars_by_symbol[sym] = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"symbol": sym, "error": str(exc)})
+
+        if not bars_by_symbol:
+            detail = "; ".join(f"{e['symbol']}: {e['error']}" for e in errors)
+            raise ValueError(detail or "Day Trading backtest produced no results: no data")
+
+        # Single symbol run
+        if len(symbol_list) == 1 and kind == "per_symbol":
+            sym = symbol_list[0]
+            if sym not in bars_by_symbol:
+                detail = errors[0]["error"] if errors else "no data"
+                raise ValueError(f"Day Trading backtest produced no results: {detail}")
+            res = run_day_backtest(bars_by_symbol[sym], symbol=sym, params=params)
+            res.update(
+                {
+                    "mode": "day",
+                    "bar_timeframe": tf,
+                    "days": days_i,
+                    "run_kind": "per_symbol",
+                    "symbols": symbol_list,
+                    "day_preset": preset_id,
+                    "errors": errors,
+                    "meta": {
+                        "mode": "day",
+                        "bar_timeframe": tf,
+                        "days": days_i,
+                        "run_kind": "per_symbol",
+                        "symbols": symbol_list,
+                        "day_preset": preset_id,
+                        "params": asdict(params),
+                    },
+                }
+            )
+            return res
+
+        # Shared-cash portfolio run
+        if kind == "portfolio":
+            book = run_day_portfolio_backtest(bars_by_symbol, params=params)
+            legs = list(book.get("results") or [])
+            for leg in legs:
+                leg.update(
+                    {
+                        "mode": "day",
+                        "bar_timeframe": tf,
+                        "days": days_i,
+                        "day_preset": preset_id,
+                        "params": asdict(params),
+                        "run_kind": "portfolio_leg",
+                    }
+                )
+            for err in errors:
+                legs.append({"symbol": err["symbol"], "error": err["error"], "mode": "day", "days": days_i})
+            book.update(
+                {
+                    "mode": "day",
+                    "bar_timeframe": tf,
+                    "days": days_i,
+                    "day_preset": preset_id,
+                    "symbols": symbol_list,
+                    "results": legs,
+                    "summary": [summary_from_result(r) for r in legs],
+                    "errors": errors,
+                    "meta": {
+                        "mode": "day",
+                        "bar_timeframe": tf,
+                        "days": days_i,
+                        "run_kind": "portfolio",
+                        "symbols": symbol_list,
+                        "day_preset": preset_id,
+                        "params": asdict(params),
+                    },
+                }
+            )
+            return book
+
+        # Multi-symbol Compare (per_symbol)
+        results: list[dict[str, Any]] = []
+        for sym, bars in bars_by_symbol.items():
+            try:
+                r = run_day_backtest(bars, symbol=sym, params=params)
+                r["symbol"] = sym
+                r["mode"] = "day"
+                r["bar_timeframe"] = tf
+                r["days"] = days_i
+                r["day_preset"] = preset_id
+                r["run_kind"] = "per_symbol"
+                r["params"] = asdict(params)
+                results.append(r)
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"symbol": sym, "error": str(exc)})
+
+        for err in errors:
+            results.append(
+                {
+                    "symbol": err["symbol"],
+                    "error": err["error"],
+                    "mode": "day",
+                    "days": days_i,
+                }
+            )
+
+        ok_results = [r for r in results if not r.get("error")]
+        if not ok_results:
+            detail = "; ".join(f"{r.get('symbol')}: {r.get('error')}" for r in results)
+            raise ValueError(detail or "All Day Trading symbol backtests failed")
+
+        summary = [summary_from_result(r) for r in results]
+        rets = [float(r["total_return_pct"]) for r in ok_results]
+        holds = [float(r["buy_hold_return_pct"]) for r in ok_results if r.get("buy_hold_return_pct") is not None]
+        dds = [float(r["max_drawdown_pct"]) for r in ok_results if r.get("max_drawdown_pct") is not None]
+        eqs = [float(r["final_equity"]) for r in ok_results]
+        n_ok = len(ok_results)
+        avg_ret = sum(rets) / n_ok
+        avg_hold = (sum(holds) / len(holds)) if holds else 0.0
+        avg_equity = sum(eqs) / n_ok
+        total_round = sum(int(r.get("round_trips") or 0) for r in ok_results)
+        total_wins = sum(int(r.get("wins") or 0) for r in ok_results)
+        label = "+".join(symbol_list)
+
+        return {
+            "symbol": label,
+            "mode": "day",
+            "bar_timeframe": tf,
+            "days": days_i,
+            "day_preset": preset_id,
+            "params": asdict(params),
+            "run_kind": "per_symbol",
+            "symbols": symbol_list,
+            "initial_cash": cash,
+            "final_equity": round(avg_equity, 2),
+            "total_return_pct": round(avg_ret, 2),
+            "buy_hold_return_pct": round(avg_hold, 2),
+            "max_drawdown_pct": round(max(dds) if dds else 0.0, 2),
+            "realized_pnl": round(
+                sum(float(r.get("realized_pnl") or 0) for r in ok_results), 2
+            ),
+            "trades": sum(int(r.get("trades") or 0) for r in ok_results),
+            "round_trips": total_round,
+            "wins": total_wins,
+            "losses": sum(int(r.get("losses") or 0) for r in ok_results),
+            "win_rate": (
+                round((total_wins / total_round), 4) if total_round else 0.0
+            ),
+            "start": min(
+                (r["start"] for r in ok_results if r.get("start")), default=None
+            ),
+            "end": max(
+                (r["end"] for r in ok_results if r.get("end")), default=None
+            ),
+            "evaluated_bars": sum(
+                int(r.get("evaluated_bars") or 0) for r in ok_results
+            ),
+            # Per-symbol compare: no shared book curve — pick a symbol in the UI.
+            "equity_curve": [],
+            "trade_list": [],
+            "results": results,
+            "summary": summary,
+            "errors": errors,
+            "open_qty": 0,
+            "open_entry": None,
+            "meta": {
+                "mode": "day",
+                "bar_timeframe": tf,
+                "days": days_i,
+                "day_preset": preset_id,
+                "params": asdict(params),
+                "run_kind": "per_symbol",
+                "symbols": symbol_list,
+            },
+        }
 
     def _run_ls_backtest(
         self,
@@ -2274,10 +2643,22 @@ class AppState:
         ls_time_stop_bars: int | None = None,
         ls_commission_pct: float | None = None,
         ls_slippage_pct: float | None = None,
+        day_sub_mode: str | None = None,
+        day_preset: str | None = None,
+        day_ema_fast: int | None = None,
+        day_ema_slow: int | None = None,
+        day_orb_minutes: int | None = None,
+        day_side: str | None = None,
+        day_stop_atr_mult: float | None = None,
+        day_profit_target_r: float | None = None,
+        day_max_trades_per_day: int | None = None,
+        day_open_buffer_mins: int | None = None,
+        day_eod_flatten_mins: int | None = None,
+        day_eod_flatten: bool | None = None,
     ) -> dict[str, Any]:
         """Fetch history and walk-forward SMA, dip, pair, or LS (no live orders)."""
         mode_key = str(mode or "sma").strip().lower()
-        if mode_key not in {"sma", "dip", "pair", "ls"}:
+        if mode_key not in {"sma", "dip", "pair", "ls", "day"}:
             raise ValueError("Backtest supports sma, dip, pair, or ls only (not AI)")
 
         if mode_key == "pair":
@@ -2295,6 +2676,29 @@ class AppState:
                 slip_bps=slip_bps,
                 symbols=symbols,
                 symbol=symbol,
+            )
+
+        if mode_key == "day":
+            return self._run_day_backtest(
+                days=days,
+                bar_timeframe=bar_timeframe,
+                initial_cash=initial_cash,
+                symbols=symbols,
+                symbol=symbol,
+                run_kind=run_kind,
+                slip_bps=slip_bps,
+                day_sub_mode=day_sub_mode,
+                day_preset=day_preset,
+                day_ema_fast=day_ema_fast,
+                day_ema_slow=day_ema_slow,
+                day_orb_minutes=day_orb_minutes,
+                day_side=day_side,
+                day_stop_atr_mult=day_stop_atr_mult,
+                day_profit_target_r=day_profit_target_r,
+                day_max_trades_per_day=day_max_trades_per_day,
+                day_open_buffer_mins=day_open_buffer_mins,
+                day_eod_flatten_mins=day_eod_flatten_mins,
+                day_eod_flatten=day_eod_flatten,
             )
 
         if mode_key == "ls":
@@ -3181,6 +3585,8 @@ class AppState:
                 return self._run_pair_once()
             if mode == "ls":
                 return self._run_ls_once()
+            if mode == "day":
+                return self._run_day_once()
             return self._run_sma_once()
         finally:
             self._end_poll()
@@ -3269,6 +3675,28 @@ class AppState:
         )
         self._set_last_ai_results(results)
         self._record_trade_history(self._expand_leg_history(results, "ls"))
+        return payload
+
+    def _run_day_once(self) -> dict[str, Any]:
+        bot = self._build_day_bot()
+        bundle = bot.run_once(should_stop=self._cycle_cancelled)
+        primary = bundle["primary"]
+        results = bundle["results"]
+        if self._cycle_cancelled():
+            return self._cancelled_cycle(primary, results)
+        summary = bot.service.account_summary()
+        symbol = primary.get("symbol") or self.settings.symbol
+        try:
+            quote = bot.service.get_mark_price(symbol)
+        except Exception:
+            quote = None
+        strategy = bot.as_strategy_result(primary)
+        position = float(primary.get("position") or 0)
+        payload = self._store_result(
+            strategy, position, summary, quote, ai_extra=primary
+        )
+        self._set_last_ai_results(results)
+        self._record_trade_history(results)
         return payload
 
     def _run_sma_once(self) -> dict[str, Any]:
@@ -3568,6 +3996,9 @@ class AppState:
                 f"ADX≥{s.ls_adx_min:g}"
             )
             return "regime_dual", label
+        if self.settings.strategy_mode == "day":
+            preset = get_day_preset(self.settings.day_preset)
+            return preset.id, preset.label
         preset = get_sma_preset(self.settings.sma_preset)
         return preset.id, preset.label
 
@@ -4827,105 +5258,224 @@ class AppState:
         stop_price: float | None = None,
         stop_pct: float | None = None,
         trail_percent: float | None = None,
+        trail_price: float | None = None,
+        take_profit_price: float | None = None,
+        take_profit_pct: float | None = None,
+        take_profit_r: float | None = None,
+        use_trailing: bool | None = False,
     ) -> dict[str, Any]:
-        """Move, re-price, or replace the protection on an open position.
+        """Configure or move exit strategy orders on an open position.
 
-        Until now the ticket could only *cancel* a resting stop, which is the
-        one operation that makes a position more dangerous. These are the three
-        that make it safer:
-
-        ``breakeven``  move the stop to the average entry, so the trade can no
-                       longer lose money (offset a cent past entry, because
-                       Alpaca rejects a stop sitting exactly on the base price)
-        ``price``      set an explicit stop price, or one a percent away
-        ``trail``      swap the fixed stop for a trailing one
-
-        Every action replaces what is resting rather than adding to it — two
-        stops over one position would exit it twice and leave a stray order.
+        Supports:
+        ``breakeven``          move the stop loss to average entry
+        ``price``              set an explicit stop loss price or % distance
+        ``trail``              set a dynamic trailing stop (% or $)
+        ``take_profit``        set a take profit target limit (price, %, or R-multiple)
+        ``bracket``            arm both stop protection (fixed/trail) and take profit target
+        ``cancel_stops``       cancel resting stop loss orders for this symbol
+        ``cancel_take_profit`` cancel resting take profit limit orders for this symbol
+        ``cancel_all``         cancel all open exit orders for this symbol
         """
         symbol = str(symbol or "").upper().strip()
         if not symbol:
             raise ValueError("Symbol is required")
         action = str(action or "").strip().lower()
-        if action not in {"breakeven", "price", "trail"}:
-            raise ValueError("action must be breakeven, price, or trail")
+        allowed_actions = {
+            "breakeven",
+            "price",
+            "stop_loss",
+            "trail",
+            "trailing_stop",
+            "take_profit",
+            "bracket",
+            "cancel_stops",
+            "cancel_take_profit",
+            "cancel_all",
+        }
+        if action not in allowed_actions:
+            raise ValueError(
+                "action must be breakeven, price, trail, take_profit, bracket, "
+                "cancel_stops, cancel_take_profit, or cancel_all"
+            )
         if self.loop_running:
             raise ValueError(
-                "Stop the strategy loop before changing a stop by hand — the "
+                "Stop the strategy loop before changing exit strategies by hand — the "
                 "loop manages its own exits."
             )
         self._require_live_execution()
 
         service = AlpacaService(self._base_config())
+
+        # Handle cancellation actions first
+        if action == "cancel_stops":
+            cancelled = service.cancel_open_stop_orders(symbol)
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
+        if action == "cancel_take_profit":
+            cancelled = service.cancel_open_take_profit_orders(symbol)
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
+        if action == "cancel_all":
+            res = service.cancel_open_exit_orders(symbol)
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": action, **res}
+
         position = float(service.get_position_qty(symbol))
         if position == 0:
-            raise ValueError(f"No open position in {symbol} to protect")
+            raise ValueError(f"No open position in {symbol} to configure exit strategy for")
         is_short = position < 0
+        mark_price = float(service.get_mark_price(symbol)["price"])
+        entry_price = service.get_avg_entry_price(symbol) or mark_price
 
-        if action == "trail":
+        # Helper to compute and validate stop target
+        def _resolve_stop_target(p_stop: float | None, p_pct: float | None) -> float:
+            explicit = float(p_stop or 0)
+            if explicit > 0:
+                t = round(explicit, 2)
+            else:
+                pct = float(p_pct or 0)
+                if pct <= 0:
+                    raise ValueError("Provide a stop price or a percentage distance from market")
+                computed = service.stop_price_for_entry(mark_price, pct=pct, short=is_short)
+                if computed is None:
+                    raise ValueError("Could not price the stop from that percentage")
+                t = computed
+            if not is_short and t >= mark_price:
+                raise ValueError(
+                    f"A long's stop must sit below the market. ${t:.2f} is at or "
+                    f"above the ${mark_price:.2f} mark, so it would fill immediately."
+                )
+            if is_short and t <= mark_price:
+                raise ValueError(
+                    f"A short's stop must sit above the market. ${t:.2f} is at or "
+                    f"below the ${mark_price:.2f} mark, so it would fill immediately."
+                )
+            return t
+
+        # Helper to compute and validate take profit target
+        def _resolve_take_profit_target(
+            p_tp: float | None, p_pct: float | None, p_r: float | None
+        ) -> float:
+            explicit = float(p_tp or 0)
+            if explicit > 0:
+                t = round(explicit, 2)
+            elif p_pct and float(p_pct) > 0:
+                pct = float(p_pct)
+                raw = mark_price * (1.0 - pct / 100.0) if is_short else mark_price * (1.0 + pct / 100.0)
+                t = normalize_stock_order_price(raw, field="take_profit_price")
+            elif p_r and float(p_r) > 0:
+                r_mult = float(p_r)
+                # Sizing risk unit from current stop gap or default 2%
+                existing_stops = [
+                    o.get("stop_price")
+                    for o in service.get_open_orders_summary().get(symbol, [])
+                    if o.get("stop_price")
+                ]
+                existing_stop = float(existing_stops[0]) if existing_stops else None
+                risk_unit = abs(entry_price - existing_stop) if existing_stop and existing_stop > 0 else (entry_price * 0.02)
+                raw = entry_price - (risk_unit * r_mult) if is_short else entry_price + (risk_unit * r_mult)
+                t = normalize_stock_order_price(raw, field="take_profit_price")
+            else:
+                raise ValueError("Provide a take profit target price, percentage gain, or R-multiple")
+
+            if not is_short and t <= mark_price:
+                raise ValueError(
+                    f"A long's take profit limit must sit above the market. ${t:.2f} is at or "
+                    f"below the ${mark_price:.2f} mark, so it would fill immediately."
+                )
+            if is_short and t >= mark_price:
+                raise ValueError(
+                    f"A short's take profit limit must sit below the market. ${t:.2f} is at or "
+                    f"above the ${mark_price:.2f} mark, so it would fill immediately."
+                )
+            return t
+
+        if action in {"trail", "trailing_stop"}:
             pct = float(trail_percent or 0)
-            if pct <= 0:
-                raise ValueError("Trailing stop needs a trail percent greater than 0")
-            armed = service.arm_trailing_stop(symbol, trail_percent=pct)
+            amt = float(trail_price or 0)
+            if pct <= 0 and amt <= 0:
+                raise ValueError("Trailing stop needs a trail percent or trail amount greater than 0")
+            armed = service.arm_trailing_stop(
+                symbol,
+                trail_percent=pct if pct > 0 else None,
+                trail_price=amt if amt > 0 else None,
+            )
             if not armed:
                 raise ValueError("Could not arm the trailing stop")
             self._invalidate_manual_heat()
-            return {"symbol": symbol, "action": action, "stop": armed}
+            return {"symbol": symbol, "action": "trail", "stop": armed, "mark": mark_price}
 
         if action == "breakeven":
-            entry = service.get_avg_entry_price(symbol)
-            if entry is None or entry <= 0:
+            if entry_price is None or entry_price <= 0:
                 raise ValueError(
                     f"Alpaca has no average entry price for {symbol}, so the desk "
                     "cannot work out where breakeven is."
                 )
-            # A cent past entry on the safe side: exactly-at-entry is rejected
-            # by the broker, and this way a fill can never be a loss.
             target = normalize_stock_order_price(
-                entry + 0.01 if is_short else entry - 0.01,
+                entry_price + 0.01 if is_short else entry_price - 0.01,
                 field="stop_price",
             )
-        else:
-            explicit = float(stop_price or 0)
-            if explicit > 0:
-                target = round(explicit, 2)
-            else:
-                pct = float(stop_pct or 0)
-                if pct <= 0:
-                    raise ValueError(
-                        "Give the stop a price, or a percent away from the mark"
-                    )
-                mark = float(service.get_mark_price(symbol)["price"])
-                computed = service.stop_price_for_entry(mark, pct=pct, short=is_short)
-                if computed is None:
-                    raise ValueError("Could not price the stop from that percentage")
-                target = computed
+            if not is_short and target >= mark_price:
+                raise ValueError(
+                    f"Breakeven stop (${target:.2f}) is at or above the current market price (${mark_price:.2f}). Long position is currently underwater."
+                )
+            if is_short and target <= mark_price:
+                raise ValueError(
+                    f"Breakeven stop (${target:.2f}) is at or below the current market price (${mark_price:.2f}). Short position is currently underwater."
+                )
+            armed = service.replace_stop_loss(symbol, target)
+            if not armed:
+                raise ValueError("Could not move the stop to breakeven")
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": action, "stop": armed, "mark": mark_price}
 
-        mark_price = float(service.get_mark_price(symbol)["price"])
-        # A stop on the wrong side of the market fills instantly at whatever
-        # the book offers — that is a market order wearing a stop's name, and
-        # never what someone adjusting protection meant to do.
-        if not is_short and target >= mark_price:
-            raise ValueError(
-                f"A long's stop must sit below the market. ${target:.2f} is at or "
-                f"above the ${mark_price:.2f} mark, so it would fill immediately."
-            )
-        if is_short and target <= mark_price:
-            raise ValueError(
-                f"A short's stop must sit above the market. ${target:.2f} is at or "
-                f"below the ${mark_price:.2f} mark, so it would fill immediately."
-            )
+        if action in {"price", "stop_loss"}:
+            target_stop = _resolve_stop_target(stop_price, stop_pct)
+            armed = service.replace_stop_loss(symbol, target_stop)
+            if not armed:
+                raise ValueError("Could not move the stop")
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": "price", "stop": armed, "mark": mark_price}
 
-        armed = service.replace_stop_loss(symbol, target)
-        if not armed:
-            raise ValueError("Could not move the stop")
-        self._invalidate_manual_heat()
-        return {
-            "symbol": symbol,
-            "action": action,
-            "stop": armed,
-            "mark": mark_price,
-        }
+        if action == "take_profit":
+            target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
+            armed_tp = service.arm_take_profit(symbol, target_tp)
+            if not armed_tp:
+                raise ValueError("Could not set the take profit limit order")
+            self._invalidate_manual_heat()
+            return {"symbol": symbol, "action": action, "take_profit": armed_tp, "mark": mark_price}
+
+        if action == "bracket":
+            # 1. Arm Stop (trailing or fixed)
+            armed_stop = None
+            if use_trailing or (trail_percent and float(trail_percent) > 0):
+                pct = float(trail_percent or 3.0)
+                armed_stop = service.arm_trailing_stop(symbol, trail_percent=pct)
+            elif (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
+                target_stop = _resolve_stop_target(stop_price, stop_pct)
+                armed_stop = service.replace_stop_loss(symbol, target_stop)
+
+            # 2. Arm Take Profit
+            armed_tp = None
+            if (
+                (take_profit_price and float(take_profit_price) > 0)
+                or (take_profit_pct and float(take_profit_pct) > 0)
+                or (take_profit_r and float(take_profit_r) > 0)
+            ):
+                target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
+                armed_tp = service.arm_take_profit(symbol, target_tp)
+
+            if not armed_stop and not armed_tp:
+                raise ValueError("Specify at least a stop loss or take profit level for the bracket")
+
+            self._invalidate_manual_heat()
+            return {
+                "symbol": symbol,
+                "action": action,
+                "stop": armed_stop,
+                "take_profit": armed_tp,
+                "mark": mark_price,
+            }
 
     def manual_order_status(self, order_id: str) -> dict[str, Any]:
         """Terminal state of a submitted ticket — acceptance is not a fill."""

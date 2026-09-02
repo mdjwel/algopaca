@@ -218,25 +218,30 @@ function ordTime(iso) {
   if (!iso) return "—";
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return "—";
-  const p = etParts(t);
+  const p = deskTimeParts(t);
   if (!p) return formatEtDate(iso, { withTime: true });
-  const today = etParts(Date.now());
+  const today = deskTimeParts(Date.now());
   const locale = document.documentElement.lang || undefined;
   const date = new Date(t);
-  const clock = new Intl.DateTimeFormat(locale, {
-    timeZone: "America/New_York",
-    hour: "numeric",
+  const effectiveTz = getEffectiveDeskTimezone();
+  const useHour12 = typeof isDeskHour12 === "function" ? isDeskHour12() : true;
+  const clockOpts = {
+    hour: useHour12 ? "numeric" : "2-digit",
     minute: "2-digit",
+    hour12: useHour12,
     timeZoneName: "short",
-  }).format(date);
+  };
+  if (effectiveTz) clockOpts.timeZone = effectiveTz;
+  const clock = new Intl.DateTimeFormat(locale, clockOpts).format(date);
   if (today && today.year === p.year && today.month === p.month && today.day === p.day) {
     return clock;
   }
-  const day = new Intl.DateTimeFormat(locale, {
-    timeZone: "America/New_York",
+  const dayOpts = {
     day: "numeric",
     month: "short",
-  }).format(date);
+  };
+  if (effectiveTz) dayOpts.timeZone = effectiveTz;
+  const day = new Intl.DateTimeFormat(locale, dayOpts).format(date);
   return `${day} · ${clock}`;
 }
 

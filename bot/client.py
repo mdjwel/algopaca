@@ -43,6 +43,9 @@ from alpaca.trading.requests import (
     TrailingStopOrderRequest,
 )
 
+import time as _time
+
+from bot.alpaca_errors import humanize_alpaca_error
 from bot.config import Config
 from bot.live_quote import fetch_live_mark
 from bot.options_chain import is_occ_symbol, occ_root, option_label, parse_occ
@@ -1356,12 +1359,36 @@ class AlpacaService:
         )
         if should_cancel:
             try:
-                self.cancel_open_orders_for_symbol(symbol)
+                num_cancelled = self.cancel_open_orders_for_symbol(symbol)
+                if num_cancelled > 0:
+                    _time.sleep(0.2)
             except Exception:
                 pass
 
-        res = self.trading.close_position(symbol, close_options=close_options)
-        return self._normalize_close_response(res, symbol=symbol)
+        max_attempts = 4 if should_cancel else 1
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            try:
+                res = self.trading.close_position(symbol, close_options=close_options)
+                return self._normalize_close_response(res, symbol=symbol)
+            except Exception as exc:
+                last_exc = exc
+                err_msg = str(exc).lower()
+                is_held_err = (
+                    "insufficient qty" in err_msg
+                    or "held_for_orders" in err_msg
+                    or "40310000" in err_msg
+                )
+                if should_cancel and is_held_err and attempt < max_attempts - 1:
+                    try:
+                        self.cancel_open_orders_for_symbol(symbol)
+                    except Exception:
+                        pass
+                    _time.sleep(0.3 * (attempt + 1))
+                    continue
+                raise exc
+        if last_exc:
+            raise last_exc
 
     def close_all_positions(
         self, cancel_orders: bool = True
@@ -1386,7 +1413,7 @@ class AlpacaService:
                 res = self.close_position(s, cancel_orders=cancel_orders)
                 results.append(res)
             except Exception as exc:
-                results.append({"symbol": s, "error": str(exc), "status": "failed"})
+                results.append({"symbol": s, "error": humanize_alpaca_error(exc), "status": "failed"})
         return results
 
     def get_open_orders_summary(self) -> dict[str, list[dict[str, Any]]]:
@@ -1534,10 +1561,12 @@ class AlpacaService:
         return [row for row in rows if row.get("id") and row.get("symbol")]
 
     def _open_orders(self, symbol: str):
+        sym = str(symbol or "").strip().upper()
         req = GetOrdersRequest(
             status=QueryOrderStatus.OPEN,
-            symbols=[symbol],
-            limit=50,
+            symbols=[sym] if sym else None,
+            limit=200,
+            nested=True,
         )
         return list(self.trading.get_orders(req) or [])
 
@@ -1568,6 +1597,32 @@ class AlpacaService:
             except Exception:
                 continue
         return cancelled
+
+    def cancel_open_take_profit_orders(self, symbol: str) -> int:
+        """Cancel resting limit exit orders for this symbol."""
+        qty = self.get_position_qty(symbol)
+        is_short = qty < 0
+        exit_side = OrderSide.BUY if is_short else OrderSide.SELL
+        cancelled = 0
+        for order in self._open_orders(symbol):
+            try:
+                otype = getattr(order, "type", None)
+                oside = getattr(order, "side", None)
+            except Exception:
+                continue
+            if otype == OrderType.LIMIT and oside == exit_side:
+                try:
+                    self.trading.cancel_order_by_id(order.id)
+                    cancelled += 1
+                except Exception:
+                    continue
+        return cancelled
+
+    def cancel_open_exit_orders(self, symbol: str) -> dict[str, int]:
+        """Cancel all resting stop and take profit exit orders for this symbol."""
+        stops = self.cancel_open_stop_orders(symbol)
+        take_profits = self.cancel_open_take_profit_orders(symbol)
+        return {"stops_cancelled": stops, "take_profits_cancelled": take_profits}
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel one open order by id. False when the broker refuses it."""
@@ -1852,13 +1907,20 @@ class AlpacaService:
         cancelled: list[str] = []
         for order in self._open_orders(symbol):
             order_id = str(getattr(order, "id", "") or "").strip()
-            if not order_id:
-                continue
-            try:
-                self.trading.cancel_order_by_id(order_id)
-                cancelled.append(order_id)
-            except Exception:
-                continue
+            if order_id:
+                try:
+                    self.trading.cancel_order_by_id(order_id)
+                    cancelled.append(order_id)
+                except Exception:
+                    pass
+            for leg in getattr(order, "legs", None) or []:
+                leg_id = str(getattr(leg, "id", "") or "").strip()
+                if leg_id and leg_id != order_id:
+                    try:
+                        self.trading.cancel_order_by_id(leg_id)
+                        cancelled.append(leg_id)
+                    except Exception:
+                        pass
         return cancelled
 
     @staticmethod
@@ -2542,6 +2604,69 @@ class AlpacaService:
             "type": "trailing_stop",
             **trail,
         }
+
+    def arm_take_profit(
+        self,
+        symbol: str,
+        limit_price: float,
+        *,
+        qty: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Place or replace a resting take profit limit order over the position."""
+        pos_qty = self.get_position_qty(symbol)
+        if pos_qty == 0:
+            return None
+        try:
+            limit_price = normalize_stock_order_price(limit_price, field="limit_price")
+        except ValueError:
+            return None
+        is_short = pos_qty < 0
+        abs_qty = abs(pos_qty)
+        if qty is not None:
+            requested = abs(float(qty))
+            if requested > 0:
+                abs_qty = min(abs_qty, requested)
+        order_qty = float(int(abs_qty)) if (is_short or abs_qty >= 1) else float(abs_qty)
+        if order_qty <= 0:
+            return None
+        self.cancel_open_take_profit_orders(symbol)
+        order = LimitOrderRequest(
+            symbol=symbol.upper().strip(),
+            qty=order_qty,
+            side=OrderSide.BUY if is_short else OrderSide.SELL,
+            time_in_force=TimeInForce.GTC,
+            limit_price=limit_price,
+        )
+        submitted = self.trading.submit_order(order)
+        return {
+            "id": str(submitted.id),
+            "limit_price": limit_price,
+            "qty": order_qty,
+            "side": "buy" if is_short else "sell",
+            "type": "take_profit",
+        }
+
+    def arm_bracket_exit(
+        self,
+        symbol: str,
+        *,
+        stop_price: float | None = None,
+        take_profit_price: float | None = None,
+        trail_percent: float | None = None,
+        stop_pct: float | None = None,
+    ) -> dict[str, Any]:
+        """Arm both protective stop (fixed or trailing) and take profit for a position."""
+        out: dict[str, Any] = {"symbol": symbol}
+        if trail_percent and float(trail_percent) > 0:
+            out["stop"] = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent))
+        elif stop_price and float(stop_price) > 0:
+            out["stop"] = self.replace_stop_loss(symbol, float(stop_price))
+        elif stop_pct and float(stop_pct) > 0:
+            out["stop"] = self.ensure_stop_loss(symbol, pct=float(stop_pct))
+
+        if take_profit_price and float(take_profit_price) > 0:
+            out["take_profit"] = self.arm_take_profit(symbol, float(take_profit_price))
+        return out
 
     def get_asset_info(self, symbol: str) -> dict[str, Any]:
         """Broker-side facts that decide whether a ticket can exist at all.

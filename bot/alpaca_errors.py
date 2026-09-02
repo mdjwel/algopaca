@@ -48,10 +48,27 @@ def humanize_alpaca_error(exc: Exception | str) -> str:
     message = message[:1].upper() + message[1:]
     if not message.endswith((".", "!", "?")):
         message += "."
+
+    code = None
     try:
-        hint = _HINTS.get(int(data.get("code")))
+        raw_code = data.get("code")
+        if raw_code is not None:
+            code = int(raw_code)
     except (TypeError, ValueError):
-        hint = None
+        code = None
+
+    msg_lower = message.lower()
+    hint = None
+    if "insufficient qty" in msg_lower or data.get("held_for_orders") is not None:
+        held = data.get("held_for_orders")
+        avail = data.get("available")
+        if held is not None and avail is not None:
+            hint = f"Resting orders hold {held} shares ({avail} available). Cancel resting open orders to free them."
+        else:
+            hint = "Resting open orders may be holding shares. Cancel resting open orders first."
+    elif code is not None:
+        hint = _HINTS.get(code)
+
     return f"{message} {hint}" if hint else message
 
 

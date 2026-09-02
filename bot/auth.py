@@ -249,6 +249,8 @@ class AuthStore:
                 conn.execute("ALTER TABLE user_preferences ADD COLUMN notify_email INTEGER DEFAULT 0")
             if "notification_email" not in existing_prefs:
                 conn.execute("ALTER TABLE user_preferences ADD COLUMN notification_email TEXT DEFAULT ''")
+            if "time_format" not in existing_prefs:
+                conn.execute("ALTER TABLE user_preferences ADD COLUMN time_format TEXT DEFAULT '12h'")
 
             conn.commit()
         # Seed demo user and check for owner accounts needing env credentials
@@ -1469,6 +1471,7 @@ class AuthStore:
             "chart_refresh_interval": 20,
             "compact_mode": False,
             "timezone_display": "local",
+            "time_format": "12h",
             "default_size_mode": "qty",
             "default_trade_qty": 1.0,
             "default_trade_notional": 100.0,
@@ -1483,7 +1486,7 @@ class AuthStore:
             cursor.execute(
                 """
                 SELECT theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
-                       chart_refresh_interval, compact_mode, timezone_display,
+                       chart_refresh_interval, compact_mode, timezone_display, time_format,
                        default_size_mode, default_trade_qty, default_trade_notional,
                        require_approval, notify_browser, notify_email, notification_email, updated_at
                 FROM user_preferences
@@ -1505,6 +1508,7 @@ class AuthStore:
                 "chart_refresh_interval": int(row["chart_refresh_interval"] or 20),
                 "compact_mode": bool(row["compact_mode"]),
                 "timezone_display": row["timezone_display"] or "local",
+                "time_format": row["time_format"] or "12h",
                 "default_size_mode": row["default_size_mode"] or "qty",
                 "default_trade_qty": float(row["default_trade_qty"] or 1.0),
                 "default_trade_notional": float(row["default_trade_notional"] or 100.0),
@@ -1541,9 +1545,21 @@ class AuthStore:
         confirm_close_all = 1 if current.get("confirm_close_all") else 0
         chart_refresh_interval = max(5, min(int(current.get("chart_refresh_interval", 20)), 120))
         compact_mode = 1 if current.get("compact_mode") else 0
-        timezone_display = str(current.get("timezone_display", "local")).strip().lower()
-        if timezone_display not in {"local", "utc", "exchange"}:
-            timezone_display = "local"
+        timezone_raw = str(current.get("timezone_display", "local")).strip()
+        tz_lower = timezone_raw.lower()
+        if tz_lower in {"local", "utc", "exchange"}:
+            timezone_display = tz_lower
+        else:
+            try:
+                from zoneinfo import ZoneInfo
+                ZoneInfo(timezone_raw)
+                timezone_display = timezone_raw
+            except Exception:
+                timezone_display = "local"
+
+        time_format = str(current.get("time_format", "12h")).strip().lower()
+        if time_format not in {"12h", "24h"}:
+            time_format = "12h"
 
         default_size_mode = "notional" if str(current.get("default_size_mode", "qty")).lower() == "notional" else "qty"
         default_trade_qty = max(0.01, float(current.get("default_trade_qty", 1.0)))
@@ -1559,11 +1575,11 @@ class AuthStore:
                 """
                 INSERT INTO user_preferences (
                     user_id, theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
-                    chart_refresh_interval, compact_mode, timezone_display,
+                    chart_refresh_interval, compact_mode, timezone_display, time_format,
                     default_size_mode, default_trade_qty, default_trade_notional,
                     require_approval, notify_browser, notify_email, notification_email, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     theme = excluded.theme,
                     language = excluded.language,
@@ -1574,6 +1590,7 @@ class AuthStore:
                     chart_refresh_interval = excluded.chart_refresh_interval,
                     compact_mode = excluded.compact_mode,
                     timezone_display = excluded.timezone_display,
+                    time_format = excluded.time_format,
                     default_size_mode = excluded.default_size_mode,
                     default_trade_qty = excluded.default_trade_qty,
                     default_trade_notional = excluded.default_trade_notional,
@@ -1585,7 +1602,7 @@ class AuthStore:
                 """,
                 (
                     user_id, theme, language, default_page, sound_alerts, confirm_orders, confirm_close_all,
-                    chart_refresh_interval, compact_mode, timezone_display,
+                    chart_refresh_interval, compact_mode, timezone_display, time_format,
                     default_size_mode, default_trade_qty, default_trade_notional,
                     require_approval, notify_browser, notify_email, notification_email, now,
                 ),

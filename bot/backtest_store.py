@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from bot.day_presets import get_preset as get_day_preset
+
 ROOT = Path(__file__).resolve().parent.parent
 HISTORY_PATH = ROOT / ".backtest_history.json"
 
@@ -74,6 +76,8 @@ def summarize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(symbols, list):
         symbols = None
     run_kind = result.get("run_kind") or "per_symbol"
+    day_preset_id = result.get("day_preset")
+    day_preset_label = get_day_preset(day_preset_id).label if day_preset_id else None
     return {
         "id": entry.get("id"),
         "created_at": entry.get("created_at"),
@@ -82,6 +86,8 @@ def summarize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "run_kind": run_kind,
         "mode": mode,
         "label": params.get("label") or result.get("mode") or "—",
+        "day_preset": day_preset_id,
+        "day_preset_label": day_preset_label,
         "bar_timeframe": result.get("bar_timeframe"),
         "days": result.get("days"),
         "qty": result.get("qty"),

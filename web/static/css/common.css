@@ -2475,8 +2475,7 @@ button.ghost.ghost-danger:focus-visible {
   }
 
   .actions .primary,
-  .actions #btn-loop,
-  .run-backtest-link {
+  .actions #btn-loop {
     grid-column: 1 / -1;
     margin-left: 0;
   }
@@ -3130,7 +3129,8 @@ button.ghost.ghost-danger:focus-visible {
 .bt-sma-windows,
 .bt-dip-windows,
 .bt-pair-windows,
-.bt-ls-windows {
+.bt-ls-windows,
+.bt-day-windows {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
@@ -3142,7 +3142,8 @@ button.ghost.ghost-danger:focus-visible {
 .bt-sma-windows > label,
 .bt-dip-windows > label,
 .bt-pair-windows > label,
-.bt-ls-windows > label {
+.bt-ls-windows > label,
+.bt-day-windows > label {
   min-width: 0;
 }
 
@@ -4324,17 +4325,21 @@ body.modal-open {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     height: auto !important;
+    max-width: 100% !important;
   }
 
   body {
-    overflow-x: visible !important;
+    overflow-x: hidden !important;
     overflow-y: visible !important;
     min-height: 100% !important;
     height: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    position: relative !important;
   }
 
   .app {
-    overflow-x: clip !important;
+    overflow-x: hidden !important;
     overflow-y: visible !important;
     width: 100% !important;
     max-width: 100% !important;

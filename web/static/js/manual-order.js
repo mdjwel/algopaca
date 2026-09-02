@@ -5797,7 +5797,7 @@ function renderRecentTickets() {
     .map((r) => {
       const when = new Date(Number(r.at) || 0);
       const time = Number.isFinite(when.getTime())
-        ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+        ? formatDeskTime(when)
         : "";
       const price = Number(r.price) > 0 ? ` @ ${stockPrice(r.price)}` : "";
       const type = {

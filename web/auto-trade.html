@@ -186,9 +186,6 @@
                     <button type="button" id="btn-save-as-new-custom-engine" class="btn-icon-tiny" title="Save as a new custom engine copy" data-i18n-title="save_as_new_copy" aria-label="Save as new copy">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
                     </button>
-                    <button type="button" id="btn-duplicate-active-custom-engine" class="btn-icon-tiny" title="Duplicate this custom engine" data-i18n-title="duplicate_custom_engine" aria-label="Duplicate custom engine">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    </button>
                     <button type="button" id="btn-delete-active-custom-engine" class="btn-icon-tiny text-danger" title="Delete this custom engine" data-i18n-title="delete_custom_engine" aria-label="Delete custom engine">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
@@ -227,6 +224,7 @@
                     <option value="dip" data-i18n="mode_dip">Buy the dip</option>
                     <option value="pair" data-i18n="mode_pair">Long &amp; Short Pair</option>
                     <option value="ls" data-i18n="mode_ls">Regime Dual Momentum (L/S)</option>
+                    <option value="day" data-i18n="mode_day">Day trading (VWAP &amp; ORB)</option>
                     <option value="ai" data-i18n="mode_ai">AI trader</option>
                   </select>
                 </label>
@@ -341,6 +339,101 @@
                     <input id="field-ls-time" name="ls_time_stop_bars" type="number" min="1" max="60" value="15" inputmode="numeric" />
                   </label>
                 </div>
+
+                <!-- Day Trading options -->
+                <label for="field-day-preset" class="stack day-only" hidden><span data-i18n="day_preset">Day trading preset</span>
+                  <select id="field-day-preset" name="day_preset">
+                    <option value="ai_vwap_momentum" data-i18n="preset_day_ai_vwap_momentum">AI Institutional VWAP &amp; Momentum</option>
+                    <option value="ai_orb_breakout" data-i18n="preset_day_ai_orb_breakout">AI Opening Range Sniper (15m)</option>
+                    <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_adaptive_scalp">AI Adaptive Intraday Scalper</option>
+                    <option value="vwap_trend" data-i18n="preset_day_vwap_trend">VWAP Trend Rider</option>
+                    <option value="orb_breakout" data-i18n="preset_day_orb_breakout">Opening Range Breakout (15m)</option>
+                    <option value="momentum_scalp" data-i18n="preset_day_momentum_scalp">Intraday Momentum Scalp</option>
+                    <option value="vwap_fade" data-i18n="preset_day_vwap_fade">VWAP Mean Reversion (Fade)</option>
+                    <option value="custom" data-i18n="preset_day_custom">Custom Day Trading</option>
+                  </select>
+                </label>
+                <p id="day-preset-hint" class="field-help day-only" hidden data-i18n="day_preset_hint">Intraday VWAP trend & 9/21 EMA momentum filtered by real-time AI news sentiment & macro catalyst confirmation.</p>
+                
+                <div class="day-only" hidden>
+                  <label class="check stack" for="field-day-use-ai-confirm">
+                    <input id="field-day-use-ai-confirm" name="day_use_ai_confirm" type="checkbox" checked />
+                    <span>
+                      <strong data-i18n="day_ai_confirm_title">AI Trade Confirmation & Sentiment Filter</strong>
+                      <span class="check-desc" data-i18n="day_ai_confirm_desc">Validates intraday breakout & momentum triggers with real-time news sentiment and macroeconomic calendar to veto false breakouts and traps.</span>
+                    </span>
+                  </label>
+                  <div class="day-ai-confidence-row" id="day-ai-confidence-wrap" hidden>
+                    <label for="field-day-ai-min-conf"><span data-i18n="day_ai_min_confidence">AI min confidence (0-1)</span>
+                      <input id="field-day-ai-min-conf" name="day_ai_min_confidence" type="number" min="0.1" max="1.0" step="0.05" value="0.70" inputmode="decimal" />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="field-pair-row day-only" hidden>
+                  <label for="field-day-sub-mode"><span data-i18n="day_strategy_type">Strategy type</span>
+                    <select id="field-day-sub-mode" name="day_sub_mode">
+                      <option value="vwap_trend" data-i18n="day_sub_vwap_trend">VWAP + EMA Trend</option>
+                      <option value="orb" data-i18n="day_sub_orb">Opening Range Breakout</option>
+                      <option value="momentum_scalp" data-i18n="day_sub_momentum">Fast EMA Momentum Scalp</option>
+                      <option value="vwap_fade" data-i18n="day_sub_vwap_fade">VWAP Band Fade (Reversion)</option>
+                    </select>
+                  </label>
+                  <label for="field-day-side"><span data-i18n="day_direction">Direction</span>
+                    <select id="field-day-side" name="day_side">
+                      <option value="long_only" data-i18n="long_only">Long only</option>
+                      <option value="long_short" data-i18n="long_and_short">Long &amp; Short</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="bt-day-windows day-only" hidden>
+                  <label for="field-day-fast"><span data-i18n="ema_fast">Fast EMA</span>
+                    <input id="field-day-fast" name="day_ema_fast" type="number" min="2" value="9" inputmode="numeric" />
+                  </label>
+                  <label for="field-day-slow"><span data-i18n="ema_slow">Slow EMA</span>
+                    <input id="field-day-slow" name="day_ema_slow" type="number" min="3" value="21" inputmode="numeric" />
+                  </label>
+                  <label for="field-day-orb-min"><span data-i18n="orb_window_mins">ORB window (min)</span>
+                    <input id="field-day-orb-min" name="day_orb_minutes" type="number" min="1" max="60" value="15" inputmode="numeric" />
+                  </label>
+                </div>
+
+                <div class="field-pair-row day-only" hidden>
+                  <label for="field-day-open-buffer"><span data-i18n="open_buffer_mins">Open buffer (min)</span>
+                    <input id="field-day-open-buffer" name="day_open_buffer_mins" type="number" min="0" max="120" value="15" inputmode="numeric" />
+                  </label>
+                  <label for="field-day-max-trades"><span data-i18n="max_trades_per_day">Max trades / day</span>
+                    <input id="field-day-max-trades" name="day_max_trades_per_day" type="number" min="0" max="100" value="5" inputmode="numeric" />
+                  </label>
+                </div>
+
+                <div class="field-pair-row day-only" hidden>
+                  <label for="field-day-tp-r"><span data-i18n="label_take_profit_r">Take profit = R ×</span>
+                    <input id="field-day-tp-r" name="day_profit_target_r" type="number" min="0.1" max="20" step="0.1" value="2" inputmode="decimal" />
+                  </label>
+                  <label for="field-day-stop-atr"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
+                    <input id="field-day-stop-atr" name="day_stop_atr_mult" type="number" min="0.1" max="10" step="0.1" value="1.5" inputmode="decimal" />
+                  </label>
+                </div>
+
+                <div class="day-only" hidden>
+                  <label class="check stack" for="field-day-eod-flatten">
+                    <input id="field-day-eod-flatten" name="day_eod_flatten" type="checkbox" checked />
+                    <span>
+                      <strong data-i18n="eod_auto_flatten">Auto-flatten at end of day (EOD)</strong>
+                      <span class="check-desc" data-i18n="eod_auto_flatten_desc">Automatically squares off all day trading positions before market close (zero overnight gap risk).</span>
+                    </span>
+                  </label>
+                  <div class="eod-mins-row" id="day-eod-mins-wrap" hidden>
+                    <label for="field-day-eod-mins"><span data-i18n="eod_flatten_mins">Flatten minutes before close</span>
+                      <input id="field-day-eod-mins" name="day_eod_flatten_mins" type="number" min="1" max="120" value="15" inputmode="numeric" />
+                    </label>
+                  </div>
+                </div>
+                <p id="day-hint" class="field-help day-only" hidden data-i18n="day_hint">
+                  Intraday algorithm calculates VWAP &amp; Opening Range with optional AI confirmation. Positions are sized dynamically and auto-flattened before closing bell.
+                </p>
 
                 <!-- AI trader options -->
                 <label for="field-provider" class="ai-only" hidden><span data-i18n="ai_provider">AI provider</span>
@@ -667,7 +760,6 @@
                     <button type="button" id="btn-loop" class="copper" aria-pressed="false" title="Poll on an interval" data-i18n="start_loop" data-i18n-title="title_start_loop">Start loop</button>
                     <p id="loop-elapsed" class="loop-elapsed" hidden>0:00</p>
                   </div>
-                  <a href="/backtest" class="btn btn-secondary run-backtest-link" id="link-backtest" title="Open Backtest with this watchlist (AI falls back to SMA)" data-i18n="test_on_history" data-i18n-title="title_test_history">Test on history</a>
                 </div>
                 <details class="run-notes" id="run-notes">
                   <summary>

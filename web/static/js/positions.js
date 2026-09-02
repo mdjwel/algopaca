@@ -64,8 +64,11 @@ const POS_MODAL_IDS = [
   "pos-lots-modal",
   "pos-liquidate-selected-modal",
   "pos-liquidate-all-modal",
+  "pos-exit-modal",
 ];
 
+let activeExitPosition = null;
+let activeExitMode = "stop_loss";
 let activeLotsSymbol = null;
 let lotsRequestSeq = 0;
 let activeLotsData = null;
@@ -96,6 +99,7 @@ function openPosModal(id) {
   if (!modal) return;
   posModalReturnFocus = document.activeElement;
   modal.hidden = false;
+  document.body.style.overflow = "hidden";
   const focusTarget = modal.querySelector(
     "input:not([type=hidden]), button, select, [href], [tabindex]:not([tabindex='-1'])"
   );
@@ -106,6 +110,9 @@ function closePosModal(id) {
   const modal = $(id);
   if (!modal || modal.hidden) return;
   modal.hidden = true;
+  if (!topmostOpenPosModal()) {
+    document.body.style.overflow = "";
+  }
   if (posModalReturnFocus && document.contains(posModalReturnFocus)) {
     posModalReturnFocus.focus();
   }
@@ -808,6 +815,9 @@ function renderPositionsTable(positions) {
         <td class="pos-cell-prot"><div class="pos-prot-stack">${protectionMarkup(pos)}</div></td>
         <td class="pos-cell-actions">
           <div class="pos-action-row">
+            <button type="button" class="pos-act pos-act-exit btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
+              ${escapeHtml(tx("nav_exit", "Exit"))}
+            </button>
             <button type="button" class="pos-act pos-act-close btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""} title="${escapeHtml(closeTitle)}">
               ${escapeHtml(tx("close_position", "Close"))}
             </button>
@@ -907,6 +917,9 @@ function renderPositionsCards(positions) {
           </svg>
         </button>
         <div class="pos-card-actions" ${actionsOpen ? "" : "hidden"}>
+          <button type="button" class="ghost btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
+            ${escapeHtml(tx("exit_strategy_btn", "Exit Strategy"))}
+          </button>
           <button type="button" class="ghost ghost-danger btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""}>
             ${escapeHtml(tx("close_position", "Close"))}
           </button>
@@ -1100,6 +1113,29 @@ function updateCloseModalCalculations() {
   if (submitBtn) submitBtn.disabled = closeQty <= 0;
 }
 
+function formatPosApiError(err, fallback = "Failed to close position") {
+  if (!err) return fallback;
+  let text = typeof err === "string" ? err : err.message || err.detail || fallback;
+  if (typeof text !== "string") text = String(text);
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj && typeof obj === "object") {
+        if (obj.message) {
+          let msg = obj.message.charAt(0).toUpperCase() + obj.message.slice(1);
+          if (obj.held_for_orders && obj.available != null) {
+            msg += ` (Resting orders hold ${obj.held_for_orders} shares, ${obj.available} available). Cancel resting open orders first.`;
+          }
+          return msg;
+        }
+        if (obj.detail) return formatPosApiError(obj.detail, fallback);
+      }
+    } catch (_) {}
+  }
+  return text || fallback;
+}
+
 function closeResultFailed(result) {
   if (!result || typeof result !== "object") return false;
   if (result.ok === false) return true;
@@ -1161,7 +1197,7 @@ async function submitClosePosition() {
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = err.message || tx("error_close_position", "Failed to close position");
+      errEl.textContent = formatPosApiError(err, tx("error_close_position", "Failed to close position"));
     }
   } finally {
     if (submitBtn) {
@@ -1171,38 +1207,391 @@ async function submitClosePosition() {
   }
 }
 
-/** A fill is a market event, so a lot is stamped in ET like every other
- *  timestamp on the desk. Dated by the viewer's own clock, the same fill would
- *  land on a different day here than it does on the History page. */
+/** ── Exit Strategy & Protection Modal Controller ────────────────── */
+
+function openExitStrategyModal(pos, initialMode = "stop_loss") {
+  if (!pos) return;
+  activeExitPosition = pos;
+
+  const symBadge = $("pos-exit-symbol-badge");
+  const sideBadge = $("pos-exit-side-badge");
+  const heldQtyEl = $("pos-exit-held-qty");
+  const avgEntryEl = $("pos-exit-avg-entry");
+  const currPriceEl = $("pos-exit-curr-price");
+  const unrlEl = $("pos-exit-unrealized-pnl");
+  const errEl = $("pos-exit-error");
+
+  const isShort = String(pos.side || "").toLowerCase() === "short";
+  const currPx = Number(pos.current_price || 0);
+  const entryPx = Number(pos.avg_entry_price || 0);
+  const upl = Number(pos.unrealized_pl || 0);
+
+  if (symBadge) symBadge.textContent = pos.symbol;
+  if (sideBadge) {
+    sideBadge.className = `side-badge ${isShort ? "short" : "long"}`;
+    sideBadge.textContent = positionSideLabel(isShort ? "short" : "long");
+  }
+  if (heldQtyEl) heldQtyEl.textContent = formatPositionQty(pos.qty);
+  if (avgEntryEl) avgEntryEl.textContent = `$${entryPx.toFixed(2)}`;
+  if (currPriceEl) currPriceEl.textContent = `$${currPx.toFixed(2)}`;
+  if (unrlEl) {
+    const pctText = formatPnlPct(pos.unrealized_pct);
+    unrlEl.textContent = pctText ? `${formatPnl(upl)} (${pctText})` : formatPnl(upl);
+    setPnlTone(unrlEl, upl);
+  }
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+
+  // Active Protection Status Card
+  const statusIndicator = $("pos-exit-status-indicator");
+  const currSl = $("pos-exit-curr-sl");
+  const currTp = $("pos-exit-curr-tp");
+  const currDist = $("pos-exit-curr-dist");
+
+  const hasSl = !!pos.has_stop_loss;
+  const hasTp = !!pos.has_take_profit;
+
+  if (statusIndicator) {
+    if (hasSl && hasTp) {
+      statusIndicator.textContent = tx("status_bracket_active", "Bracket Active");
+      statusIndicator.className = "pos-exit-status-indicator pos";
+    } else if (hasSl) {
+      statusIndicator.textContent = tx("status_protected", "Protected");
+      statusIndicator.className = "pos-exit-status-indicator pos";
+    } else {
+      statusIndicator.textContent = tx("status_unprotected", "Unprotected");
+      statusIndicator.className = "pos-exit-status-indicator neg";
+    }
+  }
+
+  if (currSl) {
+    currSl.textContent = pos.stop_loss_price != null ? `$${Number(pos.stop_loss_price).toFixed(2)}` : tx("none", "None");
+  }
+  if (currTp) {
+    currTp.textContent = pos.take_profit_price != null ? `$${Number(pos.take_profit_price).toFixed(2)}` : tx("none", "None");
+  }
+  if (currDist) {
+    currDist.textContent = pos.stop_distance_pct != null ? `${Math.abs(pos.stop_distance_pct).toFixed(1)}%` : "—";
+  }
+
+  // Default stop loss price (3% default distance)
+  const defaultSlPx = pos.stop_loss_price != null
+    ? Number(pos.stop_loss_price)
+    : (isShort ? currPx * 1.03 : currPx * 0.97);
+  const slInput = $("pos-exit-sl-price");
+  if (slInput) slInput.value = defaultSlPx.toFixed(2);
+
+  // Default take profit price (5% default target)
+  const defaultTpPx = pos.take_profit_price != null
+    ? Number(pos.take_profit_price)
+    : (isShort ? currPx * 0.95 : currPx * 1.05);
+  const tpInput = $("pos-exit-tp-price");
+  if (tpInput) tpInput.value = defaultTpPx.toFixed(2);
+
+  const trailInput = $("pos-exit-trail-pct");
+  if (trailInput) trailInput.value = "3.0";
+
+  const bracketSl = $("pos-exit-bracket-sl");
+  if (bracketSl) bracketSl.value = defaultSlPx.toFixed(2);
+
+  const bracketTp = $("pos-exit-bracket-tp");
+  if (bracketTp) bracketTp.value = (isShort ? currPx * 0.90 : currPx * 1.10).toFixed(2);
+
+  // Breakeven target level
+  const beLevel = $("pos-exit-be-level");
+  const bePnl = $("pos-exit-be-pnl");
+  const beTarget = isShort ? entryPx + 0.01 : Math.max(0.01, entryPx - 0.01);
+  if (beLevel) beLevel.textContent = `$${beTarget.toFixed(2)}`;
+  if (bePnl) {
+    const isProfitable = isShort ? currPx < entryPx : currPx > entryPx;
+    if (isProfitable) {
+      bePnl.textContent = `$0.00 (0.0%)`;
+      bePnl.className = "mono pos";
+    } else {
+      bePnl.textContent = tx("be_underwater_note", "Position currently underwater");
+      bePnl.className = "mono neg";
+    }
+  }
+
+  setExitMode(initialMode || "stop_loss");
+  openPosModal("pos-exit-modal");
+}
+
+function closeExitStrategyModal() {
+  closePosModal("pos-exit-modal");
+  activeExitPosition = null;
+}
+
+function setExitMode(mode) {
+  activeExitMode = mode;
+
+  // Update tabs
+  document.querySelectorAll(".pos-exit-tab").forEach((tab) => {
+    const on = tab.dataset.exitMode === mode;
+    tab.classList.toggle("is-active", on);
+    tab.setAttribute("aria-selected", on ? "true" : "false");
+  });
+
+  // Update panes
+  const panes = {
+    stop_loss: $("pos-exit-pane-stop-loss"),
+    breakeven: $("pos-exit-pane-breakeven"),
+    trailing: $("pos-exit-pane-trailing"),
+    take_profit: $("pos-exit-pane-take-profit"),
+    bracket: $("pos-exit-pane-bracket"),
+    clear: $("pos-exit-pane-clear"),
+  };
+
+  Object.entries(panes).forEach(([key, el]) => {
+    if (el) el.hidden = key !== mode;
+  });
+
+  // Update submit button text
+  const submitBtn = $("btn-exit-modal-submit");
+  if (submitBtn) {
+    if (mode === "stop_loss") {
+      submitBtn.textContent = tx("apply_stop_loss", "Arm Stop Loss");
+      submitBtn.className = "primary";
+    } else if (mode === "breakeven") {
+      submitBtn.textContent = tx("apply_breakeven", "Move to Breakeven");
+      submitBtn.className = "primary";
+    } else if (mode === "trailing") {
+      submitBtn.textContent = tx("apply_trailing_stop", "Arm Trailing Stop");
+      submitBtn.className = "primary";
+    } else if (mode === "take_profit") {
+      submitBtn.textContent = tx("apply_take_profit", "Set Take Profit");
+      submitBtn.className = "primary";
+    } else if (mode === "bracket") {
+      submitBtn.textContent = tx("apply_bracket_exit", "Arm Bracket Exit");
+      submitBtn.className = "primary";
+    } else if (mode === "clear") {
+      submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");
+      submitBtn.className = "primary primary-danger";
+    }
+  }
+
+  updateExitCalculations();
+}
+
+function updateExitCalculations() {
+  if (!activeExitPosition) return;
+  const pos = activeExitPosition;
+  const currPx = Number(pos.current_price || 0);
+  const entryPx = Number(pos.avg_entry_price || 0);
+  const isShort = String(pos.side || "").toLowerCase() === "short";
+  const qty = Number(pos.qty || 0);
+
+  const riskRow = $("pos-exit-risk-row");
+  const rewardRow = $("pos-exit-reward-row");
+  const rrRow = $("pos-exit-rr-row");
+  const riskEl = $("pos-exit-preview-risk");
+  const rewardEl = $("pos-exit-preview-reward");
+  const rrEl = $("pos-exit-preview-rr");
+  const previewBox = $("pos-exit-preview-box");
+
+  if (activeExitMode === "clear") {
+    if (previewBox) previewBox.hidden = true;
+    return;
+  }
+  if (previewBox) previewBox.hidden = false;
+
+  let stopPx = null;
+  let targetPx = null;
+
+  if (activeExitMode === "stop_loss") {
+    stopPx = Number($("pos-exit-sl-price")?.value || 0);
+  } else if (activeExitMode === "breakeven") {
+    stopPx = isShort ? entryPx + 0.01 : entryPx - 0.01;
+  } else if (activeExitMode === "trailing") {
+    const trailPct = Number($("pos-exit-trail-pct")?.value || 3.0);
+    stopPx = isShort ? currPx * (1 + trailPct / 100) : currPx * (1 - trailPct / 100);
+  } else if (activeExitMode === "take_profit") {
+    targetPx = Number($("pos-exit-tp-price")?.value || 0);
+  } else if (activeExitMode === "bracket") {
+    stopPx = Number($("pos-exit-bracket-sl")?.value || 0);
+    targetPx = Number($("pos-exit-bracket-tp")?.value || 0);
+  }
+
+  let riskAmount = null;
+  let riskPct = null;
+  if (stopPx != null && stopPx > 0) {
+    const diff = isShort ? stopPx - entryPx : entryPx - stopPx;
+    riskAmount = diff * qty;
+    riskPct = entryPx > 0 ? (diff / entryPx) * 100 : 0;
+  }
+
+  let rewardAmount = null;
+  let rewardPct = null;
+  if (targetPx != null && targetPx > 0) {
+    const diff = isShort ? entryPx - targetPx : targetPx - entryPx;
+    rewardAmount = diff * qty;
+    rewardPct = entryPx > 0 ? (diff / entryPx) * 100 : 0;
+  }
+
+  if (riskRow) riskRow.hidden = riskAmount == null;
+  if (rewardRow) rewardRow.hidden = rewardAmount == null;
+
+  if (riskEl && riskAmount != null) {
+    const sign = riskAmount > 0 ? "-" : "+";
+    riskEl.textContent = `${sign}$${Math.abs(riskAmount).toFixed(2)} (${sign}${Math.abs(riskPct).toFixed(1)}%)`;
+    riskEl.className = `mono ${riskAmount > 0 ? "neg" : "pos"}`;
+  }
+
+  if (rewardEl && rewardAmount != null) {
+    const sign = rewardAmount >= 0 ? "+" : "-";
+    rewardEl.textContent = `${sign}$${Math.abs(rewardAmount).toFixed(2)} (${sign}${Math.abs(rewardPct).toFixed(1)}%)`;
+    rewardEl.className = `mono ${rewardAmount >= 0 ? "pos" : "neg"}`;
+  }
+
+  if (rrRow) {
+    if (riskAmount != null && rewardAmount != null && riskAmount > 0 && rewardAmount > 0) {
+      rrRow.hidden = false;
+      const ratio = (rewardAmount / riskAmount).toFixed(2);
+      if (rrEl) rrEl.textContent = `1 : ${ratio}`;
+    } else {
+      rrRow.hidden = true;
+    }
+  }
+}
+
+async function submitExitStrategy() {
+  if (!activeExitPosition) return;
+  const pos = activeExitPosition;
+  const submitBtn = $("btn-exit-modal-submit");
+  const errEl = $("pos-exit-error");
+
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = tx("applying", "Applying…");
+  }
+
+  try {
+    const isShort = String(pos.side || "").toLowerCase() === "short";
+    const currPx = Number(pos.current_price || 0);
+
+    const payload = { symbol: pos.symbol };
+
+    if (activeExitMode === "stop_loss") {
+      const slPx = Number($("pos-exit-sl-price")?.value || 0);
+      if (slPx <= 0) throw new Error(tx("err_invalid_stop_price", "Enter a valid stop price greater than 0"));
+      if (!isShort && slPx >= currPx) {
+        throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+      }
+      if (isShort && slPx <= currPx) {
+        throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+      }
+      payload.action = "price";
+      payload.stop_price = slPx;
+    } else if (activeExitMode === "breakeven") {
+      payload.action = "breakeven";
+    } else if (activeExitMode === "trailing") {
+      const trail = Number($("pos-exit-trail-pct")?.value || 0);
+      if (trail <= 0 || trail > 50) throw new Error(tx("err_invalid_trail_pct", "Enter a valid trail percentage between 0.1% and 50%"));
+      payload.action = "trail";
+      payload.trail_percent = trail;
+    } else if (activeExitMode === "take_profit") {
+      const tpPx = Number($("pos-exit-tp-price")?.value || 0);
+      if (tpPx <= 0) throw new Error(tx("err_invalid_target_price", "Enter a valid take profit price greater than 0"));
+      if (!isShort && tpPx <= currPx) {
+        throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+      }
+      if (isShort && tpPx >= currPx) {
+        throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+      }
+      payload.action = "take_profit";
+      payload.take_profit_price = tpPx;
+    } else if (activeExitMode === "bracket") {
+      const slPx = Number($("pos-exit-bracket-sl")?.value || 0);
+      const tpPx = Number($("pos-exit-bracket-tp")?.value || 0);
+      if (slPx <= 0 && tpPx <= 0) throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
+      payload.action = "bracket";
+      if (slPx > 0) payload.stop_price = slPx;
+      if (tpPx > 0) payload.take_profit_price = tpPx;
+    } else if (activeExitMode === "clear") {
+      const clearStops = !!$("pos-clear-stops-check")?.checked;
+      const clearTp = !!$("pos-clear-tp-check")?.checked;
+      if (clearStops && clearTp) payload.action = "cancel_all";
+      else if (clearStops) payload.action = "cancel_stops";
+      else if (clearTp) payload.action = "cancel_take_profit";
+      else throw new Error(tx("err_select_cancellation", "Select at least one order type to cancel"));
+    }
+
+    const res = await fetch("/api/position/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    closeExitStrategyModal();
+    showToast(
+      tx("exit_strategy_success", "Exit strategy updated for {symbol}", { symbol: pos.symbol }),
+      "ok"
+    );
+    await refreshPositions({ quiet: false });
+  } catch (err) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = err.message || tx("error_exit_strategy", "Failed to update exit strategy");
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      const currentMode = activeExitMode || "stop_loss";
+      if (currentMode === "clear") {
+        submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");
+      } else {
+        submitBtn.textContent = tx("apply_exit_strategy", "Apply Exit Strategy");
+      }
+    }
+  }
+}
+
+/** Stamped in the user's active desk timezone. */
 function formatLotDate(iso) {
   if (!iso) return tx("pos_lots_carried_short", "Earlier");
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return String(iso).slice(0, 10);
   try {
-    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
-      timeZone: "America/New_York",
+    const effectiveTz = getEffectiveDeskTimezone();
+    const opts = {
       day: "numeric",
       month: "short",
       year: "numeric",
-    }).format(new Date(t));
+    };
+    if (effectiveTz) opts.timeZone = effectiveTz;
+    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, opts).format(new Date(t));
   } catch (err) {
     return String(iso).slice(0, 10);
   }
 }
 
-/** The clock half of the stamp, kept separate so the date can lead the row and
- *  the time can ride the sub-line with the holding age. */
+/** The clock half of the stamp in the user's active desk timezone. */
 function formatLotTime(iso) {
   if (!iso) return "";
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return "";
   try {
-    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
-      timeZone: "America/New_York",
-      hour: "numeric",
+    const effectiveTz = getEffectiveDeskTimezone();
+    const useHour12 = typeof isDeskHour12 === "function" ? isDeskHour12() : true;
+    const opts = {
+      hour: useHour12 ? "numeric" : "2-digit",
       minute: "2-digit",
+      hour12: useHour12,
       timeZoneName: "short",
-    }).format(new Date(t));
+    };
+    if (effectiveTz) opts.timeZone = effectiveTz;
+    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, opts).format(new Date(t));
   } catch (err) {
     return "";
   }
@@ -1594,7 +1983,7 @@ async function submitCloseSelectedLots() {
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = err.message || tx("error_close_position", "Failed to close position");
+      errEl.textContent = formatPosApiError(err, tx("error_close_position", "Failed to close position"));
     }
   } finally {
     if (submitBtn) {
@@ -1855,7 +2244,7 @@ async function submitLiquidateSelected() {
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = err.message || tx("error_liquidate_selected", "Failed to liquidate selected positions");
+      errEl.textContent = formatPosApiError(err, tx("error_liquidate_selected", "Failed to liquidate selected positions"));
     }
   } finally {
     if (submitBtn) {
@@ -1934,7 +2323,7 @@ async function submitLiquidateAll() {
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = err.message || tx("error_liquidate_all", "Failed to liquidate all positions");
+      errEl.textContent = formatPosApiError(err, tx("error_liquidate_all", "Failed to liquidate all positions"));
     }
   } finally {
     if (submitBtn) {
@@ -1983,6 +2372,22 @@ function bindRowDelegation(container) {
       }
       return;
     }
+    const exitBtn = e.target.closest(".btn-pos-exit");
+    if (exitBtn) {
+      const sym = exitBtn.dataset.symbol || exitBtn.closest(".pos-table-row, .pos-card")?.dataset.symbol;
+      if (sym) openExitStrategyModal(findPositionBySymbol(sym));
+      return;
+    }
+    const protClick = e.target.closest(".pos-cell-prot, .pos-card-prot, .pos-prot-badge");
+    if (protClick && !e.target.closest("a.orders")) {
+      const rowOrCard = protClick.closest(".pos-table-row, .pos-card");
+      const sym = rowOrCard?.dataset.symbol;
+      if (sym) {
+        const initialMode = protClick.closest(".pos-prot-badge")?.classList.contains("tp") ? "take_profit" : "stop_loss";
+        openExitStrategyModal(findPositionBySymbol(sym), initialMode);
+        return;
+      }
+    }
     const lotsBtn = e.target.closest(".btn-pos-lots");
     if (lotsBtn) {
       openLotsModal(lotsBtn.dataset.symbol).catch(() => {});
@@ -1999,6 +2404,7 @@ function bindRowDelegation(container) {
 function dismissPosModal(id) {
   if (id === "pos-close-modal") closeClosePositionModal();
   else if (id === "pos-lots-modal") closeLotsModal();
+  else if (id === "pos-exit-modal") closeExitStrategyModal();
   else closePosModal(id);
 }
 
@@ -2050,8 +2456,8 @@ function initPositionsUi() {
     syncFilterButtons("data-filter-pnl", posFilterPnl);
     if (positionsData) renderPositionsPage();
   };
-  $("pos-kpi-wins")?.addEventListener("click", () => applyPnlFilter("winners"));
-  $("pos-kpi-losses")?.addEventListener("click", () => applyPnlFilter("losers"));
+  $("pos-kpi-green-tile")?.addEventListener("click", () => applyPnlFilter("winners"));
+  $("pos-kpi-red-tile")?.addEventListener("click", () => applyPnlFilter("losers"));
 
   $("btn-reset-pos-filters")?.addEventListener("click", resetPosFilters);
   $("btn-empty-clear-filters")?.addEventListener("click", resetPosFilters);
@@ -2150,10 +2556,95 @@ function initPositionsUi() {
 
   $("pos-cancel-single-orders-check")?.addEventListener("change", updateCloseModalCalculations);
 
+  // Exit Strategy Modal: Tabs
+  document.querySelectorAll(".pos-exit-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      setExitMode(tab.dataset.exitMode);
+    });
+  });
+
+  // Exit Strategy Modal: Inputs live calculations
+  $("pos-exit-sl-price")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-trail-pct")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-tp-price")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-bracket-sl")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-bracket-tp")?.addEventListener("input", updateExitCalculations);
+
+  // Exit Strategy Modal: Quick percentage chips
+  document.querySelectorAll("[data-sl-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!activeExitPosition) return;
+      const pct = Number(chip.dataset.slPct || 3);
+      const currPx = Number(activeExitPosition.current_price || 0);
+      const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+      const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+      const slInput = $("pos-exit-sl-price");
+      if (slInput) slInput.value = target.toFixed(2);
+      document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
+  document.querySelectorAll("[data-trail-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const pct = Number(chip.dataset.trailPct || 3);
+      const trailInput = $("pos-exit-trail-pct");
+      if (trailInput) trailInput.value = pct.toFixed(1);
+      document.querySelectorAll("[data-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
+  document.querySelectorAll("[data-tp-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!activeExitPosition) return;
+      const pct = Number(chip.dataset.tpPct || 5);
+      const currPx = Number(activeExitPosition.current_price || 0);
+      const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+      const target = isShort ? currPx * (1 - pct / 100) : currPx * (1 + pct / 100);
+      const tpInput = $("pos-exit-tp-price");
+      if (tpInput) tpInput.value = target.toFixed(2);
+      document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
+  document.querySelectorAll("[data-bracket-sl-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!activeExitPosition) return;
+      const pct = Number(chip.dataset.bracketSlPct || 3);
+      const currPx = Number(activeExitPosition.current_price || 0);
+      const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+      const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+      const slInput = $("pos-exit-bracket-sl");
+      if (slInput) slInput.value = target.toFixed(2);
+      document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
+  document.querySelectorAll("[data-bracket-tp-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!activeExitPosition) return;
+      const pct = Number(chip.dataset.bracketTpPct || 10);
+      const currPx = Number(activeExitPosition.current_price || 0);
+      const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+      const target = isShort ? currPx * (1 - pct / 100) : currPx * (1 + pct / 100);
+      const tpInput = $("pos-exit-bracket-tp");
+      if (tpInput) tpInput.value = target.toFixed(2);
+      document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
   // Modal Actions
   $("btn-close-modal-x")?.addEventListener("click", closeClosePositionModal);
   $("btn-close-modal-cancel")?.addEventListener("click", closeClosePositionModal);
   $("btn-close-modal-submit")?.addEventListener("click", submitClosePosition);
+
+  $("btn-exit-modal-x")?.addEventListener("click", closeExitStrategyModal);
+  $("btn-exit-modal-cancel")?.addEventListener("click", closeExitStrategyModal);
+  $("btn-exit-modal-submit")?.addEventListener("click", submitExitStrategy);
 
   $("btn-lots-modal-x")?.addEventListener("click", closeLotsModal);
   $("btn-lots-modal-close")?.addEventListener("click", closeLotsModal);

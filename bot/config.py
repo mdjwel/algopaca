@@ -38,6 +38,12 @@ from bot.sma_presets import (
     match_preset_id,
     resolve_preset_id as resolve_sma_preset_id,
 )
+from bot.day_presets import (
+    DEFAULT_PRESET_ID as DEFAULT_DAY_PRESET_ID,
+    get_preset as get_day_preset,
+    match_preset_id as match_day_preset_id,
+    resolve_preset_id as resolve_day_preset_id,
+)
 from bot.options_chain import normalize_options_style
 from dotenv import load_dotenv
 
@@ -136,7 +142,18 @@ def resolve_size_mode(raw: str | None, strategy_mode: str) -> str:
 MIN_ATR_STOP_MULT = 0.1
 MAX_ATR_STOP_MULT = 10.0
 
+# Day Trading is an intraday engine: VWAP anchoring, the opening range, the open
+# buffer and the EOD square-off are all meaningless on daily bars.
+INTRADAY_TIMEFRAMES = ("1Min", "5Min", "15Min", "1Hour")
+DEFAULT_DAY_TIMEFRAME = "5Min"
+
 DEFAULT_LANG = "en"
+
+
+def resolve_day_timeframe(bar_timeframe: str | None) -> str:
+    """Force Day Trading onto an intraday bar timeframe."""
+    tf = str(bar_timeframe or "").strip()
+    return tf if tf in INTRADAY_TIMEFRAMES else DEFAULT_DAY_TIMEFRAME
 
 # Desk languages, shared by the UI and the AI prompt. Keep in sync with
 # web/static/lang/*.json and SUPPORTED_LANGS in web/static/i18n.js.
@@ -179,7 +196,7 @@ class Config:
     trade_notional: float  # dollar size when size_mode=notional
     bar_timeframe: str
     poll_seconds: int
-    strategy_mode: str  # sma | dip | ai | pair | ls
+    strategy_mode: str  # sma | dip | ai | pair | ls | day
     pair_preset: str
     pair_sma_period: int
     pair_lookback: int
@@ -194,6 +211,20 @@ class Config:
     ls_risk_pct: float
     ls_rr: float
     ls_time_stop_bars: int
+    day_preset: str
+    day_sub_mode: str  # vwap_trend | orb | momentum_scalp | vwap_fade
+    day_side: str  # long_only | long_short
+    day_ema_fast: int
+    day_ema_slow: int
+    day_orb_minutes: int
+    day_open_buffer_mins: int
+    day_eod_flatten_mins: int
+    day_eod_flatten: bool
+    day_max_trades_per_day: int
+    day_profit_target_r: float
+    day_stop_atr_mult: float
+    day_use_ai_confirm: bool
+    day_ai_min_confidence: float
     ai_provider: str  # openai | gemini | anthropic | xai
     openai_api_key: str
     gemini_api_key: str
@@ -347,6 +378,20 @@ class Config:
         ls_risk_pct: float | None = None,
         ls_rr: float | None = None,
         ls_time_stop_bars: int | None = None,
+        day_preset: str | None = None,
+        day_sub_mode: str | None = None,
+        day_side: str | None = None,
+        day_ema_fast: int | None = None,
+        day_ema_slow: int | None = None,
+        day_orb_minutes: int | None = None,
+        day_open_buffer_mins: int | None = None,
+        day_eod_flatten_mins: int | None = None,
+        day_eod_flatten: bool | None = None,
+        day_max_trades_per_day: int | None = None,
+        day_profit_target_r: float | None = None,
+        day_stop_atr_mult: float | None = None,
+        day_use_ai_confirm: bool | None = None,
+        day_ai_min_confidence: float | None = None,
         ai_provider: str | None = None,
         ai_preset: str | None = None,
         ai_instructions: str | None = None,
@@ -442,9 +487,9 @@ class Config:
             raise ValueError("Dip RSI buy must be less than RSI sell (0–100)")
 
         mode = (strategy_mode or self.strategy_mode).strip().lower()
-        if mode not in {"sma", "dip", "ai", "pair", "ls"}:
+        if mode not in {"sma", "dip", "ai", "pair", "ls", "day"}:
             raise ValueError(
-                "strategy_mode must be 'sma', 'dip', 'ai', 'pair', or 'ls'"
+                "strategy_mode must be 'sma', 'dip', 'ai', 'pair', 'ls', or 'day'"
             )
 
         ls_fast = int(self.ls_ema_fast if ls_ema_fast is None else ls_ema_fast)
@@ -465,6 +510,8 @@ class Config:
 
         if mode == "ls":
             bar_timeframe = "1Day"
+        elif mode == "day":
+            bar_timeframe = resolve_day_timeframe(bar_timeframe or self.bar_timeframe)
 
         pair_preset_id = resolve_pair_preset_id(
             self.pair_preset if pair_preset is None else pair_preset
@@ -551,6 +598,89 @@ class Config:
         p_weak = normalize_weak_side(p_weak)
         p_long = str(p_long or "").strip().upper()
         p_short = str(p_short or "").strip().upper()
+
+        day_preset_id = resolve_day_preset_id(
+            self.day_preset if day_preset is None else day_preset
+        )
+        day_def = get_day_preset(day_preset_id)
+        if day_preset is not None and day_preset_id != "custom":
+            d_sub = day_def.sub_mode if day_sub_mode is None else str(day_sub_mode)
+            d_side = day_def.side if day_side is None else str(day_side)
+            d_fast = day_def.ema_fast if day_ema_fast is None else int(day_ema_fast)
+            d_slow = day_def.ema_slow if day_ema_slow is None else int(day_ema_slow)
+            d_orb = day_def.orb_minutes if day_orb_minutes is None else int(day_orb_minutes)
+            d_buf = day_def.open_buffer_mins if day_open_buffer_mins is None else int(day_open_buffer_mins)
+            d_flat_m = day_def.eod_flatten_mins if day_eod_flatten_mins is None else int(day_eod_flatten_mins)
+            d_flat = day_def.eod_flatten if day_eod_flatten is None else bool(day_eod_flatten)
+            d_max_t = day_def.max_trades_per_day if day_max_trades_per_day is None else int(day_max_trades_per_day)
+            d_tp = day_def.profit_target_r if day_profit_target_r is None else float(day_profit_target_r)
+            d_stop_atr = day_def.stop_atr_mult if day_stop_atr_mult is None else float(day_stop_atr_mult)
+            d_ai_confirm = day_def.use_ai_confirm if day_use_ai_confirm is None else bool(day_use_ai_confirm)
+            d_ai_min_conf = day_def.ai_min_confidence if day_ai_min_confidence is None else float(day_ai_min_confidence)
+            if (
+                day_sub_mode is not None
+                or day_side is not None
+                or day_ema_fast is not None
+                or day_ema_slow is not None
+                or day_orb_minutes is not None
+                or day_open_buffer_mins is not None
+                or day_eod_flatten_mins is not None
+                or day_eod_flatten is not None
+                or day_max_trades_per_day is not None
+                or day_profit_target_r is not None
+                or day_stop_atr_mult is not None
+                or day_use_ai_confirm is not None
+                or day_ai_min_confidence is not None
+            ):
+                day_preset_id = match_day_preset_id(
+                    d_sub, d_fast, d_slow, d_orb, d_buf, d_flat_m, d_flat, d_max_t, d_tp, d_stop_atr, d_side, d_ai_confirm, d_ai_min_conf
+                )
+        else:
+            d_sub = self.day_sub_mode if day_sub_mode is None else str(day_sub_mode)
+            d_side = self.day_side if day_side is None else str(day_side)
+            d_fast = self.day_ema_fast if day_ema_fast is None else int(day_ema_fast)
+            d_slow = self.day_ema_slow if day_ema_slow is None else int(day_ema_slow)
+            d_orb = self.day_orb_minutes if day_orb_minutes is None else int(day_orb_minutes)
+            d_buf = self.day_open_buffer_mins if day_open_buffer_mins is None else int(day_open_buffer_mins)
+            d_flat_m = self.day_eod_flatten_mins if day_eod_flatten_mins is None else int(day_eod_flatten_mins)
+            d_flat = self.day_eod_flatten if day_eod_flatten is None else bool(day_eod_flatten)
+            d_max_t = self.day_max_trades_per_day if day_max_trades_per_day is None else int(day_max_trades_per_day)
+            d_tp = self.day_profit_target_r if day_profit_target_r is None else float(day_profit_target_r)
+            d_stop_atr = self.day_stop_atr_mult if day_stop_atr_mult is None else float(day_stop_atr_mult)
+            d_ai_confirm = self.day_use_ai_confirm if day_use_ai_confirm is None else bool(day_use_ai_confirm)
+            d_ai_min_conf = self.day_ai_min_confidence if day_ai_min_confidence is None else float(day_ai_min_confidence)
+            if day_preset is None and (
+                day_sub_mode is not None
+                or day_side is not None
+                or day_ema_fast is not None
+                or day_ema_slow is not None
+                or day_orb_minutes is not None
+                or day_open_buffer_mins is not None
+                or day_eod_flatten_mins is not None
+                or day_eod_flatten is not None
+                or day_max_trades_per_day is not None
+                or day_profit_target_r is not None
+                or day_stop_atr_mult is not None
+                or day_use_ai_confirm is not None
+                or day_ai_min_confidence is not None
+            ):
+                day_preset_id = match_day_preset_id(
+                    d_sub, d_fast, d_slow, d_orb, d_buf, d_flat_m, d_flat, d_max_t, d_tp, d_stop_atr, d_side, d_ai_confirm, d_ai_min_conf
+                )
+            elif day_preset_id == "custom" and day_preset is None:
+                day_preset_id = match_day_preset_id(
+                    d_sub, d_fast, d_slow, d_orb, d_buf, d_flat_m, d_flat, d_max_t, d_tp, d_stop_atr, d_side, d_ai_confirm, d_ai_min_conf
+                )
+        d_fast = max(2, d_fast)
+        d_slow = max(d_fast + 1, d_slow)
+        d_orb = max(1, min(60, d_orb))
+        d_buf = max(0, min(120, d_buf))
+        d_flat_m = max(0, min(120, d_flat_m))
+        d_max_t = max(0, min(100, d_max_t))
+        d_tp = max(0.1, min(20.0, d_tp))
+        d_stop_atr = max(0.1, min(10.0, d_stop_atr))
+        d_ai_min_conf = max(0.0, min(1.0, d_ai_min_conf))
+        d_side = "long_short" if str(d_side).lower() == "long_short" else "long_only"
 
         provider = (ai_provider or self.ai_provider).strip().lower()
         if provider not in {"openai", "gemini", "anthropic", "xai"}:
@@ -680,6 +810,20 @@ class Config:
             ls_risk_pct=ls_risk,
             ls_rr=ls_rr_v,
             ls_time_stop_bars=ls_time,
+            day_preset=day_preset_id,
+            day_sub_mode=d_sub,
+            day_side=d_side,
+            day_ema_fast=d_fast,
+            day_ema_slow=d_slow,
+            day_orb_minutes=d_orb,
+            day_open_buffer_mins=d_buf,
+            day_eod_flatten_mins=d_flat_m,
+            day_eod_flatten=d_flat,
+            day_max_trades_per_day=d_max_t,
+            day_profit_target_r=d_tp,
+            day_stop_atr_mult=d_stop_atr,
+            day_use_ai_confirm=d_ai_confirm,
+            day_ai_min_confidence=d_ai_min_conf,
             ai_provider=provider,
             ai_preset=preset,
             ai_instructions=resolved_instructions,
@@ -773,6 +917,20 @@ class Config:
         ls_risk_pct: float = 1.0,
         ls_rr: float = 2.0,
         ls_time_stop_bars: int = 15,
+        day_preset: str = DEFAULT_DAY_PRESET_ID,
+        day_sub_mode: str = "vwap_trend",
+        day_side: str = "long_only",
+        day_ema_fast: int = 9,
+        day_ema_slow: int = 21,
+        day_orb_minutes: int = 15,
+        day_open_buffer_mins: int = 15,
+        day_eod_flatten_mins: int = 15,
+        day_eod_flatten: bool = True,
+        day_max_trades_per_day: int = 3,
+        day_profit_target_r: float = 1.2,
+        day_stop_atr_mult: float = 1.0,
+        day_use_ai_confirm: bool = False,
+        day_ai_min_confidence: float = 0.65,
         ai_provider: str = "openai",
         openai_api_key: str = "",
         gemini_api_key: str = "",
@@ -811,6 +969,8 @@ class Config:
         notify_email: bool = False,
         notification_email: str = "",
     ) -> Config:
+        if strategy_mode == "day":
+            bar_timeframe = resolve_day_timeframe(bar_timeframe)
         return cls(
             api_key=(api_key or "").strip(),
             secret_key=(secret_key or "").strip(),
@@ -844,6 +1004,20 @@ class Config:
             ls_risk_pct=ls_risk_pct,
             ls_rr=ls_rr,
             ls_time_stop_bars=ls_time_stop_bars,
+            day_preset=day_preset,
+            day_sub_mode=day_sub_mode,
+            day_side=day_side,
+            day_ema_fast=day_ema_fast,
+            day_ema_slow=day_ema_slow,
+            day_orb_minutes=day_orb_minutes,
+            day_open_buffer_mins=day_open_buffer_mins,
+            day_eod_flatten_mins=day_eod_flatten_mins,
+            day_eod_flatten=day_eod_flatten,
+            day_max_trades_per_day=day_max_trades_per_day,
+            day_profit_target_r=day_profit_target_r,
+            day_stop_atr_mult=day_stop_atr_mult,
+            day_use_ai_confirm=day_use_ai_confirm,
+            day_ai_min_confidence=day_ai_min_confidence,
             ai_provider=ai_provider,
             openai_api_key=(openai_api_key or "").strip(),
             gemini_api_key=(gemini_api_key or "").strip(),
@@ -1061,11 +1235,76 @@ class Config:
         bar_tf = _e("BAR_TIMEFRAME", "15Min")
         if mode in {"pair", "ls"}:
             bar_tf = "1Day"
+        elif mode == "day":
+            bar_tf = resolve_day_timeframe(bar_tf)
 
         options_dte_min = max(1, min(180, int(_e("OPTIONS_DTE_MIN", "21") or 21)))
         options_dte_max = max(1, min(365, int(_e("OPTIONS_DTE_MAX", "45") or 45)))
         if options_dte_min > options_dte_max:
             options_dte_min, options_dte_max = options_dte_max, options_dte_min
+
+        day_preset_env = _e("DAY_PRESET", "").strip()
+        day_sub_mode_env = _e("DAY_SUB_MODE", "").strip()
+        day_side_env = _e("DAY_SIDE", "").strip()
+        day_fast_env = _e("DAY_EMA_FAST", "").strip()
+        day_slow_env = _e("DAY_EMA_SLOW", "").strip()
+        day_orb_env = _e("DAY_ORB_MINUTES", "").strip()
+        day_buf_env = _e("DAY_OPEN_BUFFER_MINS", "").strip()
+        day_flat_m_env = _e("DAY_EOD_FLATTEN_MINS", "").strip()
+        day_flat_env = env_flag("DAY_EOD_FLATTEN", True)
+        day_max_t_env = _e("DAY_MAX_TRADES_PER_DAY", "").strip()
+        day_tp_env = _e("DAY_PROFIT_TARGET_R", "").strip()
+        day_stop_atr_env = _e("DAY_STOP_ATR_MULT", "").strip()
+        day_ai_confirm_env = _e("DAY_USE_AI_CONFIRM", "").strip()
+        day_ai_min_conf_env = _e("DAY_AI_MIN_CONFIDENCE", "").strip()
+
+        if day_preset_env:
+            day_preset = resolve_day_preset_id(day_preset_env)
+            day_def = get_day_preset(day_preset)
+            d_sub = day_sub_mode_env or day_def.sub_mode
+            d_side = day_side_env or day_def.side
+            d_fast = int(day_fast_env or day_def.ema_fast)
+            d_slow = int(day_slow_env or day_def.ema_slow)
+            d_orb = int(day_orb_env or day_def.orb_minutes)
+            d_buf = int(day_buf_env or day_def.open_buffer_mins)
+            d_flat_m = int(day_flat_m_env or day_def.eod_flatten_mins)
+            d_flat = day_flat_env
+            d_max_t = int(day_max_t_env or day_def.max_trades_per_day)
+            d_tp = float(day_tp_env or day_def.profit_target_r)
+            d_stop_atr = float(day_stop_atr_env or day_def.stop_atr_mult)
+            d_ai_confirm = env_flag("DAY_USE_AI_CONFIRM", day_def.use_ai_confirm) if day_ai_confirm_env else day_def.use_ai_confirm
+            d_ai_min_conf = float(day_ai_min_conf_env or day_def.ai_min_confidence)
+            if day_preset != "custom":
+                matched_day = match_day_preset_id(d_sub, d_fast, d_slow, d_orb, d_buf, d_flat_m, d_flat, d_max_t, d_tp, d_stop_atr, d_side, d_ai_confirm, d_ai_min_conf)
+                if matched_day != day_preset:
+                    day_preset = matched_day
+        else:
+            day_def = get_day_preset(DEFAULT_DAY_PRESET_ID)
+            d_sub = day_sub_mode_env or day_def.sub_mode
+            d_side = day_side_env or day_def.side
+            d_fast = int(day_fast_env or day_def.ema_fast)
+            d_slow = int(day_slow_env or day_def.ema_slow)
+            d_orb = int(day_orb_env or day_def.orb_minutes)
+            d_buf = int(day_buf_env or day_def.open_buffer_mins)
+            d_flat_m = int(day_flat_m_env or day_def.eod_flatten_mins)
+            d_flat = day_flat_env
+            d_max_t = int(day_max_t_env or day_def.max_trades_per_day)
+            d_tp = float(day_tp_env or day_def.profit_target_r)
+            d_stop_atr = float(day_stop_atr_env or day_def.stop_atr_mult)
+            d_ai_confirm = env_flag("DAY_USE_AI_CONFIRM", day_def.use_ai_confirm) if day_ai_confirm_env else day_def.use_ai_confirm
+            d_ai_min_conf = float(day_ai_min_conf_env or day_def.ai_min_confidence)
+            day_preset = match_day_preset_id(d_sub, d_fast, d_slow, d_orb, d_buf, d_flat_m, d_flat, d_max_t, d_tp, d_stop_atr, d_side, d_ai_confirm, d_ai_min_conf)
+
+        # Same bounds the desk UI and `override` enforce.
+        d_fast = max(2, d_fast)
+        d_slow = max(d_fast + 1, d_slow)
+        d_orb = max(1, min(60, d_orb))
+        d_buf = max(0, min(120, d_buf))
+        d_flat_m = max(0, min(120, d_flat_m))
+        d_max_t = max(0, min(100, d_max_t))
+        d_tp = max(0.1, min(20.0, d_tp))
+        d_stop_atr = max(0.1, min(10.0, d_stop_atr))
+        d_ai_min_conf = max(0.0, min(1.0, d_ai_min_conf))
 
         return cls(
             api_key=api_key,
@@ -1100,6 +1339,20 @@ class Config:
             ls_risk_pct=ls_risk,
             ls_rr=ls_rr_v,
             ls_time_stop_bars=ls_time,
+            day_preset=day_preset or DEFAULT_DAY_PRESET_ID,
+            day_sub_mode=d_sub,
+            day_side=d_side,
+            day_ema_fast=d_fast,
+            day_ema_slow=d_slow,
+            day_orb_minutes=d_orb,
+            day_open_buffer_mins=d_buf,
+            day_eod_flatten_mins=d_flat_m,
+            day_eod_flatten=d_flat,
+            day_max_trades_per_day=d_max_t,
+            day_profit_target_r=d_tp,
+            day_stop_atr_mult=d_stop_atr,
+            day_use_ai_confirm=d_ai_confirm,
+            day_ai_min_confidence=d_ai_min_conf,
             ai_provider=provider,
             openai_api_key=_e("OPENAI_API_KEY", "").strip(),
             gemini_api_key=_e("GEMINI_API_KEY", "").strip(),

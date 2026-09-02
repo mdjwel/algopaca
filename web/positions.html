@@ -718,6 +718,248 @@
       </div>
     </div>
 
+    <!-- Exit Strategy & Protection Modal Dialog -->
+    <div id="pos-exit-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-exit-modal-title" hidden>
+      <div class="pos-modal-card pos-exit-card">
+        <div class="pos-modal-head">
+          <div class="pos-modal-title-wrap">
+            <h3 id="pos-exit-modal-title" data-i18n="exit_strategy_title">Exit Strategy &amp; Protection</h3>
+            <span id="pos-exit-symbol-badge" class="pos-symbol-badge">AAPL</span>
+            <span id="pos-exit-side-badge" class="side-badge long" data-i18n="filter_long">Long</span>
+          </div>
+          <button type="button" id="btn-exit-modal-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body pos-exit-body">
+          <!-- Position Context Strip -->
+          <div class="pos-modal-meta-grid pos-exit-meta-grid">
+            <div class="pos-modal-meta-item">
+              <span data-i18n="shares_qty">Shares / Qty</span>
+              <strong id="pos-exit-held-qty" class="mono">0</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="avg_entry_label">Avg entry</span>
+              <strong id="pos-exit-avg-entry" class="mono">$0.00</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="current_price_label">Current price</span>
+              <strong id="pos-exit-curr-price" class="mono">$0.00</strong>
+            </div>
+            <div class="pos-modal-meta-item">
+              <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
+              <strong id="pos-exit-unrealized-pnl" class="mono">$0.00</strong>
+            </div>
+          </div>
+
+          <!-- Active Protection Status Box -->
+          <div id="pos-exit-active-status" class="pos-exit-status-card">
+            <div class="pos-exit-status-head">
+              <div class="pos-exit-status-label-wrap">
+                <svg class="pos-exit-status-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <span class="pos-exit-status-title" data-i18n="active_protection">Active Protection</span>
+              </div>
+              <span id="pos-exit-status-indicator" class="pos-exit-status-indicator">—</span>
+            </div>
+            <div class="pos-exit-status-grid">
+              <div class="pos-exit-stat-sub">
+                <span data-i18n="stop_loss">Stop Loss</span>
+                <strong id="pos-exit-curr-sl" class="mono">—</strong>
+              </div>
+              <div class="pos-exit-stat-sub">
+                <span data-i18n="take_profit">Take Profit</span>
+                <strong id="pos-exit-curr-tp" class="mono">—</strong>
+              </div>
+              <div class="pos-exit-stat-sub">
+                <span data-i18n="distance_label">Distance</span>
+                <strong id="pos-exit-curr-dist" class="mono">—</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy Mode Selector Tabs -->
+          <div class="pos-exit-tabs" role="tablist" aria-label="Exit Strategy Mode">
+            <button type="button" class="pos-exit-tab is-active" role="tab" data-exit-mode="stop_loss" aria-selected="true" data-i18n="tab_stop_loss">Stop Loss</button>
+            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="breakeven" aria-selected="false" data-i18n="tab_breakeven">Breakeven</button>
+            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="trailing" aria-selected="false" data-i18n="tab_trailing">Trailing Stop</button>
+            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="take_profit" aria-selected="false" data-i18n="tab_take_profit">Take Profit</button>
+            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="bracket" aria-selected="false" data-i18n="tab_bracket">Bracket</button>
+            <button type="button" class="pos-exit-tab tab-danger" role="tab" data-exit-mode="clear" aria-selected="false" data-i18n="tab_clear_exits">Clear</button>
+          </div>
+
+          <!-- Tab Pane 1: Fixed Stop Loss -->
+          <div id="pos-exit-pane-stop-loss" class="pos-exit-pane">
+            <div class="pos-exit-field">
+              <label class="pos-modal-label" for="pos-exit-sl-price">
+                <span data-i18n="stop_loss_price">Stop Loss Price ($)</span>
+              </label>
+              <div class="pos-input-box">
+                <span class="pos-input-prefix">$</span>
+                <input type="number" id="pos-exit-sl-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                <span class="pos-input-suffix">USD</span>
+              </div>
+            </div>
+            <div class="pos-exit-chips-wrap">
+              <span class="pos-chips-label" data-i18n="quick_distance">Risk Distance:</span>
+              <div class="pos-pct-chips">
+                <button type="button" class="chip" data-sl-pct="1">1%</button>
+                <button type="button" class="chip" data-sl-pct="2">2%</button>
+                <button type="button" class="chip is-active" data-sl-pct="3">3%</button>
+                <button type="button" class="chip" data-sl-pct="5">5%</button>
+                <button type="button" class="chip" data-sl-pct="8">8%</button>
+                <button type="button" class="chip" data-sl-pct="10">10%</button>
+              </div>
+            </div>
+            <p class="field-help" id="pos-exit-sl-hint" data-i18n="stop_loss_desc">Replaces existing protective stops with a GTC Stop order at this price level.</p>
+          </div>
+
+          <!-- Tab Pane 2: Breakeven -->
+          <div id="pos-exit-pane-breakeven" class="pos-exit-pane" hidden>
+            <div class="pos-exit-be-banner">
+              <div class="pos-exit-be-icon">🛡️</div>
+              <div class="pos-exit-be-info">
+                <h4 data-i18n="move_to_breakeven_title">Zero-Risk Breakeven Stop</h4>
+                <p data-i18n="move_to_breakeven_desc">Moves your protective stop to average entry price ($entry ± $0.01) so you cannot lose capital if the market reverses.</p>
+              </div>
+            </div>
+            <div class="pos-modal-preview">
+              <div class="pos-preview-row">
+                <span data-i18n="target_breakeven_price">Target Breakeven Level</span>
+                <strong id="pos-exit-be-level" class="mono">$0.00</strong>
+              </div>
+              <div class="pos-preview-row">
+                <span data-i18n="guaranteed_outcome">Worst-case Outcome</span>
+                <strong id="pos-exit-be-pnl" class="mono pos">$0.00 (0.0%)</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Pane 3: Trailing Stop -->
+          <div id="pos-exit-pane-trailing" class="pos-exit-pane" hidden>
+            <div class="pos-exit-field">
+              <label class="pos-modal-label" for="pos-exit-trail-pct">
+                <span data-i18n="trail_percent">Trail Distance (%)</span>
+              </label>
+              <div class="pos-input-box">
+                <input type="number" id="pos-exit-trail-pct" step="0.1" min="0.1" max="50" value="3.0" class="pos-field-input" />
+                <span class="pos-input-suffix">%</span>
+              </div>
+            </div>
+            <div class="pos-exit-chips-wrap">
+              <span class="pos-chips-label" data-i18n="quick_trail">Trail Presets:</span>
+              <div class="pos-pct-chips">
+                <button type="button" class="chip" data-trail-pct="1.5">1.5%</button>
+                <button type="button" class="chip" data-trail-pct="2">2%</button>
+                <button type="button" class="chip is-active" data-trail-pct="3">3%</button>
+                <button type="button" class="chip" data-trail-pct="5">5%</button>
+                <button type="button" class="chip" data-trail-pct="8">8%</button>
+              </div>
+            </div>
+            <p class="field-help" data-i18n="trailing_stop_desc">Trails peak market price dynamically to let winning positions run while locking in profits.</p>
+          </div>
+
+          <!-- Tab Pane 4: Take Profit -->
+          <div id="pos-exit-pane-take-profit" class="pos-exit-pane" hidden>
+            <div class="pos-exit-field">
+              <label class="pos-modal-label" for="pos-exit-tp-price">
+                <span data-i18n="take_profit_target_price">Take Profit Target ($)</span>
+              </label>
+              <div class="pos-input-box">
+                <span class="pos-input-prefix">$</span>
+                <input type="number" id="pos-exit-tp-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                <span class="pos-input-suffix">USD</span>
+              </div>
+            </div>
+            <div class="pos-exit-chips-wrap">
+              <span class="pos-chips-label" data-i18n="quick_profit">Profit Target:</span>
+              <div class="pos-pct-chips">
+                <button type="button" class="chip" data-tp-pct="3">+3%</button>
+                <button type="button" class="chip is-active" data-tp-pct="5">+5%</button>
+                <button type="button" class="chip" data-tp-pct="10">+10%</button>
+                <button type="button" class="chip" data-tp-pct="15">+15%</button>
+                <button type="button" class="chip" data-tp-pct="25">+25%</button>
+              </div>
+            </div>
+            <p class="field-help" data-i18n="take_profit_desc">Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.</p>
+          </div>
+
+          <!-- Tab Pane 5: Bracket (SL + TP) -->
+          <div id="pos-exit-pane-bracket" class="pos-exit-pane" hidden>
+            <div class="pos-exit-bracket-grid">
+              <div class="pos-exit-subcard">
+                <label class="pos-modal-label" for="pos-exit-bracket-sl" data-i18n="stop_loss">Stop Loss ($)</label>
+                <div class="pos-input-box">
+                  <span class="pos-input-prefix">$</span>
+                  <input type="number" id="pos-exit-bracket-sl" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                </div>
+                <div class="pos-pct-chips compact">
+                  <button type="button" class="chip" data-bracket-sl-pct="2">2%</button>
+                  <button type="button" class="chip is-active" data-bracket-sl-pct="3">3%</button>
+                  <button type="button" class="chip" data-bracket-sl-pct="5">5%</button>
+                </div>
+              </div>
+              <div class="pos-exit-subcard">
+                <label class="pos-modal-label" for="pos-exit-bracket-tp" data-i18n="take_profit">Take Profit ($)</label>
+                <div class="pos-input-box">
+                  <span class="pos-input-prefix">$</span>
+                  <input type="number" id="pos-exit-bracket-tp" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                </div>
+                <div class="pos-pct-chips compact">
+                  <button type="button" class="chip" data-bracket-tp-pct="5">+5%</button>
+                  <button type="button" class="chip is-active" data-bracket-tp-pct="10">+10%</button>
+                  <button type="button" class="chip" data-bracket-tp-pct="15">+15%</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Pane 6: Clear Exits -->
+          <div id="pos-exit-pane-clear" class="pos-exit-pane" hidden>
+            <div class="pos-danger-banner">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" class="danger-icon">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <p data-i18n="clear_exits_desc">Cancel active stop loss and/or take profit orders. Your shares will remain open but unprotected.</p>
+            </div>
+            <div class="pos-clear-options">
+              <label class="check" for="pos-clear-stops-check">
+                <input type="checkbox" id="pos-clear-stops-check" checked />
+                <span><strong data-i18n="cancel_stop_loss_orders">Cancel Stop Loss Orders</strong></span>
+              </label>
+              <label class="check" for="pos-clear-tp-check">
+                <input type="checkbox" id="pos-clear-tp-check" checked />
+                <span><strong data-i18n="cancel_take_profit_orders">Cancel Take Profit Limit Orders</strong></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Risk / Reward Live Preview Matrix -->
+          <div class="pos-modal-preview pos-exit-preview" id="pos-exit-preview-box">
+            <div class="pos-preview-row" id="pos-exit-risk-row">
+              <span data-i18n="max_downside_risk">Max Downside Risk</span>
+              <strong id="pos-exit-preview-risk" class="mono neg">—</strong>
+            </div>
+            <div class="pos-preview-row" id="pos-exit-reward-row">
+              <span data-i18n="target_upside_reward">Target Upside Reward</span>
+              <strong id="pos-exit-preview-reward" class="mono pos">—</strong>
+            </div>
+            <div class="pos-preview-row" id="pos-exit-rr-row">
+              <span data-i18n="risk_reward_ratio">Risk : Reward</span>
+              <strong id="pos-exit-preview-rr" class="mono">—</strong>
+            </div>
+          </div>
+
+          <p id="pos-exit-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <button type="button" id="btn-exit-modal-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
+          <button type="button" id="btn-exit-modal-submit" class="primary" data-i18n="apply_exit_strategy">Apply Exit Strategy</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>

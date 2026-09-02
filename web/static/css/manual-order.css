@@ -557,25 +557,37 @@ a.ghost.small {
 
 .manual-form details.field-group.manual-accordion,
 .manual-form details.manual-accordion {
-  display: block;
+  display: block !important;
   width: 100%;
-  padding: 0.55rem 0.85rem;
+  padding: 0.75rem 0.85rem !important;
   border-radius: var(--radius-md);
   margin-bottom: 0.75rem;
+  gap: 0 !important;
   transition: background 160ms ease, border-color 160ms ease;
+  box-sizing: border-box;
+}
+
+.manual-form details.field-group.manual-accordion:not([open]),
+.manual-form details.manual-accordion:not([open]) {
+  padding: 0.75rem 0.85rem !important;
+  gap: 0 !important;
 }
 
 .manual-form details.field-group.manual-accordion[open],
 .manual-form details.manual-accordion[open] {
-  padding: 0.65rem 0.85rem 0.85rem;
+  padding: 0.75rem 0.85rem 0.85rem !important;
 }
 
 .manual-form details.manual-accordion > summary.manual-accordion-head {
-  display: flex;
-  align-items: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between;
   gap: 0.55rem;
   width: 100%;
-  padding: 0.15rem 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 1.35rem;
+  line-height: 1.2 !important;
   cursor: pointer;
   list-style: none;
   font-size: 0.75rem;
@@ -584,6 +596,7 @@ a.ghost.small {
   text-transform: uppercase;
   color: var(--muted);
   user-select: none;
+  box-sizing: border-box;
 }
 
 .manual-form details.manual-accordion > summary.manual-accordion-head::-webkit-details-marker {
@@ -608,6 +621,9 @@ a.ghost.small {
   flex: 1;
   min-width: 0;
   color: inherit;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
 }
 
 .manual-form details.manual-accordion > summary.manual-accordion-head .manual-accordion-badge {
@@ -615,12 +631,15 @@ a.ghost.small {
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 0.1rem 0.45rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel) 80%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
   color: var(--muted);
   text-transform: none;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .manual-form details.manual-accordion > summary.manual-accordion-head .manual-accordion-badge:empty {
@@ -628,8 +647,8 @@ a.ghost.small {
 }
 
 .manual-form details.manual-accordion[open] > summary.manual-accordion-head {
-  margin-bottom: 0.6rem;
-  padding-bottom: 0.5rem;
+  margin-bottom: 0.65rem !important;
+  padding-bottom: 0.55rem !important;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
   color: var(--text);
 }

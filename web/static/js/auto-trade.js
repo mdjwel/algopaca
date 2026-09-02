@@ -40,6 +40,18 @@ let suppressWatchlistUntilStop = false;
 let smaPresets = [];
 let dipPresets = [];
 let pairPresets = [];
+let dayPresets = [];
+// Must match DEFAULT_PRESET_ID in bot/day_presets.py.
+const DEFAULT_DAY_PRESET = "ai_vwap_momentum";
+// Day Trading is intraday-only — VWAP, the opening range and the EOD square-off
+// are meaningless on daily bars. Mirrors INTRADAY_TIMEFRAMES in bot/config.py.
+const INTRADAY_TIMEFRAMES = ["1Min", "5Min", "15Min", "1Hour"];
+const DEFAULT_DAY_TIMEFRAME = "5Min";
+
+function intradayTimeframe(value) {
+  const tf = String(value || "").trim();
+  return INTRADAY_TIMEFRAMES.includes(tf) ? tf : DEFAULT_DAY_TIMEFRAME;
+}
 let customEngines = [];
 let activeCustomEngineId = null;
 let activeCustomEngine = null;
@@ -119,6 +131,8 @@ function formPayload() {
     trade_notional: Number(formValue("trade_notional", 100) || 100),
     bar_timeframe: mode === "pair" || mode === "ls"
       ? "1Day"
+      : mode === "day"
+      ? intradayTimeframe(formValue("bar_timeframe", DEFAULT_DAY_TIMEFRAME))
       : String(formValue("bar_timeframe", "15Min") || "15Min"),
     poll_seconds: Number(formValue("poll_seconds", 20) || 20),
     strategy_mode: mode,
@@ -136,6 +150,20 @@ function formPayload() {
     ls_risk_pct: Number(formValue("ls_risk_pct", 1) || 1),
     ls_rr: Number(formValue("ls_rr", 2) || 2),
     ls_time_stop_bars: Number(formValue("ls_time_stop_bars", 15) || 15),
+    day_preset: String(formValue("day_preset", DEFAULT_DAY_PRESET) || DEFAULT_DAY_PRESET),
+    day_sub_mode: String(formValue("day_sub_mode", "vwap_trend") || "vwap_trend"),
+    day_side: String(formValue("day_side", "long_only") || "long_only"),
+    day_ema_fast: Number(formValue("day_ema_fast", 9) || 9),
+    day_ema_slow: Number(formValue("day_ema_slow", 21) || 21),
+    day_orb_minutes: Number(formValue("day_orb_minutes", 15) || 15),
+    day_open_buffer_mins: Number(formValue("day_open_buffer_mins", 15) || 15),
+    day_eod_flatten_mins: Number(formValue("day_eod_flatten_mins", 15) || 15),
+    day_eod_flatten: !!formValue("day_eod_flatten", true),
+    day_max_trades_per_day: Number(formValue("day_max_trades_per_day", 5) || 5),
+    day_profit_target_r: Number(formValue("day_profit_target_r", 2.0) || 2.0),
+    day_stop_atr_mult: Number(formValue("day_stop_atr_mult", 1.5) || 1.5),
+    day_use_ai_confirm: !!formValue("day_use_ai_confirm", false),
+    day_ai_min_confidence: Number(formValue("day_ai_min_confidence", 0.70) || 0.70),
     ai_provider: provider,
     ai_preset: String(formValue("ai_preset", "balanced") || "balanced"),
     ai_instructions: String(formValue("ai_instructions", "") || ""),
@@ -300,6 +328,29 @@ function validateLocal() {
   ) {
     return "LS EMA fast must be smaller than EMA slow.";
   }
+  if (payload.strategy_mode === "day") {
+    if (!(payload.day_ema_fast < payload.day_ema_slow)) {
+      return "Day trading fast EMA must be smaller than slow EMA.";
+    }
+    if (payload.day_orb_minutes < 1 || payload.day_orb_minutes > 60) {
+      return "Opening range window must be between 1 and 60 minutes.";
+    }
+    if (payload.day_open_buffer_mins < 0 || payload.day_open_buffer_mins > 120) {
+      return "Market open buffer must be between 0 and 120 minutes.";
+    }
+    if (payload.day_eod_flatten_mins < 1 || payload.day_eod_flatten_mins > 120) {
+      return "EOD flatten window must be between 1 and 120 minutes.";
+    }
+    if (payload.day_max_trades_per_day < 0 || payload.day_max_trades_per_day > 100) {
+      return "Max trades per day must be between 0 and 100.";
+    }
+    if (
+      payload.day_use_ai_confirm &&
+      !(payload.day_ai_min_confidence > 0 && payload.day_ai_min_confidence <= 1)
+    ) {
+      return "AI min confidence must be between 0 and 1 (e.g. 0.70).";
+    }
+  }
   if (payload.size_mode === "notional") {
     if (!(payload.trade_notional > 0)) {
       return "Dollar amount must be greater than 0.";
@@ -339,7 +390,8 @@ function validateLocal() {
   if (
     payload.strategy_mode === "sma" ||
     payload.strategy_mode === "dip" ||
-    payload.strategy_mode === "pair"
+    payload.strategy_mode === "pair" ||
+    payload.strategy_mode === "day"
   ) {
     if (payload.ai_risk_pct < 0 || payload.ai_risk_pct > 10) {
       return "Risk per trade must be between 0 and 10%.";
@@ -627,6 +679,16 @@ function engineSideCopy(mode) {
       note: tx("engine_side_note_pair", "Buys the long-leg or short-leg symbol — does not short-sell a stock."),
     };
   }
+  if (mode === "day") {
+    const isLS = formPayload().day_side === "long_short";
+    return {
+      pill: isLS ? tx("long_and_short", "Long & Short") : tx("long_only", "Long only"),
+      side: isLS ? "two_way" : "long",
+      note: isLS
+        ? tx("engine_side_note_day_ls", "Intraday long & short trading with automatic end-of-day square-off.")
+        : tx("engine_side_note_day_long", "Intraday trend & mean reversion entries; auto-flattened before market close."),
+    };
+  }
   return {
     pill: tx("long_only", "Long only"),
     side: "long",
@@ -673,6 +735,11 @@ function syncModeHint() {
     hint.textContent = tx(
       "mode_hint_ls",
       "Takes long or short on each evaluate-list symbol from EMA/ADX regime + MACD momentum (daily bars)."
+    );
+  } else if (mode === "day") {
+    hint.textContent = tx(
+      "mode_hint_day",
+      "Intraday execution using VWAP, Opening Range Breakout (ORB), EMA momentum, and automatic EOD flattening."
     );
   } else {
     hint.textContent = tx(
@@ -776,11 +843,14 @@ function syncMarketHints() {
   const ai = mode === "ai";
   const pair = mode === "pair";
   const ls = mode === "ls";
+  const day = mode === "day";
   if (symbolHint) {
     symbolHint.textContent = pair
       ? "Featured = long leg. Pair mode uses daily bars."
       : ls
         ? "Quote and last signal on the wall. LS uses daily bars and can go long or short."
+      : day
+        ? "Quote and last signal on the wall. Intraday VWAP and ORB calculate in real time."
       : ai
         ? "Quote and last signal on the wall. Include it on the evaluate list if you want AI to trade it."
         : "Quote and last signal on the wall. Include it on the evaluate list to trade it.";
@@ -799,6 +869,8 @@ function syncMarketHints() {
           ? "Dip evaluates"
           : mode === "ls"
             ? "LS evaluates"
+          : mode === "day"
+            ? "Day trading evaluates"
           : "SMA evaluates";
     watchHint.textContent =
       `${who} ${n} symbol${n === 1 ? "" : "s"} each cycle. Featured is highlighted on the wall.`;
@@ -925,6 +997,7 @@ function syncModeUi() {
   const dip = mode === "dip";
   const pair = mode === "pair";
   const ls = mode === "ls";
+  const day = mode === "day";
   const AI_PROVIDERS = ["openai", "gemini", "anthropic", "xai"];
   const provider = AI_PROVIDERS.includes(payload.ai_provider)
     ? payload.ai_provider
@@ -956,12 +1029,36 @@ function syncModeUi() {
   document.querySelectorAll(".ls-only").forEach((el) => {
     el.hidden = !ls;
   });
+  document.querySelectorAll(".day-only").forEach((el) => {
+    el.hidden = !day;
+  });
+  const dayAiConfirmWrap = $("day-ai-confidence-wrap");
+  if (dayAiConfirmWrap) {
+    dayAiConfirmWrap.hidden = !day || !payload.day_use_ai_confirm;
+  }
+  const dayEodMinsWrap = $("day-eod-mins-wrap");
+  if (dayEodMinsWrap) {
+    dayEodMinsWrap.hidden = !day || !payload.day_eod_flatten;
+  }
   const tf = $("field-timeframe");
   if (pair || ls) {
     const form = $("settings");
     if (form?.bar_timeframe) form.bar_timeframe.value = "1Day";
   }
-  if (tf) tf.disabled = loopRunning || pair || ls;
+  if (tf) {
+    // Day Trading runs on intraday bars only; take "1 day" off the menu so the
+    // UI cannot show a timeframe the engine will not use.
+    // nice-select2 rebuilds the menu from the native options and honours
+    // `disabled`, so set both.
+    const daily = tf.querySelector('option[value="1Day"]');
+    if (daily) {
+      daily.hidden = day;
+      daily.disabled = day;
+    }
+    if (day && tf.value === "1Day") tf.value = intradayTimeframe(tf.value);
+    tf.disabled = loopRunning || pair || ls;
+    refreshNiceSelect(tf);
+  }
   if (pair) {
     const form = $("settings");
     // Clear legacy SOXL/SOXS lock once; leave user-entered pairs alone.
@@ -993,6 +1090,9 @@ function syncModeUi() {
     } else if (ls) {
       metricA.textContent = "EMA fast";
       metricB.textContent = "EMA slow";
+    } else if (day) {
+      metricA.textContent = "VWAP";
+      metricB.textContent = "EMA / ORB";
     } else {
       metricA.textContent = "Fast SMA";
       metricB.textContent = "Slow SMA";
@@ -1002,6 +1102,7 @@ function syncModeUi() {
   syncSmaPresetHint();
   syncDipPresetHint();
   syncPairPresetHint();
+  syncDayPresetHint();
   syncModeHint();
   syncEngineSide();
   syncMarketHints();
@@ -1026,6 +1127,67 @@ function findDipPreset(id) {
 
 function findPairPreset(id) {
   return pairPresets.find((p) => p.id === id) || null;
+}
+
+function findDayPreset(id) {
+  return dayPresets.find((p) => p.id === id) || null;
+}
+
+function syncDayPresetHint() {
+  const hint = $("day-preset-hint");
+  if (!hint) return;
+  const preset = findDayPreset(formPayload().day_preset);
+  const key = "day_preset_summary_" + (preset?.id || "custom");
+  const fallback = preset?.summary || "Intraday strategy using VWAP, ORB, and momentum scalp.";
+  hint.textContent = tx(key, fallback);
+}
+
+function applyDayPreset(presetId) {
+  const preset = findDayPreset(presetId);
+  const form = $("settings");
+  if (!preset || !form?.day_preset) return;
+  applyingPreset = true;
+  form.day_preset.value = preset.id;
+  refreshNiceSelect(form.day_preset);
+  if (preset.id !== "custom") {
+    if (form.day_sub_mode) {
+      form.day_sub_mode.value = preset.sub_mode;
+      refreshNiceSelect(form.day_sub_mode);
+    }
+    if (form.day_side) {
+      form.day_side.value = preset.side;
+      refreshNiceSelect(form.day_side);
+    }
+    if (form.day_ema_fast) form.day_ema_fast.value = preset.ema_fast;
+    if (form.day_ema_slow) form.day_ema_slow.value = preset.ema_slow;
+    if (form.day_orb_minutes) form.day_orb_minutes.value = preset.orb_minutes;
+    if (form.day_open_buffer_mins) form.day_open_buffer_mins.value = preset.open_buffer_mins;
+    if (form.day_eod_flatten_mins) form.day_eod_flatten_mins.value = preset.eod_flatten_mins;
+    if (form.day_eod_flatten) form.day_eod_flatten.checked = preset.eod_flatten;
+    if (form.day_max_trades_per_day) form.day_max_trades_per_day.value = preset.max_trades_per_day;
+    if (form.day_profit_target_r) form.day_profit_target_r.value = preset.profit_target_r;
+    if (form.day_stop_atr_mult) form.day_stop_atr_mult.value = preset.stop_atr_mult;
+    if (form.day_use_ai_confirm) form.day_use_ai_confirm.checked = preset.use_ai_confirm !== undefined ? !!preset.use_ai_confirm : false;
+    if (form.day_ai_min_confidence) form.day_ai_min_confidence.value = preset.ai_min_confidence ?? 0.70;
+  }
+  syncDayPresetHint();
+  syncEngineSide();
+  applyingPreset = false;
+}
+
+function populateDayPresetOptions(presets) {
+  const select = $("field-day-preset");
+  if (!select || !presets?.length) return;
+  const current = select.value || DEFAULT_DAY_PRESET;
+  const targetVal = presets.some((p) => p.id === current) ? current : presets[0].id;
+  select.innerHTML = presets
+    .map((p) => {
+      const label = tx("preset_day_" + p.id, tx("preset_" + p.id, p.label));
+      return `<option value="${escapeHtml(p.id)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  select.value = targetVal;
+  refreshNiceSelect(select);
 }
 
 function syncPresetHint() {
@@ -1229,6 +1391,29 @@ function markPresetCustomIfEdited(ev) {
     form.pair_preset.value = "custom";
     refreshNiceSelect(form.pair_preset);
     syncPairPresetHint();
+    return;
+  }
+  if (
+    name === "day_sub_mode" ||
+    name === "day_side" ||
+    name === "day_ema_fast" ||
+    name === "day_ema_slow" ||
+    name === "day_orb_minutes" ||
+    name === "day_open_buffer_mins" ||
+    name === "day_eod_flatten_mins" ||
+    name === "day_eod_flatten" ||
+    name === "day_max_trades_per_day" ||
+    name === "day_profit_target_r" ||
+    name === "day_stop_atr_mult" ||
+    name === "day_use_ai_confirm" ||
+    name === "day_ai_min_confidence"
+  ) {
+    if (!form?.day_preset || form.day_preset.value === "custom") return;
+    form.day_preset.value = "custom";
+    refreshNiceSelect(form.day_preset);
+    syncDayPresetHint();
+    syncEngineSide();
+    return;
   }
 }
 
@@ -1621,17 +1806,11 @@ async function handleUpdateActiveCustomEngine() {
   const current = findCustomEngine(activeCustomEngineId);
   if (!current) return;
 
-  if (current.is_blueprint) {
-    // Starter blueprint cannot be overwritten directly, open save as new copy
-    openInlineSaveEngineDrawer({ isNewCopy: true });
-    return;
-  }
-
   const deskP = formPayload();
   const payload = {
     id: current.id,
     name: current.name,
-    description: current.description,
+    description: current.description || "",
     base_engine: deskP.strategy_mode || "ai",
     instructions: deskP.ai_instructions || "",
     choices: deskP,
@@ -1649,12 +1828,15 @@ async function handleUpdateActiveCustomEngine() {
     }
 
     const updated = res.engine;
+    activeCustomEngineId = updated.id;
     activeCustomEngine = updated;
 
     const modifiedBadge = $("active-custom-engine-modified");
     if (modifiedBadge) modifiedBadge.hidden = true;
 
+    closeInlineSaveEngineDrawer();
     await refreshCustomEngines();
+    schedulePersistSettings();
     showToast(tx("custom_engine_updated", `Custom engine '${updated.name}' updated with current desk settings.`, { name: updated.name }), "ok");
   } catch (err) {
     showToast(err.message, "error");
@@ -1687,26 +1869,6 @@ async function refreshCustomEngines() {
     }
   } catch (err) {
     console.error("Could not refresh custom engines:", err);
-  }
-}
-
-async function duplicateActiveCustomEngine(engineId) {
-  if (!engineId) return;
-  try {
-    setBusy(true, tx("duplicating_engine", "Duplicating custom engine…"));
-    const res = await api(`/api/custom-engines/${encodeURIComponent(engineId)}/duplicate`, {
-      method: "POST",
-    });
-    if (!res.ok || !res.engine) {
-      throw new Error(res.detail || "Could not duplicate custom engine.");
-    }
-    await refreshCustomEngines();
-    applyCustomEngine(res.engine.id, { syncPersist: true });
-    showToast(tx("engine_duplicated", `Duplicated as '${res.engine.name}'.`, { name: res.engine.name }), "ok");
-  } catch (err) {
-    showToast(err.message, "error");
-  } finally {
-    setBusy(false);
   }
 }
 
@@ -1782,6 +1944,20 @@ function applySettings(settings, { force = false } = {}) {
   if (form.ls_risk_pct) form.ls_risk_pct.value = settings.ls_risk_pct ?? 1;
   if (form.ls_rr) form.ls_rr.value = settings.ls_rr ?? 2;
   if (form.ls_time_stop_bars) form.ls_time_stop_bars.value = settings.ls_time_stop_bars ?? 15;
+  if (form.day_preset) form.day_preset.value = settings.day_preset || DEFAULT_DAY_PRESET;
+  if (form.day_sub_mode) form.day_sub_mode.value = settings.day_sub_mode || "vwap_trend";
+  if (form.day_side) form.day_side.value = settings.day_side || "long_only";
+  if (form.day_ema_fast) form.day_ema_fast.value = settings.day_ema_fast ?? 9;
+  if (form.day_ema_slow) form.day_ema_slow.value = settings.day_ema_slow ?? 21;
+  if (form.day_orb_minutes) form.day_orb_minutes.value = settings.day_orb_minutes ?? 15;
+  if (form.day_open_buffer_mins) form.day_open_buffer_mins.value = settings.day_open_buffer_mins ?? 15;
+  if (form.day_eod_flatten_mins) form.day_eod_flatten_mins.value = settings.day_eod_flatten_mins ?? 15;
+  if (form.day_eod_flatten) form.day_eod_flatten.checked = settings.day_eod_flatten !== false;
+  if (form.day_max_trades_per_day) form.day_max_trades_per_day.value = settings.day_max_trades_per_day ?? 5;
+  if (form.day_profit_target_r) form.day_profit_target_r.value = settings.day_profit_target_r ?? 2.0;
+  if (form.day_stop_atr_mult) form.day_stop_atr_mult.value = settings.day_stop_atr_mult ?? 1.5;
+  if (form.day_use_ai_confirm) form.day_use_ai_confirm.checked = !!settings.day_use_ai_confirm;
+  if (form.day_ai_min_confidence) form.day_ai_min_confidence.value = settings.day_ai_min_confidence ?? 0.70;
   form.trade_qty.value = settings.trade_qty;
   if (form.trade_notional) {
     form.trade_notional.value =
@@ -1909,7 +2085,8 @@ function applySettings(settings, { force = false } = {}) {
     settings.ai_preset,
     settings.sma_preset,
     settings.dip_preset,
-    settings.pair_preset
+    settings.pair_preset,
+    settings.day_preset
   );
   syncModeUi();
   syncSmaHint();
@@ -1944,7 +2121,7 @@ function ordersEnvPhraseEn() {
   return deskEnvLabel() === "live" ? "live orders" : "paper orders";
 }
 
-function syncModeBadge(strategyMode, aiPresetId, smaPresetId, dipPresetId, pairPresetId) {
+function syncModeBadge(strategyMode, aiPresetId, smaPresetId, dipPresetId, pairPresetId, dayPresetId) {
   const badge = $("mode-badge");
   if (!badge) return;
   const env = deskEnvLabel();
@@ -1965,6 +2142,10 @@ function syncModeBadge(strategyMode, aiPresetId, smaPresetId, dipPresetId, pairP
     const preset = findPairPreset(pairPresetId || formPayload().pair_preset);
     const presetLabel = preset ? `${preset.label} · ` : "";
     badge.textContent = `Pair · ${presetLabel}${orderLabel}`;
+  } else if (mode === "day") {
+    const preset = findDayPreset(dayPresetId || formPayload().day_preset);
+    const presetLabel = preset ? `${preset.label} · ` : "";
+    badge.textContent = `Day · ${presetLabel}${orderLabel}`;
   } else if (mode === "ls") {
     badge.textContent = `LS · Regime Dual Momentum · ${orderLabel}`;
   } else {
@@ -2465,6 +2646,10 @@ function applyLoop(running, meta = {}) {
   }
   syncLoopElapsedTicker();
   applyAiWatchlist(lastDeskWatchlist);
+  const page = $("page-auto-trade");
+  if (page) {
+    page.classList.toggle("is-loop-running", loopRunning);
+  }
 }
 
 function render(state, { forceSettings = false } = {}) {
@@ -2485,6 +2670,10 @@ function render(state, { forceSettings = false } = {}) {
   }
   if (Array.isArray(state.pair_presets)) {
     pairPresets = state.pair_presets;
+  }
+  if (Array.isArray(state.day_presets) && state.day_presets.length) {
+    dayPresets = state.day_presets;
+    populateDayPresetOptions(dayPresets);
   }
   if (Array.isArray(state.custom_engines)) {
     customEngines = state.custom_engines;
@@ -2540,7 +2729,8 @@ function render(state, { forceSettings = false } = {}) {
       formPayload().ai_preset,
       formPayload().sma_preset,
       formPayload().dip_preset,
-      formPayload().pair_preset
+      formPayload().pair_preset,
+      formPayload().day_preset
     );
     syncModeUi();
     syncSmaHint();
@@ -2551,7 +2741,8 @@ function render(state, { forceSettings = false } = {}) {
       state.settings.ai_preset,
       state.settings.sma_preset,
       state.settings.dip_preset,
-      state.settings.pair_preset
+      state.settings.pair_preset,
+      state.settings.day_preset
     );
   }
   const traded = notifyExecutedTrades(state);
@@ -2810,7 +3001,8 @@ if (form) {
       form.elements.ai_preset?.value,
       form.elements.sma_preset?.value,
       form.elements.dip_preset?.value,
-      form.elements.pair_preset?.value
+      form.elements.pair_preset?.value,
+      form.elements.day_preset?.value
     );
     syncModeUi();
     syncSmaHint();
@@ -2846,6 +3038,9 @@ if (form) {
     if (name === "pair_preset") {
       applyPairPreset(ev.target.value);
     }
+    if (name === "day_preset") {
+      applyDayPreset(ev.target.value);
+    }
     if (name === "size_mode") {
       selectSizeMode(ev.target.value);
     }
@@ -2862,7 +3057,8 @@ if (form) {
       form.elements.ai_preset?.value,
       form.elements.sma_preset?.value,
       form.elements.dip_preset?.value,
-      form.elements.pair_preset?.value
+      form.elements.pair_preset?.value,
+      form.elements.day_preset?.value
     );
     syncModeUi();
     syncSmaHint();
@@ -3009,7 +3205,7 @@ function renderPendingApprovals(approvals = []) {
       const highlightClass = isTarget ? " is-highlighted" : "";
       const priceFmt = item.price ? `$${Number(item.price).toFixed(2)}` : "Market";
       const estVal = item.estimated_value ? `$${Number(item.estimated_value).toFixed(2)}` : "—";
-      const timeFmt = item.created_at ? new Date(item.created_at).toLocaleTimeString() : "";
+      const timeFmt = item.created_at ? formatDeskTime(item.created_at, { withSeconds: true }) : "";
 
       return `
         <div class="pending-approval-item${highlightClass}" id="approval-item-${escapeHtml(item.id)}" data-id="${escapeHtml(item.id)}">
@@ -3197,12 +3393,6 @@ $("btn-save-as-new-custom-engine")?.addEventListener("click", () => {
 
 $("btn-update-active-custom-engine")?.addEventListener("click", () => {
   handleUpdateActiveCustomEngine();
-});
-
-$("btn-duplicate-active-custom-engine")?.addEventListener("click", () => {
-  if (activeCustomEngineId) {
-    duplicateActiveCustomEngine(activeCustomEngineId);
-  }
 });
 
 $("btn-delete-active-custom-engine")?.addEventListener("click", () => {

@@ -108,8 +108,13 @@ def manage_open_position(
     qty: float,
     stop_distance: float | None,
     current_stop: float | None,
+    take_profit_r: float | None = None,
 ) -> dict[str, Any]:
-    """Scale out at take-profit R and ratchet the stop. Long or short."""
+    """Scale out at take-profit R and ratchet the stop. Long or short.
+
+    ``take_profit_r`` overrides the desk-wide ``ai_take_profit_r`` for engines with
+    their own profit target.
+    """
     if side not in {"long", "short"}:
         return {}
     actions: list[str] = []
@@ -122,7 +127,12 @@ def manage_open_position(
     if open_r is not None:
         state["peak_r"] = max(float(state.get("peak_r") or 0.0), float(open_r))
 
-    if should_scale_out(config, r=open_r, already_scaled=state.get("scaled_out")):
+    if should_scale_out(
+        config,
+        r=open_r,
+        already_scaled=state.get("scaled_out"),
+        target_r=take_profit_r,
+    ):
         trimmed = _scale_out(service, symbol, qty=qty, side=side)
         if trimmed:
             state["scaled_out"] = True

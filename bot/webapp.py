@@ -21,6 +21,7 @@ from bot.ai_models import catalog_payload
 from bot.auth import AUTH_STORE, EMAIL_REGEX, is_admin_or_owner
 from bot.backtest_store import summarize_entry
 from bot.config import MIN_ATR_STOP_MULT
+from bot.day_presets import DEFAULT_PRESET_ID as DEFAULT_DAY_PRESET_ID
 from bot.email_service import (
     get_smtp_config,
     save_smtp_config,
@@ -93,6 +94,20 @@ class SettingsIn(BaseModel):
     ls_risk_pct: float = Field(1.0, gt=0)
     ls_rr: float = Field(2.0, gt=0)
     ls_time_stop_bars: int = Field(15, ge=1)
+    day_preset: str = DEFAULT_DAY_PRESET_ID
+    day_sub_mode: str = "vwap_trend"
+    day_side: str = "long_only"
+    day_ema_fast: int = Field(9, ge=2)
+    day_ema_slow: int = Field(21, ge=3)
+    day_orb_minutes: int = Field(15, ge=1, le=60)
+    day_open_buffer_mins: int = Field(15, ge=0, le=120)
+    day_eod_flatten_mins: int = Field(15, ge=1, le=120)
+    day_eod_flatten: bool = True
+    day_max_trades_per_day: int = Field(5, ge=0, le=100)
+    day_profit_target_r: float = Field(2.0, ge=0.1, le=20.0)
+    day_stop_atr_mult: float = Field(1.5, ge=0.1, le=10.0)
+    day_use_ai_confirm: bool = False
+    day_ai_min_confidence: float = Field(0.65, ge=0.0, le=1.0)
     ai_provider: str = "openai"
     ai_preset: str = "balanced"
     ai_instructions: str = ""
@@ -367,13 +382,21 @@ class ManualOrderIn(BaseModel):
 
 
 class ManageStopIn(BaseModel):
-    """Move the protection on an open position without closing it."""
+    """Move, re-price, or configure exit strategies on an open position."""
 
     symbol: str = Field(..., min_length=1, max_length=12)
-    action: str = Field(..., pattern="(?i)^(breakeven|price|trail)$")
+    action: str = Field(
+        ...,
+        pattern="(?i)^(breakeven|price|trail|take_profit|bracket|cancel_stops|cancel_take_profit|cancel_all)$",
+    )
     stop_price: Optional[float] = Field(None, gt=0)
     stop_pct: Optional[float] = Field(None, gt=0, le=50)
     trail_percent: Optional[float] = Field(None, gt=0, le=50)
+    trail_price: Optional[float] = Field(None, gt=0)
+    take_profit_price: Optional[float] = Field(None, gt=0)
+    take_profit_pct: Optional[float] = Field(None, gt=0, le=500)
+    take_profit_r: Optional[float] = Field(None, gt=0, le=20)
+    use_trailing: Optional[bool] = False
 
 
 class CancelOrderIn(BaseModel):
@@ -413,13 +436,13 @@ class ReplaceOrderIn(BaseModel):
 
 
 class BacktestIn(BaseModel):
-    mode: str = Field("sma", pattern="(?i)^(sma|dip|pair|ls)$")
+    mode: str = Field("sma", pattern="(?i)^(sma|dip|pair|ls|day)$")
     symbol: str = "AAPL"
     symbols: Optional[str] = None
     run_kind: str = Field(
         "per_symbol", pattern="(?i)^(per_symbol|portfolio|per-symbol)$"
     )
-    days: int = Field(365, ge=30, le=1500)
+    days: int = Field(365, ge=1, le=1500)
     bar_timeframe: str = "1Day"
     qty: Optional[float] = Field(None, gt=0)
     initial_cash: float = Field(10_000.0, ge=100)
@@ -448,6 +471,18 @@ class BacktestIn(BaseModel):
     ls_time_stop_bars: Optional[int] = Field(None, ge=1)
     ls_commission_pct: Optional[float] = Field(None, ge=0)
     ls_slippage_pct: Optional[float] = Field(None, ge=0)
+    day_preset: Optional[str] = None
+    day_sub_mode: Optional[str] = None
+    day_side: Optional[str] = None
+    day_ema_fast: Optional[int] = Field(None, ge=2)
+    day_ema_slow: Optional[int] = Field(None, ge=3)
+    day_orb_minutes: Optional[int] = Field(None, ge=1)
+    day_stop_atr_mult: Optional[float] = Field(None, gt=0)
+    day_profit_target_r: Optional[float] = Field(None, ge=0)
+    day_max_trades_per_day: Optional[int] = Field(None, ge=1)
+    day_open_buffer_mins: Optional[int] = Field(None, ge=0)
+    day_eod_flatten_mins: Optional[int] = Field(None, ge=0)
+    day_eod_flatten: Optional[bool] = None
 
 
 class ClosePositionIn(BaseModel):
@@ -531,6 +566,7 @@ class SetupCompleteIn(BaseModel):
     lang: str = "en"
     default_page: str = "auto-trade"
     timezone_display: str = "local"
+    time_format: str = "12h"
     sound_alerts: bool = True
     notify_browser: bool = True
     notify_email: bool = False
@@ -588,6 +624,7 @@ class UserPreferencesIn(BaseModel):
     chart_refresh_interval: Optional[int] = Field(20, ge=5, le=120)
     compact_mode: Optional[bool] = False
     timezone_display: Optional[str] = "local"
+    time_format: Optional[str] = "12h"
     default_size_mode: Optional[str] = "qty"
     default_trade_qty: Optional[float] = Field(1.0, gt=0)
     default_trade_notional: Optional[float] = Field(100.0, gt=0)
@@ -1118,6 +1155,7 @@ def api_setup_complete(body: SetupCompleteIn, request: Request, response: Respon
         "language": body.lang or "en",
         "default_page": body.default_page or "auto-trade",
         "timezone_display": body.timezone_display or "local",
+        "time_format": body.time_format or "12h",
         "sound_alerts": int(bool(body.sound_alerts)),
         "notify_browser": int(bool(body.notify_browser)),
         "notify_email": int(bool(body.notify_email)),
@@ -1128,7 +1166,7 @@ def api_setup_complete(body: SetupCompleteIn, request: Request, response: Respon
     except Exception as exc:
         log.warning("Could not save user preferences during setup: %s", exc)
 
-    # Set theme & lang cookies on response
+    # Set theme, lang, timezone & time_format cookies on response
     response.set_cookie(
         key="algopaca_theme",
         value=body.theme or "obsidian",
@@ -1139,6 +1177,20 @@ def api_setup_complete(body: SetupCompleteIn, request: Request, response: Respon
     response.set_cookie(
         key="algopaca_lang",
         value=body.lang or "en",
+        max_age=365 * 86400,
+        path="/",
+        samesite="lax",
+    )
+    response.set_cookie(
+        key="algopaca_timezone",
+        value=body.timezone_display or "local",
+        max_age=365 * 86400,
+        path="/",
+        samesite="lax",
+    )
+    response.set_cookie(
+        key="algopaca_time_format",
+        value=body.time_format or "12h",
         max_age=365 * 86400,
         path="/",
         samesite="lax",
@@ -1201,7 +1253,7 @@ def api_user_preferences_get(user: dict = Depends(require_auth)) -> dict:
 
 
 @app.put("/api/user/preferences")
-def api_user_preferences_save(body: UserPreferencesIn, user: dict = Depends(require_auth)) -> dict:
+def api_user_preferences_save(body: UserPreferencesIn, response: Response, user: dict = Depends(require_auth)) -> dict:
     """Update UI themes, language, and trading defaults for current user."""
     try:
         payload = body.model_dump(exclude_unset=True)
@@ -1211,6 +1263,17 @@ def api_user_preferences_save(body: UserPreferencesIn, user: dict = Depends(requ
         desk_keys = {k: payload[k] for k in APPROVAL_PREF_KEYS if k in payload}
         if desk_keys:
             get_user_state(user["id"]).update_settings(desk_keys)
+
+        # Sync preferences cookies for instant client availability across pages
+        if "theme" in payload and payload["theme"]:
+            response.set_cookie(key="algopaca_theme", value=payload["theme"], max_age=365 * 86400, path="/", samesite="lax")
+        if "language" in payload and payload["language"]:
+            response.set_cookie(key="algopaca_lang", value=payload["language"], max_age=365 * 86400, path="/", samesite="lax")
+        if "timezone_display" in payload and payload["timezone_display"]:
+            response.set_cookie(key="algopaca_timezone", value=payload["timezone_display"], max_age=365 * 86400, path="/", samesite="lax")
+        if "time_format" in payload and payload["time_format"]:
+            response.set_cookie(key="algopaca_time_format", value=payload["time_format"], max_age=365 * 86400, path="/", samesite="lax")
+
         return {"ok": True, "preferences": saved, "message": "Preferences saved successfully."}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1308,9 +1371,9 @@ def api_close_position(
         )
         return {"ok": True, "result": result, "overview": state.positions_overview()}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=humanize_alpaca_error(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=humanize_alpaca_error(exc)) from exc
 
 
 @app.post("/api/positions/close-batch")
@@ -1324,9 +1387,9 @@ def api_close_batch_positions(
         )
         return {"ok": True, "result": result, "overview": state.positions_overview()}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=humanize_alpaca_error(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=humanize_alpaca_error(exc)) from exc
 
 
 @app.post("/api/positions/close-all")
@@ -1339,7 +1402,7 @@ def api_close_all_positions(
         result = state.close_all_positions(cancel_orders=cancel)
         return {"ok": True, "result": result, "overview": state.positions_overview()}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=humanize_alpaca_error(exc)) from exc
 
 
 @app.get("/api/status")
@@ -1950,7 +2013,7 @@ def place_order(
 def manage_position_stop(
     body: ManageStopIn, user: dict = Depends(require_auth)
 ) -> dict:
-    """Move a position's protective stop — breakeven, a price, or a trail."""
+    """Move a position's protective stop or configure exit strategies (breakeven, price, trail, take profit, bracket)."""
     state = get_user_state(user["id"])
     try:
         result = state.manage_position_stop(
@@ -1959,6 +2022,11 @@ def manage_position_stop(
             stop_price=body.stop_price,
             stop_pct=body.stop_pct,
             trail_percent=body.trail_percent,
+            trail_price=body.trail_price,
+            take_profit_price=body.take_profit_price,
+            take_profit_pct=body.take_profit_pct,
+            take_profit_r=body.take_profit_r,
+            use_trailing=body.use_trailing,
         )
         return {"ok": True, **result}
     except ValueError as exc:

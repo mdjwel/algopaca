@@ -100,6 +100,7 @@
                   <option value="dip" selected data-i18n="mode_dip">Buy the dip</option>
                   <option value="pair" data-i18n="mode_pair">Long &amp; Short Pair</option>
                   <option value="ls" data-i18n="mode_ls">Regime Dual Momentum (L/S)</option>
+                  <option value="day" data-i18n="mode_day">Day trading (VWAP &amp; ORB)</option>
                 </select>
               </label>
               <p id="bt-mode-hint" class="field-help" data-i18n="bt_mode_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
@@ -208,6 +209,54 @@
                 </label>
                 <label for="bt-ls-comm"><span data-i18n="commission_pct">Commission %</span>
                   <input id="bt-ls-comm" name="ls_commission_pct" type="number" min="0" max="1" step="0.01" value="0.05" inputmode="decimal" />
+                </label>
+              </div>
+
+              <!-- Day Trading controls -->
+              <label for="bt-day-preset" class="stack bt-day-only" hidden><span data-i18n="day_preset">Day trading preset</span>
+                <select id="bt-day-preset" name="day_preset">
+                  <option value="ai_vwap_momentum" selected data-i18n="preset_day_ai_vwap">AI Institutional VWAP &amp; Momentum</option>
+                  <option value="vwap_trend" data-i18n="preset_day_vwap_trend">VWAP Trend Rider</option>
+                  <option value="ai_orb_breakout" data-i18n="preset_day_ai_orb">AI Opening Range Sniper (15m)</option>
+                  <option value="orb_breakout" data-i18n="preset_day_orb">Opening Range Breakout (15m)</option>
+                  <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_scalp">AI Adaptive Scalper</option>
+                  <option value="momentum_scalp" data-i18n="preset_day_scalp">Intraday Momentum Scalp</option>
+                  <option value="vwap_fade" data-i18n="preset_day_fade">VWAP Mean Reversion (Fade)</option>
+                  <option value="custom" data-i18n="preset_custom">Custom</option>
+                </select>
+              </label>
+              <p id="bt-day-hint" class="field-help bt-day-only" hidden data-i18n="bt_day_hint">
+                Intraday VWAP &amp; 9/21 EMA trend following with 1.2R target, 1.0 ATR stop, and EOD square-off.
+              </p>
+              <div class="bt-day-windows bt-day-only" hidden>
+                <label for="bt-day-submode" class="stack"><span data-i18n="day_submode">Sub-strategy</span>
+                  <select id="bt-day-submode" name="day_sub_mode">
+                    <option value="vwap_trend" selected>VWAP Trend</option>
+                    <option value="orb">Opening Range Breakout (ORB)</option>
+                    <option value="momentum_scalp">Momentum Scalp</option>
+                    <option value="vwap_fade">VWAP Fade (Mean Reversion)</option>
+                  </select>
+                </label>
+                <label for="bt-day-side" class="stack"><span data-i18n="side">Side</span>
+                  <select id="bt-day-side" name="day_side">
+                    <option value="long_only" selected>Long only</option>
+                    <option value="long_short">Long &amp; Short</option>
+                  </select>
+                </label>
+                <label for="bt-day-target"><span data-i18n="profit_target_r">Target (R)</span>
+                  <input id="bt-day-target" name="day_profit_target_r" type="number" min="0.5" max="10" step="0.1" value="1.2" inputmode="decimal" />
+                </label>
+                <label for="bt-day-stop"><span data-i18n="stop_atr">Stop (ATR ×)</span>
+                  <input id="bt-day-stop" name="day_stop_atr_mult" type="number" min="0.5" max="5" step="0.1" value="1.0" inputmode="decimal" />
+                </label>
+                <label for="bt-day-fast"><span data-i18n="ema_fast">Fast EMA</span>
+                  <input id="bt-day-fast" name="day_ema_fast" type="number" min="2" value="9" inputmode="numeric" />
+                </label>
+                <label for="bt-day-slow"><span data-i18n="ema_slow">Slow EMA</span>
+                  <input id="bt-day-slow" name="day_ema_slow" type="number" min="3" value="21" inputmode="numeric" />
+                </label>
+                <label for="bt-day-max-trades"><span data-i18n="max_trades_day">Max trades / day</span>
+                  <input id="bt-day-max-trades" name="day_max_trades_per_day" type="number" min="1" max="20" value="3" inputmode="numeric" />
                 </label>
               </div>
             </fieldset>

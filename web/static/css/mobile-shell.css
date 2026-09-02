@@ -10,9 +10,17 @@ html {
 
 @media (max-width: 768px) {
   /* Mobile App Viewport & Padding */
+  html {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
   }
 
   body.sheet-open {
@@ -20,6 +28,10 @@ html {
   }
 
   .app {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     padding-top: 0.4rem;
     padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 1.25rem);
     padding-left: max(0.85rem, env(safe-area-inset-left, 0px));
@@ -94,6 +106,10 @@ html {
   }
 
   .lang-switcher {
+    display: none !important;
+  }
+
+  .account-panel {
     display: none !important;
   }
 

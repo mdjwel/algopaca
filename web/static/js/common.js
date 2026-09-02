@@ -275,46 +275,105 @@ function money(n) {
 }
 
 /**
- * Wall-clock parts for an instant in US market time.
- * Fills come back from Alpaca in UTC; a US-equities desk reads them in ET,
- * so every timestamp on the desk is converted once, here.
+ * Global timezone and time format retrieval & resolution for AlgoPaca desk.
  */
-let etPartsFormatter = null;
-function etParts(ms) {
-  if (!etPartsFormatter) {
+function getDeskTimezone() {
+  try {
+    let saved = localStorage.getItem("algopaca_timezone");
+    if (!saved) {
+      const match = document.cookie.match(/(?:^|;\s*)algopaca_timezone=([^;]+)/);
+      if (match) saved = decodeURIComponent(match[1]);
+    }
+    return saved || "local";
+  } catch (_) {
+    return "local";
+  }
+}
+
+function getEffectiveDeskTimezone(tzOverride) {
+  const tz = tzOverride || getDeskTimezone();
+  if (tz === "local") {
     try {
-      etPartsFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+  if (tz === "exchange") return "America/New_York";
+  if (tz === "utc") return "UTC";
+  return tz;
+}
+
+function getDeskTimeFormat() {
+  try {
+    let saved = localStorage.getItem("algopaca_time_format");
+    if (!saved) {
+      const match = document.cookie.match(/(?:^|;\s*)algopaca_time_format=([^;]+)/);
+      if (match) saved = decodeURIComponent(match[1]);
+    }
+    return saved === "24h" ? "24h" : "12h";
+  } catch (_) {
+    return "12h";
+  }
+}
+
+function isDeskHour12() {
+  return getDeskTimeFormat() !== "24h";
+}
+
+/**
+ * Wall-clock parts for an instant in the user's selected desk timezone.
+ * Defaults to the user's configured timezone (Local / Exchange / UTC / IANA).
+ */
+let deskPartsFormatter = null;
+let deskPartsKey = null;
+
+function deskTimeParts(ms, tzOverride) {
+  const effectiveTz = getEffectiveDeskTimezone(tzOverride);
+  const hour12 = isDeskHour12();
+  const cacheKey = `${effectiveTz || "default"}_${hour12 ? "12" : "24"}`;
+  if (!deskPartsFormatter || deskPartsKey !== cacheKey) {
+    try {
+      const opts = {
         year: "numeric",
         month: "numeric",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-        hour12: false,
+        hour12: hour12,
         timeZoneName: "short",
-      });
+      };
+      if (effectiveTz) opts.timeZone = effectiveTz;
+      deskPartsFormatter = new Intl.DateTimeFormat("en-US", opts);
+      deskPartsKey = cacheKey;
     } catch (err) {
-      etPartsFormatter = null;
+      deskPartsFormatter = null;
       return null;
     }
   }
   try {
     const out = {};
-    for (const part of etPartsFormatter.formatToParts(new Date(ms))) {
+    for (const part of deskPartsFormatter.formatToParts(new Date(ms))) {
       out[part.type] = part.value;
     }
+    const dayPeriod = out.dayPeriod || "";
     return {
       year: Number(out.year),
       month: Number(out.month) - 1,
       day: Number(out.day),
-      // Intl can emit "24" for midnight under hour12:false.
       hour: out.hour === "24" ? "00" : out.hour,
       minute: out.minute,
-      zone: out.timeZoneName || "ET",
+      dayPeriod: dayPeriod,
+      zone: out.timeZoneName || "",
     };
   } catch (err) {
     return null;
   }
+}
+
+/** Legacy alias for backwards compatibility */
+function etParts(ms) {
+  return deskTimeParts(ms);
 }
 
 function parseBtTime(iso) {
@@ -332,39 +391,44 @@ const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/** e.g. 12 June 2026 — optional · HH:MM for timed bars */
-function formatDisplayDate(iso, { withTime = false } = {}) {
+/** e.g. 12 June 2026 — optional · HH:MM for timed bars in active timezone & format */
+function formatDisplayDate(iso, { withTime = false, hour12 } = {}) {
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) {
     const raw = String(iso || "").trim();
     return raw ? raw.replace("T", " ").slice(0, 19) : "—";
   }
-  const d = new Date(t);
-  const base = `${d.getUTCDate()} ${MONTHS_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const p = deskTimeParts(t);
+  if (!p) {
+    const d = new Date(t);
+    return `${d.getUTCDate()} ${MONTHS_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  }
+  const base = `${p.day} ${MONTHS_LONG[p.month]} ${p.year}`;
   if (!withTime) return base;
   if (!/T\d{2}:\d{2}/.test(String(iso || ""))) return base;
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${base} · ${hh}:${mm}`;
+  const ampm = p.dayPeriod ? ` ${p.dayPeriod}` : "";
+  return `${base} · ${p.hour}:${p.minute}${ampm}`;
 }
 
-/** e.g. 13 August 2026 · 15:22 EDT — market time, always labelled. */
+/** e.g. 13 August 2026 · 03:22 PM EDT — formatted in the user's active desk timezone & format */
 function formatEtDate(iso, { withTime = false } = {}) {
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return formatDisplayDate(iso, { withTime });
-  const p = etParts(t);
+  const p = deskTimeParts(t);
   if (!p) return formatDisplayDate(iso, { withTime });
   const base = `${p.day} ${MONTHS_LONG[p.month]} ${p.year}`;
   if (!withTime) return base;
   if (!/T\d{2}:\d{2}/.test(String(iso || ""))) return base;
-  return `${base} · ${p.hour}:${p.minute} ${p.zone}`;
+  const ampm = p.dayPeriod ? ` ${p.dayPeriod}` : "";
+  const zoneStr = p.zone ? ` ${p.zone}` : "";
+  return `${base} · ${p.hour}:${p.minute}${ampm}${zoneStr}`;
 }
 
-/** Sortable ET calendar-day key, used to group fills into trading days. */
+/** Sortable calendar-day key in active desk timezone, used to group fills into trading days. */
 function etDayKey(iso) {
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return "";
-  const p = etParts(t);
+  const p = deskTimeParts(t);
   if (!p) return String(iso || "").slice(0, 10);
   return `${p.year}-${String(p.month + 1).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
 }
@@ -372,9 +436,59 @@ function etDayKey(iso) {
 function formatEtDayLabel(iso) {
   const t = parseBtTime(iso);
   if (!Number.isFinite(t)) return "—";
-  const p = etParts(t);
+  const p = deskTimeParts(t);
   if (!p) return formatDisplayDate(iso);
   return `${p.day} ${MONTHS_LONG[p.month]} ${p.year}`;
+}
+
+/** Formats a clock time in active desk timezone & 12h/24h format */
+function formatDeskTime(isoString, { withSeconds = false, hour12 } = {}) {
+  if (!isoString) return "";
+  const t = typeof isoString === "number" ? isoString : parseBtTime(isoString);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  const effectiveTz = getEffectiveDeskTimezone();
+  const locale = document.documentElement.lang || undefined;
+  const useHour12 = hour12 !== undefined ? hour12 : isDeskHour12();
+  const opts = {
+    hour: useHour12 ? "numeric" : "2-digit",
+    minute: "2-digit",
+    hour12: useHour12,
+    ...(withSeconds ? { second: "2-digit" } : {}),
+  };
+  if (effectiveTz) opts.timeZone = effectiveTz;
+  try {
+    return new Intl.DateTimeFormat(locale, opts).format(d);
+  } catch (_) {
+    return d.toLocaleTimeString(locale, opts);
+  }
+}
+
+/** Formats a date + time in active desk timezone & 12h/24h format */
+function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hour12 } = {}) {
+  if (!isoString) return "—";
+  const t = typeof isoString === "number" ? isoString : parseBtTime(isoString);
+  if (!Number.isFinite(t)) return String(isoString || "—");
+  const d = new Date(t);
+  const effectiveTz = getEffectiveDeskTimezone();
+  const locale = document.documentElement.lang || undefined;
+  const useHour12 = hour12 !== undefined ? hour12 : isDeskHour12();
+  const opts = {
+    year: "numeric",
+    month: shortDate ? "short" : "short",
+    day: "numeric",
+  };
+  if (withTime) {
+    opts.hour = useHour12 ? "numeric" : "2-digit";
+    opts.minute = "2-digit";
+    opts.hour12 = useHour12;
+  }
+  if (effectiveTz) opts.timeZone = effectiveTz;
+  try {
+    return new Intl.DateTimeFormat(locale, opts).format(d);
+  } catch (_) {
+    return d.toLocaleString(locale, opts);
+  }
 }
 
 function formatAge(seconds) {

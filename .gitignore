@@ -97,3 +97,5 @@ yarn-error.log*
 .approvals.live.json
 .custom_engines.*.json
 .custom_engines.json
+scratch/
+

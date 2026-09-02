@@ -199,15 +199,19 @@ class TestUserSettings(unittest.TestCase):
         prefs = res.json()["preferences"]
         self.assertEqual(prefs["theme"], "obsidian")
         self.assertEqual(prefs["language"], "en")
+        self.assertEqual(prefs.get("timezone_display"), "local")
+        self.assertEqual(prefs.get("time_format"), "12h")
         self.assertTrue(prefs["sound_alerts"])
 
-        # Update preferences
+        # Update preferences with custom IANA timezone and 24h time format
         res = self.client.put(
             "/api/user/preferences",
             json={
                 "theme": "emerald",
                 "language": "es",
                 "default_page": "positions",
+                "timezone_display": "Asia/Dhaka",
+                "time_format": "24h",
                 "sound_alerts": False,
                 "confirm_orders": True,
                 "chart_refresh_interval": 30,
@@ -222,10 +226,22 @@ class TestUserSettings(unittest.TestCase):
         self.assertEqual(saved["theme"], "emerald")
         self.assertEqual(saved["language"], "es")
         self.assertEqual(saved["default_page"], "positions")
+        self.assertEqual(saved["timezone_display"], "Asia/Dhaka")
+        self.assertEqual(saved["time_format"], "24h")
         self.assertFalse(saved["sound_alerts"])
         self.assertTrue(saved["compact_mode"])
         self.assertEqual(saved["default_size_mode"], "notional")
         self.assertEqual(saved["default_trade_notional"], 250.0)
+
+        # Update preferences with invalid timezone -> fallbacks to 'local'
+        res = self.client.put(
+            "/api/user/preferences",
+            json={"timezone_display": "Invalid/Unknown_Timezone_123", "time_format": "invalid_format"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["preferences"]["timezone_display"], "local")
+        self.assertEqual(res.json()["preferences"]["time_format"], "12h")
 
         # Update trading defaults with valid notification email
         res = self.client.put(

@@ -12,6 +12,7 @@ from bot.ai_models import (
     DEFAULT_OPENAI_MODEL,
     DEFAULT_XAI_MODEL,
 )
+from bot.day_presets import DEFAULT_PRESET_ID as DEFAULT_DAY_PRESET_ID
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_PATH = ROOT / ".desk_settings.json"
@@ -64,6 +65,20 @@ _DEFAULTS: dict[str, Any] = {
     "ls_risk_pct": 1.0,
     "ls_rr": 2.0,
     "ls_time_stop_bars": 15,
+    "day_preset": DEFAULT_DAY_PRESET_ID,
+    "day_sub_mode": "vwap_trend",
+    "day_side": "long_only",
+    "day_ema_fast": 9,
+    "day_ema_slow": 21,
+    "day_orb_minutes": 15,
+    "day_open_buffer_mins": 15,
+    "day_eod_flatten_mins": 15,
+    "day_eod_flatten": True,
+    "day_max_trades_per_day": 3,
+    "day_profit_target_r": 1.2,
+    "day_stop_atr_mult": 1.0,
+    "day_use_ai_confirm": True,
+    "day_ai_min_confidence": 0.70,
     "ai_provider": "openai",
     "ai_preset": "balanced",
     "ai_instructions": "",

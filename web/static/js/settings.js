@@ -64,6 +64,10 @@
   const themeCards = document.querySelectorAll(".theme-card");
   const selectSettingsLang = $("select-settings-lang");
   const selectSettingsTimezone = $("select-settings-timezone");
+  const selectSettingsTimeFormat = $("select-settings-time-format");
+  const tzLiveBadge = $("settings-tz-live-badge");
+  const tzClockText = $("settings-tz-clock-text");
+  let tzClockTimer = null;
   const selectSettingsDefaultPage = $("select-settings-default-page");
   const selectSettingsRefresh = $("select-settings-refresh");
   const checkSoundAlerts = $("check-sound-alerts");
@@ -187,6 +191,15 @@
       btn.setAttribute("aria-selected", isTarget ? "true" : "false");
       // Roving tabindex: only the selected tab is in the tab order, arrows move between them.
       btn.tabIndex = isTarget ? 0 : -1;
+      if (isTarget) {
+        if (opts.initial) {
+          requestAnimationFrame(() => {
+            btn.scrollIntoView({ behavior: "auto", inline: "nearest", block: "nearest" });
+          });
+        } else {
+          btn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+        }
+      }
     });
 
     tabPanels.forEach((panel) => {
@@ -284,18 +297,38 @@
     return fallback;
   }
 
-  function formatDateTime(isoString) {
+  function getEffectiveTimezone(tzVal) {
+    const tz = tzVal || currentPreferences?.timezone_display || selectSettingsTimezone?.value || "local";
+    if (tz === "local") {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+      } catch (_) {
+        return undefined;
+      }
+    }
+    if (tz === "exchange") return "America/New_York";
+    if (tz === "utc") return "UTC";
+    return tz;
+  }
+
+  function formatDateTime(isoString, tzVal, timeFormatVal) {
     if (!isoString) return EM_DASH;
     try {
       const d = new Date(isoString);
       if (isNaN(d.getTime())) return isoString;
-      return d.toLocaleDateString(undefined, {
+      const effectiveTz = getEffectiveTimezone(tzVal);
+      const tf = timeFormatVal || selectSettingsTimeFormat?.value || currentPreferences?.time_format || "12h";
+      const hour12 = tf !== "24h";
+      const opts = {
         year: "numeric",
         month: "short",
         day: "numeric",
-        hour: "2-digit",
+        hour: hour12 ? "numeric" : "2-digit",
         minute: "2-digit",
-      });
+        hour12: hour12,
+      };
+      if (effectiveTz) opts.timeZone = effectiveTz;
+      return d.toLocaleDateString(undefined, opts);
     } catch (e) {
       return isoString;
     }
@@ -940,6 +973,74 @@
     });
   });
 
+  /* ------------------------------------------------------------------------ */
+  /* Timezone Live Clock & Detection                                          */
+  /* ------------------------------------------------------------------------ */
+
+  function initLocalTimezoneOption() {
+    try {
+      const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const now = new Date();
+      const offsetMinutes = -now.getTimezoneOffset();
+      const sign = offsetMinutes >= 0 ? "+" : "-";
+      const absMinutes = Math.abs(offsetMinutes);
+      const hours = Math.floor(absMinutes / 60);
+      const mins = absMinutes % 60;
+      const offsetStr = `GMT${sign}${hours}${mins ? ":" + String(mins).padStart(2, "0") : ""}`;
+
+      const localOption = selectSettingsTimezone?.querySelector('option[value="local"]');
+      if (localOption) {
+        const baseLabel = tr("tz_local", "Local Browser Time");
+        localOption.textContent = `${baseLabel} (${detectedTz}, ${offsetStr})`;
+      }
+    } catch (err) {
+      console.warn("Could not detect local browser timezone:", err);
+    }
+  }
+
+  function updateTimezoneLiveClock() {
+    if (!tzClockText) return;
+    const tz = selectSettingsTimezone?.value || currentPreferences?.timezone_display || "local";
+    const effectiveTz = getEffectiveTimezone(tz);
+    const tf = selectSettingsTimeFormat?.value || currentPreferences?.time_format || "12h";
+    const hour12 = tf !== "24h";
+    try {
+      const now = new Date();
+      const opts = {
+        hour: hour12 ? "numeric" : "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: hour12,
+      };
+      if (effectiveTz) opts.timeZone = effectiveTz;
+      tzClockText.textContent = new Intl.DateTimeFormat(undefined, opts).format(now);
+    } catch (_) {
+      tzClockText.textContent = new Date().toLocaleTimeString();
+    }
+  }
+
+  function startTimezoneClock() {
+    if (tzClockTimer) clearInterval(tzClockTimer);
+    updateTimezoneLiveClock();
+    tzClockTimer = setInterval(updateTimezoneLiveClock, 1000);
+  }
+
+  selectSettingsTimezone?.addEventListener("change", () => {
+    updateTimezoneLiveClock();
+    if (currentProfile) {
+      if (heroMemberSince) heroMemberSince.textContent = formatDateTime(currentProfile.created_at);
+      if (heroLastLogin) heroLastLogin.textContent = formatDateTime(currentProfile.last_login_at);
+    }
+  });
+
+  selectSettingsTimeFormat?.addEventListener("change", () => {
+    updateTimezoneLiveClock();
+    if (currentProfile) {
+      if (heroMemberSince) heroMemberSince.textContent = formatDateTime(currentProfile.created_at);
+      if (heroLastLogin) heroLastLogin.textContent = formatDateTime(currentProfile.last_login_at);
+    }
+  });
+
   btnTestSound?.addEventListener("click", (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
@@ -967,8 +1068,26 @@
     if (selectSettingsLang && prefs.language) {
       selectSettingsLang.value = prefs.language;
     }
-    if (selectSettingsTimezone && prefs.timezone_display) {
-      selectSettingsTimezone.value = prefs.timezone_display;
+    if (selectSettingsTimezone) {
+      selectSettingsTimezone.value = prefs.timezone_display || "local";
+      try {
+        localStorage.setItem("algopaca_timezone", prefs.timezone_display || "local");
+        document.cookie = `algopaca_timezone=${encodeURIComponent(prefs.timezone_display || "local")}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch (_) {}
+      initLocalTimezoneOption();
+      updateTimezoneLiveClock();
+      if (currentProfile) {
+        if (heroMemberSince) heroMemberSince.textContent = formatDateTime(currentProfile.created_at);
+        if (heroLastLogin) heroLastLogin.textContent = formatDateTime(currentProfile.last_login_at);
+      }
+    }
+    if (selectSettingsTimeFormat && prefs.time_format) {
+      selectSettingsTimeFormat.value = prefs.time_format || "12h";
+      try {
+        localStorage.setItem("algopaca_time_format", prefs.time_format || "12h");
+        document.cookie = `algopaca_time_format=${encodeURIComponent(prefs.time_format || "12h")}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch (_) {}
+      updateTimezoneLiveClock();
     }
     if (selectSettingsDefaultPage && prefs.default_page) {
       selectSettingsDefaultPage.value = prefs.default_page;
@@ -1128,15 +1247,24 @@
       const selectedTheme = document.querySelector(".theme-card.is-active")?.dataset.themeVal || "obsidian";
       const lang = selectSettingsLang?.value || "en";
       const tz = selectSettingsTimezone?.value || "local";
+      const tf = selectSettingsTimeFormat?.value || "12h";
       const defPage = selectSettingsDefaultPage?.value || "auto-trade";
       const pollRate = parseInt(selectSettingsRefresh?.value || "20", 10);
       const sound = checkSoundAlerts ? checkSoundAlerts.checked : true;
       const compact = checkCompactMode ? checkCompactMode.checked : false;
 
+      try {
+        localStorage.setItem("algopaca_timezone", tz);
+        localStorage.setItem("algopaca_time_format", tf);
+        document.cookie = `algopaca_timezone=${encodeURIComponent(tz)}; path=/; max-age=31536000; SameSite=Lax`;
+        document.cookie = `algopaca_time_format=${encodeURIComponent(tf)}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch (_) {}
+
       await savePreferencesPayload({
         theme: selectedTheme,
         language: lang,
         timezone_display: tz,
+        time_format: tf,
         default_page: defPage,
         chart_refresh_interval: pollRate,
         sound_alerts: sound,
@@ -1306,6 +1434,8 @@
   /* ------------------------------------------------------------------------ */
 
   document.addEventListener("DOMContentLoaded", () => {
+    initLocalTimezoneOption();
+    startTimezoneClock();
     checkHashTab(true);
     updateNameCounter();
     fetchProfile();

@@ -170,6 +170,33 @@ class DeskWebappTestCase(unittest.TestCase):
         self.assertEqual(res_reset.status_code, 200)
         self.assertTrue(res_reset.json()["settings"]["risk_engine_enabled"])
 
+    def test_api_settings_day_ai_confirmation_round_trip(self):
+        """The Day Trading AI confirm knobs must survive POST /api/settings."""
+        res = self.auth_client.post(
+            "/api/settings",
+            json={
+                "strategy_mode": "day",
+                "day_preset": "custom",
+                "day_use_ai_confirm": True,
+                "day_ai_min_confidence": 0.85,
+                "bar_timeframe": "1Day",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        settings = res.json()["settings"]
+        self.assertTrue(settings["day_use_ai_confirm"])
+        self.assertAlmostEqual(settings["day_ai_min_confidence"], 0.85)
+        # Day Trading is intraday-only, so daily bars are coerced.
+        self.assertEqual(settings["bar_timeframe"], "5Min")
+
+        status = self.auth_client.get("/api/status").json()["settings"]
+        self.assertTrue(status["day_use_ai_confirm"])
+        self.assertAlmostEqual(status["day_ai_min_confidence"], 0.85)
+
+        self.auth_client.post(
+            "/api/settings", json={"strategy_mode": "sma", "bar_timeframe": "15Min"}
+        )
+
     def test_api_lang(self):
         res = self.auth_client.post("/api/lang", json={"lang": "en"})
         self.assertEqual(res.status_code, 200)

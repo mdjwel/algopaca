@@ -499,18 +499,6 @@
                 </div>
 
                 <div class="field-wrap">
-                  <label for="select-settings-timezone" data-i18n="settings_timezone_display">Timezone & Clock Display</label>
-                  <select id="select-settings-timezone" class="field-select">
-                    <option value="local" data-i18n="tz_local">Local Browser Time</option>
-                    <option value="exchange" data-i18n="tz_exchange">US Eastern (NYSE/NASDAQ Market Time)</option>
-                    <option value="utc" data-i18n="tz_utc">UTC / GMT</option>
-                  </select>
-                  <p class="field-hint" data-i18n="settings_timezone_hint">Controls timestamps across orders, fills, and blotters.</p>
-                </div>
-              </div>
-
-              <div class="settings-form-row">
-                <div class="field-wrap">
                   <label for="select-settings-default-page" data-i18n="settings_default_page">Default Landing Page</label>
                   <select id="select-settings-default-page" class="field-select">
                     <option value="auto-trade" data-i18n="nav_auto_trade">Auto Trade</option>
@@ -523,7 +511,83 @@
                   </select>
                   <p class="field-hint" data-i18n="settings_default_page_hint">The desk screen opened automatically upon signing in.</p>
                 </div>
+              </div>
 
+              <div class="settings-form-row">
+                <div class="field-wrap">
+                  <div class="field-label-row">
+                    <label for="select-settings-timezone" data-i18n="settings_timezone_display">Timezone & Clock Display</label>
+                    <span class="settings-tz-badge" id="settings-tz-live-badge" title="Live Clock" data-i18n-title="tz_live_clock" aria-live="polite">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                      <span id="settings-tz-clock-text">--:--:--</span>
+                    </span>
+                  </div>
+                  <select id="select-settings-timezone" class="field-select">
+                    <option value="local" selected data-i18n="tz_local">Local Browser Time (Auto-detected)</option>
+                    <option value="exchange" data-i18n="tz_exchange">US Eastern (NYSE/NASDAQ Market Time)</option>
+                    <option value="utc" data-i18n="tz_utc">UTC / GMT (Coordinated Universal Time)</option>
+
+                    <optgroup label="Americas" data-i18n-label="tz_group_americas">
+                      <option value="America/New_York">Eastern Time (New York, Toronto) · UTC-5 / UTC-4</option>
+                      <option value="America/Chicago">Central Time (Chicago, Dallas) · UTC-6 / UTC-5</option>
+                      <option value="America/Denver">Mountain Time (Denver, Phoenix) · UTC-7 / UTC-6</option>
+                      <option value="America/Los_Angeles">Pacific Time (Los Angeles, Vancouver) · UTC-8 / UTC-7</option>
+                      <option value="America/Anchorage">Alaska Time (Anchorage) · UTC-9 / UTC-8</option>
+                      <option value="Pacific/Honolulu">Hawaii Time (Honolulu) · UTC-10</option>
+                      <option value="America/Sao_Paulo">Brasília / São Paulo Time · UTC-3</option>
+                      <option value="America/Buenos_Aires">Argentina Time (Buenos Aires) · UTC-3</option>
+                      <option value="America/Mexico_City">Mexico Central Time · UTC-6</option>
+                    </optgroup>
+
+                    <optgroup label="Europe & Africa" data-i18n-label="tz_group_europe">
+                      <option value="Europe/London">London / Dublin (GMT / BST) · UTC+0 / UTC+1</option>
+                      <option value="Europe/Paris">Central European Time (Paris, Madrid, Rome) · UTC+1 / UTC+2</option>
+                      <option value="Europe/Berlin">Berlin / Frankfurt / Zurich · UTC+1 / UTC+2</option>
+                      <option value="Europe/Athens">Eastern European Time (Athens, Helsinki) · UTC+2 / UTC+3</option>
+                      <option value="Europe/Moscow">Moscow Time (MSK) · UTC+3</option>
+                      <option value="Africa/Cairo">Cairo Time (EET) · UTC+2 / UTC+3</option>
+                      <option value="Africa/Johannesburg">South Africa Standard Time · UTC+2</option>
+                      <option value="Africa/Lagos">West Africa Time (Lagos) · UTC+1</option>
+                    </optgroup>
+
+                    <optgroup label="Asia & Middle East" data-i18n-label="tz_group_asia">
+                      <option value="Asia/Dubai">Gulf Standard Time (Dubai, UAE) · UTC+4</option>
+                      <option value="Asia/Riyadh">Arabia Standard Time (Riyadh) · UTC+3</option>
+                      <option value="Asia/Karachi">Pakistan Standard Time (PKT) · UTC+5</option>
+                      <option value="Asia/Kolkata">India Standard Time (IST - Mumbai, Delhi) · UTC+5:30</option>
+                      <option value="Asia/Dhaka">Bangladesh Standard Time (BST - Dhaka) · UTC+6</option>
+                      <option value="Asia/Bangkok">Indochina Time (Bangkok, Jakarta, Hanoi) · UTC+7</option>
+                      <option value="Asia/Singapore">Singapore Standard Time (SGT) · UTC+8</option>
+                      <option value="Asia/Hong_Kong">Hong Kong Time (HKT) · UTC+8</option>
+                      <option value="Asia/Shanghai">China Standard Time (Beijing, Shanghai) · UTC+8</option>
+                      <option value="Asia/Tokyo">Japan Standard Time (JST - Tokyo) · UTC+9</option>
+                      <option value="Asia/Seoul">Korea Standard Time (KST - Seoul) · UTC+9</option>
+                    </optgroup>
+
+                    <optgroup label="Australia & Pacific" data-i18n-label="tz_group_pacific">
+                      <option value="Australia/Perth">Western Australia (Perth) · UTC+8</option>
+                      <option value="Australia/Adelaide">South Australia (Adelaide) · UTC+9:30 / UTC+10:30</option>
+                      <option value="Australia/Sydney">Eastern Australia (Sydney, Melbourne) · UTC+10 / UTC+11</option>
+                      <option value="Pacific/Auckland">New Zealand Time (Auckland) · UTC+12 / UTC+13</option>
+                    </optgroup>
+                  </select>
+                  <p class="field-hint" id="settings-timezone-hint" data-i18n="settings_timezone_hint">Controls timestamps across orders, fills, and blotters.</p>
+                </div>
+
+                <div class="field-wrap">
+                  <label for="select-settings-time-format" data-i18n="settings_time_format">Clock & Time Format</label>
+                  <select id="select-settings-time-format" class="field-select">
+                    <option value="12h" selected data-i18n="time_format_12h">12-Hour (09:45 PM)</option>
+                    <option value="24h" data-i18n="time_format_24h">24-Hour (21:45)</option>
+                  </select>
+                  <p class="field-hint" data-i18n="settings_time_format_hint">Display clocks and timestamps in 12-hour (AM/PM) or 24-hour format.</p>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
                 <div class="field-wrap">
                   <label for="select-settings-refresh" data-i18n="settings_chart_refresh">Blotter Refresh Polling Rate</label>
                   <select id="select-settings-refresh" class="field-select">
@@ -534,6 +598,7 @@
                   </select>
                   <p class="field-hint" data-i18n="settings_chart_refresh_hint">Background poll frequency for quotes and order blotters.</p>
                 </div>
+                <div class="field-wrap" style="visibility: hidden;"></div>
               </div>
 
               <!-- Switch Toggles Row -->

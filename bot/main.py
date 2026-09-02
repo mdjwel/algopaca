@@ -10,6 +10,7 @@ import time
 
 from bot.ai_trader import AiTradingBot
 from bot.config import Config, live_allowed_from_env
+from bot.day_trader import DayTradingBot
 from bot.ls_trader import LsTradingBot
 from bot.pair_trader import PairTradingBot
 from bot.trader import TradingBot
@@ -120,13 +121,16 @@ def main() -> int:
         if config.ai_provider == "gemini" and not config.gemini_api_key:
             logger.error("GEMINI_API_KEY is missing — required for AI mode with gemini.")
             return 1
-        bot: TradingBot | AiTradingBot | PairTradingBot | LsTradingBot = AiTradingBot(config)
+        bot: TradingBot | AiTradingBot | PairTradingBot | LsTradingBot | DayTradingBot = AiTradingBot(config)
         service = bot.service
     elif config.strategy_mode == "pair":
         bot = PairTradingBot(config)
         service = bot.service
     elif config.strategy_mode == "ls":
         bot = LsTradingBot(config)
+        service = bot.service
+    elif config.strategy_mode == "day":
+        bot = DayTradingBot(config)
         service = bot.service
     else:
         bot = TradingBot(config)
@@ -175,6 +179,21 @@ def main() -> int:
             config.ls_risk_pct,
             config.ls_rr,
             config.ls_time_stop_bars,
+            config.bar_timeframe,
+        )
+    elif config.strategy_mode == "day":
+        logger.info(
+            "Day strategy | preset=%s sub=%s side=%s EMA(%d/%d) ORB=%dm buffer=%dm "
+            "flatten=%dm size=%s tf=%s",
+            config.day_preset,
+            config.day_sub_mode,
+            config.day_side,
+            config.day_ema_fast,
+            config.day_ema_slow,
+            config.day_orb_minutes,
+            config.day_open_buffer_mins,
+            config.day_eod_flatten_mins,
+            config.size_summary(),
             config.bar_timeframe,
         )
     elif config.strategy_mode == "dip":

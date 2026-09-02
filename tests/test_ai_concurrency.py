@@ -20,9 +20,11 @@ class TestAiConcurrencyAndCaching(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_economic_calendar_caching(self, mock_urlopen):
         # Mock HTTP response
+        from datetime import datetime, timezone
+        now_str = datetime.now(timezone.utc).isoformat()
         mock_resp = MagicMock()
         mock_resp.read.return_value = (
-            b'[{"title": "CPI", "country": "USD", "impact": "High", "date": "2026-09-01T12:00:00Z"}]'
+            f'[{{"title": "CPI", "country": "USD", "impact": "High", "date": "{now_str}"}}]'.encode("utf-8")
         )
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp

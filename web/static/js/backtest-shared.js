@@ -611,6 +611,8 @@ function syncBtDetailSymbolSelect(result, selected) {
   const opts = [];
   if (result.run_kind === "portfolio") {
     opts.push({ value: "__book__", label: "Portfolio book" });
+  } else if (result.run_kind === "per_symbol" && (result.results || []).length > 1) {
+    opts.push({ value: "__summary__", label: "Average (all symbols)" });
   }
   for (const row of result.results || []) {
     const sym = row.symbol || "?";
@@ -632,7 +634,7 @@ function syncBtDetailSymbolSelect(result, selected) {
 }
 
 function resolveBtDetailView(result, selected) {
-  if (!selected || selected === "__book__") return result;
+  if (!selected || selected === "__book__" || selected === "__summary__") return result;
   const leg = (result.results || []).find((r) => r.symbol === selected);
   if (!leg || leg.error) return result;
   // Portfolio legs lack equity curves — keep book chart when picking a leg
@@ -1339,6 +1341,9 @@ function renderBacktestHistory(history) {
         ? `<span class="bt-rsi" title="Run mode">${escapeHtml(kind)}</span>`
         : "") +
       `<span class="bt-label">${escapeHtml(String(row.label || row.mode || "—"))}</span>` +
+      (row.day_preset_label
+        ? `<span class="bt-rsi" title="Preset">${escapeHtml(String(row.day_preset_label))}</span>`
+        : "") +
       (rsiLine !== "—"
         ? `<span class="bt-rsi" title="Strategy parameters">${escapeHtml(
             String(row.mode || "").toLowerCase() === "dip"

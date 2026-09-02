@@ -183,9 +183,12 @@
     if (!isoString) return "--";
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return "--";
-    return d.toLocaleDateString(undefined, {
+    const effectiveTz = typeof getEffectiveDeskTimezone === "function" ? getEffectiveDeskTimezone() : undefined;
+    const opts = {
       year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-    });
+    };
+    if (effectiveTz) opts.timeZone = effectiveTz;
+    return d.toLocaleDateString(undefined, opts);
   }
 
   /** "3 days ago" style label — what an admin actually wants from a timestamp. */
@@ -323,6 +326,15 @@
       // Roving tabindex: only the selected tab is a tab stop, as the ARIA
       // tablist pattern requires — arrows move between the rest.
       btn.tabIndex = isMatch ? 0 : -1;
+      if (isMatch) {
+        if (updateUrl) {
+          btn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+        } else {
+          requestAnimationFrame(() => {
+            btn.scrollIntoView({ behavior: "auto", inline: "nearest", block: "nearest" });
+          });
+        }
+      }
     });
 
     tabPanels.forEach((panel) => {

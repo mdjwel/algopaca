@@ -87,6 +87,29 @@ function applyBtPairPreset(presetId) {
   }
 }
 
+const DAY_PRESET_DEFAULTS = {
+  ai_vwap_momentum: { sub_mode: "vwap_trend", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Intraday VWAP trend & 9/21 EMA momentum with 1.2R target and 1.0 ATR stop." },
+  vwap_trend: { sub_mode: "vwap_trend", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Trend following above intraday VWAP with 9/21 EMA momentum." },
+  ai_orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with 1.5R target and 1.2 ATR stop." },
+  orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with ATR stop." },
+  ai_adaptive_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA momentum scalper with ADX regime filter." },
+  momentum_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA crossovers confirmed by RSI and ADX." },
+  vwap_fade: { sub_mode: "vwap_fade", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Mean reversion bounces at lower VWAP band in range-bound sessions." },
+};
+
+function applyBtDayPreset(presetId) {
+  const form = $("backtest-form");
+  const p = DAY_PRESET_DEFAULTS[presetId];
+  if (!form || !p) return;
+  if (form.elements.day_sub_mode) form.elements.day_sub_mode.value = p.sub_mode;
+  if (form.elements.day_side) form.elements.day_side.value = p.side;
+  if (form.elements.day_profit_target_r) form.elements.day_profit_target_r.value = p.tp_r;
+  if (form.elements.day_stop_atr_mult) form.elements.day_stop_atr_mult.value = p.stop_atr;
+  if (form.elements.day_ema_fast) form.elements.day_ema_fast.value = p.fast;
+  if (form.elements.day_ema_slow) form.elements.day_ema_slow.value = p.slow;
+  if (form.elements.day_max_trades_per_day) form.elements.day_max_trades_per_day.value = p.max_trades;
+}
+
 function syncBtRunKindChips(runKind) {
   const kind = runKind === "portfolio" ? "portfolio" : "per_symbol";
   const hidden = $("bt-run-kind");
@@ -106,6 +129,7 @@ function syncBacktestUi() {
   const dip = mode === "dip";
   const pair = mode === "pair";
   const ls = mode === "ls";
+  const day = mode === "day";
 
   form.querySelectorAll(".bt-sma-only").forEach((el) => {
     el.hidden = !sma;
@@ -119,16 +143,22 @@ function syncBacktestUi() {
   form.querySelectorAll(".bt-ls-only").forEach((el) => {
     el.hidden = !ls;
   });
+  form.querySelectorAll(".bt-day-only").forEach((el) => {
+    el.hidden = !day;
+  });
   form.querySelectorAll(".bt-shares-only").forEach((el) => {
-    el.hidden = !!pair || !!ls;
+    // Day Trading sizes from the desk risk engine, like pair and ls.
+    el.hidden = !!pair || !!ls || !!day;
   });
 
   const smaPreset = form.elements.sma_preset?.value || "classic";
   const dipPreset = form.elements.dip_preset?.value || "deep";
   const pairPreset = form.elements.pair_preset?.value || "research_max";
+  const dayPreset = form.elements.day_preset?.value || "ai_vwap_momentum";
   if (sma && smaPreset !== "custom") applyBtSmaPreset(smaPreset);
   if (dip && dipPreset !== "custom") applyBtDipPreset(dipPreset);
   if (pair && pairPreset !== "custom") applyBtPairPreset(pairPreset);
+  if (day && dayPreset !== "custom") applyBtDayPreset(dayPreset);
 
   const modeHint = $("bt-mode-hint");
   if (modeHint) {
@@ -142,6 +172,8 @@ function syncBacktestUi() {
               const nice = Number.isFinite(rr) ? String(rr) : "2";
               return `Per-ticker long or short from EMA/ADX regime + MACD hist. ATR stops, ${nice}R targets, frictions.`;
             })()
+        : day
+          ? "Replays Day Trading rules on intraday bars — VWAP, opening range, ATR stops, R targets and the end-of-day square-off."
         : "Oversold washes via RSI / Bollinger — pick a dip preset below.";
   }
   const smaHint = $("bt-sma-hint");
@@ -159,6 +191,12 @@ function syncBacktestUi() {
     const preset = findPairPreset(pairPreset);
     pairHint.textContent =
       preset?.summary || "Long leg by default; short leg only on confirmed bear impulses.";
+  }
+  const dayHint = $("bt-day-hint");
+  if (dayHint) {
+    const p = DAY_PRESET_DEFAULTS[dayPreset];
+    dayHint.textContent =
+      p?.summary || "Intraday VWAP & 9/21 EMA trend following with 1.2R target, 1.0 ATR stop, and EOD square-off.";
   }
 
   // Pair / LS force daily bars; symbols stay user-editable.
@@ -541,6 +579,18 @@ function backtestPayload() {
     payload.symbols = `${legs.long}, ${legs.short}`;
     payload.symbol = legs.long;
     payload.bar_timeframe = "1Day";
+  } else if (mode === "day") {
+    if (payload.bar_timeframe === "1Day") payload.bar_timeframe = "15Min";
+    if (payload.days > 60) payload.days = 60;
+    payload.slip_bps = Number(form.elements.slip_bps?.value || 1);
+    payload.day_preset = form.elements.day_preset?.value || "ai_vwap_momentum";
+    payload.day_sub_mode = form.elements.day_sub_mode?.value || "vwap_trend";
+    payload.day_side = form.elements.day_side?.value || "long_only";
+    payload.day_profit_target_r = Number(form.elements.day_profit_target_r?.value || 1.2);
+    payload.day_stop_atr_mult = Number(form.elements.day_stop_atr_mult?.value || 1.0);
+    payload.day_ema_fast = Number(form.elements.day_ema_fast?.value || 9);
+    payload.day_ema_slow = Number(form.elements.day_ema_slow?.value || 21);
+    payload.day_max_trades_per_day = Number(form.elements.day_max_trades_per_day?.value || 3);
   } else if (mode === "ls") {
     payload.ls_ema_fast = Number(form.elements.ls_ema_fast?.value || 21);
     payload.ls_ema_slow = Number(form.elements.ls_ema_slow?.value || 55);
@@ -638,7 +688,7 @@ function restoreBacktestFormDraft() {
   };
 
   const mode = String(draft.mode || "").toLowerCase();
-  if (mode === "sma" || mode === "dip" || mode === "pair" || mode === "ls") setVal("mode", mode);
+  if (["sma", "dip", "pair", "ls", "day"].includes(mode)) setVal("mode", mode);
   const symbols =
     draft.symbols ||
     draft.symbol ||
@@ -738,6 +788,7 @@ $("backtest-form")?.addEventListener("change", (ev) => {
   if (name === "sma_preset") applyBtSmaPreset(ev.target.value);
   if (name === "dip_preset") applyBtDipPreset(ev.target.value);
   if (name === "pair_preset") applyBtPairPreset(ev.target.value);
+  if (name === "day_preset") applyBtDayPreset(ev.target.value);
   if (name === "mode" && ev.target.value === "pair") {
     const form = $("backtest-form");
     if (form?.elements.symbols) form.elements.symbols.value = "";
@@ -746,6 +797,14 @@ $("backtest-form")?.addEventListener("change", (ev) => {
   if (name === "mode" && ev.target.value === "ls") {
     const form = $("backtest-form");
     if (form?.elements.bar_timeframe) form.elements.bar_timeframe.value = "1Day";
+  }
+  if (name === "mode" && ev.target.value === "day") {
+    const form = $("backtest-form");
+    // Intraday engine: daily bars have no VWAP, opening range or closing bell.
+    if (form?.elements.bar_timeframe) form.elements.bar_timeframe.value = "15Min";
+    if (form?.elements.days && Number(form.elements.days.value) > 60) {
+      form.elements.days.value = 60;
+    }
   }
   if (name === "fast_sma" || name === "slow_sma") {
     const form = $("backtest-form");
@@ -772,6 +831,20 @@ $("backtest-form")?.addEventListener("change", (ev) => {
     const form = $("backtest-form");
     if (form?.elements.pair_preset && form.elements.pair_preset.value !== "custom") {
       form.elements.pair_preset.value = "custom";
+    }
+  }
+  if (
+    name === "day_sub_mode" ||
+    name === "day_side" ||
+    name === "day_profit_target_r" ||
+    name === "day_stop_atr_mult" ||
+    name === "day_ema_fast" ||
+    name === "day_ema_slow" ||
+    name === "day_max_trades_per_day"
+  ) {
+    const form = $("backtest-form");
+    if (form?.elements.day_preset && form.elements.day_preset.value !== "custom") {
+      form.elements.day_preset.value = "custom";
     }
   }
   syncBacktestUi();

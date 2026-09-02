@@ -45,14 +45,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The three confirmation dialogs use `.check` outside any `.form`, where the
-   shared `.form .check` rule could never reach them. */
+/* The confirmation dialogs use `.check` with interactive card styling */
 .pos-modal-card .check {
   display: flex;
   align-items: flex-start;
-  gap: 0.65rem;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
   font-size: 0.88rem;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pos-modal-card .check:hover {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .pos-modal-card .check input {
@@ -62,11 +71,14 @@
   flex-shrink: 0;
   accent-color: var(--copper, #d4894c);
   cursor: pointer;
+  border-radius: 4px;
 }
 
 .pos-modal-card .check strong {
   display: block;
-  font-weight: 500;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 0.15rem;
 }
 
 @keyframes pos-pulse {
@@ -1481,31 +1493,55 @@ a.pos-prot-badge.orders:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(6, 10, 15, 0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(4, 8, 14, 0.82);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 1.25rem;
   overscroll-behavior: contain;
+  animation: posBackdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes posBackdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .pos-modal-card {
   width: 100%;
   max-width: 520px;
-  max-height: calc(100dvh - 2rem);
-  background: var(--panel, #141e2a);
-  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line-soft);
+  max-height: calc(100dvh - 2.5rem);
+  background: linear-gradient(175deg, rgba(24, 34, 48, 0.98) 0%, rgba(14, 20, 30, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 
+    0 24px 60px -12px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  animation: posModalPopIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+}
+
+@keyframes posModalPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .pos-modal-head {
-  padding: 1.15rem 1.25rem;
-  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  padding: 1.15rem 1.35rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1515,36 +1551,50 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-modal-title-wrap {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .pos-modal-head h3 {
-  font-size: 1.15rem;
+  font-size: 1.18rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #f8fafc;
   margin: 0;
 }
 
 .pos-modal-close {
-  background: transparent;
-  border: none;
-  font-size: 1.4rem;
-  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: var(--text-muted, #94a3b8);
   cursor: pointer;
   line-height: 1;
-  padding: 0.25rem;
-  transition: color 0.2s;
+  padding: 0;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .pos-modal-close:hover {
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transform: rotate(90deg) scale(1.05);
 }
 
 .pos-modal-body {
-  padding: 1.25rem;
+  padding: 1.35rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
 }
 
@@ -1552,50 +1602,67 @@ a.pos-prot-badge.orders:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
-  border-radius: var(--radius-md, 8px);
-  padding: 0.85rem 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.015) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .pos-modal-meta-item {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
 .pos-modal-meta-item span {
-  font-size: 0.72rem;
-  color: var(--text-muted);
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .pos-modal-meta-item strong {
-  font-size: 0.95rem;
-  font-weight: 500;
+  font-size: 1.05rem;
+  font-weight: 600;
   font-family: var(--mono, monospace);
+  color: #f8fafc;
+  letter-spacing: -0.01em;
 }
 
 .pos-symbol-badge {
   font-family: var(--mono, monospace);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
 }
 
 .danger-title {
-  color: var(--sell);
+  color: var(--sell, #ef4444);
 }
 
 .danger-icon {
   flex-shrink: 0;
-  color: var(--danger, #e35d5d);
+  color: var(--danger, #ef4444);
 }
 
 .pos-danger-banner {
   display: flex;
   align-items: flex-start;
   gap: 0.65rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  color: var(--sell, #fca5a5);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .pos-danger-banner p {
@@ -1613,185 +1680,170 @@ a.pos-prot-badge.orders:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .pos-pct-tag {
   font-family: var(--mono, monospace);
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--copper, #d4894c);
+  color: var(--copper, #f59e0b);
+  background: rgba(212, 137, 76, 0.12);
+  border: 1px solid rgba(212, 137, 76, 0.28);
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
   letter-spacing: 0;
+}
+
+.pos-pct-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.pos-pct-chips .chip {
+  text-align: center;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--mono, monospace);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: var(--text-muted, #cbd5e1);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-pct-chips .chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.pos-pct-chips .chip.is-active,
+.pos-pct-chips .chip[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(212, 137, 76, 0.25) 0%, rgba(181, 106, 50, 0.35) 100%);
+  border-color: var(--copper, #d4894c);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(212, 137, 76, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  font-weight: 700;
 }
 
 .pos-modal-inputs {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.85rem;
 }
 
 .pos-slider {
   width: 100%;
-  accent-color: var(--copper, #d4894c);
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.08);
   height: 6px;
+  border-radius: 999px;
   cursor: pointer;
+  outline: none;
+  transition: background 0.15s;
 }
 
-.pos-qty-unit {
-  font-size: 0.8rem;
-  color: var(--text-muted);
+.pos-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--copper, #d4894c);
+  border: 3px solid #141e2a;
+  box-shadow: 0 0 10px rgba(212, 137, 76, 0.7);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.pos-preview-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+.pos-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--copper, #d4894c);
+  border: 3px solid #141e2a;
+  box-shadow: 0 0 10px rgba(212, 137, 76, 0.7);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.pos-preview-row span {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-}
-
-.pos-preview-row strong {
-  font-size: 1.05rem;
-  font-weight: 500;
-  font-family: var(--mono, monospace);
-}
-
-/* The confirm button on a liquidation dialog must not read as an ordinary
-   primary action — it was inheriting the plain primary styling. */
-button.primary.primary-danger {
-  background: var(--sell, #e35d5d);
-  border-color: var(--sell, #e35d5d);
-  color: #2a0d0d;
-}
-
-button.primary.primary-danger:hover:not(:disabled),
-button.primary.primary-danger:focus-visible {
-  background: #f07070;
-  border-color: #f07070;
-}
-
-.pos-pct-chips {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.pos-pct-chips .chip {
-  flex: 1 1 0;
-  text-align: center;
-  padding: 0.35rem 0.4rem;
-  font-size: 0.78rem;
-  min-height: 2.2rem;
+.pos-slider:hover::-webkit-slider-thumb,
+.pos-slider:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 14px rgba(212, 137, 76, 0.95);
 }
 
 .pos-modal-qty-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
 }
 
 .pos-qty-input {
-  width: 90px;
-  height: 36px;
-  font-size: 0.88rem;
-  padding: 0 0.5rem;
-  text-align: right;
-}
-
-/* "How much am I left holding" is the question a partial close raises. */
-.pos-remaining-note {
-  margin-left: auto;
+  width: 96px;
+  height: 34px;
+  font-size: 0.98rem;
   font-family: var(--mono, monospace);
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0 0.55rem;
+  text-align: right;
+  background: rgba(10, 15, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #ffffff;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.pos-modal-preview {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  background: var(--surface-soft, rgba(255, 255, 255, 0.025));
-  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
-  border-radius: var(--radius-md, 8px);
-  padding: 0.85rem 1rem;
+.pos-qty-input:focus {
+  border-color: var(--copper, #d4894c);
+  box-shadow: 0 0 0 2px rgba(212, 137, 76, 0.25);
+  outline: none;
 }
 
-.pos-danger-banner {
-  background: rgba(227, 93, 93, 0.1);
-  border: 1px solid rgba(227, 93, 93, 0.25);
-  border-radius: var(--radius-md, 8px);
-  padding: 0.85rem 1rem;
-  color: var(--sell);
-  font-size: 0.85rem;
-  line-height: 1.45;
-}
-
-.pos-liquidate-preview {
-  max-height: 160px;
-  overflow-y: auto;
-  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.05));
-  border-radius: var(--radius-md, 8px);
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.pos-liquidate-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 4px;
-  background: var(--surface-soft);
+.pos-qty-unit {
   font-size: 0.82rem;
-}
-
-.pos-liquidate-row span:not(:first-of-type) {
-  text-align: right;
-}
-
-/* What the whole batch costs — the number the confirmation is really about. */
-.pos-liquidate-totals {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 0.5rem;
-  padding: 0.55rem 1rem;
-  border-radius: var(--radius-md, 8px);
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.06));
-  font-size: 0.85rem;
-}
-
-.pos-liquidate-totals strong {
-  text-align: right;
+  color: var(--text-muted, #94a3b8);
   font-weight: 500;
 }
 
-.pos-modal-foot {
-  padding: 1rem 1.25rem;
-  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+.pos-preview-row {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.65rem;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-/* An <a> styled as a button keeps the UA underline, so the one anchor in this
-   footer read as a link dropped inside a box beside two real buttons. */
-.pos-modal-foot a.ghost {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
+.pos-preview-row span {
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.pos-preview-row strong {
+  font-size: 1.12rem;
+  font-weight: 600;
+  font-family: var(--mono, monospace);
+  color: #ffffff;
+  letter-spacing: -0.01em;
 }
 
 /* Share lots — a five-column ledger needs more room than a confirmation
@@ -2827,6 +2879,474 @@ button.primary.primary-danger:focus-visible {
   }
 }
 
+/* ── Exit Strategy & Protection Modal ────────────────────────────── */
+.pos-act-exit {
+  color: color-mix(in srgb, var(--accent, #3fbf8f) 82%, var(--muted));
+}
+
+.pos-table-row:hover .pos-act-exit {
+  color: var(--accent, #3fbf8f);
+}
+
+.pos-act-exit:hover,
+.pos-act-exit:focus-visible {
+  color: var(--accent, #3fbf8f);
+  background: rgba(63, 191, 143, 0.12);
+  border-color: color-mix(in srgb, var(--accent, #3fbf8f) 45%, transparent);
+}
+
+.pos-cell-prot,
+.pos-card-prot {
+  cursor: pointer;
+}
+
+.pos-prot-badge {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.pos-cell-prot:hover .pos-prot-badge:not(.orders),
+.pos-card-prot:hover .pos-prot-badge:not(.orders) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  border-color: var(--copper, #d4894c);
+}
+
+.pos-exit-card {
+  max-width: 580px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.pos-exit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 1.25rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.pos-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pos-exit-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.pos-exit-meta-grid .pos-modal-meta-item {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pos-exit-meta-grid .pos-modal-meta-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-exit-status-card {
+  background: rgba(13, 19, 34, 0.75);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.pos-exit-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.pos-exit-status-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.pos-exit-status-icon {
+  color: var(--copper);
+  flex-shrink: 0;
+}
+
+.pos-exit-status-indicator {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pos-exit-status-indicator.pos {
+  background: rgba(63, 191, 143, 0.15);
+  color: var(--buy);
+  border: 1px solid rgba(63, 191, 143, 0.35);
+}
+
+.pos-exit-status-indicator.neg {
+  background: rgba(227, 93, 93, 0.15);
+  color: var(--sell);
+  border: 1px solid rgba(227, 93, 93, 0.35);
+}
+
+.pos-exit-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+
+.pos-exit-stat-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pos-exit-stat-sub span {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-exit-stat-sub strong {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Strategy Mode Selector Tabs */
+.pos-exit-tabs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.25rem;
+  background: var(--input-bg, #0d1322);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.3rem;
+  overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.pos-exit-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.2rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.15s ease;
+}
+
+.pos-exit-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pos-exit-tab.is-active {
+  color: var(--ink, #0c1219);
+  background: var(--copper);
+  border: none;
+  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.35);
+  font-weight: 700;
+}
+
+.pos-exit-tab.tab-danger.is-active {
+  color: #ffffff;
+  background: var(--sell, #e35d5d);
+  border: none;
+  box-shadow: 0 2px 8px rgba(227, 93, 93, 0.35);
+}
+
+.pos-exit-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.pos-exit-pane[hidden] {
+  display: none !important;
+}
+
+.pos-exit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.pos-input-box {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg, #0d1322);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 0.85rem;
+  height: 42px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pos-input-box:focus-within {
+  border-color: var(--copper);
+  box-shadow: 0 0 0 1px var(--copper);
+}
+
+.pos-input-prefix {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  margin-right: 0.35rem;
+  font-weight: 600;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.pos-input-suffix {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  margin-left: 0.35rem;
+  font-weight: 500;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.pos-field-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.pos-exit-chips-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pos-chips-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.pos-pct-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pos-pct-chips .chip {
+  flex: 1 1 0;
+  min-width: 44px;
+  text-align: center;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.78rem;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--mono);
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.pos-pct-chips .chip:hover {
+  color: var(--text);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pos-pct-chips .chip.is-active {
+  background: var(--copper);
+  color: #fff;
+  border-color: var(--copper);
+  font-weight: 700;
+  box-shadow: 0 1px 6px rgba(212, 137, 76, 0.35);
+}
+
+.pos-exit-be-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(63, 191, 143, 0.08);
+  border: 1px solid rgba(63, 191, 143, 0.25);
+  box-sizing: border-box;
+}
+
+.pos-exit-be-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pos-exit-be-info {
+  min-width: 0;
+}
+
+.pos-exit-be-info h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--buy);
+}
+
+.pos-exit-be-info p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.pos-exit-bracket-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  box-sizing: border-box;
+}
+
+.pos-exit-subcard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.pos-pct-chips.compact .chip {
+  padding: 0.25rem 0.35rem;
+  font-size: 0.72rem;
+  min-height: 28px;
+}
+
+.pos-clear-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.pos-exit-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.pos-exit-preview .pos-preview-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pos-exit-preview .pos-preview-row span {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-exit-preview .pos-preview-row strong {
+  font-size: 0.98rem;
+  font-weight: 600;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-exit-preview .pos-preview-row strong.neg {
+  color: var(--sell);
+}
+
+.pos-exit-preview .pos-preview-row strong.pos {
+  color: var(--buy);
+}
+
 @media (max-width: 600px) {
   .pos-modal-backdrop {
     align-items: flex-end;
@@ -2856,6 +3376,28 @@ button.primary.primary-danger:focus-visible {
 
   .pos-modal-head {
     padding: 0.75rem 1.15rem 0.85rem;
+  }
+
+  .pos-exit-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pos-exit-status-grid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .pos-exit-preview {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .pos-exit-bracket-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-exit-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
