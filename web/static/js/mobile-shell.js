@@ -201,23 +201,23 @@
           </div>
 
           <div class="mobile-nav-group">
-            <h3 class="mobile-nav-group-title" data-i18n="theme">Theme</h3>
-            <div class="mobile-theme-picker" id="mobile-theme-picker">
-              <button type="button" class="mobile-theme-btn" data-theme-val="obsidian">
+            <h3 class="mobile-nav-group-title" data-i18n="settings_theme_title">Terminal Theme</h3>
+            <div class="mobile-theme-picker" id="mobile-theme-picker" role="radiogroup" aria-label="Terminal Themes" data-i18n-aria-label="terminal_themes">
+              <button type="button" class="mobile-theme-btn" data-theme-val="obsidian" role="radio" aria-label="Obsidian Night" data-i18n-aria-label="theme_obsidian">
                 <span class="mobile-theme-swatch obsidian"></span>
-                <span class="mobile-theme-label">Obsidian</span>
+                <span class="mobile-theme-label" data-i18n="theme_short_obsidian">Obsidian</span>
               </button>
-              <button type="button" class="mobile-theme-btn" data-theme-val="midnight">
+              <button type="button" class="mobile-theme-btn" data-theme-val="midnight" role="radio" aria-label="Midnight Slate" data-i18n-aria-label="theme_midnight">
                 <span class="mobile-theme-swatch midnight"></span>
-                <span class="mobile-theme-label">Midnight</span>
+                <span class="mobile-theme-label" data-i18n="theme_short_midnight">Midnight</span>
               </button>
-              <button type="button" class="mobile-theme-btn" data-theme-val="emerald">
+              <button type="button" class="mobile-theme-btn" data-theme-val="emerald" role="radio" aria-label="Emerald Forest" data-i18n-aria-label="theme_emerald">
                 <span class="mobile-theme-swatch emerald"></span>
-                <span class="mobile-theme-label">Emerald</span>
+                <span class="mobile-theme-label" data-i18n="theme_short_emerald">Emerald</span>
               </button>
-              <button type="button" class="mobile-theme-btn" data-theme-val="daylight">
+              <button type="button" class="mobile-theme-btn" data-theme-val="daylight" role="radio" aria-label="Daylight Desk" data-i18n-aria-label="theme_daylight">
                 <span class="mobile-theme-swatch daylight"></span>
-                <span class="mobile-theme-label">Daylight</span>
+                <span class="mobile-theme-label" data-i18n="theme_short_daylight">Daylight</span>
               </button>
             </div>
           </div>

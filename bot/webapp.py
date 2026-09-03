@@ -1442,6 +1442,49 @@ def quotes(symbols: str = "", user: dict = Depends(require_auth)) -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.get("/api/tickers/search")
+def api_ticker_search(
+    q: str = "",
+    limit: int = 10,
+    user: dict = Depends(require_auth),
+) -> dict:
+    """Search stock tickers and companies by symbol or company name."""
+    from bot.client import AlpacaService
+    from bot.ticker_search import search_tickers
+
+    clamped_limit = max(1, min(int(limit or 10), 30))
+    state = get_user_state(user["id"])
+
+    positions: list[dict[str, Any]] = []
+    watchlist: list[str] = []
+    service = None
+
+    try:
+        service = AlpacaService(state._base_config())
+    except Exception:
+        pass
+
+    try:
+        snap = state.snapshot()
+        positions = snap.get("positions") or []
+        settings = snap.get("settings") or {}
+        raw_symbols = settings.get("symbols") or settings.get("symbol") or ""
+        watchlist = [s.strip().upper() for s in str(raw_symbols).split(",") if s.strip()]
+    except Exception:
+        pass
+
+    results = search_tickers(
+        query=q,
+        user_id=user["id"],
+        service=service,
+        positions=positions,
+        watchlist=watchlist,
+        limit=clamped_limit,
+    )
+
+    return {"ok": True, "query": q, "results": results}
+
+
 @app.get("/api/manual-context")
 def manual_context(symbol: str = "AAPL", user: dict = Depends(require_auth)) -> dict:
     """Mark, session, position, and buying power for the Advanced Order page."""

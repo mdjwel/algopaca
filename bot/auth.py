@@ -118,6 +118,15 @@ def _get_connection(db_path: Path = AUTH_DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def get_gravatar_url(email: Optional[str], size: int = 128) -> str:
+    """Generate Gravatar profile picture URL associated with a user email."""
+    if not email or not isinstance(email, str) or not email.strip():
+        return ""
+    clean_email = email.strip().lower()
+    email_hash = hashlib.sha256(clean_email.encode("utf-8")).hexdigest()
+    return f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d=404"
+
+
 class AuthStore:
     def __init__(self, db_path: Path = AUTH_DB_PATH):
         self.db_path = db_path
@@ -396,6 +405,7 @@ class AuthStore:
                 "id": row["id"],
                 "username": row["username"],
                 "email": row["email"],
+                "avatar_url": get_gravatar_url(row["email"]),
                 "display_name": row["display_name"] or row["username"],
                 "role": row["role"] or "trader",
                 "status": row["status"] or "active",
@@ -505,6 +515,7 @@ class AuthStore:
                     "id": r["id"],
                     "username": r["username"],
                     "email": r["email"],
+                    "avatar_url": get_gravatar_url(r["email"]),
                     "display_name": r["display_name"] or r["username"],
                     "role": r["role"] or "trader",
                     "status": r["status"] or "active",
@@ -1131,6 +1142,7 @@ class AuthStore:
             # somehow survived the revoke that accompanies it.
             if (user.get("status") or "active").lower() == "suspended":
                 return None
+            user["avatar_url"] = get_gravatar_url(user.get("email"))
             return user
 
     def delete_session(self, token: Optional[str]) -> bool:

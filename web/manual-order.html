@@ -42,6 +42,39 @@
           </div>
           <p id="page-tagline" class="tagline" data-i18n="tagline_manual_order">Size a ticket by risk budget, dollars, or shares — the desk attaches the stop and the target for you.</p>
         </div>
+        <div class="masthead-search" id="masthead-search-container">
+          <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
+            <div class="masthead-search-box" id="header-ticker-search-box">
+              <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="search"
+                id="header-ticker-search-input"
+                class="masthead-search-input"
+                placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
+                data-i18n-placeholder="header_search_placeholder"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Search stock tickers and markets"
+                data-i18n-aria-label="header_search_aria"
+                aria-autocomplete="list"
+                aria-controls="header-search-dropdown"
+              />
+              <div class="masthead-search-controls">
+                <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+                <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
+              </div>
+            </div>
+            <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
+          </form>
+        </div>
         <div class="masthead-right">
           <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
             <div class="desk-nav-group" data-nav-group="trade">
@@ -136,6 +169,7 @@
                       <option value="" data-i18n="preset_none">— none —</option>
                     </select>
                   </label>
+                  <button type="button" id="btn-manual-save-preset-inline" class="ghost small btn-preset-inline" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save</button>
                   <button type="button" id="btn-manual-delete-preset" class="ghost small" hidden data-i18n="delete_preset" data-i18n-title="delete_preset_hint" title="Delete the selected preset">Delete</button>
                 </div>
               </div>
@@ -593,9 +627,9 @@
             <div class="manual-place-bar">
               <p id="manual-side-help" class="field-help" data-i18n="manual_side_help_buy">Buy opens or adds to a long and sizes from your risk budget.</p>
               <div class="manual-actions">
-                <button type="button" id="btn-manual-save-preset" class="ghost" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save preset</button>
-                <button type="button" id="btn-manual-preview" class="ghost" data-i18n="preview_order" data-i18n-title="preview_order_hint" title="Ask the desk to size the ticket without sending it">Preview</button>
+                <button type="button" id="btn-manual-save-preset" class="ghost btn-save-preset" data-i18n="save_preset" data-i18n-title="save_preset_hint" title="Save these settings as a reusable ticket preset">Save preset</button>
                 <div class="manual-place-actions">
+                  <button type="button" id="btn-manual-preview" class="ghost btn-manual-preview" data-i18n="preview_order" data-i18n-title="preview_order_hint" title="Ask the desk to size the ticket without sending it">Preview</button>
                   <button type="submit" id="btn-manual-submit" class="btn-manual-submit is-buy" data-side="buy" aria-describedby="manual-side-help">
                     <span class="btn-submit-main" id="btn-submit-text" data-i18n="place_buy">Place Buy Order</span>
                     <span class="btn-submit-pill" id="btn-submit-pill"></span>

@@ -361,7 +361,7 @@
     const role = (user.role || "trader").toLowerCase();
     const status = (user.status || "active").toLowerCase();
 
-    updateHeroIdentity(name);
+    updateHeroIdentity(name, user.email);
     if (heroUsernameTag) {
       heroUsernameTag.textContent = `@${username}`;
       heroUsernameTag.dataset.copyValue = username;
@@ -425,13 +425,13 @@
     updateIntegrationBadge(badgeStatusXai, user.has_xai_key ? "connected" : (activeProvider === "xai" ? "pending" : "missing"), getAiBadgeText(user.has_xai_key, "xai"));
   }
 
-  /** Build a ui-avatars.com profile image URL for the given display name. */
-  function buildUiAvatarUrl(name) {
+  /** Build a ui-avatars.com fallback profile image URL for the given display name. */
+  function buildUiAvatarUrl(name, size = 152) {
     const params = new URLSearchParams({
       name: name || "Trader",
       background: "d4894c",
       color: "120b05",
-      size: "152",
+      size: String(size),
       bold: "true",
       rounded: "true",
       format: "png",
@@ -439,16 +439,31 @@
     return `https://ui-avatars.com/api/?${params.toString()}`;
   }
 
-  /** Hero name + ui-avatars.com photo, also driven live while the user types. */
-  function updateHeroIdentity(name) {
-    const shown = (name || "").trim() || currentProfile?.username || "Trader";
-    if (heroDisplayName) heroDisplayName.textContent = shown;
+  /** Hero name + Gravatar email photo (with ui-avatars fallback), driven live while user types. */
+  function updateHeroIdentity(name, email) {
+    const shownName = (name || "").trim() || currentProfile?.username || "Trader";
+    const shownEmail = (email !== undefined ? email : (currentProfile?.email || "")).trim();
+    if (heroDisplayName) heroDisplayName.textContent = shownName;
     if (heroAvatarImg) {
-      const nextSrc = buildUiAvatarUrl(shown);
-      if (heroAvatarImg.getAttribute("src") !== nextSrc) {
-        heroAvatarImg.src = nextSrc;
+      const fallbackSrc = buildUiAvatarUrl(shownName, 152);
+      if (shownEmail && window.computeSha256Hex) {
+        window.computeSha256Hex(shownEmail).then((hash) => {
+          if (hash) {
+            const gravatarSrc = `https://www.gravatar.com/avatar/${hash}?s=152&d=${encodeURIComponent(fallbackSrc)}`;
+            if (heroAvatarImg.getAttribute("src") !== gravatarSrc) {
+              heroAvatarImg.src = gravatarSrc;
+            }
+          } else if (heroAvatarImg.getAttribute("src") !== fallbackSrc) {
+            heroAvatarImg.src = fallbackSrc;
+          }
+        });
+      } else if (heroAvatarImg.getAttribute("src") !== fallbackSrc) {
+        heroAvatarImg.src = fallbackSrc;
       }
-      heroAvatarImg.alt = shown;
+      heroAvatarImg.alt = shownName;
+      heroAvatarImg.onerror = () => {
+        heroAvatarImg.src = fallbackSrc;
+      };
     }
   }
 
@@ -593,13 +608,13 @@
     if (inputProfileEmail) inputProfileEmail.value = profileBaseline.email;
     clearFieldError(inputProfileName, profileNameError);
     clearFieldError(inputProfileEmail, profileEmailError);
-    updateHeroIdentity(profileBaseline.display_name);
+    updateHeroIdentity(profileBaseline.display_name, profileBaseline.email);
     updateNameCounter();
     updateProfileDirtyState();
   }
 
   inputProfileName?.addEventListener("input", () => {
-    updateHeroIdentity(inputProfileName.value);
+    updateHeroIdentity(inputProfileName.value, inputProfileEmail ? inputProfileEmail.value : undefined);
     updateNameCounter();
     if (inputProfileName.classList.contains("is-invalid")) validateDisplayName(true);
     updateProfileDirtyState();
@@ -610,6 +625,7 @@
   });
 
   inputProfileEmail?.addEventListener("input", () => {
+    updateHeroIdentity(inputProfileName ? inputProfileName.value : undefined, inputProfileEmail.value);
     if (inputProfileEmail.classList.contains("is-invalid")) validateEmail(true);
     updateProfileDirtyState();
   });
@@ -684,9 +700,24 @@
     document.querySelectorAll(".masthead-user-name, .masthead-info-name").forEach((el) => {
       el.textContent = name;
     });
-    document.querySelectorAll(".masthead-user-avatar").forEach((el) => {
+    document.querySelectorAll(".masthead-user-avatar-fallback").forEach((el) => {
       el.textContent = initials;
     });
+    const email = profile?.email || "";
+    if (email && window.computeSha256Hex) {
+      window.computeSha256Hex(email).then((hash) => {
+        if (hash) {
+          const avatarUrl = `https://www.gravatar.com/avatar/${hash}?s=80&d=404`;
+          document.querySelectorAll(".masthead-user-avatar-img").forEach((img) => {
+            img.src = avatarUrl;
+            img.style.display = "block";
+          });
+        }
+      });
+      document.querySelectorAll(".masthead-info-email").forEach((el) => {
+        el.textContent = email;
+      });
+    }
   }
 
   /* ------------------------------------------------------------------------ */
@@ -971,6 +1002,18 @@
       const themeVal = card.dataset.themeVal;
       if (themeVal) applyTheme(themeVal);
     });
+  });
+
+  window.addEventListener("themechange", (e) => {
+    const themeName = e.detail?.theme;
+    if (themeName && ["obsidian", "midnight", "emerald", "daylight"].includes(themeName)) {
+      themeCards.forEach((card) => {
+        const isSelected = card.dataset.themeVal === themeName;
+        card.classList.toggle("is-active", isSelected);
+        const radio = card.querySelector("input[type='radio']");
+        if (radio) radio.checked = isSelected;
+      });
+    }
   });
 
   /* ------------------------------------------------------------------------ */

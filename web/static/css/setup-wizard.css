@@ -585,9 +585,10 @@
               }
 
               &.theme-swatch-daylight {
-                background: #f8fafc;
+                background: #f1f5f9;
+                border: 1px solid #cbd5e1;
                 & .swatch-accent { background: #2563eb; }
-                & .swatch-panel { background: #ffffff; border: 1px solid #e2e8f0; }
+                & .swatch-panel { background: #ffffff; border: 1px solid #cbd5e1; }
               }
             }
 

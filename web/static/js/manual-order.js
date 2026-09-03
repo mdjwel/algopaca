@@ -3624,12 +3624,7 @@ function syncManualPlaceButtons() {
           : tx("place_sell", "Place Sell Order");
       }
       if (submitPill) {
-        if (calc && calc.shares > 0) {
-          const totalVal = calc.isExit ? calc.proceeds : calc.cost;
-          submitPill.textContent = `${formatQty(calc.shares)} ${tx("shares", "shares")} · ${money(totalVal)}`;
-        } else {
-          submitPill.textContent = "";
-        }
+        submitPill.textContent = "";
       }
     }
   }
@@ -6143,6 +6138,9 @@ $("manual-preset")?.addEventListener("change", (ev) => {
   syncPresetDeleteButton();
 });
 $("btn-manual-save-preset")?.addEventListener("click", () => {
+  saveCurrentAsPreset().catch((err) => showToast(err.message, "error"));
+});
+$("btn-manual-save-preset-inline")?.addEventListener("click", () => {
   saveCurrentAsPreset().catch((err) => showToast(err.message, "error"));
 });
 $("btn-manual-delete-preset")?.addEventListener("click", () => {

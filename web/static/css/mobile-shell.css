@@ -113,6 +113,45 @@ html {
     display: none !important;
   }
 
+  .masthead-search {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    padding-top: 0;
+    margin: 0 0.2rem;
+  }
+
+  .masthead-search-box {
+    min-height: 34px;
+    padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+    gap: 0.35rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .masthead-search-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .masthead-search-input {
+    font-size: 0.78rem;
+  }
+
+  .masthead-search-kbd {
+    display: none !important;
+  }
+
+  .masthead-search-dropdown {
+    position: fixed;
+    top: calc(var(--mobile-header-height) + 4px);
+    left: 8px;
+    right: 8px;
+    min-width: auto;
+    max-width: calc(100vw - 16px);
+    max-height: 65vh;
+    z-index: 1200;
+  }
+
   .masthead-right {
     flex: none;
     display: flex;
@@ -139,9 +178,18 @@ html {
     display: none !important;
   }
 
+  .masthead-user-trigger {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 50%;
+  }
+
   .masthead-user-avatar {
-    width: 28px;
-    height: 28px;
+    width: 100%;
+    height: 100%;
     font-size: 0.72rem;
   }
 
@@ -492,6 +540,24 @@ html {
   justify-content: center;
   flex-shrink: 0;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--copper) 30%, transparent);
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.mobile-profile-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mobile-profile-info {
@@ -780,3 +846,10 @@ html {
   color: var(--text);
   border: 1px solid var(--line);
 }
+
+/* Advanced Order: Show only Bid and Ask buttons in price fill groups on mobile */
+.price-fill-group [data-i18n="use_mid"],
+.price-fill-group [data-i18n="use_mark"] {
+  display: none !important;
+}
+

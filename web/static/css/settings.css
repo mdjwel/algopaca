@@ -29,8 +29,8 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.15rem 0.5rem;
-  background: rgba(212, 137, 76, 0.12);
-  border: 1px solid rgba(212, 137, 76, 0.35);
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 35%, transparent);
   border-radius: var(--radius-sm);
   color: var(--copper);
   font-family: var(--mono);
@@ -625,14 +625,14 @@
 
 .theme-card:hover {
   border-color: var(--copper);
-  background: var(--slate);
+  background: color-mix(in srgb, var(--copper) 4%, var(--panel-bg));
   transform: translateY(-2px);
 }
 
 .theme-card.is-active {
   border-color: var(--copper);
-  background: var(--slate);
-  box-shadow: 0 0 16px var(--glow);
+  background: color-mix(in srgb, var(--copper) 8%, var(--panel-bg));
+  box-shadow: 0 0 0 1px var(--copper), 0 4px 16px var(--glow);
 }
 
 .theme-card-preview {
@@ -673,17 +673,18 @@
 .theme-preview-emerald .swatch-accent { background: #3fbf8f; }
 
 .theme-preview-daylight {
-  background: #f8fafc;
+  background: #f1f5f9;
   border-color: #cbd5e1;
 }
-.theme-preview-daylight .swatch-bg { background: #f1f5f9; }
-.theme-preview-daylight .swatch-panel { background: #ffffff; border: 1px solid #e2e8f0; }
-.theme-preview-daylight .swatch-accent { background: #2563eb; }
+.theme-preview-daylight .swatch-bg { background: #e2e8f0; border: 1px solid #cbd5e1; }
+.theme-preview-daylight .swatch-panel { background: #ffffff; border: 1px solid #cbd5e1; }
+.theme-preview-daylight .swatch-accent { background: #2563eb; border: 1px solid #1d4ed8; }
 
 .theme-card-info {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  padding-right: 2rem;
 }
 
 .theme-name {
@@ -700,10 +701,10 @@
 
 .theme-card-check {
   position: absolute;
-  top: 0.8rem;
-  right: 0.8rem;
-  width: 22px;
-  height: 22px;
+  bottom: 1rem;
+  right: 1rem;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--copper);
   color: var(--copper-text, #ffffff);
@@ -711,8 +712,8 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: scale(0.5);
-  transition: all 0.2s ease;
+  transform: scale(0.6);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 6px var(--glow);
 }
 
@@ -881,9 +882,9 @@ label.switch-item:has(input:focus-visible) {
 }
 
 .integration-icon-alpaca {
-  background: rgba(212, 137, 76, 0.15);
+  background: color-mix(in srgb, var(--copper) 15%, transparent);
   color: var(--copper);
-  border: 1px solid rgba(212, 137, 76, 0.35);
+  border: 1px solid color-mix(in srgb, var(--copper) 35%, transparent);
 }
 
 .integration-icon-live {

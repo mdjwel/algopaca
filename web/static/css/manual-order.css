@@ -16,14 +16,11 @@
     grid-template-columns: minmax(0, 1.28fr) minmax(21rem, 25rem);
   }
 
+  /* Rail flows naturally with content — Order preview is not sticky */
   .manual-rail {
-    position: sticky;
-    top: 1rem;
-    max-height: calc(100dvh - 2rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--line) 60%, transparent) transparent;
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   /* The form itself is not height-bound (the page scrolls, not the panel), so
@@ -162,7 +159,7 @@
 
 .manual-place-bar {
   flex: 0 0 auto;
-  z-index: 6;
+  z-index: 60;
   margin: 0.15rem -1.15rem -1.2rem;
   padding: 0.75rem 1.15rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
@@ -1446,19 +1443,71 @@ a.ghost.small {
 
 .manual-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: stretch;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
-.manual-actions .ghost {
+.manual-actions .btn-save-preset {
   flex: 0 0 auto;
 }
 
 .manual-place-actions {
   display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.btn-manual-preview {
+  flex: 0 0 auto;
+  min-height: 2.85rem;
+  padding: 0.65rem 1.15rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
+}
+
+.btn-manual-preview:hover:not(:disabled) {
+  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 12%, var(--panel));
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.btn-manual-preview:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-manual-preview:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.manual-place-actions .btn-manual-submit {
   flex: 1 1 14rem;
   min-width: 0;
+  width: auto;
 }
 
 /* ----------------------------------------------------- dynamic submit button ---- */
@@ -1528,17 +1577,7 @@ a.ghost.small {
 }
 
 .btn-submit-pill {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
-  color: inherit;
-}
-
-.btn-submit-pill:empty {
-  display: none;
+  display: none !important;
 }
 
 /* ------------------------------------------ position management accordion card ---- */
@@ -2091,8 +2130,7 @@ body.modal-open {
 /* ------------------------------------------------------------- presets ---- */
 
 .manual-preset-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: end;
   gap: 0.4rem;
   min-width: 0;
@@ -2101,6 +2139,18 @@ body.modal-open {
 .manual-preset-field > label {
   margin: 0;
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.manual-preset-field > .ghost.small {
+  flex: 0 0 auto;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.65rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .manual-preset-field > .ghost.small[hidden] {
@@ -2289,62 +2339,85 @@ body.modal-open {
   outline-offset: 1px;
 }
 
-/* --------------------------------------------- mobile: pinned order preview
-   In one column the rail follows the whole form, so the shares, the risk and
-   the stop were invisible for the entire time you were choosing them. The
-   preview pins to the bottom of the viewport instead and opens on demand. */
+/* --------------------------------------------- mobile: sticky place action bar
+   Order preview stays in the rail and is not sticky. Instead, the main Buy/Sell
+   button and Preview button are pinned above the mobile tab bar for quick execution. */
 
 @media (max-width: 48rem) {
-  #manual-size-estimate {
+  .manual-place-bar {
     position: fixed;
     left: 0;
     right: 0;
     bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px));
-    z-index: 40;
+    z-index: 500;
     margin: 0;
-    gap: 0.35rem;
-    padding: 0.6rem 0.9rem;
+    padding: 0.6rem 0.85rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
     border-width: 1px 0 0;
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--line) 85%, transparent);
     border-radius: 0;
-    box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.45);
-    background: color-mix(in srgb, var(--panel) 95%, transparent);
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.45);
   }
 
-  #manual-size-estimate.is-expanded {
-    max-height: 55vh;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    box-shadow: 0 -1rem 2.5rem rgba(0, 0, 0, 0.6);
-  }
-
-  #manual-size-estimate:not(.is-expanded) .size-estimate-grid,
-  #manual-size-estimate:not(.is-expanded) .size-estimate-note,
-  #manual-size-estimate:not(.is-expanded) .bracket-visualizer {
+  .manual-place-bar > #manual-side-help,
+  .manual-place-bar > #manual-shortcuts-help {
     display: none;
   }
 
-  #manual-size-estimate.is-expanded .size-estimate-grid:not([hidden]) {
-    display: grid;
+  .manual-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
   }
 
-  #manual-size-estimate.is-expanded .bracket-visualizer:not([hidden]) {
-    display: grid;
+  .manual-actions .btn-save-preset {
+    display: none;
   }
 
-  .size-estimate-value {
-    font-size: 1.05rem;
+  .manual-place-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 100%;
   }
 
-  .size-estimate-toggle {
-    display: inline-flex;
-    flex-shrink: 0;
+  .manual-place-actions .btn-manual-preview {
+    flex: 0 0 auto;
+    min-width: 5.25rem;
+    min-height: 2.75rem;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.92rem;
   }
 
-  /* Room for the bar and bottom nav so it never covers the last control on the form. */
+  .manual-place-actions .btn-manual-submit {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.95rem;
+  }
+
+  /* Mobile: Show only Bid and Ask buttons in price fill groups, hiding Mid and Mark */
+  .price-fill-group [data-i18n="use_mid"],
+  .price-fill-group [data-i18n="use_mark"],
+  #btn-limit-mid,
+  #btn-limit-mark,
+  #btn-stop-mid,
+  #btn-stop-mark,
+  #btn-reinvest-mid,
+  #btn-reinvest-mark,
+  #btn-followon-mid,
+  #btn-followon-mark {
+    display: none !important;
+  }
+
+  /* Room for the sticky bar and bottom nav so content is never obscured */
   body[data-page="manual-order"] {
-    padding-bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px) + 8rem);
+    padding-bottom: calc(var(--mobile-nav-height, 62px) + env(safe-area-inset-bottom, 0px) + 5.5rem);
   }
 }
 

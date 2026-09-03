@@ -97,7 +97,7 @@
 
   .desk-nav-trigger[aria-expanded="true"] {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-soft);
   }
 
   .desk-nav-trigger[aria-expanded="true"]::after {
