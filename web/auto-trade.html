@@ -622,8 +622,15 @@
                   </div>
 
                   <div class="qty-field-input" id="auto-ai-label" hidden>
-                    <div class="price-input-shell is-readonly">
-                      <p id="size-ai-placeholder" class="size-ai-placeholder" data-i18n="size_ai_placeholder">Model picks shares each cycle</p>
+                    <div class="price-input-shell is-readonly size-ai-shell">
+                      <div class="size-ai-card">
+                        <div class="size-ai-top">
+                          <p id="size-ai-cap" class="size-ai-cap">—</p>
+                          <span id="size-ai-source" class="size-ai-source" data-i18n="size_ai_src_cap">Model cap</span>
+                        </div>
+                        <p id="size-ai-formula" class="size-ai-placeholder" data-i18n="size_ai_placeholder">Model picks shares each cycle</p>
+                        <div id="size-ai-chips" class="size-ai-chips" aria-label="Sizing inputs" data-i18n-aria-label="size_ai_inputs"></div>
+                      </div>
                     </div>
                   </div>
                 </div>

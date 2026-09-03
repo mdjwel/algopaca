@@ -6,7 +6,13 @@ import json
 import logging
 from typing import Any
 
-from bot.ai_providers import AiDecision, AiProvider, normalize_decision
+from bot.ai_providers import (
+    AI_SIZED_MISSING_QTY_SCALE,
+    DEFAULT_MISSING_QTY_SCALE,
+    AiDecision,
+    AiProvider,
+    normalize_decision,
+)
 from bot.ai_risk import confidence_scaled_qty, r_multiple, reversal_gate, spread_bps
 from bot.analysis import compute_technicals, htf_trend
 from bot.client import AlpacaService
@@ -41,6 +47,14 @@ class AiBrain:
             provider=self.provider.name,
             model=self.provider.model,
             max_qty=max_qty,
+            # In AI size mode max_qty is only a ceiling, so a model that skipped
+            # the sizing it was asked for gets a starter position, not half the
+            # largest one the risk engine would allow.
+            qty_fallback_scale=(
+                AI_SIZED_MISSING_QTY_SCALE
+                if self._size_mode() == "ai"
+                else DEFAULT_MISSING_QTY_SCALE
+            ),
         )
         decision = self._apply_safety_gates(decision, context)
         return decision, context

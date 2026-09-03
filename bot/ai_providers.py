@@ -287,12 +287,25 @@ def _normalize_bias(value: Any) -> str:
     return "neutral"
 
 
+# Fraction of `max_qty` used when the model returns no usable size.
+#
+# In the desk's own size modes `max_qty` *is* the intended position (fixed qty,
+# a dollar amount, or the risk-engine size), so a missing qty is only a missing
+# echo — half of it is already conservative. In AI size mode the model was asked
+# to pick the size itself and `max_qty` is nothing but a ceiling, so a missing
+# qty means no intent was expressed at all: take a starter position instead of
+# half the largest one allowed.
+DEFAULT_MISSING_QTY_SCALE = 0.5
+AI_SIZED_MISSING_QTY_SCALE = 0.25
+
+
 def normalize_decision(
     raw: dict[str, Any],
     *,
     provider: str,
     model: str,
     max_qty: float,
+    qty_fallback_scale: float = DEFAULT_MISSING_QTY_SCALE,
 ) -> AiDecision:
     action = str(raw.get("action") or "hold").strip().lower()
     if action not in {"buy", "sell", "hold"}:
@@ -312,10 +325,24 @@ def normalize_decision(
     elif qty <= 0:
         # A missing or malformed size used to fall through to the *largest*
         # allowed position — a fail-open on risk. Treat it as low conviction and
-        # halve it, keeping at least one share when whole shares are tradeable.
-        qty = float(max_qty) * 0.5
+        # scale it down, keeping at least one share when whole shares are
+        # tradeable (shorts and extended-hours orders cannot be fractional).
+        scale = max(0.0, min(1.0, float(qty_fallback_scale)))
+        qty = float(max_qty) * scale
         if float(max_qty) >= 1:
             qty = max(1.0, qty)
+        # A model that keeps skipping qty is a prompt or provider problem, and
+        # it is invisible otherwise — every cycle just silently gets this size.
+        logger.warning(
+            "%s/%s returned no usable qty for a %s; falling back to %.4f "
+            "(%.0f%% of max_qty %.4f)",
+            provider,
+            model,
+            action,
+            qty,
+            scale * 100,
+            float(max_qty),
+        )
     thesis = str(raw.get("thesis") or "").strip()[:500]
     risks = str(raw.get("risks") or "").strip()[:400]
     return AiDecision(

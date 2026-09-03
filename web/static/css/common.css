@@ -2528,16 +2528,98 @@ a.button:focus-visible {
   color: var(--text);
 }
 
+/* AI size mode is the one field the trader cannot type into, so the box shows
+   the ceiling the model must size under instead of sitting empty: the cap in
+   shares, which sizer produced it, and the live inputs that move it. */
+.size-ai-shell {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.size-ai-card {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.6rem 0.85rem 0.7rem;
+}
+
+.size-ai-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.size-ai-cap {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.size-ai-source {
+  flex: none;
+  padding: 0.1rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--copper) 40%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--copper) 14%, transparent);
+  color: var(--copper);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.size-ai-source[data-source="cap"] {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+}
+
 .size-ai-placeholder {
   margin: 0;
-  padding: 0 0.85rem;
-  display: flex;
-  align-items: center;
-  min-height: 2.75rem;
   color: var(--muted);
-  font-size: 0.85rem;
-  font-style: italic;
-  line-height: 1.3;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.size-ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.size-ai-chips:empty {
+  display: none;
+}
+
+.size-ai-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  padding: 0.12rem 0.42rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.size-ai-chip b {
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 600;
 }
 
 /* Date fields — same shell language as size inputs. Native date chrome

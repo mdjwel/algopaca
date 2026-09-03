@@ -538,6 +538,148 @@ function validateReadyToRun() {
   return null;
 }
 
+/** The ceiling the model must size under, mirroring `AiBrain._max_qty`.
+ *
+ *  The risk engine owns the number whenever it can (equity × risk % ÷ ATR stop
+ *  distance, never more than the account can buy); only when risk % is 0 — or
+ *  the engine is off — does the 25%-of-buying-power model cap apply. Returning
+ *  `qty: null` means an input is still missing, not that the cap is zero.
+ */
+function aiSizingPreview() {
+  const result = resultForFeatured();
+  const quote = quoteForFeatured();
+  const price = Number(quote?.price ?? result?.price ?? 0) || 0;
+  const equity = Number(lastAccount?.equity ?? 0) || 0;
+  const buyingPower = Number(lastAccount?.buying_power ?? 0) || 0;
+  const riskOn = !!$("field-risk-engine-enabled")?.checked;
+  const riskPct = numField("ai_risk_pct", 0.5);
+  const atrMult = numField("ai_atr_stop_mult", 1.8);
+  const atrPct = Number(result?.atr_pct ?? 0) || 0;
+  const atr = price > 0 && atrPct > 0 ? (price * atrPct) / 100 : 0;
+
+  let stopDistance = 0;
+  if (riskOn) {
+    if (atrMult > 0 && atr > 0) {
+      stopDistance = atr * atrMult;
+    } else if (atrMult === 0) {
+      // ATR stops off — the desk falls back to the flat percent stop the last
+      // cycle reported (the desk form has no field for it).
+      const slPct = Number(result?.stop_loss_pct ?? 0) || 0;
+      if (slPct > 0 && price > 0) stopDistance = (price * slPct) / 100;
+    }
+  }
+
+  const base = { price, atrPct, atrMult, riskPct, equity, result };
+  if (riskOn && riskPct > 0) {
+    if (price > 0 && stopDistance > 0 && equity > 0) {
+      // Never above what the account could actually buy — same clamp as the bot.
+      const qty = Math.min((equity * (riskPct / 100)) / stopDistance, equity / price);
+      return { ...base, source: "risk", qty, stopDistance };
+    }
+    // Risk sizing is what will run — say so and wait for the missing input
+    // rather than quoting a model cap the backend would never reach.
+    return { ...base, source: "risk", qty: null };
+  }
+  const budget = buyingPower || equity;
+  if (price > 0 && budget > 0) {
+    return { ...base, source: "cap", qty: (budget * 0.25) / price, budget };
+  }
+  return { ...base, source: riskOn && riskPct > 0 ? "risk" : "cap", qty: null };
+}
+
+/** Dollars without the cents — a balance reads as a figure here, not a receipt. */
+function roundMoney(value) {
+  return `$${Math.round(Number(value) || 0).toLocaleString()}`;
+}
+
+/** Turn the AI size box into a readable cap instead of a dead placeholder. */
+function renderAiSizingPreview() {
+  const capEl = $("size-ai-cap");
+  const sourceEl = $("size-ai-source");
+  const formulaEl = $("size-ai-formula");
+  const chipsEl = $("size-ai-chips");
+  if (!capEl || !sourceEl || !formulaEl || !chipsEl) return;
+
+  const preview = aiSizingPreview();
+  const { qty, price, source, riskPct, atrPct, equity, result } = preview;
+  // Fractional shares are tradeable, so a sub-share cap is real information —
+  // rounding it to 0 would read as "cannot trade".
+  const shown =
+    qty == null || qty <= 0
+      ? null
+      : qty >= 10
+        ? String(Math.floor(qty))
+        : qty >= 1
+          ? qty.toFixed(1)
+          : qty.toFixed(2);
+
+  capEl.textContent = shown
+    ? tx("size_ai_cap_qty", `up to ${shown} shares`, { qty: shown })
+    : "—";
+  sourceEl.dataset.source = source;
+  const sourceKey = source === "risk" ? "size_ai_src_risk" : "size_ai_src_cap";
+  sourceEl.textContent = tx(
+    sourceKey,
+    source === "risk" ? "Risk engine" : "Model cap"
+  );
+  sourceEl.setAttribute("data-i18n", sourceKey);
+
+  // Plain sentences, not the formula: the trader wants to know how much the
+  // model may buy and why that is the number, without decoding ATR or bps.
+  const notional = roundMoney(qty == null ? 0 : qty * price);
+  if (qty == null) {
+    formulaEl.textContent = tx(
+      "size_ai_waiting",
+      "Run once and this shows the most the model may buy."
+    );
+    formulaEl.setAttribute("data-i18n", "size_ai_waiting");
+  } else if (source === "risk") {
+    formulaEl.textContent = tx(
+      "size_ai_formula_risk",
+      `About ${notional} — sized so that if the stop is hit, the loss is ${riskPct}% of your ${roundMoney(equity)} balance.`,
+      { pct: riskPct, equity: roundMoney(equity), notional }
+    );
+    formulaEl.removeAttribute("data-i18n");
+  } else {
+    formulaEl.textContent = tx(
+      "size_ai_formula_cap",
+      `About ${notional} — a quarter of your ${roundMoney(preview.budget)} buying power, because risk % is switched off.`,
+      { budget: roundMoney(preview.budget), notional }
+    );
+    formulaEl.removeAttribute("data-i18n");
+  }
+
+  // What the model weighs inside that ceiling. ATR and basis points are the
+  // desk's own units — the trader reads a daily swing and a percentage.
+  const trend = result?.regime || result?.trend_bias || result?.ta_bias;
+  const spreadBps = Number(result?.spread_bps ?? NaN);
+  const chips = [
+    [tx("size_ai_chip_vol", "daily swing"), atrPct > 0 ? `${atrPct.toFixed(1)}%` : null],
+    [tx("size_ai_chip_trend", "market"), trend ? String(trend).replaceAll("_", " ") : null],
+    [
+      tx("size_ai_chip_spread", "spread"),
+      Number.isFinite(spreadBps) ? `${(spreadBps / 100).toFixed(2)}%` : null,
+    ],
+    [
+      tx("size_ai_chip_conf", "min. confidence"),
+      `${Math.round(numField("ai_min_confidence", 0.55) * 100)}%`,
+    ],
+  ];
+  chipsEl.replaceChildren(
+    ...chips
+      .filter(([, value]) => value)
+      .map(([label, value]) => {
+        const chip = document.createElement("span");
+        chip.className = "size-ai-chip";
+        chip.append(document.createTextNode(label));
+        const strong = document.createElement("b");
+        strong.textContent = value;
+        chip.append(strong);
+        return chip;
+      })
+  );
+}
+
 function syncSizeModeUi() {
   const form = $("settings");
   const strategyMode = formPayload().strategy_mode;
@@ -565,6 +707,7 @@ function syncSizeModeUi() {
   if (qtyWrap) qtyWrap.hidden = mode !== "qty";
   if (notionalWrap) notionalWrap.hidden = mode !== "notional";
   if (aiWrap) aiWrap.hidden = mode !== "ai";
+  if (mode === "ai") renderAiSizingPreview();
 
   const qtyEl = $("field-qty");
   const notionalEl = $("field-notional");
@@ -602,18 +745,20 @@ function syncSizeModeUi() {
       "LS sizes by equity × risk% / ATR stop distance. Desk size is only a fallback if equity is unavailable.";
     return;
   }
+  // AI size mode first: the card above already spells out the risk-engine
+  // formula, so the hint explains what the model does *inside* that ceiling.
+  if (mode === "ai") {
+    hint.textContent = tx(
+      "size_hint_ai",
+      "The model picks shares each cycle from volatility, conviction, and liquidity — never above the risk-engine cap."
+    );
+    return;
+  }
   const riskPct = Number(formValue("ai_risk_pct", 0.5) || 0);
   if (riskPct > 0 && (strategyMode === "sma" || strategyMode === "dip" || strategyMode === "ai")) {
     hint.textContent = tx(
       "size_hint_risk",
       "Risk engine sizes shares so a stop-out costs that % of equity (desk qty/dollars are the fallback when risk % is 0)."
-    );
-    return;
-  }
-  if (mode === "ai") {
-    hint.textContent = tx(
-      "size_hint_ai",
-      "The model picks shares each cycle from volatility, conviction, and liquidity — never above the risk-engine cap."
     );
     return;
   }
@@ -2398,6 +2543,9 @@ function syncFeaturedWall() {
   const result = resultForFeatured();
   applyResult(result);
   applyQuote(quoteForFeatured(), result);
+  // The cap moves with the mark, ATR, and equity — refresh it on the quote
+  // tick, not only when the form changes.
+  if (!$("auto-ai-label")?.hidden) renderAiSizingPreview();
 }
 
 /** Pick the note copy that matches the picked UI language.
