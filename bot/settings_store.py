@@ -111,6 +111,7 @@ _DEFAULTS: dict[str, Any] = {
     "notify_browser": True,
     "notify_email": False,
     "notification_email": "",
+    "custom_engine_id": "",
 }
 
 

@@ -15,6 +15,52 @@ ROOT = Path(__file__).resolve().parent.parent
 
 STARTER_BLUEPRINTS: list[dict[str, Any]] = [
     {
+        "id": "blueprint_ai_gold_silver",
+        "name": "AI Real-Time Gold & Silver Macro Momentum",
+        "description": "Calibrated macro strategy for GLD, SLV, GDX, UGL & inverse short ETFs (GLL, DUST): buys pullbacks inside confirmed gold uptrends, gated by a rates- and GSR-weighted macro score, with a wide ATR trail that lets trends run.",
+        "base_engine": "ai",
+        "is_blueprint": True,
+        "instructions": (
+            "Specialized Gold & Silver (GLD, SLV, GDX, UGL, GLL, DUST) macro playbook, calibrated on 2007-2025 GLD forward returns.\n"
+            "LONG gates: trend_regime 'bullish_above_sma200' AND macro_composite_score >= +0.5. Enter on a PULLBACK (RSI 38-58 or price at/below SMA20) — gold's 5-20 day momentum is negatively correlated with next-month returns, so fresh breakouts are a measured losing entry. Step up to UGL/GDX only when the score is >= +1.5.\n"
+            "SHORT & INVERSE gates: trend_regime 'bearish_below_sma200' AND macro_composite_score <= -0.5, ideally with rising yields. Size smaller than an equivalent long — shorting gold fights a positive long-run drift. Keep inverse ETFs (GLL, DUST) short-dated; their daily reset erodes multi-week holds.\n"
+            "RISK & SAFETY: Hold into high-impact FOMC/CPI release windows (within 45 mins) to avoid whipsaws. Rates (0.40) and the Gold/Silver ratio (0.35) drive the macro score; miner leadership has no measured predictive power — treat it as colour only.\n"
+            "PATIENCE: overtrading is what destroys returns in this asset. On an open, working position the default answer is HOLD; exit on a regime flip or a macro score below -0.5, not on a shallow pullback."
+        ),
+        "choices": {
+            "strategy_mode": "ai",
+            "ai_provider": "gemini",
+            "ai_preset": "gold_silver_macro",
+            "ai_min_confidence": 0.62,
+            "symbol": "GLD",
+            "symbols": "GLD, SLV, GDX, UGL, GLL, DUST",
+            # Every factor behind this playbook was measured on daily bars, and
+            # the 15-minute frame it used to run on multiplied the decision count
+            # without adding signal — the one change the study argued for loudest.
+            "bar_timeframe": "1Day",
+            "size_mode": "notional",
+            "trade_qty": 2.0,
+            "trade_notional": 300.0,
+            "poll_seconds": 300,
+            "risk_engine_enabled": True,
+            "ai_risk_pct": 0.6,
+            "ai_atr_stop_mult": 2.2,
+            "ai_take_profit_r": 3.0,
+            "ai_trail_after_r": 1.2,
+            "ai_max_positions": 2,
+            "ai_daily_loss_limit_pct": 3.0,
+            "ai_min_hold_minutes": 15,
+            "ai_cooldown_minutes": 45,
+            "ai_max_spread_bps": 25.0,
+            "stop_limit_offset_pct": 0.08,
+            "options_enabled": False,
+            "require_approval": False,
+            "notify_browser": True,
+            "notify_email": False,
+            "notification_email": "",
+        },
+    },
+    {
         "id": "blueprint_ai_trend",
         "name": "AI Trend & Volatility Surfer",
         "description": "Multi-timeframe trend following with dynamic ATR trailing stops, ADX regime filter, and news sentiment checks.",
@@ -507,14 +553,21 @@ def save_custom_engine(engine_data: dict[str, Any], user_id: str | None = None) 
     if not clean:
         raise ValueError("Custom engine must have a valid name and parameters.")
 
-    # If it's a blueprint ID, assign a new unique ID so blueprints remain templates
+    existing = list_custom_engines(user_id, include_blueprints=False)
+
+    # If it's a blueprint ID, check if user already has an engine with this name to update/replace
     if clean["id"].startswith("blueprint_") or clean.get("is_blueprint"):
-        clean["id"] = f"ce_{uuid.uuid4().hex[:10]}"
+        match = next(
+            (e for e in existing if e.get("name", "").strip().lower() == clean["name"].strip().lower()),
+            None
+        )
+        if match:
+            clean["id"] = match["id"]
+        else:
+            clean["id"] = f"ce_{uuid.uuid4().hex[:10]}"
         clean["is_blueprint"] = False
 
     clean["updated_at"] = time.time()
-
-    existing = list_custom_engines(user_id, include_blueprints=False)
     updated = False
     new_list: list[dict[str, Any]] = []
 

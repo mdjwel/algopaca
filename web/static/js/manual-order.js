@@ -127,29 +127,72 @@ function stripNiceSelectFromManualInputs(form) {
   });
 }
 
-/** Normalize a stored side value onto the Buy / Sell control. */
+/**
+ * Normalize a stored side value onto the Buy / Sell control.
+ *
+ * Recent tickets and saved drafts carry the desk action, so a short that came
+ * back from the broker has to fold onto the button it was placed from —
+ * otherwise reusing a short ticket left the side control untouched.
+ */
 function visibleTicketSide(side) {
   const raw = String(side || "").toLowerCase();
-  return raw === "sell" ? "sell" : raw === "buy" ? "buy" : "";
+  if (raw === "sell" || raw === "short") return "sell";
+  if (raw === "buy" || raw === "cover") return "buy";
+  return "";
 }
 
-/** One of buy / sell — see `place_manual_order` on the server. */
+/** Which button the ticket is standing on — buy or sell. */
 function manualSide() {
   const raw = String(manualFormValue("side", "buy") || "buy").toLowerCase();
   return visibleTicketSide(raw) || "buy";
+}
+
+/**
+ * The action the desk is actually asked to perform.
+ *
+ * `place_manual_order` takes four actions, not two broker sides, because
+ * "sell" is ambiguous the moment shorting exists: with shares in hand it
+ * closes a long, and flat it opens a short. The form shows two buttons, so
+ * the live position is what resolves them — and the confirm dialog names the
+ * result before anything leaves the page.
+ *
+ * Buy always stays `buy`. Covering a short would have to be sized against the
+ * borrow rather than by the risk engine that owns the Buy sizing block, so
+ * that action is left to Positions and a Buy over a short is still refused —
+ * see `err_buy_on_short`.
+ */
+function manualDeskAction() {
+  if (manualSide() !== "sell") return "buy";
+  return manualSignedPosition() > 0 ? "sell" : "short";
+}
+
+/** Is this Sell opening a short rather than closing a long? */
+function manualOpensShort() {
+  return manualDeskAction() === "short";
 }
 
 function manualSymbol() {
   return String(manualFormValue("symbol", "") || "").trim().toUpperCase();
 }
 
-/** Does this action open risk (true) or close it (false)? */
+/**
+ * Which half of the form is on screen — the Buy block or the Sell block.
+ *
+ * Deliberately the *button*, not the desk action: a short entry stands on the
+ * Sell button and sizes from the Sell quantity box, so the layout follows the
+ * button while the ticket that goes out follows `manualDeskAction`.
+ */
 function manualIsEntry() {
   return manualSide() === "buy";
 }
 
 function manualIsExit() {
   return manualSide() === "sell";
+}
+
+/** Does this ticket open risk (buy, short) or close it (sell)? */
+function manualOpensRisk() {
+  return manualDeskAction() !== "sell";
 }
 
 function manualOrderType() {
@@ -511,7 +554,12 @@ function convertSellQtyOnUnitToggle(nextMode) {
 
 /** Is a buy-back attached to this sell? Only a long sell can carry one. */
 function manualReinvestEnabled() {
-  return manualSide() === "sell" && manualFormValue("reinvest_enabled", false) === true;
+  return (
+    manualSide() === "sell" &&
+    // A short opens a position; there is no sale to buy back.
+    !manualOpensShort() &&
+    manualFormValue("reinvest_enabled", false) === true
+  );
 }
 
 function manualReinvestQtyMode() {
@@ -566,7 +614,10 @@ function manualReinvestPayload() {
 
 function manualFollowOnEnabled() {
   return (
-    manualIsExit() && manualFormValue("followon_enabled", false) === true
+    manualIsExit() &&
+    // A next ticket fires off a close; a short entry never closes anything.
+    !manualOpensShort() &&
+    manualFormValue("followon_enabled", false) === true
   );
 }
 
@@ -641,6 +692,37 @@ function manualBracketEnabled() {
   return manualSide() === "buy" && manualFormValue("bracket_enabled", true) === true;
 }
 
+/**
+ * Will this entry actually carry an OTO/bracket stop?
+ *
+ * Mirrors `attaches_stop` in `place_manual_order`: a stop only rides along on a
+ * Market or Limit parent, in regular hours, with the bracket switched on.
+ */
+function manualAttachesStop() {
+  return (
+    manualIsEntry() &&
+    manualBracketEnabled() &&
+    ["market", "limit"].includes(manualOrderType()) &&
+    !manualExtendedHours()
+  );
+}
+
+/**
+ * Does the desk floor this ticket to whole shares?
+ *
+ * Two things force it on this form: an attached stop (Alpaca refuses fractional
+ * OTO/bracket orders) and a name that is not fractionable. (The desk also floors
+ * a short borrow, but the ticket only offers Buy and Sell.)
+ * Flooring anywhere else made the panel promise a smaller ticket than the one
+ * `place_manual_order` sends — a $1,000 buy of a $150 stock showed "6 shares ·
+ * $900" while 6.6667 shares went to the broker.
+ */
+function manualQtyIsWholeOnly() {
+  if (manualAttachesStop()) return true;
+  if (manualContext?.asset?.fractionable === false) return true;
+  return false;
+}
+
 function manualDipHuntEnabled() {
   return manualSide() === "buy" && manualFormValue("dip_hunt_enabled", false) === true;
 }
@@ -668,16 +750,31 @@ function manualDipHuntPayload() {
 
 function manualPayload() {
   const symbol = manualSymbol();
-  const side = manualSide();
+  const action = manualDeskAction();
   const orderType = manualOrderType();
   const payload = {
     symbol,
-    side,
+    side: action,
     order_type: orderType,
     time_in_force: manualTimeInForce(),
     extended_hours: manualExtendedHours(),
   };
-  if (manualIsExit()) {
+  if (action === "short") {
+    // A short is an entry that stands on the Sell button: it sizes from the
+    // Sell quantity box, and the borrow is always whole shares.
+    payload.size_mode = "qty";
+    payload.qty = Math.floor(manualSellQty());
+    // The Protective Bracket accordion is a Buy affordance, so a short carries
+    // no stop. Spelling the zeros out matters: omit them and the desk falls
+    // back to its own stop % and ATR multiple, attaching an OTO the form never
+    // showed and the user never asked for.
+    payload.ai_risk_pct = null;
+    payload.ai_atr_stop_mult = 0;
+    payload.stop_loss_pct = 0;
+    payload.take_profit_r = 0;
+    payload.stop_limit_offset_pct = 0;
+    payload.stop_limit_price = null;
+  } else if (action === "sell") {
     // An exit closes what is already there: the user picks how much. Risk
     // sizing has no meaning here — it would only get clamped anyway.
     payload.size_mode = "qty";
@@ -799,10 +896,24 @@ function validateManualLocal() {
       "24-hour market orders must use Day or GTC time in force."
     );
   }
-  if (Number(p.qty) > 0 && !Number.isInteger(Number(p.qty)) && p.time_in_force !== "day") {
+  // `qty` only carries the share count on an exit or a Shares-mode buy. Sizing
+  // in Dollars leaves it unset, so this used to wave a fractional Dollars
+  // ticket through and let the desk answer with a 400 at submit — after the
+  // confirm dialog, and after every silent preview had swallowed the same
+  // error. The estimate knows the share count in every mode; ask it.
+  const sizedShares = Number(p.qty) > 0 ? Number(p.qty) : Number(currentEstimate()?.shares);
+  const sizedIsFractional = sizedShares > 0 && !Number.isInteger(sizedShares);
+  if (sizedIsFractional && p.time_in_force !== "day") {
     return tx(
       "err_fractional_tif",
       "Fractional stock orders must use Day time in force."
+    );
+  }
+  if (sizedIsFractional && manualContext?.asset?.fractionable === false) {
+    return tx(
+      "err_not_fractionable",
+      "{symbol} does not support fractional shares at Alpaca — size this ticket in whole shares.",
+      { symbol: p.symbol }
     );
   }
   const bracketOn = manualBracketEnabled();
@@ -819,7 +930,8 @@ function validateManualLocal() {
     );
   }
   const asset = manualContext?.asset;
-  const opensShort = p.side === "sell" && p.followon?.kind === "reverse";
+  const opensShort =
+    p.side === "short" || (p.side === "sell" && p.followon?.kind === "reverse");
   if (opensShort && asset && asset.shortable === false) {
     return tx(
       "err_not_shortable",
@@ -827,11 +939,31 @@ function validateManualLocal() {
     );
   }
   const signed = manualSignedPosition();
-  if (p.side === "buy" && signed < 0) {
+  // The desk action is never `cover`, so a Buy over a short still has to be
+  // refused here rather than quietly buying the borrow back at risk-engine size.
+  if (manualSide() === "buy" && signed < 0) {
     return tx(
       "err_buy_on_short",
       "This symbol is held short — close it from Positions before buying."
     );
+  }
+  if (p.side === "short") {
+    if (!(manualSellQty() > 0)) {
+      return manualSellMode() === "dollars"
+        ? tx("err_sell_notional", "Enter a dollar amount greater than $0.00.")
+        : tx("err_short_qty", "Enter how many shares to short.");
+    }
+    // Alpaca never borrows a fraction of a share, in any session. The payload
+    // already floors, so an under-one-share ticket would otherwise go out as 0.
+    if (!(p.qty > 0)) {
+      return tx(
+        "err_short_fractional",
+        "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
+      );
+    }
+    const calc = currentEstimate();
+    if (calc?.blocked) return calc.blockedMessage;
+    return null;
   }
   if (manualIsExit()) {
     const held = manualPositionQty();
@@ -1336,7 +1468,7 @@ function applyManualContext(data, errorMsg = null) {
   // The context's breaches are sized without a ticket; a live preview knows
   // this ticket's own risk too, so it wins whenever it is still current.
   if (!hasFreshServerPreview()) {
-    renderBreaches(manualIsEntry() ? data.breaches : []);
+    renderBreaches(manualOpensRisk() ? data.breaches : []);
   }
   announceContext(data);
   renderQuickChips();
@@ -1781,7 +1913,9 @@ function syncManualTypeUi() {
   if (tifSelect) {
     // OTO/bracket and conditional orders support DAY/GTC. 24-hour market
     // limits support both for whole shares; fractional orders are DAY only.
-    const exitQty = manualIsExit() ? manualSellQty() : 0;
+    // A short is floored to whole shares before it goes out, so a fractional
+    // number in the Sell box must not drag its time in force down to DAY.
+    const exitQty = manualIsExit() && !manualOpensShort() ? manualSellQty() : 0;
     const fractionalExit = exitQty > 0 && !Number.isInteger(exitQty);
     const dayOrGtcOnly =
       manualExtendedHours() ||
@@ -2169,6 +2303,47 @@ function calculateSizeEstimate() {
     };
   }
 
+  if (manualOpensShort()) {
+    const exact = manualSellQty();
+    if (!(exact > 0)) return null;
+    // Alpaca never borrows a fraction of a share, so the desk floors a short
+    // in every session — the panel has to show the ticket that goes out.
+    const shares = Math.floor(exact);
+    if (!(shares > 0)) {
+      return {
+        side,
+        blocked: true,
+        blockedMessage: tx(
+          "err_short_fractional",
+          "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
+        ),
+      };
+    }
+    if (manualContext?.asset?.shortable === false) {
+      return {
+        side,
+        blocked: true,
+        blockedMessage: tx(
+          "err_not_shortable",
+          "This symbol is not shortable at Alpaca — the borrow is unavailable, so the ticket would be rejected."
+        ),
+      };
+    }
+    const proceeds = shares * entry;
+    return {
+      side,
+      isShortEntry: true,
+      shares,
+      entry,
+      proceeds,
+      truncated: shares !== exact,
+      // A short is opened, not closed, so it consumes buying power the way a
+      // buy does — the "Remaining" cell an exit shows means nothing here.
+      bpPct: buyingPower > 0 ? (proceeds / buyingPower) * 100 : null,
+      exceedsBp: buyingPower > 0 && proceeds > buyingPower,
+    };
+  }
+
   if (manualIsExit()) {
     const held = manualPositionQty();
     const qty = manualSellQty();
@@ -2224,7 +2399,9 @@ function calculateSizeEstimate() {
       const dollars = Number(manualFormValue("notional", 0) || 0);
       if (!(dollars > 0)) return null;
       const exact = dollars / mark;
-      shares = Math.floor(exact);
+      // Without a bracket nothing forces whole shares, and the desk sends the
+      // fraction — so the panel has to show it too.
+      shares = manualQtyIsWholeOnly() ? Math.floor(exact) : exact;
       truncated = shares !== exact;
     } else if (sizeMode === "qty") {
       shares = Number(manualFormValue("buy_qty", 0) || 0);
@@ -2290,17 +2467,25 @@ function calculateSizeEstimate() {
   }
   // A protected buy goes out as an OTO order, and Alpaca refuses fractional
   // quantities on those ("fractional orders must be simple orders") — so the
-  // desk floors to whole shares in every session, not only outside RTH.
-  const shares = Math.floor(exactShares);
+  // desk floors to whole shares in every session, not only outside RTH. A 24h
+  // Limit carries no OTO (the stop is armed after the fill), so nothing floors
+  // it and the panel must not pretend otherwise.
+  const wholeOnly = manualQtyIsWholeOnly();
+  const shares = wholeOnly ? Math.floor(exactShares) : exactShares;
   const truncated = shares !== exactShares;
   if (!(shares > 0)) {
     return {
       side,
       blocked: true,
-      blockedMessage: tx(
-        "err_size_zero",
-        "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop = ATR ×."
-      ),
+      blockedMessage: wholeOnly
+        ? tx(
+            "err_size_zero",
+            "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop = ATR ×."
+          )
+        : tx(
+            "err_size_zero_fractional",
+            "This ticket sizes to nothing. Raise Risk per trade % or the dollar amount."
+          ),
     };
   }
 
@@ -2349,7 +2534,7 @@ function calculateSizeEstimate() {
     equity,
     projectedRiskPct,
     riskReward: manualRiskReward(riskDollars, targetPrice, shares, entry),
-    attachesStop: ["market", "limit"].includes(manualOrderType()) && !manualExtendedHours(),
+    attachesStop: manualAttachesStop(),
     bpPct: buyingPower > 0 ? (cost / buyingPower) * 100 : null,
     exceedsBp: buyingPower > 0 && cost > buyingPower,
   };
@@ -2388,6 +2573,23 @@ function estimateFromServer(result) {
   const shares = Number(result.order_qty);
   if (!(shares > 0)) return null;
   const entry = Number(result.limit_price || result.stop_price || result.price);
+  if (side === "short") {
+    const proceeds = shares * entry;
+    const bp = Number(manualContext?.buying_power) || 0;
+    return {
+      side,
+      isShortEntry: true,
+      fromServer: true,
+      shares,
+      entry,
+      proceeds,
+      truncated: !!result.qty_whole_for_short,
+      warnings: Array.isArray(result.warnings) ? result.warnings : [],
+      breaches: Array.isArray(result.breaches) ? result.breaches : [],
+      bpPct: bp > 0 ? (proceeds / bp) * 100 : null,
+      exceedsBp: bp > 0 && proceeds > bp,
+    };
+  }
   if (side === "sell") {
     const held = Math.abs(Number(result.position) || 0);
     return {
@@ -2438,9 +2640,12 @@ function estimateFromServer(result) {
       shares,
       entry
     ),
+    // `attaches_stop` on the server also needs a stop to attach — a ticket
+    // sent with the bracket off is a bare Market/Limit parent.
     attachesStop:
       ["market", "limit"].includes(String(result.order_type || "")) &&
-      !result.extended_hours,
+      !result.extended_hours &&
+      result.stop_preview != null,
     warnings: Array.isArray(result.warnings) ? result.warnings : [],
     breaches: Array.isArray(result.breaches) ? result.breaches : [],
     bpPct: buyingPower > 0 ? (cost / buyingPower) * 100 : null,
@@ -2575,7 +2780,47 @@ function updateSizeEstimate() {
 
   note.classList.remove("warn");
   grid.hidden = false;
-  applyEstimateGridMode(!!calc.isExit);
+  applyEstimateGridMode(
+    calc.isShortEntry ? "short" : calc.isExit ? "exit" : "entry"
+  );
+
+  if (calc.isShortEntry) {
+    valueEl.textContent = tx("estimate_short_value", "Short {shares} shares ≈ {credit}", {
+      shares: formatQty(calc.shares),
+      credit: money(calc.proceeds),
+    });
+    setCell("est-cost", money(calc.proceeds));
+    setCell("est-bp", calc.bpPct != null ? `${calc.bpPct.toFixed(1)}%` : "—");
+    const bracketVisualizer = $("manual-bracket-visualizer");
+    if (bracketVisualizer) bracketVisualizer.hidden = true;
+    const inlineBadge = $("manual-inline-sizing-badge");
+    if (inlineBadge) inlineBadge.hidden = true;
+    const shortNotes = [
+      tx(
+        "estimate_short_open",
+        "Opens a new short — you are borrowing {shares} shares to sell. Losses are open-ended until you buy them back.",
+        { shares: formatQty(calc.shares) }
+      ),
+    ];
+    if (calc.truncated) {
+      shortNotes.push(
+        tx(
+          "estimate_whole_shares_short",
+          "Rounded down to whole shares — Alpaca does not short fractions."
+        )
+      );
+    }
+    if (calc.exceedsBp) {
+      shortNotes.push(
+        tx("estimate_over_bp", "Estimated cost exceeds buying power — Alpaca may reject this ticket.")
+      );
+    }
+    note.textContent = shortNotes.join(" ");
+    note.classList.add("warn");
+    announceEstimate(valueEl.textContent, note.textContent);
+    syncManualPlaceButtons();
+    return;
+  }
 
   if (calc.isExit) {
     valueEl.textContent = tx("estimate_sell_value", "Sell {shares} shares ≈ {proceeds}", {
@@ -2766,7 +3011,11 @@ function updateSizeEstimate() {
   }
 
   const notes = [];
-  if (!calc.usesAtr) {
+  // Only a ticket that is being sized off a stop can be missing an ATR. With
+  // the Protective Bracket switched off there is no stop distance to derive,
+  // so this warned — and painted the whole panel orange — about a number the
+  // ticket never wanted.
+  if (!calc.usesAtr && calc.stopPrice != null) {
     notes.push(
       tx(
         "estimate_no_atr",
@@ -2776,10 +3025,15 @@ function updateSizeEstimate() {
   }
   if (calc.truncated) {
     notes.push(
-      tx(
-        "estimate_whole_shares",
-        "Rounded down to whole shares — a protective stop cannot attach to a fractional order."
-      )
+      calc.attachesStop
+        ? tx(
+            "estimate_whole_shares",
+            "Rounded down to whole shares — a protective stop cannot attach to a fractional order."
+          )
+        : tx(
+            "estimate_whole_shares_asset",
+            "Rounded down to whole shares — this symbol is not fractionable at Alpaca."
+          )
     );
   }
   if (calc.exceedsBp) {
@@ -2797,7 +3051,10 @@ function updateSizeEstimate() {
     );
   }
   note.textContent = notes.join(" ");
-  note.classList.toggle("warn", calc.exceedsBp || !calc.usesAtr);
+  note.classList.toggle(
+    "warn",
+    calc.exceedsBp || (!calc.usesAtr && calc.stopPrice != null)
+  );
   announceEstimate(valueEl.textContent, note.textContent);
   syncManualPlaceButtons();
 }
@@ -2812,22 +3069,31 @@ const MANUAL_ENTRY_ONLY_ROWS = [
 ];
 
 /**
- * Relabel the preview grid for an exit.
+ * Relabel the preview grid for what this ticket actually does.
  *
  * The labels were static while only the values swapped, so a sell reported its
  * proceeds under "Est. cost" and its remaining share count under
- * "% of buying power".
+ * "% of buying power". A short is a third case: it takes in a credit like an
+ * exit, but consumes buying power like an entry, and it leaves no "Remaining".
+ *
+ * ``mode`` is one of "entry", "exit", "short".
  */
-function applyEstimateGridMode(isExit) {
+function applyEstimateGridMode(mode) {
+  const isExit = mode === "exit";
+  const isShort = mode === "short";
   MANUAL_ENTRY_ONLY_ROWS.forEach((id) => {
     const row = $(id);
-    if (row) row.hidden = isExit;
+    // A short carries no bracket, so its stop / target / risk cells would all
+    // read "—".
+    if (row) row.hidden = isExit || isShort;
   });
   const costLabel = $("est-cost-label");
   if (costLabel) {
-    costLabel.textContent = isExit
-      ? tx("est_proceeds", "Est. proceeds")
-      : tx("est_cost", "Est. cost");
+    costLabel.textContent = isShort
+      ? tx("est_credit", "Est. credit")
+      : isExit
+        ? tx("est_proceeds", "Est. proceeds")
+        : tx("est_cost", "Est. cost");
   }
   const bpLabel = $("est-bp-label");
   if (bpLabel) {
@@ -2944,14 +3210,22 @@ function validateManualField(fieldName) {
   } else if (fieldName === "sell_qty") {
     const held = manualPositionQty();
     if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
-    else if (val > held + 1e-9) {
+    // Flat, this box sizes a short, not a close — there is no holding to
+    // measure it against, only the whole-share borrow.
+    else if (manualOpensShort()) {
+      if (val < 1) error = tx("err_field_min_one_share", "At least 1 whole share");
+    } else if (val > held + 1e-9) {
       error = tx("err_field_max_held", "You hold {held}", { held: formatQty(held) });
     }
   } else if (fieldName === "sell_notional") {
     const held = manualPositionQty();
     const px = manualExitFillPrice();
     if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
-    else if (px > 0 && val / px > held + 1e-9) {
+    else if (manualOpensShort()) {
+      if (px > 0 && val / px < 1) {
+        error = tx("err_field_min_one_share", "At least 1 whole share");
+      }
+    } else if (px > 0 && val / px > held + 1e-9) {
       error = tx("err_sell_notional_too_much", "That is more than this position is worth ({value}).", {
         value: money(held * px),
       });
@@ -3077,10 +3351,13 @@ function syncManualSideUi() {
   }
   const qtyLabel = $("manual-sell-qty-label");
   if (qtyLabel) qtyLabel.hidden = !sharesMode;
+  // Flat, the Sell box sizes a short: there is no holding to cap it against,
+  // and capping at 0 made the field reject every number the user typed.
+  const opensShort = manualOpensShort();
   const qtyInput = $("manual-sell-qty");
   if (qtyInput) {
     qtyInput.disabled = !sharesMode || loopRunning || busy;
-    qtyInput.max = String(manualPositionQty() || 0);
+    qtyInput.max = opensShort ? "" : String(manualPositionQty() || 0);
   }
   const dollarLabel = $("manual-sell-notional-label");
   if (dollarLabel) dollarLabel.hidden = sharesMode;
@@ -3089,11 +3366,18 @@ function syncManualSideUi() {
     dollarInput.disabled = sharesMode || loopRunning || busy;
     const held = manualPositionQty();
     const px = manualExitFillPrice();
-    dollarInput.max = held > 0 && px > 0 ? String(held * px) : "";
+    dollarInput.max = !opensShort && held > 0 && px > 0 ? String(held * px) : "";
   }
 
   const sellAvail = $("manual-sell-avail");
-  if (sellAvail && isExit) {
+  if (sellAvail && isExit && opensShort) {
+    const shortable = manualContext?.asset?.shortable;
+    sellAvail.textContent =
+      shortable === false
+        ? tx("qty_not_shortable", "not shortable")
+        : tx("qty_opens_short", "opens a short");
+    sellAvail.classList.toggle("is-empty", shortable === false);
+  } else if (sellAvail && isExit) {
     const held = manualPositionQty();
     const px = manualExitFillPrice();
     const shown =
@@ -3198,8 +3482,12 @@ function syncManualSideUi() {
         "manual_side_help_sell",
         "Sell closes part or all of a long. A partial sell keeps a stop over what is left."
       ),
+      short: tx(
+        "manual_side_help_short",
+        "With no long to close, Sell opens a short — borrowed shares sold now and bought back later."
+      ),
     };
-    sideHelp.textContent = helps[side] || helps.buy;
+    sideHelp.textContent = helps[manualDeskAction()] || helps.buy;
   }
 
   syncManualBracketUi();
@@ -3210,9 +3498,37 @@ function syncManualSideUi() {
   const sellHelp = $("manual-sell-help");
   if (sellHelp && isExit) {
     const held = manualPositionQty();
-    if (!held) {
-      sellHelp.textContent = tx("manual_sell_flat", "No long position in this symbol — nothing to sell.");
+    if (opensShort) {
+      // Flat, Sell is not a refusal — it is the short entry. Say which one it
+      // is, and whether the borrow is actually available.
+      let text =
+        manualContext?.asset?.shortable === false
+          ? tx(
+              "manual_short_unavailable",
+              "No long position here, and {symbol} is not shortable at Alpaca — the borrow is unavailable.",
+              { symbol: manualSymbol() }
+            )
+          : tx(
+              "manual_short_hint",
+              "No long position here, so Sell opens a short: you borrow the shares and sell them, then buy them back to close. Whole shares only, and no protective stop is attached.",
+              { symbol: manualSymbol() }
+            );
+      if (sellMode === "dollars") {
+        const sizedQty = Math.floor(manualSellQty());
+        const px = manualExitFillPrice();
+        if (sizedQty > 0 && px > 0) {
+          text +=
+            " " +
+            tx("help_sell_dollars_preview_short", "≈ {shares} shares at {price}.", {
+              shares: formatQty(sizedQty),
+              price: stockPrice(px),
+            });
+        }
+      }
+      sellHelp.textContent = text;
     } else {
+      // Anything not opening a short is a real long to close: `opensShort`
+      // already covers flat and already-short, so `held` is positive here.
       let text = tx(
         "manual_sell_hint",
         "Choose how much of the position to close. Any resting protective stop is cancelled first."
@@ -3245,7 +3561,10 @@ function syncManualSideUi() {
  */
 function syncManualReinvestUi() {
   const group = $("manual-reinvest-group");
-  const isSell = manualSide() === "sell";
+  // A buy-back is armed against a sell that closes a long. A Sell that opens
+  // a short has nothing to buy back, and the payload drops the plan — so the
+  // card must not stay on screen inviting one.
+  const isSell = manualSide() === "sell" && !manualOpensShort();
   if (group) group.hidden = !isSell;
 
   const enabled = manualReinvestEnabled();
@@ -3326,7 +3645,9 @@ function syncManualReinvestUi() {
 
 function syncManualFollowOnUi() {
   const group = $("manual-followon-group");
-  const isExit = manualIsExit();
+  // Same as the buy-back: a next ticket fires when a close fills, and a short
+  // entry is not a close.
+  const isExit = manualIsExit() && !manualOpensShort();
   if (group) group.hidden = !isExit;
 
   const enabled = manualFollowOnEnabled();
@@ -3617,11 +3938,16 @@ function syncManualPlaceButtons() {
       if (submitText) submitText.textContent = manualBusyLabel;
       if (submitPill) submitPill.textContent = "";
     } else {
-      const isBuy = side === "buy";
       if (submitText) {
-        submitText.textContent = isBuy
-          ? tx("place_buy", "Place Buy Order")
-          : tx("place_sell", "Place Sell Order");
+        // The button names the action the desk will run, not the button the
+        // ticket is standing on — "Place Sell Order" over a flat position was
+        // about to open a short.
+        submitText.textContent =
+          {
+            buy: tx("place_buy", "Place Buy Order"),
+            sell: tx("place_sell", "Place Sell Order"),
+            short: tx("place_short", "Place Short Order"),
+          }[manualDeskAction()] || tx("place_buy", "Place Buy Order");
       }
       if (submitPill) {
         submitPill.textContent = "";
@@ -3676,10 +4002,23 @@ function syncManualHelp() {
   } else {
     text = tx("manual_help_market_tif", "Market {tif} order in regular hours.", { tif });
   }
-  if (manualIsExit()) {
+  if (manualOpensShort()) {
+    text += ` ${tx(
+      "manual_help_short",
+      "Opens a short — no protective stop is attached, and whole shares only."
+    )}`;
+    isWarn = true;
+  } else if (manualIsExit()) {
     text += ` ${tx("manual_help_sell", "Protective stops are cancelled before a sell.")}`;
-  } else if (["market", "limit"].includes(otype)) {
+  } else if (manualAttachesStop()) {
+    // Promised on every Market/Limit buy, including the ones with the
+    // Protective Bracket switched off — which go out completely unprotected.
     text += ` ${tx("manual_help_buy", "A protective stop is attached to the fill.")}`;
+  } else if (manualIsEntry() && !manualBracketEnabled()) {
+    text += ` ${tx(
+      "manual_help_buy_unprotected",
+      "No protective stop — this buy goes out unbracketed."
+    )}`;
   }
   help.textContent = text;
   // Info vs warning are different states — never let the page show both.
@@ -5083,12 +5422,19 @@ function renderConfirmationModal(payload) {
   if (!modal || !summary) return;
 
   const isExit = payload.side === "sell";
+  const isShortEntry = payload.side === "short";
   const calc = currentEstimate();
   const session = manualContext?.session || manualContext?.quote?.session;
 
+  // The dialog is the last place the ticket can still be read before it goes
+  // out, so it names the desk action — "Short", never a "Sell" that is really
+  // opening a borrow.
   const SIDE_LABELS = {
     buy: tx("buy", "Buy"),
     sell: tx("sell", "Sell"),
+    // Not the existing `short` key — that one is the lowercase noun the
+    // position rail uses ("held short"), not an action label.
+    short: tx("action_short", "Short"),
   };
   const TYPE_LABELS = {
     market: manualOrderTypeLabel("market"),
@@ -5135,7 +5481,22 @@ function renderConfirmationModal(payload) {
   }
 
   if (calc && !calc.blocked) {
-    if (isExit) {
+    if (isShortEntry) {
+      rows.push(
+        [tx("shares", "Shares"), formatQty(calc.shares)],
+        [tx("entry_price", "Entry price"), stockPrice(calc.entry)],
+        [tx("est_credit", "Est. credit"), money(calc.proceeds)],
+        [
+          tx("stop_price", "Stop"),
+          tx("confirm_short_no_stop", "None — this short is unprotected"),
+          "warn",
+        ],
+        [
+          tx("pct_buying_power", "% of buying power"),
+          calc.bpPct != null ? `${calc.bpPct.toFixed(1)}%` : "—",
+        ]
+      );
+    } else if (isExit) {
       rows.push(
         [tx("shares", "Shares"), formatQty(calc.shares)],
         [tx("est_proceeds", "Est. proceeds"), money(calc.proceeds)],
@@ -5319,9 +5680,10 @@ function renderConfirmationModal(payload) {
   const content = $("manual-confirm-content");
   if (content) content.dataset.env = isLive ? "live" : "paper";
 
-  // Desk limits.
+  // Desk limits. The server runs them for every action that opens risk, and a
+  // short is one — gating on the Buy button alone hid them.
   const breachList = $("manual-confirm-breaches");
-  const breaches = manualIsEntry() ? manualPendingBreaches : [];
+  const breaches = manualOpensRisk() ? manualPendingBreaches : [];
   if (breachList) {
     breachList.hidden = breaches.length === 0;
     breachList.innerHTML = breaches
@@ -5338,7 +5700,7 @@ function renderConfirmationModal(payload) {
           "The desk will size this ticket on submit — the numbers above are incomplete."
         )
       );
-    } else if (!calc.isExit && !calc.usesAtr) {
+    } else if (!calc.isExit && !calc.usesAtr && calc.stopPrice != null) {
       notes.push(
         tx("estimate_no_atr", "No ATR available — sized from the flat stop % instead of volatility.")
       );
@@ -5354,6 +5716,14 @@ function renderConfirmationModal(payload) {
     if (calc && !calc.blocked && calc.exceedsBp) {
       notes.push(
         tx("estimate_over_bp", "Estimated cost exceeds buying power — Alpaca may reject this ticket.")
+      );
+    }
+    if (isShortEntry) {
+      notes.push(
+        tx(
+          "confirm_short_note",
+          "This opens a short position: losses run without a ceiling until you buy the shares back, and no protective stop is attached. Close it from Positions."
+        )
       );
     }
     if (payload.reinvest) {
@@ -5456,6 +5826,7 @@ async function onManualPreview() {
 const SUBMIT_BUSY_LABELS = {
   buy: ["submitting_buy", "Submitting buy…"],
   sell: ["submitting_sell", "Submitting sell…"],
+  short: ["submitting_short", "Submitting short…"],
 };
 
 async function submitConfirmedOrder() {
@@ -5535,10 +5906,17 @@ async function submitConfirmedOrder() {
       const ordersToastLink = ` <a class="toast-link-btn" href="${pagePath("orders")}">${escapeHtml(
         tx("nav_orders", "Orders")
       )}</a>`;
+      const timeStr = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(r.submitted_at || r.ts || r.iso || Date.now()) : "";
+      const timePart = timeStr ? ` · ${timeStr}` : "";
+      const reasonLabel = tx("order_reason", "Reason");
+      const cleanReason = typeof cleanTradeReason === "function" ? cleanTradeReason(r.reason || payload.intent || "") : String(r.reason || payload.intent || "").trim();
+      const reasonPart = cleanReason ? ` · ${reasonLabel}: ${cleanReason}` : "";
       showToast(
         tx("order_submitted_toast", "{side} submitted", {
           side: String(r.side || payload.side).toUpperCase(),
         }) +
+          timePart +
+          reasonPart +
           (r.order_id ? ` · ${String(r.order_id).slice(0, 8)}…` : "") +
           (r.stop_loss?.stop_price != null
             ? ` · ${tx("stop_price", "Stop")} ${stockPrice(r.stop_loss.stop_price)}`

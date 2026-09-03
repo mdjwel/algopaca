@@ -437,6 +437,23 @@ function markPriceMarkup(order) {
   )}</div>${changeBit}`;
 }
 
+function orderPnlMarkup(order) {
+  const fillPx = Number(order.filled_avg_price);
+  const markPx = Number(order.mark_price);
+  const filledQty = Number(order.filled_qty || 0);
+  if (!Number.isFinite(fillPx) || fillPx <= 0 || !Number.isFinite(markPx) || markPx <= 0 || filledQty <= 0) {
+    return "";
+  }
+  const isSell = String(order.side || "").toLowerCase() === "sell";
+  const diff = isSell ? (fillPx - markPx) : (markPx - fillPx);
+  const pct = (diff / fillPx) * 100;
+  const amt = diff * filledQty;
+  const tone = pct > 0 ? "pos" : pct < 0 ? "neg" : "";
+  const sign = pct > 0 ? "+" : "";
+  const title = `P/L: ${sign}$${Math.abs(amt).toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+  return `<span class="ord-pnl-pill ${tone}" title="${escapeHtml(title)}">${sign}$${Math.abs(amt).toFixed(2)} <small>(${sign}${pct.toFixed(1)}%)</small></span>`;
+}
+
 function orderIsCanceling(order) {
   return (
     ordCancelingIds.has(String(order?.id || "")) ||
@@ -820,7 +837,7 @@ function editOrderTitle(order, locked) {
   );
 }
 
-function renderOrderRow(order) {
+function renderOrderRow(order, isLatest = false) {
   const side = String(order.side || "").toLowerCase();
   const qty = qtyText(order);
   const prices = orderPriceText(order);
@@ -833,7 +850,7 @@ function renderOrderRow(order) {
   const selected = ordSelectedIds.has(String(order.id || ""));
   return `<tr class="pos-table-row${canceling ? " is-canceling" : ""}${
     selected ? " is-selected" : ""
-  }" data-order-id="${escapeHtml(order.id || "")}" data-side="${escapeHtml(side)}">
+  }${isLatest ? " is-latest" : ""}" data-order-id="${escapeHtml(order.id || "")}" data-side="${escapeHtml(side)}">
     <td class="pos-cell-check">${orderCheckboxMarkup(order)}</td>
     <td>
       <div class="ord-sym-cell">
@@ -864,6 +881,7 @@ function renderOrderRow(order) {
     <td class="pos-cell-price pos-num mono">
       <div class="ord-price-stack">
         ${markPriceMarkup(order)}
+        ${orderPnlMarkup(order)}
         ${triggerDistanceMarkup(order)}
       </div>
     </td>
@@ -875,7 +893,7 @@ function renderOrderRow(order) {
   </tr>${renderOrderPlanRows(order)}`;
 }
 
-function renderOrderCard(order) {
+function renderOrderCard(order, isLatest = false) {
   const side = String(order.side || "").toLowerCase();
   const qty = qtyText(order);
   const prices = orderPriceText(order);
@@ -893,7 +911,7 @@ function renderOrderCard(order) {
 
   return `<div class="pos-card${canceling ? " is-canceling" : ""}${
     selected ? " is-selected" : ""
-  }" role="listitem" data-order-id="${escapeHtml(order.id || "")}">
+  }${isLatest ? " is-latest" : ""}" role="listitem" data-order-id="${escapeHtml(order.id || "")}">
     <div class="pos-card-head">
       <div class="pos-card-sym-wrap">
         ${orderCheckboxMarkup(order)}
@@ -929,6 +947,7 @@ function renderOrderCard(order) {
         <span>${escapeHtml(tx("current_price_label", "Current Price"))}</span>
         <div class="pos-kpi-valrow">
           ${markPriceMarkup(order)}
+          ${orderPnlMarkup(order)}
           ${triggerDistanceMarkup(order)}
         </div>
       </div>
@@ -2065,9 +2084,9 @@ function renderOrdersPage() {
     count.hidden = false;
   }
   const tbody = $("ord-table-body");
-  if (tbody) tbody.innerHTML = rows.map(renderOrderRow).join("");
+  if (tbody) tbody.innerHTML = rows.map((order, idx) => renderOrderRow(order, idx === 0)).join("");
   const cards = $("ord-cards-list");
-  if (cards) cards.innerHTML = rows.map(renderOrderCard).join("");
+  if (cards) cards.innerHTML = rows.map((order, idx) => renderOrderCard(order, idx === 0)).join("");
   renderEmpty(rows);
   renderDeskQueues();
 

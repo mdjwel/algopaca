@@ -132,6 +132,7 @@ function ensureNiceSelect(el) {
 }
 
 /** Global State */
+let latestState = null;
 let lastDeskSettings = null;
 let lastAccount = null;
 let lastAlpacaStatus = null;
@@ -491,6 +492,58 @@ function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hou
   }
 }
 
+/** Formats an order execution timestamp in desk time (12h/24h) with seconds. */
+function formatTradeExecutionTime(rawTime) {
+  if (!rawTime) return "";
+  if (typeof rawTime === "string" && /^\d{1,2}:\d{2}(:\d{2})?$/.test(rawTime.trim())) {
+    if (typeof isDeskHour12 === "function" && isDeskHour12()) {
+      const parts = rawTime.trim().split(":");
+      let h = parseInt(parts[0], 10);
+      const m = parts[1];
+      const s = parts[2] ? `:${parts[2]}` : "";
+      const ampm = h >= 12 ? "PM" : "AM";
+      h = h % 12 || 12;
+      return `${String(h).padStart(2, "0")}:${m}${s} ${ampm}`;
+    }
+    return rawTime.trim();
+  }
+  if (typeof formatDeskTime === "function") {
+    try {
+      const formatted = formatDeskTime(rawTime, { withSeconds: true });
+      if (formatted) return formatted;
+    } catch (_) {}
+  }
+  try {
+    const t = typeof rawTime === "number" ? rawTime : Date.parse(rawTime);
+    if (Number.isFinite(t)) {
+      const d = new Date(t);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+  } catch (_) {}
+  return String(rawTime);
+}
+
+/** Sanitizes and formats an order execution thesis or trigger reason for toast display. */
+function cleanTradeReason(raw) {
+  if (!raw || typeof raw !== "string") return "";
+  let text = raw.trim();
+  text = text.replace(/^(?:reason|thesis|why|note)\s*:\s*/i, "");
+  if (text.includes("\n")) {
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+    text = lines[0] || text;
+  }
+  text = text.replace(/^[|·•-]\s*/, "").replace(/\s*[|·•-]$/, "");
+  if (text.length > 95) {
+    const periodIdx = text.indexOf(". ", 30);
+    if (periodIdx !== -1 && periodIdx <= 95) {
+      text = text.slice(0, periodIdx);
+    } else {
+      text = text.slice(0, 92).trim() + "…";
+    }
+  }
+  return text.trim();
+}
+
 function formatAge(seconds) {
   if (seconds < 90) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
@@ -692,34 +745,114 @@ async function api(path, options = {}) {
 
 
 /** Account & Masthead State */
+function renderMastheadAccount(account) {
+  const equityEl = $("masthead-acct-equity");
+  const cashEl = $("masthead-acct-cash");
+  const bpEl = $("masthead-acct-bp");
+  const badgeEl = $("masthead-acct-badge");
+  const plEl = $("masthead-acct-pl");
+  const statusEl = $("masthead-acct-status");
+  const dotEl = $("masthead-acct-status-dot");
+  const connectRow = $("masthead-acct-connect-row");
+
+  if (!equityEl) return;
+
+  if (!account) {
+    equityEl.textContent = "—";
+    if (cashEl) cashEl.textContent = "—";
+    if (bpEl) bpEl.textContent = "—";
+    if (badgeEl) {
+      badgeEl.textContent = "OFFLINE";
+      badgeEl.className = "masthead-account-badge is-offline";
+    }
+    if (plEl) plEl.hidden = true;
+    if (statusEl) {
+      statusEl.textContent = typeof tx === "function" ? tx("not_connected", "Not connected") : "Not connected";
+    }
+    if (dotEl) {
+      dotEl.className = "masthead-account-status-dot is-offline";
+    }
+    if (connectRow) connectRow.hidden = false;
+    return;
+  }
+
+  if (connectRow) connectRow.hidden = true;
+  equityEl.textContent = money(account.equity);
+  if (cashEl) cashEl.textContent = money(account.cash);
+  if (bpEl) bpEl.textContent = money(account.buying_power);
+
+  const isLive = account.paper === false || account.trading_mode === "live";
+  if (badgeEl) {
+    badgeEl.textContent = isLive ? "LIVE" : "PAPER";
+    badgeEl.className = `masthead-account-badge ${isLive ? "is-live" : "is-paper"}`;
+  }
+
+  if (plEl) {
+    let pct = account.day_pl_pct != null && !Number.isNaN(Number(account.day_pl_pct)) ? Number(account.day_pl_pct) : null;
+    let diff = null;
+    if (pct == null && Number(account.equity) > 0 && Number(account.last_equity) > 0) {
+      diff = Number(account.equity) - Number(account.last_equity);
+      pct = (diff / Number(account.last_equity)) * 100;
+    } else if (pct != null && Number(account.equity) > 0 && Number(account.last_equity) > 0) {
+      diff = Number(account.equity) - Number(account.last_equity);
+    }
+    if (pct != null && Number.isFinite(pct)) {
+      const sign = pct > 0 ? "+" : "";
+      const diffStr = diff != null && Math.abs(diff) >= 0.01 ? `${sign}$${Math.abs(diff).toFixed(2)} ` : "";
+      plEl.textContent = `${diffStr}(${sign}${pct.toFixed(2)}%)`.trim();
+      plEl.className = `masthead-account-pl-pill ${pct >= 0 ? "is-positive" : "is-negative"}`;
+      plEl.title = `Day P/L: ${sign}${pct.toFixed(2)}%`;
+      plEl.hidden = false;
+    } else {
+      plEl.hidden = true;
+    }
+  }
+
+  if (statusEl) {
+    const rawStatus = String(account.status || "ACTIVE").toUpperCase();
+    statusEl.textContent = `${rawStatus} · ${isLive ? "Live" : "Paper"}`;
+  }
+
+  if (dotEl) {
+    const isOk = String(account.status || "").toLowerCase() === "active";
+    dotEl.className = `masthead-account-status-dot ${isOk ? "is-active" : "is-offline"}`;
+  }
+}
+window.renderMastheadAccount = renderMastheadAccount;
+
 function applyAccount(account) {
   lastAccount = account || null;
+
+  // Safe fallback if legacy account elements exist on any page
   const statusEl = $("acct-status");
-  if (!statusEl) {
-    syncConfigConnectionSafe();
-    return;
+  if (statusEl) {
+    if (!account) {
+      statusEl.textContent = typeof tx === "function" ? tx("not_connected", "Not connected") : "Not connected";
+      if ($("acct-equity")) $("acct-equity").textContent = "—";
+      if ($("acct-cash")) $("acct-cash").textContent = "—";
+      if ($("acct-bp")) $("acct-bp").textContent = "—";
+    } else {
+      statusEl.textContent = `${account.status} · ${
+        account.paper === false || account.trading_mode === "live" ? "live" : "paper"
+      }`;
+      if ($("acct-equity")) $("acct-equity").textContent = money(account.equity);
+      if ($("acct-cash")) $("acct-cash").textContent = money(account.cash);
+      if ($("acct-bp")) $("acct-bp").textContent = money(account.buying_power);
+    }
   }
-  if (!account) {
-    statusEl.textContent = "Not connected";
-    $("acct-equity").textContent = "—";
-    $("acct-cash").textContent = "—";
-    $("acct-bp").textContent = "—";
-    syncConfigConnectionSafe();
-    return;
+
+  // Update account balance in masthead user menu
+  renderMastheadAccount(account);
+
+  if (account) {
+    // The account payload knows the environment. Keep the banner in sync with
+    // whatever the last status poll reported for live_authorized.
+    applyTradingEnv({
+      mode: account.trading_mode || (account.paper === false ? "live" : "paper"),
+      paper: account.paper !== false,
+      live_authorized: !!(lastAlpacaStatus || {}).live_authorized,
+    });
   }
-  statusEl.textContent = `${account.status} · ${
-    account.paper === false || account.trading_mode === "live" ? "live" : "paper"
-  }`;
-  $("acct-equity").textContent = money(account.equity);
-  $("acct-cash").textContent = money(account.cash);
-  $("acct-bp").textContent = money(account.buying_power);
-  // The account payload knows the environment. Keep the banner in sync with
-  // whatever the last status poll reported for live_authorized.
-  applyTradingEnv({
-    mode: account.trading_mode || (account.paper === false ? "live" : "paper"),
-    paper: account.paper !== false,
-    live_authorized: !!(lastAlpacaStatus || {}).live_authorized,
-  });
   syncConfigConnectionSafe();
 }
 
@@ -744,6 +877,7 @@ async function refreshStatus({ forceSettings = false } = {}) {
   const state = await api("/api/status");
   if (gen !== statusGen) return state;
 
+  latestState = state;
   if (state.account) {
     applyAccount(state.account);
   }
@@ -1585,6 +1719,51 @@ async function initUserAuthStatus() {
             ${user.email ? `<div class="masthead-info-email">${escapeHtml(user.email)}</div>` : ''}
             <span class="masthead-info-role ${isAdmin ? 'is-admin-role' : ''}">${role}</span>
           </div>
+          <div class="masthead-account-section" id="masthead-account-section">
+            <div class="masthead-account-header">
+              <div class="masthead-account-title-wrap">
+                <span class="masthead-account-label" data-i18n="account">Account</span>
+                <span class="masthead-account-badge is-paper" id="masthead-acct-badge">PAPER</span>
+              </div>
+              <button type="button" class="masthead-account-refresh" id="btn-masthead-refresh-account" title="Refresh balance" data-i18n-title="refresh" aria-label="Refresh balance">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="masthead-account-primary">
+              <div class="masthead-account-equity-label" data-i18n="equity">Equity</div>
+              <div class="masthead-account-equity-val-row">
+                <span class="masthead-account-equity-val" id="masthead-acct-equity">—</span>
+                <span class="masthead-account-pl-pill" id="masthead-acct-pl" hidden>+0.00%</span>
+              </div>
+            </div>
+
+            <div class="masthead-account-grid">
+              <div class="masthead-account-metric">
+                <span class="masthead-account-metric-label" data-i18n="cash">Cash</span>
+                <span class="masthead-account-metric-val" id="masthead-acct-cash">—</span>
+              </div>
+              <div class="masthead-account-metric">
+                <span class="masthead-account-metric-label" data-i18n="buying_power">Buying power</span>
+                <span class="masthead-account-metric-val" id="masthead-acct-bp">—</span>
+              </div>
+            </div>
+
+            <div class="masthead-account-status-line" id="masthead-acct-status-line">
+              <span class="masthead-account-status-dot" id="masthead-acct-status-dot"></span>
+              <span class="masthead-account-status-text" id="masthead-acct-status">Connecting…</span>
+            </div>
+
+            <div class="masthead-account-connect-row" id="masthead-acct-connect-row" hidden>
+              <a href="/api-keys" class="masthead-account-connect-link">
+                <span data-i18n="configure_alpaca_keys">Configure Alpaca Keys</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </a>
+            </div>
+          </div>
+          <div class="masthead-menu-divider" role="separator"></div>
           <a href="/setup-wizard" data-page="setup-wizard" class="masthead-menu-item ${currentPath === "/setup-wizard" ? "is-active" : ""}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -1764,6 +1943,26 @@ async function initUserAuthStatus() {
     window.addEventListener("themechange", syncMastheadThemeButtons);
 
     logoutBtn?.addEventListener("click", handleUserLogout);
+
+    const refreshAccountBtn = widget.querySelector("#btn-masthead-refresh-account");
+    refreshAccountBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (refreshAccountBtn.classList.contains("is-spinning")) return;
+      refreshAccountBtn.classList.add("is-spinning");
+      try {
+        const data = await api("/api/account", { method: "POST", body: "{}" });
+        if (data && data.account) {
+          applyAccount(data.account);
+          if (typeof showToast === "function") showToast("Account refreshed.", "ok");
+        }
+      } catch (err) {
+        if (typeof showToast === "function") showToast(err.message || "Failed to refresh account.", "error");
+      } finally {
+        setTimeout(() => {
+          refreshAccountBtn.classList.remove("is-spinning");
+        }, 500);
+      }
+    });
   } else {
     const currentPath = window.location.pathname + window.location.search;
     const nextParam =
@@ -1781,6 +1980,13 @@ async function initUserAuthStatus() {
   mastheadRight.appendChild(widget);
   if (typeof i18n !== "undefined" && i18n.translateDOM) {
     i18n.translateDOM(widget);
+  }
+
+  if (user) {
+    renderMastheadAccount(lastAccount);
+    if (!lastAccount) {
+      refreshStatus().catch(() => {});
+    }
   }
 
   // Synchronize Mobile Drawer Profile State

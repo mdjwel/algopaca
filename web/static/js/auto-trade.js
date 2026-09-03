@@ -69,6 +69,7 @@ let formDirtyManual = false;
 const seenTradeOrderIds = new Set();
 let tradeNotifyPrimed = false;
 let lastTradeNotified = false;
+let latestSubmittedOrderId = null;
 
 const FALLBACK_OPENAI_MODEL = "gpt-5.6-luna";
 const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -234,12 +235,44 @@ function collectExecutedTrades(state) {
     const signal = String(item.signal || item.side || "").toLowerCase();
     if (signal !== "buy" && signal !== "sell") return;
     seen.add(key);
+
+    const histMatch = (state?.result_history || []).find((h) => String(h?.order_id) === key);
+    const eventMatch = (state?.desk_events || []).find((e) => String(e?.order_id) === key);
+
+    const rawTime =
+      item.submitted_at ||
+      item.ts ||
+      item.iso ||
+      item.time ||
+      item.created_at ||
+      histMatch?.submitted_at ||
+      histMatch?.ts ||
+      histMatch?.iso ||
+      eventMatch?.ts ||
+      eventMatch?.iso ||
+      new Date().toISOString();
+
+    const rawReason =
+      item.reason ||
+      item.thesis ||
+      item.context_summary ||
+      histMatch?.reason ||
+      histMatch?.thesis ||
+      histMatch?.context_summary ||
+      eventMatch?.detail ||
+      eventMatch?.reason ||
+      item.intent ||
+      "";
+
     items.push({
       order_id: key,
-      symbol: item.symbol,
+      symbol: item.symbol || histMatch?.symbol || "",
       signal,
-      qty: item.order_qty ?? item.qty,
-      stop: item.stop_loss,
+      qty: item.order_qty ?? item.qty ?? histMatch?.order_qty,
+      stop: item.stop_loss ?? histMatch?.stop_loss,
+      time: rawTime,
+      reason: typeof cleanTradeReason === "function" ? cleanTradeReason(rawReason) : String(rawReason || "").trim(),
+      price: item.price ?? histMatch?.price,
     });
   };
   visit(state?.last_result);
@@ -263,10 +296,20 @@ function formatTradeToast(trades) {
       trade.stop?.stop_price != null
         ? ` · stop $${Number(trade.stop.stop_price).toFixed(2)}`
         : "";
-    return `${formatTradeLine(trade)} submitted${oid}${stop}`;
+    const timeStr = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(trade.time) : "";
+    const timePart = timeStr ? ` · ${timeStr}` : "";
+    const reasonLabel = tx("order_reason", "Reason");
+    const reasonPart = trade.reason ? ` · ${reasonLabel}: ${trade.reason}` : "";
+    return `${formatTradeLine(trade)} submitted${timePart}${reasonPart}${oid}${stop}`;
   }
-  return `${trades.length} paper orders submitted: ${trades
-    .map(formatTradeLine)
+  const sampleTime = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(trades[0]?.time) : "";
+  const timePart = sampleTime ? ` (${sampleTime})` : "";
+  return `${trades.length} paper orders submitted${timePart}: ${trades
+    .map((t) => {
+      const line = formatTradeLine(t);
+      const reasonPart = t.reason ? ` [${t.reason}]` : "";
+      return `${line}${reasonPart}`;
+    })
     .join(" · ")}`;
 }
 
@@ -276,31 +319,49 @@ function notifyExecutedTrades(state) {
   const trades = collectExecutedTrades(state);
   if (!tradeNotifyPrimed) {
     trades.forEach((trade) => seenTradeOrderIds.add(trade.order_id));
+    if (trades.length > 0) {
+      latestSubmittedOrderId = trades[0]?.order_id || null;
+    }
     tradeNotifyPrimed = true;
     return false;
   }
   const fresh = trades.filter((trade) => !seenTradeOrderIds.has(trade.order_id));
   fresh.forEach((trade) => seenTradeOrderIds.add(trade.order_id));
   if (fresh.length > 0) {
-    showToast(
-      formatTradeToast(fresh),
-      "ok",
-      ` <a href="${historyHref({ symbol: fresh[0]?.symbol || "" })}">${escapeHtml(tx("view_in_history", "View in History"))}</a>`
-    );
+    // Highlight the newest order directly in the order list instead of popping up an on-screen toast
+    latestSubmittedOrderId = fresh[0]?.order_id || null;
     lastTradeNotified = true;
 
+    // Immediately re-render the loop orders panel with the highlight
+    if (state) {
+      renderCurrentLoopOrders(state);
+    }
+
+    if (latestSubmittedOrderId) {
+      setTimeout(() => {
+        const orderEl = $(`loop-order-${latestSubmittedOrderId}`);
+        if (orderEl) {
+          orderEl.classList.add("is-fresh-submission");
+          orderEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }, 50);
+    }
+
     // Dispatch desktop browser push notification if enabled
-    const notifyBrowser = $("field-notify-browser") ? !!$("field-notify-browser").checked : true;
+    const notifyBrowser = $("field-notify-browser") ? !$("field-notify-browser").checked : true;
     if (notifyBrowser) {
       fresh.forEach((trade) => {
         const sym = trade.symbol || "";
         const act = (trade.action || trade.side || trade.signal || "ORDER").toUpperCase();
         const qty = trade.qty || trade.order_qty || "";
         const priceStr = trade.price ? ` @ $${Number(trade.price).toFixed(2)}` : "";
+        const timeStr = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(trade.time) : "";
+        const timePart = timeStr ? ` at ${timeStr}` : "";
+        const reasonPart = trade.reason ? `\nReason: ${trade.reason}` : "";
         sendBrowserPushNotification(
           `AlgoPaca Trade Executed: ${act} ${qty} ${sym}${priceStr}`,
           {
-            body: `Order ${trade.order_id || ""} submitted to broker successfully.`,
+            body: `Order ${trade.order_id || ""} submitted to broker successfully${timePart}.${reasonPart}`,
             tag: `trade-${trade.order_id || sym}`,
             data: { url: "/orders" },
           }
@@ -1291,6 +1352,12 @@ function applyPairPreset(presetId) {
     if (form.pair_lookback) form.pair_lookback.value = preset.lookback;
     if (form.pair_impulse_pct) form.pair_impulse_pct.value = preset.impulse_pct;
     if (form.pair_weak_side) form.pair_weak_side.value = preset.weak_side || "LONG";
+    if (preset.long_symbol && preset.short_symbol) {
+      const symInput = form.elements?.symbols || form.elements?.symbol;
+      if (symInput) {
+        symInput.value = `${preset.long_symbol}, ${preset.short_symbol}`;
+      }
+    }
   }
   syncPairPresetHint();
   applyingPreset = false;
@@ -1509,7 +1576,18 @@ function syncSmaHint() {
 /* ── Custom Engine Management ────────────────────────────────── */
 
 function findCustomEngine(id) {
-  return customEngines.find((e) => e.id === id) || null;
+  if (!id) return null;
+  const cleanId = String(id).trim();
+  const direct = customEngines.find((e) => String(e.id).trim() === cleanId);
+  if (direct) return direct;
+  const targetBlueprint = customEngines.find((e) => e.is_blueprint && String(e.id).trim() === cleanId);
+  if (targetBlueprint) {
+    const userMatch = customEngines.find(
+      (e) => !e.is_blueprint && (e.name || "").trim().toLowerCase() === (targetBlueprint.name || "").trim().toLowerCase()
+    );
+    if (userMatch) return userMatch;
+  }
+  return null;
 }
 
 function populateCustomEngineSelect(engines) {
@@ -1518,16 +1596,18 @@ function populateCustomEngineSelect(engines) {
   const list = Array.isArray(engines) ? engines : [];
   const current = activeCustomEngineId || select.value || "";
 
-  const blueprints = list.filter((e) => e.is_blueprint);
   const userEngines = list.filter((e) => !e.is_blueprint);
+  const userEngineNames = new Set(userEngines.map((e) => (e.name || "").trim().toLowerCase()));
+  const blueprints = list.filter((e) => e.is_blueprint && !userEngineNames.has((e.name || "").trim().toLowerCase()));
 
-  let html = `<option value="">${escapeHtml(tx("select_custom_engine", "— Standard Engines / Select Custom —"))}</option>`;
+  let html = `<option value=""${!current ? ' selected="selected"' : ""}>${escapeHtml(tx("select_custom_engine", "— Standard Engines / Select Custom —"))}</option>`;
 
   if (userEngines.length > 0) {
     html += `<optgroup label="${escapeHtml(tx("my_custom_engines", "My Custom Engines"))}">`;
     userEngines.forEach((e) => {
       const type = (e.base_engine || "AI").toUpperCase();
-      html += `<option value="${escapeHtml(e.id)}" data-display="${escapeHtml(e.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(e.name)}</option>`;
+      const isSel = String(e.id) === String(current);
+      html += `<option value="${escapeHtml(e.id)}"${isSel ? ' selected="selected"' : ""} data-display="${escapeHtml(e.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(e.name)}</option>`;
     });
     html += `</optgroup>`;
   }
@@ -1536,7 +1616,8 @@ function populateCustomEngineSelect(engines) {
     html += `<optgroup label="${escapeHtml(tx("starter_blueprints", "Starter Blueprints"))}">`;
     blueprints.forEach((b) => {
       const type = (b.base_engine || "AI").toUpperCase();
-      html += `<option value="${escapeHtml(b.id)}" data-display="${escapeHtml(b.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(b.name)}</option>`;
+      const isSel = String(b.id) === String(current);
+      html += `<option value="${escapeHtml(b.id)}"${isSel ? ' selected="selected"' : ""} data-display="${escapeHtml(b.name)}" data-extra="<span class='nice-tag tag-${escapeHtml(type.toLowerCase())}'>${escapeHtml(type)}</span>">${escapeHtml(b.name)}</option>`;
     });
     html += `</optgroup>`;
   }
@@ -1701,10 +1782,14 @@ function applyCustomEngine(engineId, { syncPersist = true } = {}) {
   if (banner && bannerName && bannerType) {
     bannerName.textContent = engine.name;
     bannerType.textContent = (engine.base_engine || "AI").toUpperCase();
+    banner.removeAttribute("hidden");
     banner.hidden = false;
   }
   const modifiedBadge = $("active-custom-engine-modified");
-  if (modifiedBadge) modifiedBadge.hidden = true;
+  if (modifiedBadge) {
+    modifiedBadge.setAttribute("hidden", "");
+    modifiedBadge.hidden = true;
+  }
 
   applyingPreset = false;
 
@@ -1713,6 +1798,7 @@ function applyCustomEngine(engineId, { syncPersist = true } = {}) {
   syncPresetHint();
   syncWatchlistComposer();
   syncRunZone();
+  syncCustomEngineButtonUi();
 
   if (syncPersist) {
     formDirty = true;
@@ -1726,9 +1812,15 @@ function detachCustomEngine({ syncPersist = true } = {}) {
   activeCustomEngineId = null;
   activeCustomEngine = null;
   const banner = $("active-custom-engine-pill");
-  if (banner) banner.hidden = true;
+  if (banner) {
+    banner.setAttribute("hidden", "");
+    banner.hidden = true;
+  }
   const modifiedBadge = $("active-custom-engine-modified");
-  if (modifiedBadge) modifiedBadge.hidden = true;
+  if (modifiedBadge) {
+    modifiedBadge.setAttribute("hidden", "");
+    modifiedBadge.hidden = true;
+  }
   const select = $("field-custom-engine-select");
   if (select) {
     select.value = "";
@@ -1737,6 +1829,33 @@ function detachCustomEngine({ syncPersist = true } = {}) {
   if (syncPersist) {
     formDirty = true;
     schedulePersistSettings();
+  }
+  syncCustomEngineButtonUi();
+}
+
+function syncCustomEngineButtonUi() {
+  const btn = $("btn-save-current-as-custom");
+  if (!btn) return;
+  const current = (activeCustomEngineId ? findCustomEngine(activeCustomEngineId) : null) || activeCustomEngine;
+
+  if (current) {
+    // The active-engine banner already exposes its own "Save Changes" button —
+    // hide this one instead of showing a duplicate.
+    btn.setAttribute("hidden", "");
+    btn.hidden = true;
+  } else {
+    btn.removeAttribute("hidden");
+    btn.hidden = false;
+    const textSpan = $("btn-save-current-as-custom-text") || btn.querySelector("span");
+    if (textSpan) {
+      textSpan.textContent = tx("save_as_engine", "Save Engine");
+      textSpan.setAttribute("data-i18n", "save_as_engine");
+    }
+    const saveTitle = tx("btn_save_as_custom", "Save current desk configuration as a custom engine");
+    btn.title = saveTitle;
+    btn.setAttribute("aria-label", saveTitle);
+    btn.setAttribute("data-i18n-title", "btn_save_as_custom");
+    btn.setAttribute("data-i18n-aria-label", "btn_save_as_custom");
   }
 }
 
@@ -1827,6 +1946,10 @@ async function handleSaveDeskAsCustomEngine() {
     choices: deskP,
   };
 
+  if (!inlineCeIsNewCopy && activeCustomEngine) {
+    payload.id = activeCustomEngine.id;
+  }
+
   try {
     setBusy(true, tx("saving_custom_engine", "Saving custom trading engine…"));
     const res = await api("/api/custom-engines", {
@@ -1856,10 +1979,13 @@ async function handleSaveDeskAsCustomEngine() {
 }
 
 async function handleUpdateActiveCustomEngine() {
-  if (!activeCustomEngineId) return;
+  const current = (activeCustomEngineId ? findCustomEngine(activeCustomEngineId) : null) || activeCustomEngine;
+  if (!current) {
+    openInlineSaveEngineDrawer({ isNewCopy: false });
+    return;
+  }
 
-  const current = findCustomEngine(activeCustomEngineId);
-  if (!current) return;
+  closeInlineSaveEngineDrawer();
 
   const deskP = formPayload();
   const payload = {
@@ -1891,6 +2017,7 @@ async function handleUpdateActiveCustomEngine() {
 
     closeInlineSaveEngineDrawer();
     await refreshCustomEngines();
+    syncCustomEngineButtonUi();
     schedulePersistSettings();
     showToast(tx("custom_engine_updated", `Custom engine '${updated.name}' updated with current desk settings.`, { name: updated.name }), "ok");
   } catch (err) {
@@ -1906,6 +2033,14 @@ async function refreshCustomEngines() {
     const res = await api("/api/custom-engines");
     if (res.ok && Array.isArray(res.engines)) {
       customEngines = res.engines;
+      const targetId =
+        activeCustomEngineId ||
+        (typeof lastDeskSettings !== "undefined" && lastDeskSettings?.custom_engine_id) ||
+        (typeof latestState !== "undefined" && latestState?.settings?.custom_engine_id) ||
+        "";
+      if (targetId) {
+        activeCustomEngineId = targetId;
+      }
       populateCustomEngineSelect(customEngines);
       if (activeCustomEngineId) {
         const eng = findCustomEngine(activeCustomEngineId);
@@ -1917,10 +2052,17 @@ async function refreshCustomEngines() {
           if (banner && bannerName && bannerType) {
             bannerName.textContent = eng.name;
             bannerType.textContent = (eng.base_engine || "AI").toUpperCase();
+            banner.removeAttribute("hidden");
             banner.hidden = false;
+          }
+          const select = $("field-custom-engine-select");
+          if (select && select.value !== eng.id) {
+            select.value = eng.id;
+            refreshNiceSelect(select);
           }
         }
       }
+      syncCustomEngineButtonUi();
     }
   } catch (err) {
     console.error("Could not refresh custom engines:", err);
@@ -2120,6 +2262,7 @@ function applySettings(settings, { force = false } = {}) {
       if (banner && bannerName && bannerType) {
         bannerName.textContent = eng.name;
         bannerType.textContent = (eng.base_engine || "AI").toUpperCase();
+        banner.removeAttribute("hidden");
         banner.hidden = false;
       }
       const select = $("field-custom-engine-select");
@@ -2129,8 +2272,11 @@ function applySettings(settings, { force = false } = {}) {
       }
     }
   } else if (settings.custom_engine_id === "") {
-    detachCustomEngine({ syncPersist: false });
+    if (activeCustomEngineId) {
+      detachCustomEngine({ syncPersist: false });
+    }
   }
+  syncCustomEngineButtonUi();
 
   formDirty = false;
   lastPrimarySymbol = String(settings.symbol || "AAPL").trim().toUpperCase();
@@ -2603,13 +2749,21 @@ function renderWatchPrices() {
 /** Pull live marks for the visible watchlist, throttled to the server cache. */
 async function refreshWatchQuotes({ force = false } = {}) {
   const box = $("ai-watchlist");
-  if (!box || box.hidden) return;
+  const card = $("loop-orders-card");
+  const hasOrders = card && !card.hidden;
+  if ((!box || box.hidden) && !hasOrders) return;
   if (watchQuotesInFlight) return;
   if (!force && Date.now() - watchQuotesFetchedAt < WATCH_QUOTE_INTERVAL_MS) return;
 
-  const symbols = [...box.querySelectorAll(".watch-row[data-symbol]")]
-    .map((row) => row.dataset.symbol)
-    .filter(Boolean);
+  const boxSymbols = box && !box.hidden
+    ? [...box.querySelectorAll(".watch-row[data-symbol]")].map((row) => row.dataset.symbol)
+    : [];
+  const loopSymbols = hasOrders && latestState
+    ? getCurrentLoopOrders(latestState).map((o) => o.symbol)
+    : [];
+  const symbols = Array.from(
+    new Set([...boxSymbols, ...loopSymbols].filter(Boolean).map((s) => String(s).toUpperCase()))
+  );
   if (!symbols.length) return;
 
   watchQuotesInFlight = true;
@@ -2619,6 +2773,9 @@ async function refreshWatchQuotes({ force = false } = {}) {
     watchQuotesFetchedAt = Date.now();
     renderWatchPrices();
     syncFeaturedWall();
+    if (hasOrders && latestState) {
+      renderCurrentLoopOrders(latestState);
+    }
   } catch {
     // A missed poll just leaves the last mark on screen — never toast for it.
   } finally {
@@ -2708,6 +2865,9 @@ function applyLoop(running, meta = {}) {
 }
 
 function render(state, { forceSettings = false } = {}) {
+  if (typeof latestState !== "undefined") {
+    latestState = state;
+  }
   if (state.ai_models) {
     populateModelOptions(state.ai_models);
   }
@@ -2744,6 +2904,7 @@ function render(state, { forceSettings = false } = {}) {
     : [];
   lastDeskQuote = state.quote || null;
   renderPendingApprovals(state.pending_approvals);
+  renderCurrentLoopOrders(state);
   // Desk-session history renders on the History page.
   if (typeof applyHistory === "function") {
     applyHistory(state.loop_history, state.result_history);
@@ -2812,33 +2973,6 @@ function render(state, { forceSettings = false } = {}) {
 }
 
 
-
-async function onRefresh() {
-  const localError = validateLocal();
-  if (localError) {
-    setFormError(localError);
-    showToast(localError, "error");
-    return;
-  }
-  setFormError(null);
-  try {
-    setBusy(true, "Refreshing account…");
-    await api("/api/settings", {
-      method: "POST",
-      body: JSON.stringify(formPayload()),
-    });
-    formDirty = false;
-    const data = await api("/api/account", { method: "POST", body: "{}" });
-    applyAccount(data.account);
-    await refreshStatus({ forceSettings: true });
-    showToast("Account refreshed.", "ok");
-  } catch (err) {
-    showToast(err.message, "error");
-  } finally {
-    setBusy(false);
-    await refreshStatus();
-  }
-}
 
 async function onOnce() {
   const localError = validateReadyToRun();
@@ -3043,6 +3177,7 @@ function schedulePersistSettings() {
 
 if (form) {
   form.addEventListener("input", (ev) => {
+    if (ev.target?.id === "field-custom-engine-select") return;
     formDirty = true;
     if (activeCustomEngineId) {
       const mod = $("active-custom-engine-modified");
@@ -3075,6 +3210,7 @@ if (form) {
     schedulePersistSettings();
   });
   form.addEventListener("change", (ev) => {
+    if (ev.target?.id === "field-custom-engine-select") return;
     formDirty = true;
     if (activeCustomEngineId) {
       const mod = $("active-custom-engine-modified");
@@ -3135,7 +3271,6 @@ if (form) {
 }
 
 
-$("btn-refresh")?.addEventListener("click", onRefresh);
 $("btn-once")?.addEventListener("click", onOnce);
 $("btn-loop")?.addEventListener("click", onLoopToggle);
 $("btn-include-featured")?.addEventListener("click", includeFeaturedInWatchlist);
@@ -3207,6 +3342,290 @@ function sendBrowserPushNotification(title, options = {}) {
   } catch (e) {
     console.warn("Browser notification error:", e);
   }
+}
+
+function getCurrentLoopOrders(state) {
+  if (!state) return [];
+  const isRunning = !!state.loop_running;
+  const activeSession =
+    state.active_loop_session ||
+    (Array.isArray(state.loop_history) && state.loop_history[0]) ||
+    null;
+
+  const orders = [];
+  const seen = new Set();
+
+  const addOrder = (entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const oid = entry.order_id;
+    if (!oid) return;
+    const key = String(oid);
+    if (seen.has(key)) return;
+    const sig = String(entry.signal || entry.side || entry.action || "").toLowerCase();
+    if (sig !== "buy" && sig !== "sell" && sig !== "short" && sig !== "cover") return;
+    seen.add(key);
+    orders.push(entry);
+  };
+
+  if (activeSession && Array.isArray(activeSession.results)) {
+    activeSession.results.forEach(addOrder);
+  }
+
+  const loopId = activeSession?.id;
+  if (Array.isArray(state.result_history)) {
+    state.result_history
+      .filter((r) => r && ((loopId && r.loop_id === loopId) || (isRunning && r.via === "loop")))
+      .forEach(addOrder);
+  }
+
+  // Ensure the most recent order is always at index 0
+  orders.sort((a, b) => {
+    const timeA = new Date(a.ts || a.iso || a.time || a.submitted_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.ts || b.iso || b.time || b.submitted_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return orders;
+}
+
+let loopOrderPositions = {};
+let loopPositionsFetchInFlight = false;
+let lastLoopPositionsFetchTime = 0;
+
+async function refreshLoopOrderPositions(force = false) {
+  const now = Date.now();
+  if (!force && now - lastLoopPositionsFetchTime < 3500) return;
+  if (loopPositionsFetchInFlight) return;
+  loopPositionsFetchInFlight = true;
+  try {
+    const data = await api("/api/positions");
+    if (data && Array.isArray(data.positions)) {
+      const map = {};
+      data.positions.forEach((p) => {
+        const sym = String(p.symbol || "").toUpperCase();
+        if (sym) map[sym] = p;
+      });
+      loopOrderPositions = map;
+      lastLoopPositionsFetchTime = Date.now();
+      if (latestState) {
+        renderCurrentLoopOrders(latestState);
+      }
+    }
+  } catch (_) {
+    // Retain last known positions
+  } finally {
+    loopPositionsFetchInFlight = false;
+  }
+}
+
+function renderCurrentLoopOrders(state) {
+  const card = $("loop-orders-card");
+  const listEl = $("loop-orders-list");
+  const badgeEl = $("loop-orders-badge");
+  const statusEl = $("loop-orders-status");
+  const emptyEl = $("loop-orders-empty");
+  if (!card || !listEl) return;
+
+  const isRunning = !!state?.loop_running;
+  const allOrders = getCurrentLoopOrders(state);
+  const totalOrders = allOrders.length;
+  const hasHistory = Array.isArray(state?.loop_history) && state.loop_history.length > 0;
+
+  // If no loop is running and no loop orders exist, keep hidden
+  if (!isRunning && totalOrders === 0 && !hasHistory) {
+    card.hidden = true;
+    listEl.innerHTML = "";
+    if (badgeEl) badgeEl.textContent = "0";
+    return;
+  }
+
+  // Show the card
+  card.hidden = false;
+  if (badgeEl) badgeEl.textContent = String(totalOrders);
+
+  // Status pill
+  if (statusEl) {
+    statusEl.hidden = false;
+    if (isRunning) {
+      statusEl.className = "loop-orders-status-pill is-live";
+      statusEl.textContent = tx("loop_live", "Live Loop");
+    } else {
+      statusEl.className = "loop-orders-status-pill is-idle";
+      statusEl.textContent = tx("loop_idle", "Idle");
+    }
+  }
+
+  if (totalOrders === 0) {
+    if (emptyEl) emptyEl.hidden = false;
+    listEl.innerHTML = "";
+    return;
+  }
+
+  if (emptyEl) emptyEl.hidden = true;
+
+  // Display only the last 5 orders (newest first)
+  const orders = allOrders.slice(0, 5);
+
+  // Trigger positions update in the background for real-time P/L
+  refreshLoopOrderPositions().catch(() => {});
+
+  // Preserve open accordions across poll re-renders
+  const openAccordions = new Set();
+  listEl.querySelectorAll("details.loop-order-accordion[open]").forEach((el) => {
+    if (el.dataset.orderId) openAccordions.add(el.dataset.orderId);
+  });
+
+  const latestOid = latestSubmittedOrderId || (orders[0]?.order_id ? String(orders[0].order_id) : null);
+
+  const ordersHtml = orders
+    .map((order, idx) => {
+      const orderIdStr = String(order.order_id || "");
+      const isLatest = (latestOid && orderIdStr === String(latestOid)) || idx === 0;
+      const shortOid = orderIdStr.length > 8 ? `${orderIdStr.slice(0, 8)}…` : orderIdStr;
+      const sig = String(order.signal || order.side || order.action || "ORDER").toUpperCase();
+      const isBuy = sig === "BUY" || sig === "COVER";
+      const isShort = sig === "SHORT" || (!isBuy && sig === "SELL");
+      const sigClass = isBuy
+        ? "sig-buy"
+        : isShort
+        ? (sig === "SHORT" ? "sig-short" : "sig-sell")
+        : (sig === "COVER" ? "sig-cover" : "sig-sell");
+      const qty = order.order_qty ?? order.qty ?? "";
+      const symbol = order.symbol ? String(order.symbol).toUpperCase() : "";
+      const priceVal = order.price != null && order.price !== "" ? Number(order.price) : null;
+      const priceText = priceVal != null && Number.isFinite(priceVal) ? `$${priceVal.toFixed(2)}` : "";
+      const rawTime = order.ts || order.iso || order.time || order.submitted_at || order.created_at;
+      const timeText = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(rawTime) : String(rawTime || "");
+      const stopVal =
+        order.stop_loss?.stop_price != null
+          ? Number(order.stop_loss.stop_price)
+          : order.stop_price != null
+          ? Number(order.stop_price)
+          : null;
+      const stopText = stopVal != null && Number.isFinite(stopVal) ? `$${stopVal.toFixed(2)}` : "";
+
+      // Position and Live Quote context
+      const pos = symbol ? loopOrderPositions[symbol] : null;
+      const live = symbol ? liveWatchQuotes[symbol] : null;
+      const markVal = live?.price != null ? Number(live.price) : (pos?.current_price != null ? Number(pos.current_price) : null);
+      const markText = markVal != null && Number.isFinite(markVal) ? `$${markVal.toFixed(2)}` : "";
+
+      // P/L Calculation (Multi-tier: recorded order P/L -> Alpaca position P/L -> Live quote drift)
+      let plDollar = null;
+      let plPct = null;
+      let plType = "";
+
+      if (order.unrealized_pl != null && Number.isFinite(Number(order.unrealized_pl))) {
+        plDollar = Number(order.unrealized_pl);
+        plPct = order.unrealized_pct != null ? Number(order.unrealized_pct) : null;
+        plType = "unrealized";
+      } else if (order.pnl != null && Number.isFinite(Number(order.pnl))) {
+        plDollar = Number(order.pnl);
+        plPct = order.pnl_pct != null ? Number(order.pnl_pct) : null;
+        plType = "realized";
+      } else if (order.realized_pl != null && Number.isFinite(Number(order.realized_pl))) {
+        plDollar = Number(order.realized_pl);
+        plPct = order.realized_pct != null ? Number(order.realized_pct) : null;
+        plType = "realized";
+      } else if (pos && pos.unrealized_pl != null && Number.isFinite(Number(pos.unrealized_pl))) {
+        plDollar = Number(pos.unrealized_pl);
+        plPct = Number(pos.unrealized_pct);
+        plType = "unrealized";
+      } else if (priceVal != null && Number.isFinite(priceVal) && priceVal > 0 && markVal != null && Number.isFinite(markVal) && markVal > 0) {
+        const qtyNum = Number(qty || 1);
+        const diff = isShort ? (priceVal - markVal) : (markVal - priceVal);
+        plPct = (diff / priceVal) * 100;
+        plDollar = diff * qtyNum;
+        plType = "live";
+      }
+
+      let plHtml = "";
+      if (plDollar != null || plPct != null) {
+        const effVal = plDollar != null ? plDollar : plPct;
+        const isPos = effVal >= 0;
+        const toneClass = effVal > 0 ? "is-profit" : effVal < 0 ? "is-loss" : "is-flat";
+        const sign = isPos && (plDollar > 0 || plPct > 0) ? "+" : "";
+        const dollarStr = plDollar != null && Number.isFinite(plDollar) ? `${sign}$${Math.abs(plDollar).toFixed(2)}` : "";
+        const pctStr = plPct != null && Number.isFinite(plPct) ? `${sign}${plPct.toFixed(2)}%` : "";
+        const plText = dollarStr && pctStr ? `${dollarStr} (${pctStr})` : (dollarStr || pctStr);
+        const plLabel = plType === "realized" ? tx("realized_pl", "Realized P/L") : tx("unrealized_pl", "Unrealized P/L");
+
+        plHtml = `
+          <div class="loop-order-pl ${toneClass}" title="${escapeHtml(plLabel)}: ${escapeHtml(plText)}">
+            <span class="loop-order-pl-icon" aria-hidden="true">${isPos ? "▲" : "▼"}</span>
+            <span class="loop-order-pl-val">${escapeHtml(plText)}</span>
+          </div>
+        `;
+      }
+
+      const fullReason = String(order.thesis || order.reason || order.intent || (order.context && order.context.summary) || "").trim();
+      const isOpen = openAccordions.has(orderIdStr) ? " open" : "";
+
+      const metaBadges = [];
+      if (order.confidence != null && order.confidence !== "") {
+        metaBadges.push(`<span class="loop-order-badge">${Math.round(Number(order.confidence) * 100)}% conf</span>`);
+      }
+      if (order.provider || order.mode || order.engine) {
+        metaBadges.push(`<span class="loop-order-badge">${escapeHtml(String(order.provider || order.mode || order.engine).toUpperCase())}</span>`);
+      }
+      if (orderIdStr) {
+        metaBadges.push(`<span class="loop-order-badge">ID: ${escapeHtml(orderIdStr)}</span>`);
+      }
+      const metaBadgesHtml = metaBadges.length > 0 ? `<div class="loop-order-badges">${metaBadges.join("")}</div>` : "";
+
+      return `
+        <div class="loop-order-item${isLatest ? " is-latest" : ""}" id="loop-order-${escapeHtml(orderIdStr)}">
+          <div class="loop-order-main">
+            <div class="loop-order-left">
+              <span class="loop-order-signal ${sigClass}">${escapeHtml(sig)}</span>
+              ${isLatest ? `<span class="loop-order-latest-pill" title="${escapeHtml(tx("latest_order_hint", "Most recent order submission in this loop"))}"><span class="loop-order-latest-dot" aria-hidden="true"></span>${escapeHtml(tx("latest_order", "Latest"))}</span>` : ""}
+              <span class="loop-order-qty-sym">${escapeHtml(String(qty))} ${escapeHtml(symbol)}</span>
+              ${priceText ? `<span class="loop-order-price" title="${escapeHtml(tx("execution_price", "Execution price"))}">@ ${escapeHtml(priceText)}</span>` : ""}
+            </div>
+            ${plHtml ? `<div class="loop-order-center">${plHtml}</div>` : ""}
+            <div class="loop-order-right">
+              ${timeText ? `<span class="loop-order-time">${escapeHtml(timeText)}</span>` : ""}
+              ${orderIdStr ? `<a href="${pagePath("orders")}" class="loop-order-id-link" title="${escapeHtml(orderIdStr)}">#${escapeHtml(shortOid)}</a>` : ""}
+            </div>
+          </div>
+          <div class="loop-order-subline">
+            ${markText ? `<span class="loop-order-sub-stat"><strong>${escapeHtml(tx("mark", "Mark"))}:</strong> ${escapeHtml(markText)}</span>` : ""}
+            ${stopText ? `<span class="loop-order-sub-stat loop-order-stop"><strong>${escapeHtml(tx("stop_price", "Stop"))}:</strong> ${escapeHtml(stopText)}</span>` : ""}
+            ${pos ? `<span class="loop-order-sub-stat"><strong>${escapeHtml(tx("position", "Pos"))}:</strong> ${escapeHtml(String(pos.qty))} ${escapeHtml(String(pos.side || "").toUpperCase())}</span>` : ""}
+          </div>
+          <details class="loop-order-accordion"${isOpen} data-order-id="${escapeHtml(orderIdStr)}">
+            <summary class="loop-order-summary">
+              <span class="loop-order-summary-title">
+                <svg class="loop-order-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                <span>${escapeHtml(tx("execution_reason", "Execution Reason"))}</span>
+              </span>
+              <span class="loop-order-caret"></span>
+            </summary>
+            <div class="loop-order-reason-body">
+              <div class="loop-order-reason-text">${escapeHtml(fullReason || tx("no_reason_available", "No execution thesis provided."))}</div>
+              ${metaBadgesHtml}
+            </div>
+          </details>
+        </div>
+      `;
+    })
+    .join("");
+
+  const moreNote = totalOrders > 5 ? `
+    <div class="loop-orders-more-row">
+      <span class="loop-orders-more-text">${escapeHtml(tx("showing_last_5_orders", "Showing latest 5 of {total} orders", { total: totalOrders }))}</span>
+      <a href="${pagePath("history")}" class="loop-orders-more-link">
+        <span>${escapeHtml(tx("view_all_in_history", "View all in History"))}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </a>
+    </div>
+  ` : "";
+
+  listEl.innerHTML = ordersHtml + moreNote;
 }
 
 function renderPendingApprovals(approvals = []) {
@@ -3521,7 +3940,12 @@ $("field-custom-engine-select")?.addEventListener("change", (ev) => {
 });
 
 $("btn-save-current-as-custom")?.addEventListener("click", () => {
-  openInlineSaveEngineDrawer({ isNewCopy: false });
+  const current = (activeCustomEngineId ? findCustomEngine(activeCustomEngineId) : null) || activeCustomEngine;
+  if (current) {
+    handleUpdateActiveCustomEngine();
+  } else {
+    openInlineSaveEngineDrawer({ isNewCopy: false });
+  }
 });
 
 $("btn-save-as-new-custom-engine")?.addEventListener("click", () => {
@@ -3591,6 +4015,9 @@ if (document.readyState === "interactive" || document.readyState === "complete")
 }
 
 function onDeskStatusUpdate(state, { forceSettings } = {}) {
+  if (typeof latestState !== "undefined") {
+    latestState = state;
+  }
   render(state, { forceSettings });
 }
 

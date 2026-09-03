@@ -247,6 +247,35 @@ button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-val {
   box-shadow: inset 2px 0 0 var(--sell);
 }
 
+.pos-table-row.is-latest td {
+  background: color-mix(in srgb, var(--copper) 5%, transparent);
+}
+
+.pos-table-row.is-latest td.pos-cell-check {
+  box-shadow: inset 3.5px 0 0 var(--copper);
+}
+
+.pos-table-row.is-latest .ord-sym-cell strong::after {
+  content: "LATEST";
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--copper) 22%, transparent);
+  color: var(--copper);
+  border: 1px solid color-mix(in srgb, var(--copper) 45%, transparent);
+  margin-left: 0.45rem;
+  vertical-align: middle;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pos-card.is-latest {
+  border-color: color-mix(in srgb, var(--copper) 70%, var(--line));
+  border-left: 3.5px solid var(--copper);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--copper) 18%, transparent);
+}
+
 .ord-kind-badge {
   display: inline-block;
   margin-left: 0.35rem;
@@ -277,6 +306,36 @@ button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-val {
 
 .page-orders .pos-chg-pill.neg {
   color: var(--danger);
+}
+
+.ord-pnl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.38rem;
+  border-radius: var(--radius-xs, 4px);
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.ord-pnl-pill.pos {
+  background: color-mix(in srgb, var(--buy) 16%, transparent);
+  color: var(--buy);
+  border: 1px solid color-mix(in srgb, var(--buy) 32%, transparent);
+}
+
+.ord-pnl-pill.neg {
+  background: color-mix(in srgb, var(--sell) 16%, transparent);
+  color: var(--sell);
+  border: 1px solid color-mix(in srgb, var(--sell) 32%, transparent);
+}
+
+.ord-pnl-pill small {
+  font-size: 0.62rem;
+  opacity: 0.9;
 }
 
 /* Distance to the trigger. Inside a percent the ticket is realistically in

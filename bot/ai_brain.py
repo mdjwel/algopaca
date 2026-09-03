@@ -14,6 +14,7 @@ from bot.config import Config, language_name, normalize_size_mode
 from bot.earnings import fetch_earnings
 from bot.econ_calendar import fetch_economic_calendar
 from bot.lessons_store import lessons_for_prompt
+from bot.metals_intel import fetch_metals_macro_context, is_precious_metal
 from bot.news import fetch_news
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,10 @@ class AiBrain:
             "min_confidence": self.config.ai_min_confidence,
             "stop_loss_pct": self.config.stop_loss_pct,
         }
+        if is_precious_metal(symbol):
+            context["precious_metals_intel"] = fetch_metals_macro_context(
+                self.service, symbol, calendar=calendar
+            )
         return context
 
     def _desk_lessons(self, symbol: str) -> list[str]:
@@ -401,6 +406,7 @@ class AiBrain:
             "economic_calendar": context.get("economic_calendar") or [],
             "earnings": context.get("earnings") or {},
             "desk_lessons": context.get("desk_lessons") or [],
+            "precious_metals_intel": context.get("precious_metals_intel") or {},
         }
         return (
             f"Decide buy/sell/hold for this symbol using the JSON context.\n"
@@ -427,6 +433,35 @@ class AiBrain:
                 "Never exceed max_qty. Exits still flatten the full position.\n"
                 "\n"
                 if self._size_mode() == "ai"
+                else ""
+            )
+            + (
+                "PRECIOUS METALS & CROSS-ASSET MACRO INTELLIGENCE:\n"
+                "This symbol is precious metals / commodities related. Use precious_metals_intel in your analysis.\n"
+                "These fields are calibrated against 2007-2025 forward-return studies on GLD — where they\n"
+                "contradict chart intuition, the calibration wins.\n"
+                "- macro_composite_score (-3..+3) and metals_macro_bias: a weighted blend of rates (0.40),\n"
+                "  Gold/Silver ratio (0.35), long-term trend (0.15) and the dollar (0.10). Mean forward 20d\n"
+                "  GLD return by score band was: <=-1.5 -> -0.29%, -1.5..-0.5 -> -0.18%, -0.5..+0.5 -> +0.53%,\n"
+                "  +0.5..+1.5 -> +1.14%, >=+1.5 -> +1.09%.\n"
+                "  * Score >= +0.5: a genuine tailwind. Above +1.5, size up and consider higher-beta vehicles.\n"
+                "  * Score <= -0.5: forward returns were NEGATIVE on average. Treat as a no-buy band, not a dip.\n"
+                "  * factor_scores breaks the score into its parts if you need to see what is driving it.\n"
+                "- trend_regime: 'bullish_above_sma200' or 'bearish_below_sma200'. This is the participation\n"
+                "  gate that keeps the desk out of multi-year metals bear markets. Respect it.\n"
+                "- Gold/Silver Ratio: gsr_live is the live GLD/SLV ratio; gsr_z_score is its deviation from the\n"
+                "  gsr_z_window mean (1 year when history allows — far more informative than a 20d window).\n"
+                "  * gsr_z_score >= +1.2: the ratio is stretched. Historically a risk-off bid that lifted the\n"
+                "    whole complex, with silver the higher-beta catch-up expression. Bullish, not just relative.\n"
+                "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
+                "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
+                "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
+                "  predictive power for gold (IC -0.01). Never let it carry a trade decision on its own.\n"
+                "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
+                "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
+                "- If macro_risk_level is 'imminent_release' (high-impact FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
+                "\n"
+                if context.get("precious_metals_intel")
                 else ""
             )
             + "MANAGING AN OPEN POSITION (position.qty != 0):\n"

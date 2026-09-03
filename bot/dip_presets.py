@@ -48,6 +48,15 @@ _PRESETS: tuple[DipPreset, ...] = (
         use_lower_band=False,
     ),
     DipPreset(
+        id="gold_dip",
+        label="Gold Bullion Dip Hunter",
+        summary="Buy secular gold bull pullbacks at RSI ≤45; hold until genuinely overbought at RSI ≥80. Filters out bearish downtrends.",
+        rsi_buy=45.0,
+        rsi_sell=80.0,
+        skip_bearish=True,
+        use_lower_band=True,
+    ),
+    DipPreset(
         id="custom",
         label="Custom",
         summary="Set your own RSI buy / sell thresholds below (also buys lower BB).",

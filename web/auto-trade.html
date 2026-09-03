@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/static/css/common.css" />
   <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
   <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
-  <link rel="stylesheet" href="/static/css/auto-trade.css" />
+  <link rel="stylesheet" href="/static/css/auto-trade.css?v=2.5" />
   <script>
     (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
   </script>
@@ -140,6 +140,33 @@
             <div id="ai-watchlist" class="ai-watchlist" role="table" aria-label="Watchlist signals" data-i18n-aria-label="watchlist_signals" hidden></div>
           </section>
 
+          <!-- Current Loop Orders Panel -->
+          <section class="panel loop-orders-panel" id="loop-orders-card" hidden>
+            <div class="panel-head">
+              <div class="panel-head-title-wrap">
+                <h2 data-i18n="current_loop_orders">Current Loop Orders</h2>
+                <span id="loop-orders-badge" class="badge badge-copper">0</span>
+                <span id="loop-orders-status" class="loop-orders-status-pill" hidden>Live</span>
+              </div>
+              <div class="panel-head-actions">
+                <a href="/history" class="ghost btn-history-link">
+                  <span data-i18n="view_in_history">View in History</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </a>
+              </div>
+            </div>
+            <div class="loop-orders-body">
+              <div id="loop-orders-list" class="loop-orders-list"></div>
+              <div id="loop-orders-empty" class="loop-orders-empty" hidden>
+                <svg class="loop-orders-empty-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 14 14"></polyline>
+                </svg>
+                <span data-i18n="no_loop_orders_yet">No orders executed in this loop yet.</span>
+              </div>
+            </div>
+          </section>
+
           <!-- Pending Approvals Panel -->
           <section class="panel pending-approvals-panel" id="pending-approvals-card" hidden>
             <div class="panel-head">
@@ -157,20 +184,6 @@
             </div>
           </section>
 
-          <section class="panel account-panel">
-            <div class="panel-head">
-              <h2 data-i18n="account">Account</h2>
-              <button type="button" id="btn-refresh" class="ghost" data-i18n="refresh">Refresh</button>
-            </div>
-            <dl class="stats">
-              <div><dt data-i18n="status">Status</dt><dd id="acct-status">—</dd></div>
-              <div><dt data-i18n="equity">Equity</dt><dd id="acct-equity">—</dd></div>
-              <div><dt data-i18n="cash">Cash</dt><dd id="acct-cash">—</dd></div>
-              <div><dt data-i18n="buying_power">Buying power</dt><dd id="acct-bp">—</dd></div>
-            </dl>
-            <p id="ai-keys" class="ai-keys">AI keys: checking…</p>
-            <p id="alpaca-keys-line" class="ai-keys">Alpaca: checking…</p>
-          </section>
         </div>
 
         <aside class="console">
@@ -198,7 +211,7 @@
                   <div class="custom-engine-actions">
                     <button type="button" id="btn-save-current-as-custom" class="btn btn-sm btn-copper custom-engine-btn" title="Save current desk configuration as a custom engine" data-i18n-title="btn_save_as_custom" aria-label="Save as custom engine" data-i18n-aria-label="btn_save_as_custom">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                      <span data-i18n="save_as_engine">Save Engine</span>
+                      <span id="btn-save-current-as-custom-text" data-i18n="save_as_engine">Save Engine</span>
                     </button>
                   </div>
                 </div>
@@ -274,6 +287,7 @@
                     <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
                     <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
                     <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
+                    <option value="gold_trend" data-i18n="preset_sma_gold_trend">Gold Momentum 50/150</option>
                     <option value="custom" data-i18n="preset_custom">Custom</option>
                   </select>
                 </label>
@@ -294,6 +308,7 @@
                     <option value="deep" data-i18n="preset_dip_deep">Deep dip</option>
                     <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
                     <option value="washout" data-i18n="preset_dip_washout">Washout</option>
+                    <option value="gold_dip" data-i18n="preset_dip_gold_dip">Gold Bullion Dip Hunter</option>
                     <option value="custom" data-i18n="preset_custom">Custom</option>
                   </select>
                 </label>
@@ -319,6 +334,9 @@
                 <label for="field-pair-preset" class="stack pair-only" hidden><span data-i18n="pair_preset">Pair preset</span>
                   <select id="field-pair-preset" name="pair_preset">
                     <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
+                    <option value="gold_silver_rotation" data-i18n="preset_pair_gold_silver_rotation">Gold / Silver Rotation (GLD / SLV)</option>
+                    <option value="gold_inverse_hedge" data-i18n="preset_pair_gold_inverse_hedge">Gold / Inverse Gold Bear-Proof (GLD / GLL)</option>
+                    <option value="gold_miners_rotator" data-i18n="preset_pair_gold_miners_rotator">Gold / Miners High-Beta Rotator (GLD / GDX)</option>
                     <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
                     <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
                     <option value="custom" data-i18n="preset_custom">Custom</option>
@@ -382,6 +400,7 @@
                     <option value="ai_vwap_momentum_ls" data-i18n="preset_day_ai_vwap_momentum_ls">AI Two-Way VWAP &amp; Momentum (Long &amp; Short)</option>
                     <option value="ai_orb_breakdown_short" data-i18n="preset_day_ai_orb_breakdown_short">AI Opening Range Breakdown (Short Only)</option>
                     <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_adaptive_scalp">AI Adaptive Intraday Scalper</option>
+                    <option value="ai_metals_breakout" data-i18n="preset_day_ai_metals_breakout">AI Gold &amp; Silver Intraday Breakout (GLD/SLV)</option>
                     <option value="vwap_trend" data-i18n="preset_day_vwap_trend">VWAP Trend Rider</option>
                     <option value="vwap_trend_short" data-i18n="preset_day_vwap_trend_short">VWAP Downtrend Rider (Short Only)</option>
                     <option value="orb_breakout" data-i18n="preset_day_orb_breakout">Opening Range Breakout (15m)</option>
@@ -530,6 +549,7 @@
                       <option value="trend_atr" data-i18n="preset_trend_atr">Trend + ATR trail</option>
                       <option value="pead" data-i18n="preset_pead">Earnings drift (PEAD)</option>
                       <option value="orb" data-i18n="preset_orb">Opening range breakout</option>
+                      <option value="gold_silver_macro" data-i18n="preset_gold_silver_macro">AI Gold &amp; Silver Macro Momentum</option>
                       <option value="custom" data-i18n="preset_custom">Custom</option>
                     </select>
                   </label>
@@ -874,9 +894,9 @@
     </footer>
   </div>
 
-  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/vendor/nice-select2/nice-select2.min.js?v=2.4.1-p5"></script>
   <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js"></script>
-  <script src="/static/js/auto-trade.js"></script>
+  <script src="/static/js/common.js?v=2.5"></script>
+  <script src="/static/js/auto-trade.js?v=2.5"></script>
 </body>
 </html>

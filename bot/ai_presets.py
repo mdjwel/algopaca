@@ -257,6 +257,68 @@ _PRESETS: tuple[AiPreset, ...] = (
         ),
     ),
     AiPreset(
+        id="gold_silver_macro",
+        label="AI Gold & Silver Macro Momentum",
+        summary="Calibrated macro & Gold/Silver Ratio playbook: buys pullbacks in confirmed gold uptrends across GLD, SLV, GDX, UGL & inverse short ETFs (GLL, DUST), with a wide ATR stop that lets trends run.",
+        min_confidence=0.62,
+        # Gold punishes tight risk management. Gridding the exit knobs on GLD
+        # (2005-2016 vs 2017-2025) showed returns improving monotonically as the
+        # ATR stop widened (1.2 -> 3.0) and degrading as the R target stretched
+        # past ~3. The old 1.7 / 3.5 pairing sat in the worst corner of both.
+        atr_stop_mult=2.2,
+        take_profit_r=3.0,
+        trail_after_r=1.2,
+        max_positions=2,
+        risk_pct=0.6,
+        instructions=(
+            "Specialized Gold & Silver (GLD, SLV, GDX, UGL, GLL, DUST) macro playbook.\n"
+            "This playbook is calibrated against 2007-2025 forward-return studies on GLD, not on folklore. "
+            "Three findings drive it, and they overrule intuition when the two conflict:\n"
+            "(a) Gold's SHORT-TERM momentum is mean-reverting. 5-20 day momentum has a NEGATIVE correlation "
+            "with the next month's return. Buying a fresh breakout in gold is a measured losing edge — buy "
+            "pullbacks inside an established uptrend instead.\n"
+            "(b) Falling real yields and a stretched Gold/Silver ratio are the only macro factors with a "
+            "durable edge. The US Dollar is far weaker than commonly claimed, and gold-miner leadership has "
+            "NO measurable predictive power at all — treat miners_signal as colour, never as a reason.\n"
+            "(c) Overtrading is what destroys returns here. Every fast timing rule tested underperformed "
+            "simply holding gold. Time in the trend beats frequency of trades.\n"
+            "LONG gates (all must hold):\n"
+            "1. Regime: precious_metals_intel.trend_regime is 'bullish_above_sma200'. This is the single "
+            "participation gate — it is what keeps you out of multi-year bear markets like 2012-2015.\n"
+            "2. Macro: macro_composite_score >= +0.5 (metals_macro_bias 'moderate_bullish' or better). The "
+            "score is a calibrated -3..+3 blend; scores below -0.5 preceded NEGATIVE average forward returns, "
+            "so treat that band as a hard no-buy, not a discount.\n"
+            "3. Entry timing: prefer entering on a PULLBACK — RSI between 38 and 58, or price at or below "
+            "SMA20 while the higher-timeframe trend stays up. Do NOT require price above EMA9 or a positive "
+            "MACD histogram to go long; demanding short-term strength is the mean-reversion trap in (a).\n"
+            "4. Vehicle: default to GLD. Only step up to UGL (2x gold) or GDX when macro_composite_score is "
+            ">= +1.5 AND trend_regime is bullish — these decay badly in chop, and GDX carries equity beta "
+            "gold does not.\n"
+            "5. Relative value: when gsr_z_score >= +1.2 the ratio is stretched. Historically this marked a "
+            "risk-off bid that lifted the whole complex AND set up silver catch-up, so SLV is the higher-beta "
+            "expression of a bullish call. When gsr_z_score <= -1.2 the ratio is compressed — a risk-on tell "
+            "that preceded below-average bullion returns. Do not read a low ratio as 'gold is cheap'.\n"
+            "SHORT & INVERSE ETF gates:\n"
+            "1. Regime: trend_regime is 'bearish_below_sma200' and macro_composite_score <= -0.5.\n"
+            "2. Confirmation: rising yields (yield_trend 'rising_yields') is the factor that matters most.\n"
+            "3. Shorting gold fights a positive long-run drift. Require a clearly bearish macro score and "
+            "size smaller than an equivalent long. Inverse ETFs (GLL, DUST) express the view without margin "
+            "borrow, but their daily reset makes them poor multi-week holds — keep them short-dated.\n"
+            "RISK & VOLATILITY GATES:\n"
+            "- If macro_risk_level is 'imminent_release' (high-impact FOMC / CPI within 45 minutes), HOLD to avoid spread whipsaws.\n"
+            "- HARD SKIP when spread_bps > 25.\n"
+            "- Do not chase overextended moves when dist_sma50_atr is beyond +3.2 (long) or -3.2 (short).\n"
+            "EXITS & RUNNERS:\n"
+            "- Gold's edge is captured by holding trends, so the default answer on an open, working position "
+            "is HOLD. Ratchet the stop to breakeven after 1.2R and let the ATR trail do the work.\n"
+            "- Scale out at the take-profit target; let the remainder trail for multi-week commodity upside.\n"
+            "- Exit early ONLY on a confirmed regime flip (loss of trend_regime), a macro score that has "
+            "crossed below -0.5, or a major contradicting catalyst. Do not exit on short-term weakness alone "
+            "— shallow pullbacks inside an uptrend are entries, not exits.\n"
+            + _SHARED_EXIT
+        ),
+    ),
+    AiPreset(
         id="custom",
         label="Custom",
         summary="Write your own instructions below.",

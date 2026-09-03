@@ -150,6 +150,7 @@ class SettingsIn(BaseModel):
     notify_browser: Optional[bool] = None
     notify_email: Optional[bool] = None
     notification_email: Optional[str] = None
+    custom_engine_id: Optional[str] = None
 
     @field_validator("notification_email")
     @classmethod

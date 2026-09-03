@@ -500,6 +500,7 @@ class AppState:
                 "result_history": list(self.result_history),
                 "pending_approvals": list(self.pending_approvals),
                 "loop_history": list(self.loop_sessions),
+                "active_loop_session": dict(self._active_loop_session) if self._active_loop_session else None,
                 "quote": self.quote,
                 "last_position": self.last_position,
                 "error": self.error,
@@ -1589,9 +1590,10 @@ class AppState:
             notification_email = str(
                 data.get("notification_email", self.settings.notification_email) or ""
             ).strip()
-            custom_engine_id = str(
-                data.get("custom_engine_id", self.settings.custom_engine_id) or ""
-            ).strip()
+            if "custom_engine_id" in data and data["custom_engine_id"] is not None:
+                custom_engine_id = str(data["custom_engine_id"]).strip()
+            else:
+                custom_engine_id = self.settings.custom_engine_id
 
             self.settings = RunSettings(
                 symbol=symbol,
@@ -2282,7 +2284,14 @@ class AppState:
             ),
             # Per-symbol compare: no shared book curve — pick a symbol in the UI.
             "equity_curve": [],
-            "trade_list": [],
+            "trade_list": sorted(
+                [
+                    {**t, "symbol": t.get("symbol") or r.get("symbol")}
+                    for r in ok_results
+                    for t in (r.get("trade_list") or [])
+                ],
+                key=lambda t: str(t.get("time") or t.get("entry_time") or ""),
+            ),
             "results": results,
             "summary": summary,
             "errors": errors,
@@ -3001,7 +3010,14 @@ class AppState:
             "evaluated_bars": sum(int(r.get("evaluated_bars") or 0) for r in ok_results),
             # Per-symbol compare: no shared book curve — pick a symbol in the UI.
             "equity_curve": [],
-            "trade_list": [],
+            "trade_list": sorted(
+                [
+                    {**t, "symbol": t.get("symbol") or r.get("symbol")}
+                    for r in ok_results
+                    for t in (r.get("trade_list") or [])
+                ],
+                key=lambda t: str(t.get("time") or t.get("entry_time") or ""),
+            ),
             "results": results,
             "summary": summary,
             "open_qty": 0,
@@ -3768,8 +3784,11 @@ class AppState:
         quote: dict[str, Any] | None = None,
         ai_extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        now = datetime.now()
         mark = (quote or {}).get("price", result.price)
         payload = {
+            "ts": now.strftime("%H:%M:%S"),
+            "iso": now.isoformat(timespec="seconds"),
             "signal": result.signal.value,
             "price": mark,
             "bar_close": result.price,
@@ -3855,6 +3874,12 @@ class AppState:
             notify_email = bool(self.settings.notify_email)
             now = datetime.now()
             iso = now.isoformat(timespec="seconds")
+            ts = now.strftime("%H:%M:%S")
+            for item in trades:
+                if not item.get("ts"):
+                    item["ts"] = ts
+                if not item.get("iso"):
+                    item["iso"] = iso
             # Every result contributes events, including the ones that never
             # became a fill — those are exactly what the execution audit is for.
             for item in results or []:
@@ -3932,7 +3957,10 @@ class AppState:
             "signal": signal,
             "symbol": symbol,
             "price": price,
-            "reason": reason[:160],
+            "reason": reason,
+            "thesis": str(item.get("thesis") or ""),
+            "stop_loss": item.get("stop_loss"),
+            "intent": item.get("intent"),
             "mode": (
                 "manual"
                 if item.get("engine") == "manual" or item.get("mode") == "manual"
@@ -3946,6 +3974,11 @@ class AppState:
             "via": "manual"
             if item.get("engine") == "manual" or item.get("mode") == "manual"
             else ("loop" if self.loop_running else "once"),
+            "pnl": item.get("pnl"),
+            "realized_pl": item.get("realized_pl"),
+            "unrealized_pl": item.get("unrealized_pl"),
+            "unrealized_pct": item.get("unrealized_pct"),
+            "avg_entry": item.get("avg_entry"),
             "kind": "signal",
             "loop_id": session["id"],
             # Entry conditions kept beside the trade so History can review the

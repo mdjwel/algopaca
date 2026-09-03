@@ -64,6 +64,25 @@ Patch — in `#d(e)`:
 {text:t.dataset.display||(t.innerText||t.textContent).trim()||t.value,value:t.value...}
 ```
 
+## 5. `#y()` must match `<option>` by `value` before falling back to text
+
+When two `<option>` tags have identical display text (e.g. custom engines created from or sharing the name of a starter blueprint), matching by text caused `#y()` to match the wrong `<option>`. When processing the second (unselected) option, it found the first option and set `s.selected = false`, unselecting both options, resetting `select.value` to `""`, and firing a blank change event.
+
+Patch — in `#y()`:
+```js
+let s=Array.from(e.options).find(e=>String(e.value).trim().toLowerCase()===String(t.data.value).trim().toLowerCase());
+null==s&&(s=Array.from(e.options).find(e=>String(e.dataset.display||e.textContent).trim().toLowerCase()===String(t.data.text).trim().toLowerCase())),
+```
+
+## 6. `#m(e, t)` click target must resolve to `li.option`
+
+When options contain nested spans (such as badges or metadata tags), `t.target` is the inner `<span>` instead of the `<li>`. NiceSelect added the `selected` class to `t.target`, which placed the class on the child `<span>` rather than `li.option`.
+
+Patch — in `#m(e, t)`:
+```js
+const s=t.target.closest("li.option")||t.target;
+```
+
 ## Notes
 
 - `//# sourceMappingURL=nice-select2.js.map` at the end of the bundle now points

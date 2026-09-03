@@ -85,6 +85,13 @@ function applyBtPairPreset(presetId) {
   if (form.elements.pair_weak_side) {
     form.elements.pair_weak_side.value = preset.weak_side || "LONG";
   }
+  if (preset.long_symbol && preset.short_symbol) {
+    const symInput = form.elements.symbols || form.elements.symbol;
+    if (symInput) {
+      symInput.value = `${preset.long_symbol}, ${preset.short_symbol}`;
+      syncBacktestUi();
+    }
+  }
 }
 
 const DAY_PRESET_DEFAULTS = {
@@ -93,6 +100,7 @@ const DAY_PRESET_DEFAULTS = {
   ai_orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with 1.5R target and 1.2 ATR stop." },
   orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with ATR stop." },
   ai_adaptive_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA momentum scalper with ADX regime filter." },
+  ai_metals_breakout: { sub_mode: "vwap_trend", side: "long_short", tp_r: 2.8, stop_atr: 1.3, fast: 9, slow: 21, max_trades: 4, summary: "Intraday VWAP & 9/21 EMA breakout tuned for Gold & Silver with 2.8R target and AI confirmation." },
   momentum_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA crossovers confirmed by RSI and ADX." },
   vwap_fade: { sub_mode: "vwap_fade", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Mean reversion bounces at lower VWAP band in range-bound sessions." },
 };
@@ -1017,23 +1025,18 @@ document.querySelector(".bt-run-kind-chips")?.addEventListener("click", (ev) => 
   syncBacktestUi();
   saveBacktestFormDraft();
 });
-$("bt-detail-symbol")?.addEventListener("change", () => {
-  if (!btMultiResultCache) return;
-  renderBacktestResult(btMultiResultCache, {
-    detailSymbol: $("bt-detail-symbol")?.value,
-    scroll: false,
-    quiet: true,
-    skipCache: true,
-    historyId: btActiveHistoryId,
-  });
+$("bt-history-select")?.addEventListener("change", () => {
+  const sel = $("bt-history-select");
+  const val = sel?.value;
+  if (!val) return;
+  loadBacktestHistoryEntry(Number(val), { scroll: false, quiet: false });
 });
-
-restoreBacktestFormDraft();
 
 // Initialization
 restoreBacktestFormDraft();
 syncBacktestUi();
 restoreBacktestLastResult();
+refreshBacktestHistory({ restoreResult: false }).catch(() => {});
 refreshStatus().catch(() => {});
 
 function onDeskStatusUpdate(state, { forceSettings } = {}) {

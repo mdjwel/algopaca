@@ -288,6 +288,20 @@ class TestCustomEngine(unittest.TestCase):
         self.assertIn("custom_engines", status)
         self.assertIsInstance(status["custom_engines"], list)
 
+        # Verify through /api/settings endpoint roundtrip
+        headers = {"Authorization": f"Bearer {self.token1}"}
+        res_post = self.client.post(
+            "/api/settings",
+            json={"custom_engine_id": "ce_9988776655", "symbol": "AAPL"},
+            headers=headers,
+        )
+        self.assertEqual(res_post.status_code, 200)
+        self.assertEqual(res_post.json()["settings"]["custom_engine_id"], "ce_9988776655")
+
+        res_status = self.client.get("/api/status", headers=headers)
+        self.assertEqual(res_status.status_code, 200)
+        self.assertEqual(res_status.json()["settings"]["custom_engine_id"], "ce_9988776655")
+
     def test_api_validation_errors(self) -> None:
         headers = {"Authorization": f"Bearer {self.token1}"}
 

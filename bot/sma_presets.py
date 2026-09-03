@@ -52,6 +52,13 @@ _PRESETS: tuple[SmaPreset, ...] = (
         slow_sma=200,
     ),
     SmaPreset(
+        id="gold_trend",
+        label="Gold Momentum 50/150",
+        summary="Slow dual-moving average crossover tuned for multi-month Gold bullion super-trends (GLD/IAU/UGL). Trades a third as often as a fast cross and rides trends instead of being shaken out by them.",
+        fast_sma=50,
+        slow_sma=150,
+    ),
+    SmaPreset(
         id="custom",
         label="Custom",
         summary="Set your own fast / slow windows below.",

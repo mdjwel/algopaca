@@ -145,6 +145,7 @@
                   <option value="fibonacci" data-i18n="preset_sma_fibonacci">Fibonacci 8/21</option>
                   <option value="swing" data-i18n="preset_sma_swing">Swing 20/50</option>
                   <option value="golden_cross" data-i18n="preset_sma_golden_cross">Golden cross 50/200</option>
+                  <option value="gold_trend" data-i18n="preset_sma_gold_trend">Gold Momentum 50/150</option>
                   <option value="custom" data-i18n="preset_custom">Custom</option>
                 </select>
               </label>
@@ -163,6 +164,7 @@
                   <option value="deep" selected data-i18n="preset_dip_deep">Deep dip</option>
                   <option value="mild" data-i18n="preset_dip_mild">Mild pullback</option>
                   <option value="washout" data-i18n="preset_dip_washout">Washout</option>
+                  <option value="gold_dip" data-i18n="preset_dip_gold_dip">Gold Bullion Dip Hunter</option>
                   <option value="custom" data-i18n="preset_custom">Custom</option>
                 </select>
               </label>
@@ -186,6 +188,9 @@
               <label for="bt-pair-preset" class="stack bt-pair-only" hidden><span data-i18n="pair_preset">Pair preset</span>
                 <select id="bt-pair-preset" name="pair_preset">
                   <option value="research_max" selected data-i18n="preset_pair_max">Research max (50 / 7d / 5%)</option>
+                  <option value="gold_silver_rotation" data-i18n="preset_pair_gold_silver_rotation">Gold / Silver Rotation (GLD / SLV)</option>
+                  <option value="gold_inverse_hedge" data-i18n="preset_pair_gold_inverse_hedge">Gold / Inverse Gold Bear-Proof (GLD / GLL)</option>
+                  <option value="gold_miners_rotator" data-i18n="preset_pair_gold_miners_rotator">Gold / Miners High-Beta Rotator (GLD / GDX)</option>
                   <option value="research_strict" data-i18n="preset_pair_strict">Research strict (50 / 7d / 8%)</option>
                   <option value="cash_weak" data-i18n="preset_pair_cash_weak">Cash when weak (50 / 7d / 5%)</option>
                   <option value="custom" data-i18n="preset_custom">Custom</option>
@@ -257,6 +262,7 @@
                   <option value="ai_orb_breakdown_short" data-i18n="preset_day_ai_orb_breakdown_short">AI Opening Range Breakdown (Short Only)</option>
                   <option value="orb_breakout" data-i18n="preset_day_orb">Opening Range Breakout (15m)</option>
                   <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_scalp">AI Adaptive Scalper</option>
+                  <option value="ai_metals_breakout" data-i18n="preset_day_ai_metals_breakout">AI Gold &amp; Silver Intraday Breakout (GLD/SLV)</option>
                   <option value="momentum_scalp" data-i18n="preset_day_scalp">Intraday Momentum Scalp</option>
                   <option value="vwap_fade" data-i18n="preset_day_fade">VWAP Mean Reversion (Fade)</option>
                   <option value="custom" data-i18n="preset_custom">Custom</option>
@@ -380,19 +386,24 @@
 
           <div id="bt-results" class="bt-results" hidden>
             <div class="bt-results-head">
-              <h3 class="history-subhead bt-results-title" data-i18n="results_heading">Results</h3>
-              <p id="bt-alpha-line" class="bt-alpha-line" aria-live="polite"></p>
+              <div class="bt-results-title-group">
+                <h3 class="history-subhead bt-results-title" data-i18n="results_heading">Results</h3>
+                <span id="bt-strategy-badge" class="bt-strategy-badge" aria-label="Strategy"></span>
+                <p id="bt-alpha-line" class="bt-alpha-line" aria-live="polite"></p>
+              </div>
+              <label for="bt-history-select" class="bt-detail-pick bt-history-pick">
+                <span class="bt-detail-pick-label" data-i18n="previous_backtests">Previous backtests</span>
+                <select id="bt-history-select" name="history_select" aria-label="Previous backtests" data-i18n-aria-label="previous_backtests">
+                  <option value="" data-i18n="select_backtest_run">Select previous run...</option>
+                </select>
+              </label>
             </div>
             <div id="bt-multi-wrap" class="bt-multi-wrap" hidden>
-              <div class="bt-multi-head">
-                <div class="bt-multi-head-copy">
+              <div class="bt-multi-head" id="bt-multi-head">
+                <div class="bt-multi-head-copy" id="bt-multi-head-copy">
                   <h3 class="history-subhead" data-i18n="by_symbol">By symbol</h3>
                   <p id="bt-multi-hint" class="field-help bt-multi-hint" data-i18n="by_symbol_hint">Select a row to focus the summary, chart, and trades.</p>
                 </div>
-                <label for="bt-detail-symbol" class="bt-detail-pick">
-                  <span class="bt-detail-pick-label" data-i18n="inspect">Inspect</span>
-                  <select id="bt-detail-symbol" name="detail_symbol"></select>
-                </label>
               </div>
               <div id="bt-compare-symbols" class="bt-symbol-table-wrap"></div>
             </div>
@@ -525,7 +536,7 @@
       </div>
     </footer>
   </div>
-  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
+  <script src="/static/vendor/nice-select2/nice-select2.min.js?v=2.4.1-p5"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
   <script src="/static/i18n.js"></script>
   <script src="/static/js/common.js"></script>

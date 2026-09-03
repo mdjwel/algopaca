@@ -112,6 +112,9 @@ function clearBacktestResultsPanel() {
   if (box) box.hidden = true;
   const multiWrap = $("bt-multi-wrap");
   if (multiWrap) multiWrap.hidden = true;
+  const stratBadge = $("bt-strategy-badge");
+  if (stratBadge) stratBadge.textContent = "";
+  syncBtHistorySelect(null);
   destroyBtEquityChart();
   btChartCache = null;
 }
@@ -492,6 +495,143 @@ function renderEquityChart(curve, initialCash, trades = []) {
   syncBtChartToggles();
 }
 
+function formatBtStrategyName(result) {
+  if (!result) return "";
+  const mode = String(result.mode || "").toLowerCase();
+  const tr = (k, fb) => (typeof window.t === "function" ? window.t(k, fb) : fb);
+
+  let modeName = "";
+  if (mode === "dip") modeName = tr("mode_dip", "Buy the dip");
+  else if (mode === "sma") modeName = tr("mode_sma", "SMA crossover");
+  else if (mode === "pair") modeName = tr("mode_pair", "Long & Short Pair");
+  else if (mode === "ls") modeName = tr("mode_ls", "Regime Dual Momentum (L/S)");
+  else if (mode === "day") modeName = tr("mode_day", "Day trading (VWAP & ORB)");
+  else modeName = result.mode ? String(result.mode).toUpperCase() : "";
+
+  const label = result.params?.label || result.day_preset_label;
+  if (!label || label.toLowerCase() === modeName.toLowerCase()) {
+    return modeName;
+  }
+  return `${modeName} · ${label}`;
+}
+
+function syncBtHistorySelect(activeId) {
+  const sel = $("bt-history-select");
+  if (!sel) return;
+  const currentId =
+    activeId != null ? Number(activeId) : Number(btActiveHistoryId);
+  const runs = Array.isArray(btHistorySummaries) ? btHistorySummaries : [];
+
+  sel.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent =
+    typeof window.t === "function"
+      ? window.t("select_backtest_run", "Select previous run...")
+      : "Select previous run...";
+  if (!currentId || !runs.some((r) => Number(r.id) === currentId)) {
+    placeholder.selected = true;
+  }
+  sel.appendChild(placeholder);
+
+  for (const row of runs) {
+    const opt = document.createElement("option");
+    opt.value = String(row.id);
+    const idNum = row.id != null ? `#${row.id}` : "";
+    let symStr = String(row.symbol || "—");
+    if (row.run_kind === "portfolio") {
+      symStr = `Portfolio (${row.symbol_count || 1} sym)`;
+    } else if (Number(row.symbol_count) > 1) {
+      const firstSym = symStr.split("+")[0];
+      symStr = `${firstSym} (+${Number(row.symbol_count) - 1})`;
+    }
+    const label = row.label || row.day_preset_label || row.mode || "";
+    const ret = Number(row.total_return_pct);
+    const retStr = Number.isFinite(ret)
+      ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%`
+      : "";
+    const parts = [idNum, symStr, label, retStr].filter(Boolean);
+    opt.textContent = parts.join(" · ");
+    if (currentId && Number(row.id) === currentId) {
+      opt.selected = true;
+    }
+    sel.appendChild(opt);
+  }
+
+  ensureNiceSelect(sel);
+}
+
+function getAggregateTradeList(result) {
+  if (Array.isArray(result.trade_list) && result.trade_list.length > 0) {
+    return result.trade_list;
+  }
+  if (!Array.isArray(result.results) || !result.results.length) return [];
+  const all = [];
+  for (const r of result.results) {
+    if (r.error || !Array.isArray(r.trade_list)) continue;
+    for (const t of r.trade_list) {
+      all.push({ ...t, symbol: t.symbol || r.symbol });
+    }
+  }
+  all.sort((a, b) => {
+    const ta = a.time || a.entry_time || "";
+    const tb = b.time || b.entry_time || "";
+    return String(tb).localeCompare(String(ta));
+  });
+  return all;
+}
+
+function getAggregateEquityCurve(result) {
+  if (Array.isArray(result.equity_curve) && result.equity_curve.length >= 2) {
+    return result.equity_curve;
+  }
+  if (!Array.isArray(result.results) || !result.results.length) return [];
+  const validLegs = result.results.filter(
+    (r) => !r.error && Array.isArray(r.equity_curve) && r.equity_curve.length >= 2
+  );
+  if (!validLegs.length) return [];
+
+  const map = new Map();
+  for (const leg of validLegs) {
+    for (const pt of leg.equity_curve) {
+      if (!pt || !pt.t) continue;
+      if (!map.has(pt.t)) {
+        map.set(pt.t, { equities: [], holdEquities: [] });
+      }
+      const entry = map.get(pt.t);
+      if (pt.equity != null && Number.isFinite(Number(pt.equity))) {
+        entry.equities.push(Number(pt.equity));
+      }
+      if (pt.hold_equity != null && Number.isFinite(Number(pt.hold_equity))) {
+        entry.holdEquities.push(Number(pt.hold_equity));
+      }
+    }
+  }
+
+  const sortedTimes = Array.from(map.keys()).sort();
+  if (sortedTimes.length < 2) return [];
+
+  const curve = [];
+  for (const t of sortedTimes) {
+    const { equities, holdEquities } = map.get(t);
+    const avgEq = equities.length
+      ? equities.reduce((a, b) => a + b, 0) / equities.length
+      : null;
+    const avgHold = holdEquities.length
+      ? holdEquities.reduce((a, b) => a + b, 0) / holdEquities.length
+      : null;
+    if (avgEq != null) {
+      curve.push({
+        t,
+        equity: Math.round(avgEq * 100) / 100,
+        hold_equity: avgHold != null ? Math.round(avgHold * 100) / 100 : avgEq,
+      });
+    }
+  }
+  return curve;
+}
+
 function renderBacktestResult(result, options = {}) {
   const box = $("bt-results");
   if (!box || !result) return;
@@ -509,23 +649,22 @@ function renderBacktestResult(result, options = {}) {
   const multiWrap = $("bt-multi-wrap");
   if (multiWrap) multiWrap.hidden = !multi;
 
+  const stratBadge = $("bt-strategy-badge");
+  if (stratBadge) {
+    stratBadge.textContent = formatBtStrategyName(result);
+  }
+
+  syncBtHistorySelect(btActiveHistoryId);
+
   let view = result;
   if (multi) {
-    const pick = $("bt-detail-symbol");
-    const preferred =
-      options.detailSymbol ||
-      (result.run_kind === "portfolio" ? "__book__" : null) ||
-      result.results?.find((r) => !r.error)?.symbol ||
-      result.symbols?.[0] ||
-      (pick && pick.value) ||
-      "";
-    syncBtDetailSymbolSelect(result, preferred);
-    const selected = pick?.value || preferred;
+    const defaultSymbol =
+      result.run_kind === "portfolio" ? "__book__" : "__summary__";
+    const selected = options.detailSymbol || defaultSymbol;
     renderBtSymbolTable(result, selected);
     view = resolveBtDetailView(result, selected);
-  } else if (multiWrap) {
-    const table = $("bt-compare-symbols");
-    if (table) table.replaceChildren();
+  } else if (multiTable) {
+    multiTable.replaceChildren();
   }
 
   fillBtSummaryMetrics(view, result, { multi });
@@ -559,9 +698,16 @@ function renderBacktestResult(result, options = {}) {
       result.mode === "pair" || result.run_kind === "pair"
         ? "full equity"
         : formatQty(result.qty);
+    const symCount = result.symbols?.length || result.results?.length || 0;
+    const allLabel =
+      typeof window.t === "function"
+        ? window.t("all_symbols", "All symbols")
+        : "All symbols";
     const symLabel =
       view === result || view.symbol === result.symbol
-        ? result.symbol
+        ? (multi && symCount > 1
+            ? `${allLabel} (${symCount})`
+            : result.symbol)
         : `${view.symbol} (of ${result.symbol})`;
     meta.textContent =
       `${symLabel}${kind} · ${label} · ${result.bar_timeframe} · ` +
@@ -569,14 +715,16 @@ function renderBacktestResult(result, options = {}) {
       `${view.evaluated_bars ?? result.evaluated_bars ?? "—"} bars · qty ${sizing}${stop}${open}${hist}`;
   }
 
+  const aggCurve = getAggregateEquityCurve(result);
+  const aggTrades = getAggregateTradeList(result);
   const chartCurve =
     view.equity_curve && view.equity_curve.length
       ? view.equity_curve
-      : result.equity_curve;
+      : aggCurve;
   const chartTrades =
     view.trade_list && (view !== result || result.run_kind === "portfolio")
       ? view.trade_list
-      : result.trade_list;
+      : aggTrades;
   const chartCash =
     view.initial_cash != null ? view.initial_cash : result.initial_cash;
 
@@ -766,6 +914,32 @@ function renderBtSymbolTable(result, activeSymbol) {
       },
       { book: true, pickValue: "__book__" }
     );
+  } else if (
+    result.run_kind === "per_symbol" &&
+    (result.results || []).length > 1
+  ) {
+    const allSymLabel =
+      typeof window.t === "function"
+        ? window.t("all_symbols", "All symbols")
+        : "All symbols";
+    appendMetricRow(
+      {
+        symbol: allSymLabel,
+        total_return_pct: result.total_return_pct,
+        buy_hold_return_pct: result.buy_hold_return_pct,
+        alpha_pct:
+          result.total_return_pct != null && result.buy_hold_return_pct != null
+            ? Number(result.total_return_pct) -
+              Number(result.buy_hold_return_pct)
+            : null,
+        max_drawdown_pct: result.max_drawdown_pct,
+        trades: result.round_trips ?? result.trades,
+        round_trips: result.round_trips,
+        win_rate: result.win_rate,
+        realized_pnl: result.realized_pnl,
+      },
+      { book: true, pickValue: "__summary__" }
+    );
   }
 
   for (const row of rows) {
@@ -838,15 +1012,13 @@ function fillBtSummaryMetrics(view, root, { multi } = {}) {
           ? `Portfolio beat equal-weight hold by ${alpha.toFixed(2)}%`
           : `Portfolio trailed equal-weight hold by ${Math.abs(alpha).toFixed(2)}%`
         : "Shared-cash portfolio book";
-    } else if (multi && view === root && root.run_kind === "per_symbol") {
-      alphaLine.textContent = "Average across symbols (see table for each)";
     } else if (hasRet && hasHold) {
       alphaLine.textContent =
         alpha >= 0
           ? `Beat buy & hold by ${alpha.toFixed(2)}%`
           : `Trailed buy & hold by ${Math.abs(alpha).toFixed(2)}%`;
     } else {
-      alphaLine.textContent = multi ? "Symbol detail" : "";
+      alphaLine.textContent = "";
     }
     alphaLine.classList.toggle("pos", hasRet && hasHold && alpha > 0);
     alphaLine.classList.toggle("neg", hasRet && hasHold && alpha < 0);
@@ -1262,8 +1434,6 @@ function syncBtCompareButton() {
 }
 
 function renderBacktestHistory(history) {
-  const list = $("bt-history-list");
-  if (!list) return;
   btHistorySummaries = Array.isArray(history) ? history : [];
   const valid = new Set(btHistorySummaries.map((h) => Number(h.id)));
   for (const id of [...btSelectedHistoryIds]) {
@@ -1272,6 +1442,10 @@ function renderBacktestHistory(history) {
   if (btActiveHistoryId != null && !valid.has(btActiveHistoryId)) {
     btActiveHistoryId = null;
   }
+  syncBtHistorySelect(btActiveHistoryId);
+
+  const list = $("bt-history-list");
+  if (!list) return;
   list.replaceChildren();
   if (!btHistorySummaries.length) {
     const empty = document.createElement("p");
