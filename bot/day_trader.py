@@ -439,7 +439,7 @@ class DayTradingBot:
 
         # If HOLD signal or flat and inside open buffer
         if result.signal is Signal.HOLD:
-            if position_qty > 0:
+            if position_qty != 0:
                 arm_protective_stop(self.service, symbol, payload, stop_distance)
             return payload
 
@@ -502,6 +502,9 @@ class DayTradingBot:
                     payload["order_qty"] = qty
                     payload["intent"] = "close_short"
             elif position_qty == 0:
+                if self.strategy.side == "short_only":
+                    payload["reason"] += " | skipped: short-only mode"
+                    return payload
                 # Open Long
                 gate = entry_gates(
                     self.config,
@@ -633,8 +636,8 @@ class DayTradingBot:
                     payload["order_id"] = str(order.id)
                     payload["order_qty"] = qty
                     payload["intent"] = "close_long"
-            elif position_qty == 0 and self.strategy.side == "long_short":
-                # Open Short (if long_short enabled)
+            elif position_qty == 0 and self.strategy.side in {"long_short", "short_only"}:
+                # Open Short (if long_short or short_only enabled)
                 gate = entry_gates(
                     self.config,
                     gate_ctx,
@@ -721,11 +724,12 @@ class DayTradingBot:
                     payload["order_id"] = str(order.id)
                     payload["order_qty"] = qty
                     payload["intent"] = "open_short"
+                    arm_protective_stop(self.service, symbol, payload, stop_distance)
                     payload["trades_today"] = increment_daily_trades_count(
                         symbol, self._trade_scope
                     )
             else:
-                payload["reason"] += " | no action (flat account)"
+                payload["reason"] += " | no action (flat account / long-only mode)"
 
         return payload
 

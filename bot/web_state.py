@@ -1296,7 +1296,8 @@ class AppState:
                 day_ai_min_confidence = day_def.ai_min_confidence
             else:
                 day_sub_mode = str(data.get("day_sub_mode", self.settings.day_sub_mode)).strip().lower() or "vwap_trend"
-                day_side = "long_short" if str(data.get("day_side", self.settings.day_side)).strip().lower() == "long_short" else "long_only"
+                d_side_val = str(data.get("day_side", self.settings.day_side)).strip().lower()
+                day_side = d_side_val if d_side_val in {"long_short", "short_only"} else "long_only"
                 day_ema_fast = int(data.get("day_ema_fast", self.settings.day_ema_fast))
                 day_ema_slow = int(data.get("day_ema_slow", self.settings.day_ema_slow))
                 day_orb_minutes = int(data.get("day_orb_minutes", self.settings.day_orb_minutes))
@@ -1702,6 +1703,14 @@ class AppState:
         """Load user's UI settings (JSON), falling back to defaults."""
         persisted = load_settings(self._settings_path)
         try:
+            prefs = AUTH_STORE.get_user_preferences(self.user_id)
+            if prefs:
+                for k in ("require_approval", "notify_browser", "notify_email", "notification_email"):
+                    if (k not in persisted or persisted[k] is None) and k in prefs and prefs[k] is not None:
+                        persisted[k] = prefs[k]
+        except Exception:
+            pass
+        try:
             return self.update_settings(persisted)
         except ValueError:
             # Older desk files could store pair mode without two legs.
@@ -2079,7 +2088,8 @@ class AppState:
             e_fast = int(day_ema_fast) if day_ema_fast is not None else s.day_ema_fast
             e_slow = int(day_ema_slow) if day_ema_slow is not None else s.day_ema_slow
             orb_m = int(day_orb_minutes) if day_orb_minutes is not None else s.day_orb_minutes
-            s_side = str(day_side).strip().lower() if day_side else s.day_side
+            s_side_val = str(day_side).strip().lower() if day_side else s.day_side
+            s_side = s_side_val if s_side_val in {"long_short", "short_only"} else "long_only"
             stop_atr = float(day_stop_atr_mult) if day_stop_atr_mult is not None else s.day_stop_atr_mult
             tp_r = float(day_profit_target_r) if day_profit_target_r is not None else s.day_profit_target_r
             max_t = int(day_max_trades_per_day) if day_max_trades_per_day is not None else s.day_max_trades_per_day
@@ -3842,6 +3852,7 @@ class AppState:
             trades.append(item)
 
         with self.lock:
+            notify_email = bool(self.settings.notify_email)
             now = datetime.now()
             iso = now.isoformat(timespec="seconds")
             # Every result contributes events, including the ones that never
@@ -3855,54 +3866,54 @@ class AppState:
                 session["updated_at"] = iso
                 for item in trades:
                     self._push_trade_entry_locked(item, session)
-                return
+            elif trades:
+                self._loop_session_seq += 1
+                first = trades[0]
+                if first.get("engine") == "manual" or first.get("mode") == "manual":
+                    mode = "manual"
+                    provider = None
+                    preset_id, preset_label = None, "Manual"
+                else:
+                    mode = (
+                        "ai"
+                        if first.get("provider")
+                        else self.settings.strategy_mode
+                    )
+                    provider = (
+                        self.settings.ai_provider
+                        if self.settings.strategy_mode == "ai"
+                        else None
+                    )
+                    preset_id, preset_label = self._preset_meta_locked()
+                session = {
+                    "id": self._loop_session_seq,
+                    "kind": "once",
+                    "status": "done",
+                    "started_ts": now.strftime("%H:%M:%S"),
+                    "started_at": iso,
+                    "stopped_at": iso,
+                    "duration_seconds": 0.0,
+                    "mode": mode,
+                    "preset_id": preset_id,
+                    "preset": preset_label,
+                    "symbol": first.get("symbol") or self.settings.symbol,
+                    "symbols": first.get("symbol") or self.settings.symbols,
+                    "poll_seconds": self.settings.poll_seconds,
+                    "provider": provider,
+                    "poll_count": 1,
+                    "error_count": 0,
+                    "last_signal": None,
+                    "last_symbol": None,
+                    "updated_at": iso,
+                    "results": [],
+                }
+                self.loop_sessions.appendleft(session)
+                for item in trades:
+                    self._push_trade_entry_locked(item, session)
 
-            if not trades:
-                return
-
-            self._loop_session_seq += 1
-            first = trades[0]
-            if first.get("engine") == "manual" or first.get("mode") == "manual":
-                mode = "manual"
-                provider = None
-                preset_id, preset_label = None, "Manual"
-            else:
-                mode = (
-                    "ai"
-                    if first.get("provider")
-                    else self.settings.strategy_mode
-                )
-                provider = (
-                    self.settings.ai_provider
-                    if self.settings.strategy_mode == "ai"
-                    else None
-                )
-                preset_id, preset_label = self._preset_meta_locked()
-            session = {
-                "id": self._loop_session_seq,
-                "kind": "once",
-                "status": "done",
-                "started_ts": now.strftime("%H:%M:%S"),
-                "started_at": iso,
-                "stopped_at": iso,
-                "duration_seconds": 0.0,
-                "mode": mode,
-                "preset_id": preset_id,
-                "preset": preset_label,
-                "symbol": first.get("symbol") or self.settings.symbol,
-                "symbols": first.get("symbol") or self.settings.symbols,
-                "poll_seconds": self.settings.poll_seconds,
-                "provider": provider,
-                "poll_count": 1,
-                "error_count": 0,
-                "last_signal": None,
-                "last_symbol": None,
-                "updated_at": iso,
-                "results": [],
-            }
-            self.loop_sessions.appendleft(session)
+        if notify_email and trades:
             for item in trades:
-                self._push_trade_entry_locked(item, session)
+                self._dispatch_trade_executed_email_async(item)
 
     def _push_trade_entry_locked(
         self, item: dict[str, Any], session: dict[str, Any]
@@ -9283,13 +9294,10 @@ class AppState:
                 target["stop_loss"] = executed_trade["stop_loss"]
             self._persist_approvals_locked()
             resolved = dict(target)
-            notify_email = self.settings.notify_email
 
         # _record_trade_history takes self.lock itself — never call it holding one.
+        # It also dispatches execution emails if notify_email is enabled.
         self._record_trade_history([executed_trade])
-
-        if notify_email:
-            self._dispatch_trade_executed_email_async(executed_trade)
 
         return {
             "ok": True,

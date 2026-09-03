@@ -281,14 +281,35 @@ function notifyExecutedTrades(state) {
   }
   const fresh = trades.filter((trade) => !seenTradeOrderIds.has(trade.order_id));
   fresh.forEach((trade) => seenTradeOrderIds.add(trade.order_id));
-  if (!fresh.length) return false;
-  showToast(
-    formatTradeToast(fresh),
-    "ok",
-    ` <a href="${historyHref({ symbol: fresh[0]?.symbol || "" })}">${escapeHtml(tx("view_in_history", "View in History"))}</a>`
-  );
-  lastTradeNotified = true;
-  return true;
+  if (fresh.length > 0) {
+    showToast(
+      formatTradeToast(fresh),
+      "ok",
+      ` <a href="${historyHref({ symbol: fresh[0]?.symbol || "" })}">${escapeHtml(tx("view_in_history", "View in History"))}</a>`
+    );
+    lastTradeNotified = true;
+
+    // Dispatch desktop browser push notification if enabled
+    const notifyBrowser = $("field-notify-browser") ? !!$("field-notify-browser").checked : true;
+    if (notifyBrowser) {
+      fresh.forEach((trade) => {
+        const sym = trade.symbol || "";
+        const act = (trade.action || trade.side || trade.signal || "ORDER").toUpperCase();
+        const qty = trade.qty || trade.order_qty || "";
+        const priceStr = trade.price ? ` @ $${Number(trade.price).toFixed(2)}` : "";
+        sendBrowserPushNotification(
+          `AlgoPaca Trade Executed: ${act} ${qty} ${sym}${priceStr}`,
+          {
+            body: `Order ${trade.order_id || ""} submitted to broker successfully.`,
+            tag: `trade-${trade.order_id || sym}`,
+            data: { url: "/orders" },
+          }
+        );
+      });
+    }
+    return true;
+  }
+  return false;
 }
 
 function setFormError(message) {
@@ -408,6 +429,12 @@ function validateLocal() {
   }
   if (payload.strategy_mode !== "pair" && !String(payload.symbols || "").trim()) {
     return "Add at least one symbol to the evaluate list.";
+  }
+  if (payload.notify_email && payload.notification_email) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(payload.notification_email)) {
+      return tx("invalid_notification_email", "Please enter a valid notification email address (or leave empty to use account email).");
+    }
   }
   return null;
 }
@@ -621,6 +648,7 @@ function syncDeskAccordions() {
   if (emailField) {
     emailField.hidden = !notifyEmail;
   }
+  syncBrowserNotificationBadge();
   if (execBadge) {
     const apprText = requireApproval
       ? tx("approval_required_badge", "Approval required")
@@ -630,6 +658,19 @@ function syncDeskAccordions() {
     if (notifyEmail) alerts.push("Email");
     const alertText = alerts.length ? ` · ${alerts.join("+")}` : "";
     execBadge.textContent = `${apprText}${alertText}`;
+  }
+}
+
+function syncBrowserNotificationBadge() {
+  const badge = $("browser-notify-perm-note");
+  if (!badge) return;
+  if ("Notification" in window && Notification.permission === "denied") {
+    badge.textContent = tx("notifications_blocked", "Blocked in browser");
+    badge.hidden = false;
+    badge.classList.add("blocked");
+  } else {
+    badge.hidden = true;
+    badge.classList.remove("blocked");
   }
 }
 
@@ -680,13 +721,25 @@ function engineSideCopy(mode) {
     };
   }
   if (mode === "day") {
-    const isLS = formPayload().day_side === "long_short";
+    const side = formPayload().day_side;
+    if (side === "short_only") {
+      return {
+        pill: tx("short_only", "Short only"),
+        side: "short",
+        note: tx("engine_side_note_day_short", "Intraday short-selling trend & breakdown entries; auto-flattened before market close."),
+      };
+    }
+    if (side === "long_short") {
+      return {
+        pill: tx("long_and_short", "Long & Short"),
+        side: "two_way",
+        note: tx("engine_side_note_day_ls", "Intraday long & short trading with automatic end-of-day square-off."),
+      };
+    }
     return {
-      pill: isLS ? tx("long_and_short", "Long & Short") : tx("long_only", "Long only"),
-      side: isLS ? "two_way" : "long",
-      note: isLS
-        ? tx("engine_side_note_day_ls", "Intraday long & short trading with automatic end-of-day square-off.")
-        : tx("engine_side_note_day_long", "Intraday trend & mean reversion entries; auto-flattened before market close."),
+      pill: tx("long_only", "Long only"),
+      side: "long",
+      note: tx("engine_side_note_day_long", "Intraday trend & mean reversion entries; auto-flattened before market close."),
     };
   }
   return {
@@ -1408,10 +1461,12 @@ function markPresetCustomIfEdited(ev) {
     name === "day_use_ai_confirm" ||
     name === "day_ai_min_confidence"
   ) {
-    if (!form?.day_preset || form.day_preset.value === "custom") return;
-    form.day_preset.value = "custom";
-    refreshNiceSelect(form.day_preset);
-    syncDayPresetHint();
+    if (!form?.day_preset) return;
+    if (form.day_preset.value !== "custom") {
+      form.day_preset.value = "custom";
+      refreshNiceSelect(form.day_preset);
+      syncDayPresetHint();
+    }
     syncEngineSide();
     return;
   }
@@ -3132,6 +3187,20 @@ function sendBrowserPushNotification(title, options = {}) {
     notify.onclick = () => {
       window.focus();
       if (options.data?.url) {
+        try {
+          const url = new URL(options.data.url, window.location.origin);
+          const targetId = url.searchParams.get("approval");
+          if (targetId && window.location.pathname === "/auto-trade") {
+            window.history.replaceState(null, "", options.data.url);
+            const el = document.getElementById(`approval-item-${targetId}`);
+            if (el) {
+              document.querySelectorAll(".pending-approval-item").forEach((item) => item.classList.remove("is-highlighted"));
+              el.classList.add("is-highlighted");
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+            return;
+          }
+        } catch (_) {}
         window.location.href = options.data.url;
       }
     };
@@ -3358,20 +3427,88 @@ $("pending-approvals-list")?.addEventListener("click", (ev) => {
 });
 $("btn-approve-all")?.addEventListener("click", onApproveAllOrders);
 $("btn-reject-all")?.addEventListener("click", onRejectAllOrders);
+function validateInlineNotificationEmail() {
+  const input = $("field-notification-email");
+  const errEl = $("field-notification-email-error");
+  if (!input) return true;
+  const val = (input.value || "").trim();
+  if (!val) {
+    if (errEl) {
+      errEl.textContent = "";
+      errEl.hidden = true;
+    }
+    input.classList.remove("is-invalid");
+    return true;
+  }
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(val)) {
+    const msg = tx("invalid_notification_email", "Please enter a valid email address.");
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    }
+    input.classList.add("is-invalid");
+    return false;
+  }
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.hidden = true;
+  }
+  input.classList.remove("is-invalid");
+  return true;
+}
+
+$("field-notification-email")?.addEventListener("input", () => {
+  validateInlineNotificationEmail();
+});
+$("field-notification-email")?.addEventListener("blur", () => {
+  validateInlineNotificationEmail();
+});
+
 $("field-notify-browser")?.addEventListener("change", async (ev) => {
+  syncDeskAccordions();
   if (ev.target.checked) {
     const granted = await requestBrowserNotificationPermission();
     if (!granted) {
-      showToast("Browser notification permission was not granted.", "warn");
+      if ("Notification" in window && Notification.permission === "denied") {
+        showToast(
+          tx("notifications_blocked_toast", "Browser notifications are blocked in your browser settings. Please allow them in site permissions."),
+          "warn"
+        );
+      } else {
+        showToast(
+          tx("notifications_denied_toast", "Browser notification permission was not granted."),
+          "warn"
+        );
+      }
+    } else {
+      showToast(
+        tx("notifications_enabled_toast", "Desktop browser push notifications enabled."),
+        "ok"
+      );
+    }
+  }
+  syncBrowserNotificationBadge();
+});
+
+$("desk-execution-controls-group")?.addEventListener("toggle", async (ev) => {
+  if (ev.target.open && $("field-notify-browser")?.checked) {
+    syncBrowserNotificationBadge();
+    if ("Notification" in window && Notification.permission === "default") {
+      await requestBrowserNotificationPermission();
+      syncBrowserNotificationBadge();
     }
   }
 });
+
 $("field-notify-email")?.addEventListener("change", (ev) => {
   const emailField = $("email-notification-field");
   if (emailField) {
     emailField.hidden = !ev.target.checked;
   }
+  syncDeskAccordions();
 });
+
 
 /* ── Custom Engine Event Listeners ───────────────────────────── */
 $("field-custom-engine-select")?.addEventListener("change", (ev) => {

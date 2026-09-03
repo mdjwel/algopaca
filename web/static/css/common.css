@@ -1868,9 +1868,15 @@ a.button:focus-visible {
 }
 
 .engine-side-pill[data-side="ls"],
-.engine-side-pill[data-side="ai"] {
+.engine-side-pill[data-side="ai"],
+.engine-side-pill[data-side="two_way"] {
   color: var(--copper);
   border-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+.engine-side-pill[data-side="short"] {
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 45%, var(--line));
 }
 
 .engine-side-pill[data-side="pair"] {
@@ -3914,9 +3920,15 @@ button.ghost.ghost-danger:focus-visible {
 }
 
 .side-badge[data-side="ls"],
-.side-badge[data-side="ai"] {
+.side-badge[data-side="ai"],
+.side-badge[data-side="two_way"] {
   color: var(--copper);
   border-color: color-mix(in srgb, var(--copper) 45%, var(--line));
+}
+
+.side-badge[data-side="short"] {
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 45%, var(--line));
 }
 
 .side-badge[data-side="pair"] {

@@ -1381,6 +1381,21 @@
     }
   });
 
+  checkSettingsNotifyBrowser?.addEventListener("change", async (ev) => {
+    if (ev.target.checked && "Notification" in window) {
+      if (Notification.permission === "denied") {
+        showToast(tr("notifications_blocked_toast", "Browser notifications are blocked in your browser settings. Please allow them in site permissions."), "warn");
+      } else if (Notification.permission !== "granted") {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          showToast(tr("notifications_denied_toast", "Browser notification permission was not granted."), "warn");
+        } else {
+          showToast(tr("notifications_enabled_toast", "Desktop browser push notifications enabled."), "success");
+        }
+      }
+    }
+  });
+
   /* ------------------------------------------------------------------------ */
   /* Data Export & Account Deletion                                           */
   /* ------------------------------------------------------------------------ */

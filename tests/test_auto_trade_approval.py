@@ -9,11 +9,12 @@ from unittest.mock import MagicMock, patch
 from bot.approval_store import approvals_path_for, load_approvals, save_approvals
 from bot.auth import AuthStore
 from bot.config import Config
-from bot.email_service import render_order_approval_email
+from bot.email_service import render_order_approval_email, render_trade_notification_email
 from bot.settings_store import load_settings, save_settings
 from bot.strategy import Signal, StrategyResult
 from bot.trader import TradingBot
 from bot.web_state import AppState
+from bot.webapp import SettingsIn
 
 
 class TestApprovalStore(unittest.TestCase):
@@ -198,6 +199,42 @@ class TestEmailTemplates(unittest.TestCase):
         self.assertIn("http://localhost:8000/auto-trade?approval=appr_12345", html_body)
         self.assertIn("Review &amp; Approve Order", html_body)
         self.assertIn("NVDA", text_body)
+
+    def test_render_trade_notification_email_en_and_bn(self):
+        order_details = {
+            "symbol": "TSLA",
+            "action": "BUY",
+            "qty": 10,
+            "price": 240.0,
+            "order_id": "ord_987654",
+            "engine": "ai",
+            "reason": "Bullish momentum breakout",
+        }
+        # English
+        sub_en, text_en, html_en = render_trade_notification_email(
+            to_email="trader@example.com",
+            order_details=order_details,
+            desk_url="http://localhost:8000/orders",
+            lang="en",
+        )
+        self.assertIn("TSLA", sub_en)
+        self.assertIn("BUY", sub_en)
+        self.assertIn("Trade Executed", sub_en)
+        self.assertIn("$240.00", html_en)
+        self.assertIn("ord_987654", html_en)
+        self.assertIn("View Orders &amp; Positions", html_en)
+
+        # Bengali
+        sub_bn, text_bn, html_bn = render_trade_notification_email(
+            to_email="trader@example.com",
+            order_details=order_details,
+            desk_url="http://localhost:8000/orders",
+            lang="bn",
+        )
+        self.assertIn("TSLA", sub_bn)
+        self.assertIn("ট্রেড কার্যকর", sub_bn)
+        self.assertIn("অর্ডার ও পজিশন দেখুন", html_bn)
+        self.assertIn("ord_987654", text_bn)
 
 
 class TestTraderApprovalStaging(unittest.TestCase):
@@ -450,6 +487,57 @@ class TestAppStateApprovals(unittest.TestCase):
         with patch("bot.email_service.send_order_approval_email") as mock_send:
             self._stage(symbol="RIVN", price=15.0)
         mock_send.assert_not_called()
+
+    def test_auto_executed_trades_dispatch_email_when_notify_email_enabled(self):
+        self.state.settings.notify_email = True
+        self.state.settings.notification_email = "autotrader@example.com"
+        sent_trades = []
+
+        def _capture_trade(to_email, order_details, desk_url, lang):
+            sent_trades.append({
+                "to": to_email,
+                "symbol": order_details.get("symbol"),
+                "order_id": order_details.get("order_id"),
+            })
+            return True
+
+        with patch("bot.email_service.send_trade_notification_email", _capture_trade):
+            # Execute automated trade record directly (as happens during automated cycles)
+            trade_result = {
+                "signal": "buy",
+                "symbol": "MSFT",
+                "order_id": "ord_auto_111",
+                "order_qty": 5,
+                "price": 420.0,
+            }
+            self.state._record_trade_history([trade_result])
+
+            # Wait for daemon thread
+            for thread in list(__import__("threading").enumerate()):
+                if thread.daemon and thread is not __import__("threading").current_thread():
+                    thread.join(timeout=2.0)
+
+        self.assertEqual(len(sent_trades), 1)
+        self.assertEqual(sent_trades[0]["to"], "autotrader@example.com")
+        self.assertEqual(sent_trades[0]["symbol"], "MSFT")
+        self.assertEqual(sent_trades[0]["order_id"], "ord_auto_111")
+
+    def test_settings_in_validates_notification_email(self):
+        # Valid email
+        s_valid = SettingsIn(notification_email="valid@example.com")
+        self.assertEqual(s_valid.notification_email, "valid@example.com")
+
+        # Empty string
+        s_empty = SettingsIn(notification_email="   ")
+        self.assertEqual(s_empty.notification_email, "")
+
+        # None
+        s_none = SettingsIn(notification_email=None)
+        self.assertIsNone(s_none.notification_email)
+
+        # Invalid email
+        with self.assertRaises(ValueError):
+            SettingsIn(notification_email="invalid-not-an-email")
 
 
 if __name__ == "__main__":

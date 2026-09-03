@@ -378,8 +378,12 @@
                   <select id="field-day-preset" name="day_preset">
                     <option value="ai_vwap_momentum" data-i18n="preset_day_ai_vwap_momentum">AI Institutional VWAP &amp; Momentum</option>
                     <option value="ai_orb_breakout" data-i18n="preset_day_ai_orb_breakout">AI Opening Range Sniper (15m)</option>
+                    <option value="ai_orb_breakout_ls" data-i18n="preset_day_ai_orb_breakout_ls">AI Opening Range Sniper (Long &amp; Short)</option>
+                    <option value="ai_vwap_momentum_ls" data-i18n="preset_day_ai_vwap_momentum_ls">AI Two-Way VWAP &amp; Momentum (Long &amp; Short)</option>
+                    <option value="ai_orb_breakdown_short" data-i18n="preset_day_ai_orb_breakdown_short">AI Opening Range Breakdown (Short Only)</option>
                     <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_adaptive_scalp">AI Adaptive Intraday Scalper</option>
                     <option value="vwap_trend" data-i18n="preset_day_vwap_trend">VWAP Trend Rider</option>
+                    <option value="vwap_trend_short" data-i18n="preset_day_vwap_trend_short">VWAP Downtrend Rider (Short Only)</option>
                     <option value="orb_breakout" data-i18n="preset_day_orb_breakout">Opening Range Breakout (15m)</option>
                     <option value="momentum_scalp" data-i18n="preset_day_momentum_scalp">Intraday Momentum Scalp</option>
                     <option value="vwap_fade" data-i18n="preset_day_vwap_fade">VWAP Mean Reversion (Fade)</option>
@@ -415,6 +419,7 @@
                   <label for="field-day-side"><span data-i18n="day_direction">Direction</span>
                     <select id="field-day-side" name="day_side">
                       <option value="long_only" data-i18n="long_only">Long only</option>
+                      <option value="short_only" data-i18n="short_only">Short only</option>
                       <option value="long_short" data-i18n="long_and_short">Long &amp; Short</option>
                     </select>
                   </label>
@@ -762,6 +767,7 @@
                       <input id="field-notify-browser" name="notify_browser" type="checkbox" checked />
                       <span>
                         <strong data-i18n="notify_browser">Browser notifications</strong>
+                        <span id="browser-notify-perm-note" class="badge-status-note blocked" hidden data-i18n="notifications_blocked">Blocked in browser</span>
                         <span class="check-desc" data-i18n="notify_browser_desc">Receive desktop browser push notifications when a signal or approval is ready</span>
                       </span>
                     </label>
@@ -778,7 +784,8 @@
                       <label for="field-notification-email"><span data-i18n="notification_email">Notification Email (optional)</span>
                         <input id="field-notification-email" name="notification_email" type="email" placeholder="Leave empty to use account email" data-i18n-placeholder="notification_email_placeholder" autocomplete="email" />
                       </label>
-                      <p class="field-help" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
+                      <span id="field-notification-email-error" class="field-error-inline" hidden></span>
+                      <p class="field-help" id="field-notification-email-hint" data-i18n="notification_email_hint">If left empty, alerts are sent to your login account email address.</p>
                     </div>
                   </div>
                 </div>

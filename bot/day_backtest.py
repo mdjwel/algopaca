@@ -261,8 +261,8 @@ def run_day_backtest(
             if wants_out:
                 _close(i + 1, next_open, "signal")
         else:
-            long_entry = result.signal is Signal.BUY
-            short_entry = result.signal is Signal.SELL and p.side == "long_short"
+            long_entry = result.signal is Signal.BUY and p.side != "short_only"
+            short_entry = result.signal is Signal.SELL and p.side in {"long_short", "short_only"}
             if long_entry or short_entry:
                 signals_seen += 1
             if (long_entry or short_entry) and bar_time >= MARKET_OPEN_ET:
@@ -677,8 +677,8 @@ def run_day_portfolio_backtest(
             next_open = float(valid_frames[s]["open"].iloc[loc_idx + 1]) if "open" in valid_frames[s] else float(valid_frames[s]["close"].iloc[loc_idx + 1])
             next_stamp = f.index[loc_idx + 1]
 
-            long_entry = res.signal is Signal.BUY
-            short_entry = res.signal is Signal.SELL and p.side == "long_short"
+            long_entry = res.signal is Signal.BUY and p.side != "short_only"
+            short_entry = res.signal is Signal.SELL and p.side in {"long_short", "short_only"}
 
             if (long_entry or short_entry) and b_time >= MARKET_OPEN_ET:
                 blocked = (

@@ -64,12 +64,12 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 ## 🌟 Why AlgoPaca?
 
 - 💸 **100% Free & Commission-Free Trading**: No recurring monthly subscription tiers, no hidden platform fees, and $0 commission US stock & ETF trading natively via Alpaca Markets.
-- ⚡ **Intraday Day Trading Engine**: High-frequency intraday engine designed for 1m, 5m, and 15m intervals with VWAP trend riding, Opening Range Breakout (ORB 15m), fast momentum scalping, and mean-reversion fading, paired with AI trade vetoes and automatic EOD position square-off.
+- ⚡ **Intraday Day Trading Engine & Two-Way Execution**: High-frequency intraday engine designed for 1m, 5m, and 15m intervals with VWAP trend riding, Opening Range Breakout & Breakdown (ORB 15m), fast momentum scalping, and mean-reversion fading. Fully supports **Long Only**, **Short Only**, and **Two-Way (Long & Short)** trading, paired with AI trade vetoes and automatic EOD position square-off.
 - 🛡️ **Automated Exit Strategies & Position Protection**: Interactive position management directly from the Positions desk — set fixed Stop Loss, Breakeven Ratchet ($entry ± $0.01), Trailing Stop Loss (%), Take Profit targets, or full Bracket orders with single-click execution.
 - 🧠 **Multi-Provider AI Intelligence**: Seamlessly switch between top-tier LLMs—**OpenAI** (GPT-4o, GPT-4o-mini, o3-mini), **Google Gemini** (Gemini 2.0 Flash, Gemini 1.5 Pro), **Anthropic Claude** (Claude 3.7 Sonnet, Claude 3.5 Sonnet, Claude 3.5 Haiku), and **xAI Grok** (Grok-2, Grok-beta)—to fuse quantitative technical indicators, financial news sentiment, Nasdaq earnings surprises, and macroeconomic calendar events into reasoned JSON trading decisions.
 - 🛠️ **Custom Trading Engines & Starter Blueprints**: Save any active desk setup—strategy parameters, custom AI prompts, risk limits, and indicator gates—as a reusable Custom Engine, or launch instantly from 7 pre-built starter blueprints.
 - 🎯 **Alpaca Options Overlay**: Automatically map algorithmic and AI signals onto defined-risk options strategies (vertical debit spreads, long calls/puts, and covered hedges) with automated strike and DTE selection.
-- 🚦 **Auto-Trade & Human-in-the-Loop Approval Queue**: Choose between full autonomous continuous execution or **Approval Mode**, where candidate trades are staged in an approval queue with full reasoning, entry/exit levels, and risk metrics for single-click review.
+- 🚦 **Auto-Trade, Approval Queue & Deep-Link Notifications**: Choose between full autonomous continuous execution or **Approval Mode**, where candidate trades are staged in an approval queue with full reasoning, entry/exit levels, and risk metrics. Receive instant **Desktop Browser Push Notifications** and styled **HTML Email Alerts** with one-click deep-linking into approval orders.
 - 📱 **Mobile-First App Experience (PWA)**: Complete responsive mobile shell featuring a native-feeling top app header, bottom navigation bar, slide-out drawer, mobile order ticketing, and fast touch interactions.
 - 👥 **Multi-User Workspace & Admin Suite**: Complete user isolation with secure signup, login, password resets via SMTP, setup wizard onboarding, Owner/Admin/Member role elevation, user-scoped API keys, and comprehensive audit logs.
 - 📋 **Advanced Order Execution & Lot Batch Liquidation**: Execute Market, Limit, Stop, Stop-Limit, Trailing Stops ($, %), Bracket, OCO, and OTO orders. Chain post-fill follow-on **Next-Tickets**, partially scale out of positions (25%, 50%, 75%), and selectively batch-liquidate individual tax lots with FIFO calculation and resting order safeguards.
@@ -84,7 +84,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 ## ✨ Key Features
 
 - 📈 **6 Algorithmic & Intraday Trading Engines**:
-  1. **Intraday & Day Trading Engine** — High-speed intraday engine on 1m, 5m, or 15m intervals featuring VWAP trend following, Opening Range Breakout (ORB 15m), fast momentum scalping, and mean-reversion fading, backed by AI trade veto and automatic End-Of-Day (EOD) position square-off.
+  1. **Intraday & Day Trading Engine** — High-speed intraday engine on 1m, 5m, or 15m intervals featuring VWAP trend following, Opening Range Breakout & Breakdown (ORB 15m), fast momentum scalping, and mean-reversion fading. Supports Long Only, Short Only, and Two-Way (Long & Short) execution, backed by AI trade veto and automatic End-Of-Day (EOD) position square-off.
   2. **Classic SMA Crossover** — Moving average trend-following across watchlist tickers with multiple proven presets (Golden Cross, Swing, Fibonacci, etc.).
   3. **Buy the Dip** — Oversold mean-reversion with RSI + lower Bollinger wash entries and recovery exits.
   4. **Long & Short Pair Rotator** — Dynamic regime-impulse rotator between two correlated/inverse symbols (e.g., QLD / QURL or TQQQ / SQQQ).
@@ -110,9 +110,11 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 - 🤖 **4 Leading AI Providers**:
   - Full support for **OpenAI**, **Google Gemini**, **Anthropic Claude**, and **xAI Grok**.
   - Custom system prompts and named presets: *Balanced*, *Conservative*, *Momentum*, *Mean Reversion*, *News Aware*, *PEAD (Post-Earnings Announcement Drift)*, *ORB (Opening Range Breakout)*, and *Custom*.
-- 🚦 **Auto-Trade & Approval Queue**:
+- 🚦 **Auto-Trade, Approval Queue & Multi-Channel Alerts**:
   - **Autonomous Mode**: Runs scheduled strategy cycles and executes cleared signals automatically.
   - **Approval Mode (Human-in-the-Loop)**: Places recommended trades into an interactive staging queue with full AI rationale, confidence score, technical breakdown, and position size for review before execution.
+  - **Executed Trade Email Alerts**: Branded, responsive HTML notifications sent via SMTP containing symbol, action, quantity, execution price, strategy engine, order ID, and rationale with direct links to the desk.
+  - **Desktop Push Notifications**: Real-time browser notifications with audible alerts, permission status indicators, and direct deep-linking that highlights staged approval orders.
 - 📝 **Advanced Order Desk & Next-Ticket Chaining**:
   - **Order Types**: Market, Limit, Stop, Stop-Limit, Trailing Stop ($ and %), Bracket (Take Profit + Stop Loss), OCO (One-Cancels-Other), and OTO (One-Triggers-Other).
   - **Next-Ticket Lifecycle**: Configure conditional follow-on orders that automatically arm and execute once a primary order fills, without premature cancellation.
@@ -143,7 +145,7 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 | Engine | Strategy Type | Core Logic | Highlights & Presets |
 | :--- | :--- | :--- | :--- |
-| **Day Trading** | Intraday & Scalping | High-frequency minute-bar execution (1m/5m/15m) using VWAP, Opening Range Breakout (ORB), and 9/21 EMA momentum | **AI Institutional VWAP & Momentum**, **AI Opening Range Sniper (15m)**, **AI Adaptive Intraday Scalper**, **VWAP Trend Rider**, **Opening Range Breakout**, **Intraday Momentum Scalp**, **VWAP Mean Reversion (Fade)**, or **Custom**. |
+| **Day Trading** | Intraday & Scalping | High-frequency minute-bar execution (1m/5m/15m) using VWAP, Opening Range Breakout / Breakdown (ORB), and 9/21 EMA momentum | **AI Opening Range Sniper (Long & Short)**, **AI Two-Way VWAP & Momentum (Long & Short)**, **AI Opening Range Breakdown (Short Only)**, **VWAP Downtrend Rider (Short Only)**, **AI Institutional VWAP & Momentum**, **AI Opening Range Sniper (15m)**, **AI Adaptive Intraday Scalper**, **VWAP Trend Rider**, **Opening Range Breakout**, **Intraday Momentum Scalp**, **VWAP Mean Reversion (Fade)**, or **Custom**. |
 | **SMA** | Trend Following | Moving average crossover filters across watchlist | **Classic** (10/30), **Short-term** (5/20), **Fibonacci** (8/21), **Swing** (20/50), **Golden Cross** (50/200), or **Custom**. |
 | **Dip** | Mean Reversion | Capitulation washouts & recovery bounces | RSI threshold washouts + Bollinger lower band taps. Presets: **Deep**, **Mild pullback**, **Washout**, **Custom**. |
 | **Pair** | Regime Rotation | Dynamic regime-impulse rotation across 2 symbols | Holds long leg in bull regimes; rotates into short leg on confirmed bear impulses (e.g. 7-day drop ≤ -5% below SMA). |
@@ -156,13 +158,17 @@ Check out the launch walkthrough video and feature demonstration on **𝕏 (Twit
 
 The Day Trading engine is built specifically for intraday US equity and ETF market sessions with strict session risk rules:
 
+- **Execution Sides**:
+  - `long_only` — Standard long entries on bullish trend breaks and pullbacks; closes before EOD.
+  - `short_only` — Short selling entries on bearish breakdowns, VWAP rejections, and downtrend momentum; closes before EOD.
+  - `long_short` — Dynamic two-way intraday trading; captures upside breakouts and downside momentum throughout the session.
 - **Sub-Modes**:
-  - `vwap_trend` — Trend following above intraday VWAP with fast 9/21 EMA alignment and 2R profit target.
-  - `orb` — Volume-confirmed 15-minute Opening Range Breakout with dynamic ATR trailing stops.
-  - `momentum_scalp` — Fast 9/21 EMA crossovers confirmed by RSI > 55 and ADX trend filters for quick intraday scalps.
-  - `vwap_fade` — Mean-reversion buying confirmed oversold bounces off the lower VWAP standard deviation band in range-bound markets.
+  - `vwap_trend` — Trend following above (long) or below (short) intraday VWAP with fast 9/21 EMA alignment and 2R profit target.
+  - `orb` — Volume-confirmed 15-minute Opening Range Breakout (high) and Breakdown (low) with dynamic ATR trailing stops.
+  - `momentum_scalp` — Fast 9/21 EMA crossovers confirmed by RSI and ADX trend filters for quick intraday scalps on both long and short sides.
+  - `vwap_fade` — Mean-reversion buying confirmed oversold bounces off lower VWAP bands, or shorting overbought rejections at upper VWAP bands in range-bound markets.
 - **AI Second-Opinion Confirmation**: When enabled (`use_ai_confirm=True`), trading candidates are evaluated against real-time financial news sentiment and macro catalysts by your configured AI provider; setups with confidence below the threshold (default: 0.65–0.70) are safely vetoed.
-- **Market Open Buffer & EOD Square-Off**: Enforces an opening bell buffer (e.g. 15 minutes) to avoid opening volatility whipsaws, limits maximum round-trip trades per day, and automatically squares off open intraday positions before the closing bell (`day_eod_flatten_mins=15`).
+- **Market Open Buffer & EOD Square-Off**: Enforces an opening bell buffer (e.g. 15 minutes) to avoid opening volatility whipsaws, limits maximum round-trip trades per day, and automatically squares off open intraday positions (both long and short) before the closing bell (`day_eod_flatten_mins=15`).
 
 ### 🎯 Options Overlay in Action
 
@@ -411,9 +417,9 @@ AI_PRESET=balanced
 # ==========================================
 # Intraday Day Trading Configuration
 # ==========================================
-DAY_PRESET=ai_vwap_momentum # ai_vwap_momentum | ai_orb_breakout | ai_adaptive_scalp | vwap_trend | orb_breakout | momentum_scalp | vwap_fade | custom
+DAY_PRESET=ai_vwap_momentum # ai_vwap_momentum | ai_orb_breakout | ai_orb_breakout_ls | ai_vwap_momentum_ls | ai_orb_breakdown_short | vwap_trend_short | ai_adaptive_scalp | vwap_trend | orb_breakout | momentum_scalp | vwap_fade | custom
 DAY_SUB_MODE=vwap_trend     # vwap_trend | orb | momentum_scalp | vwap_fade
-DAY_SIDE=long_only          # long_only | long_short
+DAY_SIDE=long_only          # long_only | short_only | long_short
 DAY_EMA_FAST=9
 DAY_EMA_SLOW=21
 DAY_ORB_MINUTES=15          # Opening range duration (minutes)
@@ -448,6 +454,12 @@ AI_MAX_POSITIONS=3          # Max concurrent open positions
 AI_DAILY_LOSS_LIMIT_PCT=3.0 # Circuit breaker: halt entries if daily P&L <= -3%
 AI_COOLDOWN_MINUTES=60      # Cooldown before re-entering a stopped ticker
 AI_MAX_ALLOC_PCT=25.0       # Max portfolio allocation per individual trade
+
+# ==========================================
+# Notifications & Alert Settings
+# ==========================================
+NOTIFY_EMAIL=true           # Send trade execution alerts via SMTP
+NOTIFICATION_EMAIL=         # Optional destination email override (defaults to user account email)
 
 # ==========================================
 # Web Server & Localization Configuration

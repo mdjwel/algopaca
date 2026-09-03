@@ -250,7 +250,11 @@
                 <select id="bt-day-preset" name="day_preset">
                   <option value="ai_vwap_momentum" selected data-i18n="preset_day_ai_vwap">AI Institutional VWAP &amp; Momentum</option>
                   <option value="vwap_trend" data-i18n="preset_day_vwap_trend">VWAP Trend Rider</option>
+                  <option value="vwap_trend_short" data-i18n="preset_day_vwap_trend_short">VWAP Downtrend Rider (Short Only)</option>
                   <option value="ai_orb_breakout" data-i18n="preset_day_ai_orb">AI Opening Range Sniper (15m)</option>
+                  <option value="ai_orb_breakout_ls" data-i18n="preset_day_ai_orb_breakout_ls">AI Opening Range Sniper (Long &amp; Short)</option>
+                  <option value="ai_vwap_momentum_ls" data-i18n="preset_day_ai_vwap_momentum_ls">AI Two-Way VWAP &amp; Momentum (Long &amp; Short)</option>
+                  <option value="ai_orb_breakdown_short" data-i18n="preset_day_ai_orb_breakdown_short">AI Opening Range Breakdown (Short Only)</option>
                   <option value="orb_breakout" data-i18n="preset_day_orb">Opening Range Breakout (15m)</option>
                   <option value="ai_adaptive_scalp" data-i18n="preset_day_ai_scalp">AI Adaptive Scalper</option>
                   <option value="momentum_scalp" data-i18n="preset_day_scalp">Intraday Momentum Scalp</option>
@@ -273,6 +277,7 @@
                 <label for="bt-day-side" class="stack"><span data-i18n="side">Side</span>
                   <select id="bt-day-side" name="day_side">
                     <option value="long_only" selected>Long only</option>
+                    <option value="short_only">Short only</option>
                     <option value="long_short">Long &amp; Short</option>
                   </select>
                 </label>

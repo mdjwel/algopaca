@@ -213,7 +213,7 @@ class Config:
     ls_time_stop_bars: int
     day_preset: str
     day_sub_mode: str  # vwap_trend | orb | momentum_scalp | vwap_fade
-    day_side: str  # long_only | long_short
+    day_side: str  # long_only | short_only | long_short
     day_ema_fast: int
     day_ema_slow: int
     day_orb_minutes: int
@@ -680,7 +680,8 @@ class Config:
         d_tp = max(0.1, min(20.0, d_tp))
         d_stop_atr = max(0.1, min(10.0, d_stop_atr))
         d_ai_min_conf = max(0.0, min(1.0, d_ai_min_conf))
-        d_side = "long_short" if str(d_side).lower() == "long_short" else "long_only"
+        d_side_str = str(d_side).lower().strip()
+        d_side = d_side_str if d_side_str in {"long_short", "short_only"} else "long_only"
 
         provider = (ai_provider or self.ai_provider).strip().lower()
         if provider not in {"openai", "gemini", "anthropic", "xai"}:

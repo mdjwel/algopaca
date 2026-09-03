@@ -151,6 +151,18 @@ class SettingsIn(BaseModel):
     notify_email: Optional[bool] = None
     notification_email: Optional[str] = None
 
+    @field_validator("notification_email")
+    @classmethod
+    def validate_notification_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        clean = v.strip()
+        if not clean:
+            return ""
+        if not EMAIL_REGEX.match(clean):
+            raise ValueError("Invalid notification email address format.")
+        return clean
+
 
 # Approval/notification toggles live on both the Auto-Trade desk and the User
 # Settings page; these are the keys mirrored between the two stores.

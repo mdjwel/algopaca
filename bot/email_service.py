@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import smtplib
@@ -351,9 +352,6 @@ def test_smtp_connection(
 
 
 test_smtp_connection.__test__ = False
-
-
-import html
 
 
 def render_password_reset_email(
@@ -984,6 +982,192 @@ def send_order_approval_email(
     )
 
 
+def render_trade_notification_email(
+    to_email: str,
+    order_details: dict[str, Any],
+    desk_url: str,
+    lang: str = "en",
+) -> tuple[str, str, str]:
+    """Generate (subject, body_text, body_html) for an executed trade notification."""
+    symbol = str(order_details.get("symbol", "N/A")).upper().strip()
+    action = str(order_details.get("action", order_details.get("signal", "BUY"))).upper().strip()
+    qty = order_details.get("qty", order_details.get("order_qty", 1))
+    price = order_details.get("price", 0.0)
+    order_id = str(order_details.get("order_id", "") or "")
+    engine = str(order_details.get("engine", order_details.get("strategy_mode", "Auto"))).upper()
+    reason = str(order_details.get("reason", order_details.get("thesis", "Signal criteria met"))).strip()
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    is_buy = action in ("BUY", "COVER")
+    accent_color = "#10b981" if is_buy else "#ef4444"
+    accent_gradient = (
+        "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+        if is_buy
+        else "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+    )
+
+    price_str = f"${float(price):,.2f}" if isinstance(price, (int, float)) and float(price) > 0 else f"${price}"
+
+    is_bn = str(lang).strip().lower() == "bn"
+    if is_bn:
+        subject = f"⚡ [ট্রেড কার্যকর] {action} {qty} {symbol} · AlgoPaca"
+        body_text = f"""নমস্কার,
+
+আপনার AlgoPaca ট্রেডিং ডেস্কে একটি স্বয়ংক্রিয় অর্ডার ব্রোকারের কাছে সফলভাবে সাবমিট ও কার্যকর হয়েছে।
+
+ট্রেড বিবরণ:
+- সিম্বল: {symbol}
+- অ্যাকশন: {action}
+- শেয়ার পরিমাণ: {qty}
+- মূল্য: {price_str}
+- ইঞ্জিন: {engine}
+- অর্ডার আইডি: {order_id}
+- কারণ: {reason}
+- সময়: {now_str}
+
+খোলা অর্ডার ও পজিশন দেখতে ডেস্কে যান:
+{desk_url}
+
+ধন্যবাদান্তে,
+AlgoPaca Automated Quantitative Trading Desk
+"""
+    else:
+        subject = f"⚡ [Trade Executed] {action} {qty} {symbol} · AlgoPaca"
+        body_text = f"""Hello,
+
+An automated order has been executed on your AlgoPaca trading desk.
+
+Trade Details:
+- Symbol: {symbol}
+- Action: {action}
+- Quantity: {qty}
+- Price: {price_str}
+- Engine: {engine}
+- Order ID: {order_id}
+- Rationale: {reason}
+- Timestamp: {now_str}
+
+View open orders and positions:
+{desk_url}
+
+Best regards,
+AlgoPaca Automated Quantitative Trading Desk
+"""
+
+    safe_symbol = html.escape(symbol)
+    safe_action = html.escape(action)
+    safe_qty = html.escape(str(qty))
+    safe_price = price_str
+    safe_order_id = html.escape(order_id)
+    safe_engine = html.escape(engine)
+    safe_reason = html.escape(reason)
+    safe_url = html.escape(desk_url)
+
+    btn_label = "অর্ডার ও পজিশন দেখুন" if is_bn else "View Orders &amp; Positions"
+    heading = "ট্রেড কার্যকর হয়েছে" if is_bn else "Trade Executed"
+    subheading = (
+        "একটি স্বয়ংক্রিয় ট্রেড অর্ডার ব্রোকারে সফলভাবে পাঠানো হয়েছে।"
+        if is_bn
+        else "An automated trade order has been successfully submitted to your broker."
+    )
+
+    body_html = f"""<!DOCTYPE html>
+<html lang="{html.escape(lang)}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{html.escape(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f1f5f9; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0b0f19; padding: 40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #111827; border: 1px solid #1f293d; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);">
+          <!-- Header Bar -->
+          <tr>
+            <td style="padding: 24px 32px; background: #131d31; border-bottom: 1px solid #1f293d;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <span style="display: inline-block; font-size: 19px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff;">Algo<span style="color: #38bdf8;">Paca</span></span>
+                  </td>
+                  <td align="right">
+                    <span style="display: inline-block; background: {accent_gradient}; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 10px; border-radius: 9999px;">{safe_action}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 32px 32px 24px 32px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 700; color: #ffffff;">⚡ {heading}</h1>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; color: #94a3b8;">{subheading}</p>
+
+              <!-- Order Summary Card -->
+              <div style="background-color: #0d1322; border: 1px solid #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Symbol:</td>
+                    <td style="padding: 6px 0; color: #ffffff; font-size: 14px; font-weight: 700; text-align: right;">{safe_symbol}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Action:</td>
+                    <td style="padding: 6px 0; color: {accent_color}; font-size: 13px; font-weight: 700; text-align: right;">{safe_action}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Quantity:</td>
+                    <td style="padding: 6px 0; color: #e2e8f0; font-family: monospace; font-size: 13px; font-weight: 600; text-align: right;">{safe_qty}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Fill / Exec Price:</td>
+                    <td style="padding: 6px 0; color: #38bdf8; font-family: monospace; font-size: 13px; font-weight: 600; text-align: right;">{safe_price}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Engine:</td>
+                    <td style="padding: 6px 0; color: #cbd5e1; font-size: 13px; text-align: right;">{safe_engine}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Order ID:</td>
+                    <td style="padding: 6px 0; color: #94a3b8; font-family: monospace; font-size: 12px; text-align: right;">{safe_order_id}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #94a3b8; font-size: 13px;">Rationale:</td>
+                    <td style="padding: 6px 0; color: #cbd5e1; font-size: 12px; text-align: right;">{safe_reason}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Action Button -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td align="center">
+                    <a href="{safe_url}" style="display: block; width: 100%; box-sizing: border-box; text-align: center; background: #38bdf8; color: #0b0f19; text-decoration: none; font-size: 14px; font-weight: 700; padding: 14px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);">{btn_label} &rarr;</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">Timestamp: {now_str}</p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 16px 32px; background-color: #0e1424; border-top: 1px solid #1e293b; text-align: center;">
+              <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.4;">AlgoPaca Automated Quantitative Trading Desk</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+    return subject, body_text, body_html
+
+
 def send_trade_notification_email(
     to_email: str,
     order_details: dict[str, Any],
@@ -991,54 +1175,18 @@ def send_trade_notification_email(
     lang: str = "en",
 ) -> bool:
     """Send an executed trade alert email via SMTP."""
-    symbol = str(order_details.get("symbol", "N/A")).upper()
-    action = str(order_details.get("action", order_details.get("signal", "BUY"))).upper()
-    qty = order_details.get("qty", order_details.get("order_qty", 1))
-    price = order_details.get("price", 0.0)
-    order_id = str(order_details.get("order_id", "") or "")
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    subject = f"⚡ [Trade Executed] {action} {qty} {symbol} · AlgoPaca"
-    body_text = f"""Hello,
-
-An automated order has been executed on your AlgoPaca trading desk.
-
-- Symbol: {symbol}
-- Action: {action}
-- Quantity: {qty}
-- Price: ${price}
-- Order ID: {order_id}
-- Timestamp: {now_str}
-
-View open orders and positions:
-{desk_url}
-
-Best regards,
-AlgoPaca Team
-"""
-    body_html = f"""<!DOCTYPE html>
-<html>
-<body style="font-family: sans-serif; background: #080d14; color: #cbd5e1; padding: 30px;">
-  <div style="max-width: 500px; margin: 0 auto; background: #121927; border: 1px solid #223044; border-radius: 12px; padding: 24px;">
-    <h2 style="color: #ffffff; margin-top: 0;">⚡ Trade Executed: {html.escape(action)} {html.escape(symbol)}</h2>
-    <p>An automated trade order has been submitted to your broker.</p>
-    <ul>
-      <li><strong>Symbol:</strong> {html.escape(symbol)}</li>
-      <li><strong>Action:</strong> {html.escape(action)}</li>
-      <li><strong>Quantity:</strong> {html.escape(str(qty))}</li>
-      <li><strong>Price:</strong> ${html.escape(str(price))}</li>
-      <li><strong>Order ID:</strong> {html.escape(order_id)}</li>
-    </ul>
-    <p><a href="{html.escape(desk_url)}" style="color: #38bdf8;">Open AlgoPaca Desk &rarr;</a></p>
-  </div>
-</body>
-</html>"""
-
+    subject, body_text, body_html = render_trade_notification_email(
+        to_email=to_email,
+        order_details=order_details,
+        desk_url=desk_url,
+        lang=lang,
+    )
     return send_email(
         to_email=to_email,
         subject=subject,
         body_text=body_text,
         body_html=body_html,
     )
+
 
 

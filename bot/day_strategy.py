@@ -89,6 +89,8 @@ class DayContext:
     bar_time: dtime | None
     # Price dipped to the fast EMA within the last few bars and is back above it.
     pulled_back: bool = False
+    # Price rallied to the fast EMA within the last few bars and is back below it.
+    pulled_back_bearish: bool = False
 
     @property
     def entry_buffer(self) -> float:
@@ -269,7 +271,8 @@ class DayTradingStrategy:
         self.ema_fast = max(2, int(ema_fast or 9))
         self.ema_slow = max(self.ema_fast + 1, int(ema_slow or 21))
         self.orb_minutes = max(1, min(MAX_ORB_MINUTES, int(orb_minutes or 15)))
-        self.side = "long_short" if str(side).lower() == "long_short" else "long_only"
+        side_val = str(side or "long_only").strip().lower()
+        self.side = side_val if side_val in {"long_only", "short_only", "long_short"} else "long_only"
         # Off reproduces the raw indicator triggers with no regime, volume,
         # extension or hysteresis screening — kept so the two can be measured
         # against each other in a backtest.
@@ -323,6 +326,12 @@ class DayTradingStrategy:
             recent_fast = fast_series.iloc[-(PULLBACK_LOOKBACK + 1) : -1]
             pulled_back = bool((recent_lows <= recent_fast).any())
 
+        pulled_back_bearish = False
+        if price < curr_fast and len(highs) > PULLBACK_LOOKBACK:
+            recent_highs = highs.iloc[-(PULLBACK_LOOKBACK + 1) : -1]
+            recent_fast = fast_series.iloc[-(PULLBACK_LOOKBACK + 1) : -1]
+            pulled_back_bearish = bool((recent_highs >= recent_fast).any())
+
         return DayContext(
             price=price,
             prev_price=float(closes.iloc[-2]) if len(closes) > 1 else price,
@@ -343,6 +352,7 @@ class DayTradingStrategy:
             vol_ratio=vol_ratio,
             bar_time=bar_time,
             pulled_back=pulled_back,
+            pulled_back_bearish=pulled_back_bearish,
         )
 
     def _tradable(self, ctx: DayContext) -> str | None:
@@ -390,38 +400,75 @@ class DayTradingStrategy:
         def result(signal: Signal, reason: str) -> StrategyResult:
             return StrategyResult(signal, ctx.price, a, b, reason)
 
-        # --- exits first: a position must always be able to get out ---------
-        # Hysteresis: only a decisive break of VWAP closes the trade, so a wick
-        # through the line no longer costs a round turn.
-        exit_level = ctx.vwap - ctx.exit_buffer if self.quality_filters else ctx.vwap
-        broke_vwap = ctx.price < exit_level
+        # --- exits: positions must always be able to get out ----------------
+        exit_level_long = ctx.vwap - ctx.exit_buffer if self.quality_filters else ctx.vwap
+        broke_vwap = ctx.price < exit_level_long
         lost_trend = ctx.fast < ctx.slow
 
-        # In quality mode, require a decisive breakdown so 1-bar EMA pullbacks
-        # do not whipsaw and dump the position at the bottom of a pullback.
-        should_exit = (
+        should_exit_long = (
             (broke_vwap and (lost_trend or ctx.price < ctx.vwap - 2.0 * ctx.exit_buffer))
             if self.quality_filters
             else (broke_vwap or lost_trend)
         )
 
-        if should_exit:
-            why = "lost VWAP" if broke_vwap else f"EMA{self.ema_fast} crossed below EMA{self.ema_slow}"
-            if self.side == "long_short" and broke_vwap and lost_trend:
+        reclaim_level_short = ctx.vwap + ctx.exit_buffer if self.quality_filters else ctx.vwap
+        reclaimed_vwap = ctx.price > reclaim_level_short
+        recovered_trend = ctx.fast > ctx.slow
+
+        should_exit_short = (
+            (reclaimed_vwap and (recovered_trend or ctx.price > ctx.vwap + 2.0 * ctx.exit_buffer))
+            if self.quality_filters
+            else (reclaimed_vwap or recovered_trend)
+        )
+
+        blocked = self._tradable(ctx)
+
+        # --- short-only mode: only short entries and short covers -----------
+        if self.side == "short_only":
+            if should_exit_short:
+                why = "reclaimed VWAP" if reclaimed_vwap else f"EMA{self.ema_fast} crossed above EMA{self.ema_slow}"
                 return result(
-                    Signal.SELL,
-                    f"bearish VWAP trend (Price ${ctx.price:.2f} < VWAP ${ctx.vwap:.2f}, RSI {ctx.rsi:.1f})",
+                    Signal.BUY,
+                    f"VWAP trend cover / exit short — {why} (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}, RSI {ctx.rsi:.1f})",
                 )
-            return result(
-                Signal.SELL,
-                f"VWAP trend exit — {why} (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}, RSI {ctx.rsi:.1f})",
+            if blocked:
+                return result(Signal.HOLD, f"no entry — {blocked}")
+
+            below_vwap = ctx.price < ctx.vwap - (ctx.entry_buffer if self.quality_filters else 0.0)
+            trend_down = ctx.fast < ctx.slow if self.quality_filters else ctx.fast <= ctx.slow
+            rsi_ok_short = (
+                (RSI_MIN_SELL <= ctx.rsi <= 50.0)
+                if self.quality_filters
+                else (ctx.rsi <= 52.0)
             )
 
-        # --- entry ----------------------------------------------------------
-        blocked = self._tradable(ctx)
-        if blocked:
-            return result(Signal.HOLD, f"no entry — {blocked}")
+            if not (below_vwap and trend_down and rsi_ok_short):
+                rsi_hint = f", oversold RSI {ctx.rsi:.1f}" if ctx.rsi < RSI_MIN_SELL else f", RSI {ctx.rsi:.1f}"
+                return result(
+                    Signal.HOLD,
+                    f"inside VWAP zone (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}{rsi_hint})",
+                )
 
+            if self.quality_filters:
+                if not ctx.is_trending():
+                    return result(Signal.HOLD, f"no entry — chop regime (ADX {ctx.adx:.0f} < {ADX_TREND_MIN:.0f})")
+                if ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR:
+                    return result(Signal.HOLD, f"no entry — EMAs tangled ({ctx.ema_separation_atr:.2f} ATR apart)")
+                if ctx.price < ctx.fast - TREND_CHASE_ATR * ctx.atr:
+                    return result(Signal.HOLD, f"no entry — extended {((ctx.fast - ctx.price) / ctx.atr):.1f} ATR below EMA{self.ema_fast}")
+
+            crossed_down = ctx.prev_fast >= ctx.prev_slow or ctx.prev_price >= ctx.vwap
+            is_fresh_short = crossed_down or ctx.pulled_back_bearish or (ctx.prev_price >= ctx.prev_fast and ctx.price < ctx.fast)
+            if self.quality_filters and not is_fresh_short:
+                return result(Signal.HOLD, "bearish VWAP trend alignment (waiting for fresh cross or pullback rejection)")
+
+            trigger_short = "bearish VWAP breakdown" if crossed_down else ("pullback rejected" if ctx.pulled_back_bearish else "bearish VWAP trend alignment")
+            return result(
+                Signal.SELL,
+                f"{trigger_short} (Price ${ctx.price:.2f} < VWAP ${ctx.vwap:.2f}, EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+            )
+
+        # --- long entries (when in long_only or long_short) -----------------
         above_vwap = ctx.price > ctx.vwap + (ctx.entry_buffer if self.quality_filters else 0.0)
         trend_up = ctx.fast > ctx.slow if self.quality_filters else ctx.fast >= ctx.slow
         rsi_ok = (
@@ -430,47 +477,71 @@ class DayTradingStrategy:
             else (ctx.rsi >= 48.0)
         )
 
-        if not (above_vwap and trend_up and rsi_ok):
-            rsi_hint = f", overbought RSI {ctx.rsi:.1f}" if ctx.rsi > RSI_MAX_BUY else f", RSI {ctx.rsi:.1f}"
-            return result(
-                Signal.HOLD,
-                f"inside VWAP zone (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}{rsi_hint})",
-            )
-
-        if self.quality_filters:
-            if not ctx.is_trending():
-                return result(
-                    Signal.HOLD,
-                    f"no entry — chop regime (ADX {ctx.adx:.0f} < {ADX_TREND_MIN:.0f})",
-                )
-            if ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR:
-                return result(
-                    Signal.HOLD,
-                    f"no entry — EMAs tangled ({ctx.ema_separation_atr:.2f} ATR apart)",
-                )
-            # Buy the pullback, not the spike: an entry far above the fast EMA
-            # puts the ATR stop too far below to be worth taking.
-            if ctx.price > ctx.fast + TREND_CHASE_ATR * ctx.atr:
-                return result(
-                    Signal.HOLD,
-                    f"no entry — extended {((ctx.price - ctx.fast) / ctx.atr):.1f} ATR above EMA{self.ema_fast}",
-                )
+        can_long_entry = not blocked and above_vwap and trend_up and rsi_ok
+        if can_long_entry and self.quality_filters:
+            if not ctx.is_trending() or ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR or ctx.price > ctx.fast + TREND_CHASE_ATR * ctx.atr:
+                can_long_entry = False
 
         crossed_up = ctx.prev_fast <= ctx.prev_slow or ctx.prev_price <= ctx.vwap
-        # Require a fresh trigger (crossover or confirmed pullback bounce) rather than
-        # re-firing BUY on every single bar of an ongoing extended move.
         is_fresh = crossed_up or ctx.pulled_back or (ctx.prev_price <= ctx.prev_fast and ctx.price > ctx.fast)
         if self.quality_filters and not is_fresh:
+            can_long_entry = False
+
+        if can_long_entry:
+            trigger = "bullish VWAP crossover" if crossed_up else ("pullback resumed" if ctx.pulled_back else "bullish VWAP trend alignment")
             return result(
-                Signal.HOLD,
-                "bullish VWAP trend alignment (waiting for fresh cross or pullback bounce)",
+                Signal.BUY,
+                f"{trigger} (Price ${ctx.price:.2f} > VWAP ${ctx.vwap:.2f}, "
+                f"EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
             )
 
-        trigger = "bullish VWAP crossover" if crossed_up else ("pullback resumed" if ctx.pulled_back else "bullish VWAP trend alignment")
+        # --- short entries (when in long_short) -----------------------------
+        if self.side == "long_short":
+            below_vwap = ctx.price < ctx.vwap - (ctx.entry_buffer if self.quality_filters else 0.0)
+            trend_down = ctx.fast < ctx.slow if self.quality_filters else ctx.fast <= ctx.slow
+            rsi_ok_short = (
+                (RSI_MIN_SELL <= ctx.rsi <= 50.0)
+                if self.quality_filters
+                else (ctx.rsi <= 52.0)
+            )
+            can_short_entry = not blocked and below_vwap and trend_down and rsi_ok_short
+            if can_short_entry and self.quality_filters:
+                if not ctx.is_trending() or ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR or ctx.price < ctx.fast - TREND_CHASE_ATR * ctx.atr:
+                    can_short_entry = False
+
+            crossed_down = ctx.prev_fast >= ctx.prev_slow or ctx.prev_price >= ctx.vwap
+            is_fresh_short = crossed_down or ctx.pulled_back_bearish or (ctx.prev_price >= ctx.prev_fast and ctx.price < ctx.fast)
+            if self.quality_filters and not is_fresh_short:
+                can_short_entry = False
+
+            if can_short_entry:
+                trigger_short = "bearish VWAP breakdown" if crossed_down else ("pullback rejected" if ctx.pulled_back_bearish else "bearish VWAP trend alignment")
+                return result(
+                    Signal.SELL,
+                    f"{trigger_short} (Price ${ctx.price:.2f} < VWAP ${ctx.vwap:.2f}, EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+                )
+
+        # --- exits if no new entry triggered --------------------------------
+        if should_exit_long:
+            why = "lost VWAP" if broke_vwap else f"EMA{self.ema_fast} crossed below EMA{self.ema_slow}"
+            return result(
+                Signal.SELL,
+                f"VWAP trend exit — {why} (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}, RSI {ctx.rsi:.1f})",
+            )
+        if self.side == "long_short" and should_exit_short:
+            why = "reclaimed VWAP" if reclaimed_vwap else f"EMA{self.ema_fast} crossed above EMA{self.ema_slow}"
+            return result(
+                Signal.BUY,
+                f"VWAP trend cover / exit short — {why} (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}, RSI {ctx.rsi:.1f})",
+            )
+
+        if blocked:
+            return result(Signal.HOLD, f"no entry — {blocked}")
+
+        rsi_hint = f", overbought RSI {ctx.rsi:.1f}" if ctx.rsi > RSI_MAX_BUY else (f", oversold RSI {ctx.rsi:.1f}" if ctx.rsi < RSI_MIN_SELL else f", RSI {ctx.rsi:.1f}")
         return result(
-            Signal.BUY,
-            f"{trigger} (Price ${ctx.price:.2f} > VWAP ${ctx.vwap:.2f}, "
-            f"EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+            Signal.HOLD,
+            f"inside VWAP zone (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}{rsi_hint})",
         )
 
     # ---------------------------------------------------------------------- orb
@@ -494,93 +565,143 @@ class DayTradingStrategy:
                 f"(High: ${orh or 0:.2f}, Low: ${orl or 0:.2f})",
             )
 
-        # --- exits ----------------------------------------------------------
+        blocked = self._tradable(ctx)
+        mid = (orh + orl) / 2.0
+
+        # --- 1. Below Opening Range Low (Breakdown / Short Entry or Long Exit)
         if ctx.price < orl:
-            if self.side == "long_short":
+            if self.side in {"short_only", "long_short"}:
+                if not self.quality_filters:
+                    if ctx.prev_price >= orl or ctx.prev_fast >= ctx.prev_slow:
+                        if ctx.rsi <= 55.0:
+                            return result(
+                                Signal.SELL,
+                                f"ORB {self.orb_minutes}m low breakdown (Price ${ctx.price:.2f} < ORL ${orl:.2f}, RSI {ctx.rsi:.1f})",
+                            )
+                    return result(Signal.HOLD, f"below ORB range (ORL: ${orl:.2f}, current: ${ctx.price:.2f})")
+
+                if blocked:
+                    return result(Signal.HOLD, f"no entry — {blocked}")
+
+                fresh_break_short = ctx.prev_price >= orl
+                continuation_short = ctx.pulled_back_bearish and ctx.fast < ctx.slow and ctx.is_trending()
+                if not (fresh_break_short or continuation_short):
+                    return result(
+                        Signal.HOLD,
+                        f"breakdown already underway (ORL ${orl:.2f}) — no fresh trigger",
+                    )
+                if not ctx.has_breakout_volume():
+                    return result(
+                        Signal.HOLD,
+                        f"no entry — breakdown lacks volume ({ctx.vol_ratio:.2f}× average)",
+                    )
+                if ctx.price < orl - BREAKOUT_CHASE_ATR * ctx.atr:
+                    return result(
+                        Signal.HOLD,
+                        f"no entry — {((orl - ctx.price) / ctx.atr):.1f} ATR past ORL ${orl:.2f}",
+                    )
+                if ctx.price > ctx.vwap:
+                    return result(
+                        Signal.HOLD,
+                        f"no entry — breakdown above VWAP ${ctx.vwap:.2f} (institutional bid present)",
+                    )
+                if ctx.rsi > 50.0:
+                    return result(Signal.HOLD, f"no entry — bearish momentum too weak (RSI {ctx.rsi:.1f})")
+                if ctx.rsi < RSI_MIN_SELL:
+                    return result(Signal.HOLD, f"no entry — oversold (RSI {ctx.rsi:.1f} < {RSI_MIN_SELL:.0f})")
+
                 return result(
                     Signal.SELL,
                     f"ORB {self.orb_minutes}m low breakdown "
-                    f"(Price ${ctx.price:.2f} < ORL ${orl:.2f}, RSI {ctx.rsi:.1f})",
+                    f"(Price ${ctx.price:.2f} < ORL ${orl:.2f}, RSI {ctx.rsi:.1f}"
+                    + (f", volume {ctx.vol_ratio:.2f}×" if ctx.vol_ratio is not None else "")
+                    + ")",
                 )
             return result(Signal.SELL, f"exit long — breakdown below ORL (${orl:.2f})")
 
+        # --- 2. Above Opening Range High (Breakout / Long Entry or Short Exit)
+        if ctx.price > orh:
+            if self.side == "short_only":
+                return result(Signal.BUY, f"exit short — breakdown invalid above ORH (${orh:.2f})")
+
+            if not self.quality_filters:
+                if ctx.prev_price <= orh or ctx.prev_fast <= ctx.prev_slow:
+                    if ctx.rsi >= 45.0:
+                        return result(
+                            Signal.BUY,
+                            f"ORB {self.orb_minutes}m high breakout "
+                            f"(Price ${ctx.price:.2f} > ORH ${orh:.2f}, RSI {ctx.rsi:.1f})",
+                        )
+                return result(Signal.HOLD, f"above ORB range (ORH: ${orh:.2f}, current: ${ctx.price:.2f})")
+
+            if blocked:
+                return result(Signal.HOLD, f"no entry — {blocked}")
+
+            fresh_break = ctx.prev_price <= orh
+            continuation = ctx.pulled_back and ctx.fast > ctx.slow and ctx.is_trending()
+            if not (fresh_break or continuation):
+                return result(
+                    Signal.HOLD,
+                    f"breakout already underway (ORH ${orh:.2f}) — no fresh trigger",
+                )
+            if not ctx.has_breakout_volume():
+                return result(
+                    Signal.HOLD,
+                    f"no entry — breakout lacks volume ({ctx.vol_ratio:.2f}× average)",
+                )
+            if ctx.price > orh + BREAKOUT_CHASE_ATR * ctx.atr:
+                return result(
+                    Signal.HOLD,
+                    f"no entry — {((ctx.price - orh) / ctx.atr):.1f} ATR past ORH ${orh:.2f}",
+                )
+            if ctx.price < ctx.vwap:
+                return result(
+                    Signal.HOLD,
+                    f"no entry — breakout below VWAP ${ctx.vwap:.2f} (no institutional bid)",
+                )
+            if ctx.rsi < 50.0:
+                return result(Signal.HOLD, f"no entry — momentum too weak (RSI {ctx.rsi:.1f})")
+            if ctx.rsi > RSI_MAX_BUY:
+                return result(Signal.HOLD, f"no entry — overbought (RSI {ctx.rsi:.1f} > {RSI_MAX_BUY:.0f})")
+
+            return result(
+                Signal.BUY,
+                f"ORB {self.orb_minutes}m high breakout "
+                f"(Price ${ctx.price:.2f} > ORH ${orh:.2f}, RSI {ctx.rsi:.1f}"
+                + (f", volume {ctx.vol_ratio:.2f}×" if ctx.vol_ratio is not None else "")
+                + ")",
+            )
+
+        # --- 3. Inside Range: Exits on failed breakout or breakdown ---------
         if self.quality_filters:
-            # A breakout that closes back inside the range has failed. Cutting it
-            # at the range edge gives back far less than waiting for mid-range.
-            failed = ctx.price < orh - ctx.exit_buffer
-            if failed and ctx.prev_price >= orh - ctx.exit_buffer:
+            failed_long = ctx.price < orh - ctx.exit_buffer
+            if failed_long and ctx.prev_price >= orh - ctx.exit_buffer:
                 return result(
                     Signal.SELL,
                     f"exit long — failed breakout, back inside range (ORH ${orh:.2f})",
                 )
-        mid = (orh + orl) / 2.0
+            if self.side in {"short_only", "long_short"}:
+                failed_short = ctx.price > orl + ctx.exit_buffer
+                if failed_short and ctx.prev_price <= orl + ctx.exit_buffer:
+                    return result(
+                        Signal.BUY,
+                        f"exit short — failed breakdown, back inside range (ORL ${orl:.2f})",
+                    )
+
         if ctx.price < mid and ctx.prev_price >= mid:
             return result(
                 Signal.SELL,
                 f"exit long — fell back inside opening range (Mid: ${mid:.2f})",
             )
-
-        # --- entry ----------------------------------------------------------
-        blocked = self._tradable(ctx)
-        if blocked:
-            return result(Signal.HOLD, f"no entry — {blocked}")
-
-        if ctx.price <= orh:
+        if self.side in {"short_only", "long_short"} and ctx.price > mid and ctx.prev_price <= mid:
             return result(
-                Signal.HOLD,
-                f"inside ORB range (${orl:.2f} – ${orh:.2f}, current: ${ctx.price:.2f})",
+                Signal.BUY,
+                f"exit short — rallied back inside opening range (Mid: ${mid:.2f})",
             )
-
-        if not self.quality_filters:
-            if ctx.prev_price <= orh or ctx.prev_fast <= ctx.prev_slow:
-                if ctx.rsi >= 45.0:
-                    return result(
-                        Signal.BUY,
-                        f"ORB {self.orb_minutes}m high breakout "
-                        f"(Price ${ctx.price:.2f} > ORH ${orh:.2f}, RSI {ctx.rsi:.1f})",
-                    )
-            return result(
-                Signal.HOLD,
-                f"inside ORB range (${orl:.2f} – ${orh:.2f}, current: ${ctx.price:.2f})",
-            )
-
-        # Two entries are legitimate: the first close through the range, and a
-        # continuation once price has pulled back to the fast EMA and resumed.
-        # What is not legitimate is re-firing on every bar of an existing move,
-        # which turns one breakout into a string of chased entries.
-        fresh_break = ctx.prev_price <= orh
-        continuation = ctx.pulled_back and ctx.fast > ctx.slow and ctx.is_trending()
-        if not (fresh_break or continuation):
-            return result(
-                Signal.HOLD,
-                f"breakout already underway (ORH ${orh:.2f}) — no fresh trigger",
-            )
-        if not ctx.has_breakout_volume():
-            return result(
-                Signal.HOLD,
-                f"no entry — breakout lacks volume ({ctx.vol_ratio:.2f}× average)",
-            )
-        if ctx.price > orh + BREAKOUT_CHASE_ATR * ctx.atr:
-            return result(
-                Signal.HOLD,
-                f"no entry — {((ctx.price - orh) / ctx.atr):.1f} ATR past ORH ${orh:.2f}",
-            )
-        if ctx.price < ctx.vwap:
-            return result(
-                Signal.HOLD,
-                f"no entry — breakout below VWAP ${ctx.vwap:.2f} (no institutional bid)",
-            )
-        if ctx.rsi < 50.0:
-            return result(Signal.HOLD, f"no entry — momentum too weak (RSI {ctx.rsi:.1f})")
-        if ctx.rsi > RSI_MAX_BUY:
-            return result(Signal.HOLD, f"no entry — overbought (RSI {ctx.rsi:.1f} > {RSI_MAX_BUY:.0f})")
 
         return result(
-            Signal.BUY,
-            f"ORB {self.orb_minutes}m high breakout "
-            f"(Price ${ctx.price:.2f} > ORH ${orh:.2f}, RSI {ctx.rsi:.1f}"
-            + (f", volume {ctx.vol_ratio:.2f}×" if ctx.vol_ratio is not None else "")
-            + ")",
+            Signal.HOLD,
+            f"inside ORB range (${orl:.2f} – ${orh:.2f}, current: ${ctx.price:.2f})",
         )
 
     # ----------------------------------------------------------- momentum_scalp
@@ -594,26 +715,64 @@ class DayTradingStrategy:
         crossed_up = ctx.prev_fast <= ctx.prev_slow and ctx.fast > ctx.slow
         crossed_down = ctx.prev_fast >= ctx.prev_slow and ctx.fast < ctx.slow
 
-        # --- exits ----------------------------------------------------------
-        if self.quality_filters:
-            lost_momentum = crossed_down or ctx.price < ctx.slow
-            if lost_momentum:
-                if self.side == "long_short" and crossed_down and ctx.price < ctx.vwap:
+        # --- short-only mode: only short entries and covers -----------------
+        if self.side == "short_only":
+            lost_short_momentum = crossed_up or ctx.price > ctx.slow
+            if lost_short_momentum:
+                return result(
+                    Signal.BUY,
+                    f"momentum scalp cover / exit short (EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+                )
+
+            blocked = self._tradable(ctx)
+            if blocked:
+                return result(Signal.HOLD, f"no entry — {blocked}")
+
+            if not self.quality_filters:
+                if (crossed_down or (ctx.fast < ctx.slow and ctx.price < ctx.fast)) and ctx.rsi <= 48.0:
                     return result(
                         Signal.SELL,
                         f"momentum scalp short (EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
                     )
+                return result(Signal.HOLD, f"no momentum trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, RSI {ctx.rsi:.1f})")
+
+            if ctx.in_lunch_chop():
+                return result(Signal.HOLD, "no entry — midday chop window (11:30–13:30 ET)")
+            if ctx.fast >= ctx.slow:
+                return result(Signal.HOLD, f"no momentum trigger (EMA{self.ema_fast}: {ctx.fast:.2f} >= EMA{self.ema_slow}: {ctx.slow:.2f})")
+            if not ctx.is_trending():
+                return result(Signal.HOLD, f"no entry — chop regime (ADX {ctx.adx:.0f} < {ADX_TREND_MIN:.0f})")
+            if ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR:
+                return result(Signal.HOLD, f"no entry — EMAs tangled ({ctx.ema_separation_atr:.2f} ATR apart)")
+            if ctx.price > ctx.vwap:
+                return result(Signal.HOLD, f"no entry — above VWAP ${ctx.vwap:.2f}")
+            if ctx.rsi > 45.0:
+                return result(Signal.HOLD, f"no entry — bearish momentum too weak (RSI {ctx.rsi:.1f})")
+            if ctx.rsi < RSI_MIN_SELL:
+                return result(Signal.HOLD, f"no entry — oversold (RSI {ctx.rsi:.1f} < {RSI_MIN_SELL:.0f})")
+            if ctx.price < ctx.fast - TREND_CHASE_ATR * ctx.atr:
+                return result(Signal.HOLD, f"no entry — extended {((ctx.fast - ctx.price) / ctx.atr):.1f} ATR below EMA{self.ema_fast}")
+
+            resumed_down = ctx.pulled_back_bearish or (ctx.prev_price >= ctx.prev_fast and ctx.price < ctx.fast)
+            if not (crossed_down or resumed_down):
+                return result(Signal.HOLD, f"no fresh trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, RSI {ctx.rsi:.1f})")
+
+            trigger_short = "EMA cross down" if crossed_down else "pullback rejected"
+            return result(
+                Signal.SELL,
+                f"momentum scalp short — {trigger_short} (EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+            )
+
+        # --- exits ----------------------------------------------------------
+        if self.quality_filters:
+            lost_momentum = crossed_down or ctx.price < ctx.slow
+            if lost_momentum and self.side != "long_short":
                 return result(
                     Signal.SELL,
                     f"momentum scalp exit (Price ${ctx.price:.2f} < EMA{self.ema_slow} ${ctx.slow:.2f}, RSI {ctx.rsi:.1f})",
                 )
         else:
-            if crossed_down or (ctx.fast < ctx.slow and ctx.rsi <= 48.0):
-                if self.side == "long_short" and (crossed_down or ctx.rsi <= 45.0):
-                    return result(
-                        Signal.SELL,
-                        f"momentum scalp short (EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
-                    )
+            if (crossed_down or (ctx.fast < ctx.slow and ctx.rsi <= 48.0)) and self.side != "long_short":
                 return result(
                     Signal.SELL,
                     f"momentum scalp exit (EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
@@ -621,60 +780,62 @@ class DayTradingStrategy:
 
         # --- entry ----------------------------------------------------------
         blocked = self._tradable(ctx)
+
+        # Long entry check
+        can_long = False
+        if not self.quality_filters:
+            if (crossed_up or (ctx.fast > ctx.slow and ctx.price > ctx.fast)) and ctx.rsi >= 52.0:
+                can_long = True
+        else:
+            if not blocked and not ctx.in_lunch_chop() and ctx.fast > ctx.slow and ctx.is_trending():
+                if ctx.ema_separation_atr >= EMA_SEPARATION_MIN_ATR and ctx.price >= ctx.vwap:
+                    if 55.0 <= ctx.rsi <= RSI_MAX_BUY and ctx.price <= ctx.fast + TREND_CHASE_ATR * ctx.atr:
+                        resumed = ctx.pulled_back or (ctx.prev_price <= ctx.prev_fast and ctx.price > ctx.fast)
+                        if crossed_up or resumed:
+                            can_long = True
+
+        if can_long:
+            trigger = "EMA cross" if crossed_up else "pullback resumed"
+            return result(
+                Signal.BUY,
+                f"momentum scalp long — {trigger} (EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+            )
+
+        # Short entry check (when in long_short)
+        if self.side == "long_short":
+            can_short = False
+            if not self.quality_filters:
+                if (crossed_down or (ctx.fast < ctx.slow and ctx.price < ctx.fast)) and ctx.rsi <= 48.0:
+                    can_short = True
+            else:
+                if not blocked and not ctx.in_lunch_chop() and ctx.fast < ctx.slow and ctx.is_trending():
+                    if ctx.ema_separation_atr >= EMA_SEPARATION_MIN_ATR and ctx.price <= ctx.vwap:
+                        if RSI_MIN_SELL <= ctx.rsi <= 45.0 and ctx.price >= ctx.fast - TREND_CHASE_ATR * ctx.atr:
+                            resumed_down = ctx.pulled_back_bearish or (ctx.prev_price >= ctx.prev_fast and ctx.price < ctx.fast)
+                            if crossed_down or resumed_down:
+                                can_short = True
+
+            if can_short:
+                trigger_short = "EMA cross down" if crossed_down else "pullback rejected"
+                return result(
+                    Signal.SELL,
+                    f"momentum scalp short — {trigger_short} (EMA{self.ema_fast} < EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+                )
+
+            # In long_short mode, exit long on momentum loss
+            lost_momentum = crossed_down or ctx.price < ctx.slow
+            if lost_momentum:
+                return result(
+                    Signal.SELL,
+                    f"momentum scalp exit long (Price ${ctx.price:.2f} < EMA{self.ema_slow} ${ctx.slow:.2f}, RSI {ctx.rsi:.1f})",
+                )
+
         if blocked:
             return result(Signal.HOLD, f"no entry — {blocked}")
 
-        if not self.quality_filters:
-            if (crossed_up or (ctx.fast > ctx.slow and ctx.price > ctx.fast)) and ctx.rsi >= 52.0:
-                return result(
-                    Signal.BUY,
-                    f"momentum scalp long (EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
-                )
-            return result(
-                Signal.HOLD,
-                f"no momentum trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, "
-                f"EMA{self.ema_slow}: {ctx.slow:.2f}, RSI {ctx.rsi:.1f})",
-            )
-
-        if ctx.in_lunch_chop():
-            return result(Signal.HOLD, "no entry — midday chop window (11:30–13:30 ET)")
-        if ctx.fast <= ctx.slow:
-            return result(
-                Signal.HOLD,
-                f"no momentum trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, EMA{self.ema_slow}: {ctx.slow:.2f})",
-            )
-        if not ctx.is_trending():
-            return result(Signal.HOLD, f"no entry — chop regime (ADX {ctx.adx:.0f} < {ADX_TREND_MIN:.0f})")
-        if ctx.ema_separation_atr < EMA_SEPARATION_MIN_ATR:
-            return result(
-                Signal.HOLD, f"no entry — EMAs tangled ({ctx.ema_separation_atr:.2f} ATR apart)"
-            )
-        if ctx.price < ctx.vwap:
-            return result(Signal.HOLD, f"no entry — below VWAP ${ctx.vwap:.2f}")
-        if ctx.rsi < 55.0:
-            return result(Signal.HOLD, f"no entry — momentum too weak (RSI {ctx.rsi:.1f})")
-        if ctx.rsi > RSI_MAX_BUY:
-            return result(Signal.HOLD, f"no entry — overbought (RSI {ctx.rsi:.1f} > {RSI_MAX_BUY:.0f})")
-        if ctx.price > ctx.fast + TREND_CHASE_ATR * ctx.atr:
-            return result(
-                Signal.HOLD,
-                f"no entry — extended {((ctx.price - ctx.fast) / ctx.atr):.1f} ATR above EMA{self.ema_fast}",
-            )
-
-        # Either a fresh cross, or price resuming after a pullback to the fast
-        # EMA. Both are events; neither re-fires while the move just runs.
-        resumed = ctx.pulled_back or (ctx.prev_price <= ctx.prev_fast and ctx.price > ctx.fast)
-        if not (crossed_up or resumed):
-            return result(
-                Signal.HOLD,
-                f"no fresh trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, RSI {ctx.rsi:.1f})",
-            )
-
-        trigger = "EMA cross" if crossed_up else "pullback resumed"
         return result(
-            Signal.BUY,
-            f"momentum scalp long — {trigger} "
-            f"(EMA{self.ema_fast} > EMA{self.ema_slow}, RSI {ctx.rsi:.1f})",
+            Signal.HOLD,
+            f"no momentum trigger (EMA{self.ema_fast}: {ctx.fast:.2f}, EMA{self.ema_slow}: {ctx.slow:.2f}, RSI {ctx.rsi:.1f})",
         )
 
     # ---------------------------------------------------------------- vwap_fade
@@ -683,24 +844,66 @@ class DayTradingStrategy:
         def result(signal: Signal, metric_b: float, reason: str) -> StrategyResult:
             return StrategyResult(signal, ctx.price, ctx.vwap, metric_b, reason)
 
-        overbought_stretch = ctx.price >= ctx.vwap_upper or (ctx.rsi >= 68.0 and ctx.price >= ctx.vwap)
+        blocked = self._tradable(ctx)
 
-        # --- exits: the fade targets the VWAP midline -----------------------
-        if ctx.price >= ctx.vwap or overbought_stretch:
-            if self.side == "long_short" and overbought_stretch and ctx.is_ranging():
+        # --- short-only mode: only short upper-band fade and cover at midline
+        if self.side == "short_only":
+            if ctx.price <= ctx.vwap:
                 return result(
-                    Signal.SELL,
-                    ctx.vwap_upper,
-                    f"VWAP fade short (Price ${ctx.price:.2f} at upper band ${ctx.vwap_upper:.2f}, RSI {ctx.rsi:.1f})",
+                    Signal.BUY,
+                    ctx.vwap_lower,
+                    f"VWAP fade short profit target reached (Price ${ctx.price:.2f} <= VWAP ${ctx.vwap:.2f})",
                 )
+            if blocked:
+                return result(Signal.HOLD, ctx.vwap_upper, f"no entry — {blocked}")
+            if not self.quality_filters:
+                oversold_short = ctx.price >= ctx.vwap_upper or (ctx.rsi >= 68.0 and ctx.price >= ctx.vwap)
+                if oversold_short:
+                    return result(
+                        Signal.SELL,
+                        ctx.vwap_upper,
+                        f"VWAP fade short (Price ${ctx.price:.2f} at upper band ${ctx.vwap_upper:.2f}, RSI {ctx.rsi:.1f})",
+                    )
+                return result(Signal.HOLD, ctx.vwap_upper, f"no fade setup (Price ${ctx.price:.2f}, Upper: ${ctx.vwap_upper:.2f})")
+
+            if not ctx.is_ranging():
+                return result(Signal.HOLD, ctx.vwap_upper, f"no fade — market is trending (ADX {ctx.adx:.0f} > {ADX_CHOP_MAX:.0f})")
+            if ctx.price < ctx.vwap_upper:
+                return result(Signal.HOLD, ctx.vwap_upper, f"no fade setup (Price ${ctx.price:.2f}, Upper: ${ctx.vwap_upper:.2f})")
+            if ctx.rsi < 65.0:
+                return result(Signal.HOLD, ctx.vwap_upper, f"no fade — not overbought enough (RSI {ctx.rsi:.1f})")
+            if not (ctx.rsi < ctx.prev_rsi and ctx.price < ctx.prev_price):
+                return result(Signal.HOLD, ctx.vwap_upper, f"no fade — still rising (RSI {ctx.prev_rsi:.1f} → {ctx.rsi:.1f})")
+
+            return result(
+                Signal.SELL,
+                ctx.vwap_upper,
+                f"VWAP fade short — reversal confirmed (Price ${ctx.price:.2f} at upper band ${ctx.vwap_upper:.2f}, RSI {ctx.rsi:.1f})",
+            )
+
+        # --- long_only / long_short modes -----------------------------------
+        # Exits for existing long fade (profit target at midline)
+        if ctx.price >= ctx.vwap:
+            if self.side == "long_short":
+                # Check if upper band short fade triggers
+                overbought_stretch = ctx.price >= ctx.vwap_upper and ctx.rsi >= 65.0 and ctx.is_ranging()
+                if overbought_stretch and (not self.quality_filters or (ctx.rsi < ctx.prev_rsi and ctx.price < ctx.prev_price)):
+                    return result(
+                        Signal.SELL,
+                        ctx.vwap_upper,
+                        f"VWAP fade short — reversal confirmed (Price ${ctx.price:.2f} at upper band ${ctx.vwap_upper:.2f}, RSI {ctx.rsi:.1f})",
+                    )
             return result(
                 Signal.SELL,
                 ctx.vwap_upper,
                 f"VWAP fade profit target reached (Price ${ctx.price:.2f} >= VWAP ${ctx.vwap:.2f})",
             )
 
-        # --- entry ----------------------------------------------------------
-        blocked = self._tradable(ctx)
+        # In long_short mode, if price is below midline, check short cover
+        if self.side == "long_short" and ctx.price <= ctx.vwap_lower:
+            pass  # May trigger lower band buy bounce below
+
+        # --- entry for lower band buy ---------------------------------------
         if blocked:
             return result(Signal.HOLD, ctx.vwap_lower, f"no entry — {blocked}")
 
@@ -718,8 +921,6 @@ class DayTradingStrategy:
                 f"no fade setup (Price ${ctx.price:.2f}, VWAP ${ctx.vwap:.2f}, Lower: ${ctx.vwap_lower:.2f})",
             )
 
-        # Fading a trending market is catching a falling knife — the single
-        # biggest way a mean-reversion book gives back a month of gains.
         if not ctx.is_ranging():
             return result(
                 Signal.HOLD,
@@ -736,8 +937,6 @@ class DayTradingStrategy:
             return result(
                 Signal.HOLD, ctx.vwap_lower, f"no fade — not oversold enough (RSI {ctx.rsi:.1f})"
             )
-        # Require the wash to actually be turning: RSI ticking up *and* price
-        # closing higher. The old `rsi >= prev_rsi - 0.2` was true almost always.
         if not (ctx.rsi > ctx.prev_rsi and ctx.price > ctx.prev_price):
             return result(
                 Signal.HOLD,

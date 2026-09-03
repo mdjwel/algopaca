@@ -711,5 +711,144 @@ class TestDayTradingBotAiConfirmation(unittest.TestCase):
             self.mock_service.submit_order.assert_called_once()
 
 
+class TestDayTradingShortSupport(unittest.TestCase):
+    def test_config_and_web_state_short_only(self):
+        cfg = Config.default(strategy_mode="day", day_side="short_only")
+        self.assertEqual(cfg.day_side, "short_only")
+
+        ws = AppState(user_id="test_short_user")
+        updated = ws.update_settings({"strategy_mode": "day", "day_preset": "custom", "day_side": "short_only"})
+        self.assertEqual(updated.day_side, "short_only")
+
+    def test_strategy_vwap_trend_short_only_entry(self):
+        bars = _make_intraday_bars(count=40, base_price=150.0, trend=-0.6)
+        strat_short = DayTradingStrategy(sub_mode="vwap_trend", side="short_only", quality_filters=False)
+        res = strat_short.evaluate(bars)
+        self.assertEqual(res.signal, Signal.SELL)
+        self.assertIn("VWAP", res.reason)
+
+        # In long_only mode, a downtrend must not produce a BUY entry
+        strat_long = DayTradingStrategy(sub_mode="vwap_trend", side="long_only", quality_filters=False)
+        res_long = strat_long.evaluate(bars)
+        self.assertNotEqual(res_long.signal, Signal.BUY)
+
+    def test_strategy_vwap_trend_short_only_cover(self):
+        # Uptrending bars: short_only mode produces BUY as cover signal
+        bars = _make_intraday_bars(count=40, base_price=100.0, trend=0.8)
+        strat_short = DayTradingStrategy(sub_mode="vwap_trend", side="short_only", quality_filters=False)
+        res = strat_short.evaluate(bars)
+        self.assertEqual(res.signal, Signal.BUY)
+        self.assertIn("cover", res.reason)
+
+    def test_strategy_orb_breakdown_short(self):
+        ny = pytz.timezone("America/New_York")
+        today = dt.date.today()
+        start = ny.localize(dt.datetime(today.year, today.month, today.day, 9, 30))
+        # 34 bars inside 98.0 - 102.0
+        bars_list = []
+        for i in range(34):
+            t = start + dt.timedelta(minutes=5 * i)
+            bars_list.append({"timestamp": t, "open": 100.0, "high": 102.0, "low": 98.0, "close": 100.0, "volume": 10000.0})
+        # 35th bar breaks down below ORL (98.0)
+        t_last = start + dt.timedelta(minutes=5 * 34)
+        bars_list.append({"timestamp": t_last, "open": 98.5, "high": 98.5, "low": 96.0, "close": 96.5, "volume": 15000.0})
+        df = pd.DataFrame(bars_list).set_index("timestamp")
+
+        strat = DayTradingStrategy(sub_mode="orb", orb_minutes=15, side="short_only", quality_filters=False)
+        res = strat.evaluate(df)
+        self.assertEqual(res.signal, Signal.SELL)
+        self.assertIn("breakdown", res.reason)
+
+    def test_bot_short_only_execution_and_stop(self):
+        mock_service = MagicMock()
+        mock_service.get_bars.return_value = _make_intraday_bars(count=40, base_price=150.0, trend=-0.6)
+        mock_service.get_position_detail.return_value = {"qty": 0.0, "avg_entry": 0.0}
+        mock_service.get_position_qty.return_value = 0.0
+        mock_service.get_mark_price.return_value = {"price": 125.0, "session": "regular"}
+        mock_service.market_session.return_value = {"is_open": True, "session": "regular"}
+        mock_service.account_summary.return_value = {"equity": 25000.0, "day_pl_pct": 0.0}
+        mock_service.recent_activity.return_value = {}
+        mock_service.submit_order.return_value = MagicMock(id="short_order_123")
+        mock_service.has_open_orders.return_value = False
+        mock_service.current_stop_price.return_value = None
+        mock_service.ensure_stop_loss.return_value = {"qty": 10.0, "stop_price": 130.0, "pct": 4.0, "side": "buy"}
+        mock_service.arm_protective_stop.return_value = {"stop_price": 130.0, "pct": 4.0}
+
+        config = Config.default(
+            strategy_mode="day",
+            symbol="AAPL",
+            day_preset="custom",
+            day_sub_mode="vwap_trend",
+            day_side="short_only",
+            day_open_buffer_mins=0,
+            day_use_ai_confirm=False,
+        )
+        bot = DayTradingBot(config, service=mock_service)
+        bot.strategy.quality_filters = False
+        with patch.object(bot, "_check_session_timing", return_value=(False, False, "")):
+            res = bot._run_symbol("AAPL")
+            self.assertEqual(res["signal"], "sell")
+            self.assertEqual(res["intent"], "open_short")
+            mock_service.submit_order.assert_called_once()
+            # Verify protective stop loss armed
+            mock_service.ensure_stop_loss.assert_called_once()
+
+    def test_bot_short_only_skips_buy_entry(self):
+        mock_service = MagicMock()
+        mock_service.get_bars.return_value = _make_intraday_bars(count=40, base_price=100.0, trend=0.8)
+        mock_service.get_position_detail.return_value = {"qty": 0.0, "avg_entry": 0.0}
+        mock_service.get_position_qty.return_value = 0.0
+        mock_service.get_mark_price.return_value = {"price": 130.0, "session": "regular"}
+        mock_service.market_session.return_value = {"is_open": True, "session": "regular"}
+        mock_service.account_summary.return_value = {"equity": 25000.0, "day_pl_pct": 0.0}
+        mock_service.recent_activity.return_value = {}
+        mock_service.has_open_orders.return_value = False
+
+        config = Config.default(
+            strategy_mode="day",
+            symbol="AAPL",
+            day_preset="custom",
+            day_sub_mode="vwap_trend",
+            day_side="short_only",
+            day_open_buffer_mins=0,
+            day_use_ai_confirm=False,
+        )
+        bot = DayTradingBot(config, service=mock_service)
+        bot.strategy.quality_filters = False
+        with patch.object(bot, "_check_session_timing", return_value=(False, False, "")):
+            res = bot._run_symbol("AAPL")
+            self.assertIn("short-only mode", res["reason"])
+            mock_service.submit_order.assert_not_called()
+
+    def test_bot_short_cover_on_buy(self):
+        mock_service = MagicMock()
+        mock_service.get_bars.return_value = _make_intraday_bars(count=40, base_price=100.0, trend=0.8)
+        mock_service.get_position_detail.return_value = {"qty": -10.0, "avg_entry": 140.0}
+        mock_service.get_position_qty.return_value = -10.0
+        # Price at 140 (break-even) so scale-out does not trigger
+        mock_service.get_mark_price.return_value = {"price": 140.0, "session": "regular"}
+        mock_service.market_session.return_value = {"is_open": True, "session": "regular"}
+        mock_service.account_summary.return_value = {"equity": 25000.0, "day_pl_pct": 0.0}
+        mock_service.recent_activity.return_value = {}
+        mock_service.submit_order.return_value = MagicMock(id="cover_order_123")
+        mock_service.has_open_orders.return_value = False
+
+        config = Config.default(
+            strategy_mode="day",
+            symbol="AAPL",
+            day_preset="custom",
+            day_sub_mode="vwap_trend",
+            day_side="short_only",
+            day_open_buffer_mins=0,
+            day_use_ai_confirm=False,
+        )
+        bot = DayTradingBot(config, service=mock_service)
+        bot.strategy.quality_filters = False
+        with patch.object(bot, "_check_session_timing", return_value=(False, False, "")):
+            res = bot._run_symbol("AAPL")
+            self.assertEqual(res["intent"], "close_short")
+            mock_service.submit_order.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
