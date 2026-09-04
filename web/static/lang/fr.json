@@ -996,6 +996,7 @@
   "manual_help_limit": "Ordre limite DAY — il attend que le prix y arrive.",
   "manual_help_market": "Ordre au marché DAY en séance régulière.",
   "manual_help_offrth": "{session} : ordre Limit {tif} éligible aux heures étendues.",
+  "manual_help_offrth_synth": "{session} : ordre synthétique en horaires élargis {type} {tif}.",
   "manual_help_queued": "{session} : ordre {type} {tif} en attente pour la séance régulière.",
   "manual_help_sell": "Les stops de protection sont annulés avant une vente.",
   "manual_risk_help_short": "Le nombre d'actions est calculé pour qu'un stop coûte votre budget de risque : capitaux × risque % ÷ (ATR × multiplicateur). Plus de volatilité signifie moins d'actions pour le même risque en dollars.",
@@ -1328,12 +1329,13 @@
   "limits_overridden": "Limites outrepassées",
   "err_breach_confirm": "Cet ordre dépasse une limite de risque du desk. Relisez les avertissements et renvoyez pour confirmer.",
   "order_duplicate_toast": "Identique à l'ordre qui vient d'être envoyé — rien n'a été placé deux fois.",
-  "err_type_closed": "Le marché 24 h n'accepte que les ordres Limit. Passez en heures régulières pour mettre ce ticket en file jusqu'à l'ouverture.",
-  "err_type_24h": "Le marché 24 h n'accepte que les ordres Limit. Passez en heures régulières pour mettre ce ticket en file jusqu'à l'ouverture.",
+  "err_type_closed": "Le marché 24 h n'accepte que les ordres Limit, Stop-Limit et Trailing Stop. Passez en heures régulières pour mettre ce ticket en file jusqu'à l'ouverture.",
+  "err_type_24h": "Le marché 24 h n'accepte que les ordres Limit, Stop-Limit et Trailing Stop. Passez en heures régulières pour mettre ce ticket en file jusqu'à l'ouverture.",
   "err_trigger_price": "Le prix de déclenchement doit être supérieur à 0,00 $.",
   "err_trail_percent": "Saisissez un pourcentage de trail supérieur à 0.",
   "err_extended_tif": "Les ordres du marché 24 heures doivent utiliser une durée Day ou GTC.",
   "err_fractional_tif": "Les ordres fractionnaires sur actions doivent utiliser une durée Day.",
+  "err_extended_fractional": "Les ordres en horaires étendus nécessitent des actions entières. Les actions fractionnées ne sont prises en charge que pendant les heures normales de marché.",
   "err_not_fractionable": "{symbol} n'accepte pas les actions fractionnées chez Alpaca — dimensionnez cet ordre en actions entières.",
   "breach_daily_loss": "La limite de perte quotidienne est atteinte ({actual}% ≤ −{limit} %) ; le desk cesserait de prendre de nouveaux risques aujourd'hui.",
   "breach_max_positions": "Le nombre maximal de positions simultanées est atteint ({current}/{limit}).",
@@ -2303,5 +2305,7 @@
   "header_search_action_auto": "Auto",
   "header_search_action_history": "Historique",
   "header_search_press_enter": "Appuyez sur Entrée pour ouvrir l'ordre",
-  "header_search_holding_badge": "Détenu"
+  "header_search_holding_badge": "Détenu",
+  "help_session_24h_synthetic": "Protection synthétique en horaires élargis. Algopaca surveille les cours en pré-marché, après-bourse et nuit, et transmet un ordre limite lorsqu'il est déclenché.",
+  "synthetic_extended": "Synthétique élargi"
 }

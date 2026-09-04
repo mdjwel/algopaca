@@ -2157,6 +2157,25 @@ def cancel_order(
         ) from exc
 
 
+@app.get("/api/synthetic-orders")
+def list_synthetic_orders(
+    symbol: str = "",
+    user: dict = Depends(require_auth),
+) -> dict:
+    state = get_user_state(user["id"])
+    return {"ok": True, "orders": state.list_synthetic_orders(symbol=symbol)}
+
+
+@app.post("/api/synthetic-orders/{order_id}/cancel")
+def cancel_synthetic_order_endpoint(
+    order_id: str,
+    user: dict = Depends(require_auth),
+) -> dict:
+    state = get_user_state(user["id"])
+    cancelled = state.cancel_synthetic_order(order_id)
+    return {"ok": True, "cancelled": 1 if cancelled else 0, "order_id": order_id}
+
+
 @app.post("/api/orders/cancel-all")
 def cancel_all_orders(user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])

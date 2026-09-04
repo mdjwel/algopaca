@@ -213,9 +213,9 @@ function manualOrderTypeLabel(otype) {
   return key ? tx(key[0], key[1]) : String(otype || "");
 }
 
-/** Alpaca only fills these in regular hours; Limit can opt into the 24h market. */
+/** Types eligible for extended hours (Limit natively, Stop-limit & Trailing stop synthetically). */
 function manualOrderTypeIsRthOnly(otype = manualOrderType()) {
-  return otype !== "limit";
+  return !["limit", "stop_limit", "trailing_stop"].includes(otype);
 }
 
 function manualTicketQueuesForRth() {
@@ -947,10 +947,10 @@ function ticketIdForCurrentTerms() {
 function validateManualLocal() {
   const p = manualPayload();
   if (!p.symbol) return tx("err_symbol_required", "Enter a stock symbol (e.g., AAPL, MSFT).");
-  if (p.extended_hours && p.order_type !== "limit") {
+  if (p.extended_hours && !["limit", "stop_limit", "trailing_stop"].includes(p.order_type)) {
     return tx(
       "err_type_24h",
-      "The 24-hour market only accepts Limit orders. Switch to Regular hours to queue this ticket for the open."
+      "The 24-hour market only accepts Limit, Stop-Limit, and Trailing Stop orders. Switch to Regular hours to queue this ticket for the open."
     );
   }
   if (manualNeedsLimit() && !(p.limit_price > 0)) {
@@ -979,6 +979,12 @@ function validateManualLocal() {
     return tx(
       "err_fractional_tif",
       "Fractional stock orders must use Day time in force."
+    );
+  }
+  if (sizedIsFractional && p.extended_hours) {
+    return tx(
+      "err_extended_fractional",
+      "Extended-hours orders require whole shares. Fractional shares are only supported during regular market hours."
     );
   }
   if (sizedIsFractional && manualContext?.asset?.fractionable === false) {
@@ -2310,19 +2316,18 @@ function syncTradingSessionUi() {
   const form = $("manual-order");
   const sessionField = $("manual-session-field");
   const currentType = manualOrderType();
-  const isLimit = currentType === "limit";
+  const eligibleForSession = ["limit", "stop_limit", "trailing_stop"].includes(currentType);
 
-  // 24-hour market is exclusively supported for Limit orders on Alpaca.
-  // When placing Market, Stop, Stop Limit, or Trailing Stop, hide session choice.
+  // 24-hour market supports Limit (natively) and Stop Limit & Trailing Stop (synthetically).
   if (sessionField) {
-    sessionField.hidden = !isLimit;
+    sessionField.hidden = !eligibleForSession;
   }
 
   const overnight = form?.querySelector('input[name="trading_session"][value="24h"]');
   const regular = form?.querySelector('input[name="trading_session"][value="regular"]');
   const locked = loopRunning || busy;
   const rthOnlyType = manualOrderTypeIsRthOnly();
-  const lock24h = rthOnlyType || !isLimit;
+  const lock24h = rthOnlyType;
   if (overnight) {
     if (lock24h && overnight.checked) {
       setManualFormValue("trading_session", "regular");
@@ -2358,20 +2363,27 @@ function syncTradingSessionUi() {
 
   const help = $("manual-session-help");
   if (help) {
-    if (!isLimit) {
+    if (rthOnlyType) {
       help.hidden = true;
     } else {
       help.hidden = false;
       if (manualExtendedHours()) {
-        help.textContent = manualIsEntry()
-          ? tx(
-              "help_session_24h_entry",
-              "Limit Day or GTC. Alpaca cannot attach a stop to a 24-hour order — the desk arms the stop after this ticket fills."
-            )
-          : tx(
-              "help_session_24h",
-              "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
-            );
+        if (currentType === "stop_limit" || currentType === "trailing_stop") {
+          help.textContent = tx(
+            "help_session_24h_synthetic",
+            "Synthetic extended-hours protection. Algopaca monitors quotes during pre-market, after-hours, and overnight, and submits an eligible limit order when triggered."
+          );
+        } else {
+          help.textContent = manualIsEntry()
+            ? tx(
+                "help_session_24h_entry",
+                "Limit Day or GTC. Alpaca cannot attach a stop to a 24-hour order — the desk arms the stop after this ticket fills."
+              )
+            : tx(
+                "help_session_24h",
+                "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
+              );
+        }
       } else {
         help.textContent = tx(
           "help_session_regular",
@@ -4248,11 +4260,19 @@ function syncManualHelp() {
   let text;
   let isWarn = false;
   if (manualExtendedHours()) {
-    text = tx(
-      "manual_help_offrth",
-      "{session}: extended-hours Limit {tif} order.",
-      { session, tif }
-    );
+    if (["stop_limit", "trailing_stop"].includes(otype)) {
+      text = tx(
+        "manual_help_offrth_synth",
+        "{session}: synthetic extended-hours {type} {tif} order.",
+        { session, type: typeLabel, tif }
+      );
+    } else {
+      text = tx(
+        "manual_help_offrth",
+        "{session}: extended-hours Limit {tif} order.",
+        { session, tif }
+      );
+    }
     isWarn = true;
   } else if (queued) {
     text = tx(
@@ -5749,9 +5769,13 @@ function renderConfirmationModal(payload) {
   if (payload.trail_percent) {
     rows.push([tx("trail_percent", "Trail %"), `${payload.trail_percent}%`]);
   }
-  if (payload.order_type === "limit") {
+  if (["limit", "stop_limit", "trailing_stop"].includes(payload.order_type)) {
     if (payload.extended_hours) {
-      rows.push([tx("trading_session", "Trading session"), tx("session_24h", "24 hour market")]);
+      const isSynth = ["stop_limit", "trailing_stop"].includes(payload.order_type);
+      const sessionLabel = isSynth
+        ? `${tx("session_24h", "24 hour market")} (${tx("synthetic_extended", "Synthetic")})`
+        : tx("session_24h", "24 hour market");
+      rows.push([tx("trading_session", "Trading session"), sessionLabel]);
     } else {
       rows.push([tx("trading_session", "Trading session"), tx("session_regular", "Regular hours")]);
     }

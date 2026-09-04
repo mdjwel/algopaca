@@ -1,0 +1,2228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlgoPaca — Autonomous Quantitative Trading Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-dark: #070b12;
+    --bg-card: #0e1626;
+    --bg-card-alt: #131e33;
+    --border-card: rgba(255, 255, 255, 0.08);
+    
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    
+    --gold: #f59e0b;
+    --gold-light: #fef08a;
+    --gold-glow: rgba(245, 158, 11, 0.18);
+    
+    --emerald: #10b981;
+    --emerald-light: #34d399;
+    --emerald-glow: rgba(16, 185, 129, 0.18);
+    
+    --cyan: #38bdf8;
+    --cyan-light: #7dd3fc;
+    --cyan-glow: rgba(56, 189, 248, 0.18);
+    
+    --violet: #a855f7;
+    --violet-light: #c084fc;
+    --violet-glow: rgba(168, 85, 247, 0.18);
+    
+    --crimson: #ef4444;
+    --crimson-light: #f87171;
+    --crimson-glow: rgba(239, 68, 68, 0.18);
+  }
+
+  @page {
+    size: 1920px 1080px;
+    margin: 0;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background-color: #030712;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  .presentation-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    padding: 40px 0 80px 0;
+  }
+
+  .slide {
+    width: 1920px;
+    height: 1080px;
+    background: radial-gradient(circle at 85% 15%, #131c31 0%, #080d18 55%, #050810 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 50px 80px 45px 80px;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* Decorative Ambient Gradients */
+  .ambient-glow {
+    position: absolute;
+    width: 700px;
+    height: 700px;
+    border-radius: 50%;
+    filter: blur(140px);
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.16;
+  }
+  .glow-top-right {
+    top: -200px;
+    right: -150px;
+    background: radial-gradient(circle, #38bdf8, #818cf8, transparent 70%);
+  }
+  .glow-bottom-left {
+    bottom: -250px;
+    left: -150px;
+    background: radial-gradient(circle, #10b981, #059669, transparent 70%);
+  }
+  .glow-gold {
+    background: radial-gradient(circle, #f59e0b, #d97706, transparent 70%);
+  }
+  .glow-violet {
+    background: radial-gradient(circle, #a855f7, #6366f1, transparent 70%);
+  }
+  .glow-crimson {
+    background: radial-gradient(circle, #ef4444, #991b1b, transparent 70%);
+  }
+
+  .slide::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .slide-header, .slide-body, .slide-footer {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .slide-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 28px;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .brand-logo-mini {
+    width: 42px;
+    height: 42px;
+    background: #0e1626;
+    border: 1.5px solid rgba(245, 158, 11, 0.5);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.15);
+  }
+
+  .brand-name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+  }
+  .brand-name span {
+    color: var(--gold);
+  }
+
+  .brand-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: #64748b;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    text-transform: uppercase;
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .category-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--cyan);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    text-transform: uppercase;
+  }
+
+  .category-badge.gold {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--gold);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .category-badge.emerald {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--emerald-light);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .category-badge.crimson {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--crimson-light);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .category-badge.violet {
+    background: rgba(168, 85, 247, 0.1);
+    color: var(--violet-light);
+    border-color: rgba(168, 85, 247, 0.3);
+  }
+
+  .slide-number {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .slide-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slide-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .slide-footer .links {
+    display: flex;
+    gap: 24px;
+  }
+  .slide-footer .links span {
+    color: #94a3b8;
+  }
+
+  .slide-title {
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin-bottom: 12px;
+    color: #ffffff;
+    word-break: keep-all;
+  }
+  .slide-title .gradient-text,
+  .text-cyan {
+    color: #38bdf8 !important;
+    background: none !important;
+    -webkit-text-fill-color: #38bdf8 !important;
+  }
+  .slide-title .gradient-gold,
+  .text-gold {
+    color: #f59e0b !important;
+    background: none !important;
+    -webkit-text-fill-color: #f59e0b !important;
+  }
+  .slide-title .gradient-emerald,
+  .text-emerald {
+    color: #34d399 !important;
+    background: none !important;
+    -webkit-text-fill-color: #34d399 !important;
+  }
+
+  .slide-subtitle {
+    font-size: 19px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin-bottom: 24px;
+    max-width: 1400px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 18px;
+    padding: 26px;
+    position: relative;
+    backdrop-filter: blur(10px);
+  }
+
+  .card-glow-cyan {
+    border-color: rgba(56, 189, 248, 0.25);
+    box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.12);
+  }
+  .card-glow-gold {
+    border-color: rgba(245, 158, 11, 0.25);
+    box-shadow: 0 10px 30px -10px rgba(245, 158, 11, 0.12);
+  }
+  .card-glow-emerald {
+    border-color: rgba(16, 185, 129, 0.25);
+    box-shadow: 0 10px 30px -10px rgba(16, 185, 129, 0.12);
+  }
+  .card-glow-crimson {
+    border-color: rgba(239, 68, 68, 0.25);
+    box-shadow: 0 10px 30px -10px rgba(239, 68, 68, 0.12);
+  }
+  .card-glow-violet {
+    border-color: rgba(168, 85, 247, 0.25);
+    box-shadow: 0 10px 30px -10px rgba(168, 85, 247, 0.12);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+  .grid-6 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 20px;
+  }
+
+  /* Code Block */
+  .code-container {
+    background: #060a12;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+  .code-key { color: #38bdf8; }
+  .code-val { color: #34d399; }
+  .code-num { color: #fbbf24; }
+  .code-str { color: #fed7aa; }
+
+  /* Interactive Controls */
+  .screen-controls {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: rgba(14, 21, 36, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 10px 18px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(16px);
+    z-index: 9999;
+  }
+  .ctrl-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .ctrl-btn:hover { background: var(--cyan); color: #040812; }
+  .ctrl-btn.gold:hover { background: var(--gold); color: #040812; }
+
+  @media print {
+    .screen-controls { display: none !important; }
+    body { background: none !important; }
+    .presentation-container { padding: 0 !important; gap: 0 !important; }
+    .slide { box-shadow: none !important; page-break-after: always !important; break-after: page !important; }
+    .slide-title span {
+      background: none !important;
+      -webkit-background-clip: unset !important;
+      -webkit-text-fill-color: currentColor !important;
+      display: inline !important;
+    }
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
+    text-transform: uppercase;
+  }
+  .pill-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+  .pill-gold { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+  .pill-cyan { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.3); }
+  .pill-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+  .pill-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+  .feature-item {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+  .feature-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .feature-text h4 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #f1f5f9;
+  }
+  .feature-text p {
+    font-size: 13.5px;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="presentation-container">
+
+  <!-- ==========================================
+       SLIDE 01: HERO & TITLE
+       ========================================== -->
+  <section class="slide" id="slide-1">
+    <div class="ambient-glow glow-top-right glow-gold"></div>
+    <div class="ambient-glow glow-bottom-left"></div>
+    
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Autonomous Quantitative Trading Desk</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge gold">Lablab.ai Official Submission</span>
+        <span class="slide-number">01 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; margin-top: -15px;">
+        
+        <!-- Hackathon Track Pill -->
+        <div style="display: inline-flex; align-items: center; gap: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 9999px; padding: 6px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: #fbbf24; margin-bottom: 18px; letter-spacing: 0.08em; text-transform: uppercase;">
+          🏆 Lablab.ai Alpaca AI Trading Agents Hackathon • Options Alpha Agents Track
+        </div>
+
+        <!-- Large Logo Mark -->
+        <div style="margin-bottom: 18px; filter: drop-shadow(0 15px 35px rgba(245, 158, 11, 0.25));">
+          <svg width="115" height="115" viewBox="0 0 100 100">
+            <use href="#global-paca-mark"/>
+          </svg>
+        </div>
+
+        <h1 style="font-size: 72px; font-weight: 900; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 12px;">
+          Algo<span style="color: var(--gold);">Paca</span>
+        </h1>
+        <div style="font-size: 24px; font-weight: 600; color: #e2e8f0; margin-bottom: 12px; letter-spacing: -0.01em;">
+          Autonomous Quantitative Trading Desk on Alpaca's Complete Developer Stack
+        </div>
+        <p style="font-size: 16.5px; color: #94a3b8; max-width: 1100px; margin-bottom: 32px; line-height: 1.6;">
+          An institutional-grade, MIT-licensed trading platform built natively on <strong>Alpaca Trading API</strong>, <strong>Model Context Protocol (MCP)</strong>, and <strong>Alpaca CLI</strong>. Features 6 quantitative engines, multi-provider LLM reasoning (Gemini, Claude, GPT, Grok, Featherless AI), options alpha overlays, precious metals macro intelligence, and crash-safe risk guardrails.
+        </p>
+
+        <!-- Badge Row -->
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 36px; max-width: 1400px;">
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #38bdf8;"></span> ⚡ Alpaca Trading API
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #c084fc;"></span> 🔌 Built-In MCP Server
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399;"></span> ⌨️ Headless Alpaca CLI
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span> 📈 Options Alpha Overlay
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span> 🧠 Multi-LLM + Featherless AI
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #f87171;"></span> 🛡️ 7 Pre-Trade Risk Gates
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #fbbf24;"></span> 💵 $100,000 Paper Balance
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #e2e8f0;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #a855f7;"></span> ⚖️ MIT Open Source
+          </div>
+        </div>
+
+        <!-- Metric Grid -->
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; width: 100%; max-width: 1450px;">
+          <div class="card" style="padding: 20px 16px; text-align: center;">
+            <div style="font-size: 30px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: var(--emerald-light); margin-bottom: 4px;">$0 / mo</div>
+            <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">100% Free &amp; Open Source</div>
+          </div>
+          <div class="card" style="padding: 20px 16px; text-align: center;">
+            <div style="font-size: 30px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: var(--gold-light); margin-bottom: 4px;">6 Engines</div>
+            <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Options &amp; Equity Presets</div>
+          </div>
+          <div class="card" style="padding: 20px 16px; text-align: center;">
+            <div style="font-size: 30px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: var(--cyan-light); margin-bottom: 4px;">7 Gates</div>
+            <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Pre-Trade Risk Circuit</div>
+          </div>
+          <div class="card" style="padding: 20px 16px; text-align: center;">
+            <div style="font-size: 30px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: var(--violet-light); margin-bottom: 4px;">API+MCP+CLI</div>
+            <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Triple Alpaca Modality</div>
+          </div>
+          <div class="card" style="padding: 20px 16px; text-align: center;">
+            <div style="font-size: 30px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: #cbd5e1; margin-bottom: 4px;">$100,000</div>
+            <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Competition Paper Account</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>MIT License • Self-Hosted On-Premises or Cloud</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 02: THE PROBLEM & THE SOLUTION
+       ========================================== -->
+  <section class="slide" id="slide-2">
+    <div class="ambient-glow glow-top-right glow-crimson"></div>
+    <div class="ambient-glow glow-bottom-left glow-emerald"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Market Paradigm</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge crimson">The Industry Problem</span>
+        <span class="slide-number">02 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Retail Bots are Broken. <span class="gradient-emerald">AlgoPaca Restores Control.</span></h2>
+      <p class="slide-subtitle">
+        Most retail trading bots offer black-box signals, opaque subscriptions, and fragile architectures that drop positions when containers restart. AlgoPaca brings institutional quant rigor to personal accounts.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: The Problem -->
+        <div class="card card-glow-crimson" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+              <h3 style="font-size: 23px; font-weight: 700; color: var(--crimson-light);">Traditional Retail SaaS Bots</h3>
+              <span class="pill pill-red">The Status Quo</span>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--crimson-light);">💸</div>
+              <div class="feature-text">
+                <h4>Expensive SaaS Subscriptions ($50 – $300/mo)</h4>
+                <p>Retail traders pay heavy recurring monthly fees before ever booking a single winning trade, eroding baseline alpha.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--crimson-light);">⬛</div>
+              <div class="feature-text">
+                <h4>Black-Box "Trust Me" Execution</h4>
+                <p>A bot that just says "BUY" demands blind faith. No indicator attribution, zero transparency, and no reasoning audit trail.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--crimson-light);">💥</div>
+              <div class="feature-text">
+                <h4>In-Memory State Fragility</h4>
+                <p>Cloud bots hold stop orders in volatile memory. A crash or server restart abandons unhedged live positions without exit stops.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--crimson-light);">📉</div>
+              <div class="feature-text">
+                <h4>Siloed Technicals Without Macro Context</h4>
+                <p>Simple indicator crossovers blindside traders during FOMC rate announcements, Treasury yield shifts, or earnings surprises.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: rgba(239, 68, 68, 0.08); border-radius: 12px; padding: 14px 20px; font-size: 13.5px; color: #fca5a5; font-family: 'IBM Plex Mono', monospace;">
+            ⚠ Result: Disconnected accounts, unexpected liquidation, and subscription drag.
+          </div>
+        </div>
+
+        <!-- Right: The AlgoPaca Solution -->
+        <div class="card card-glow-emerald" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+              <h3 style="font-size: 23px; font-weight: 700; color: var(--emerald-light);">AlgoPaca Institutional Desk</h3>
+              <span class="pill pill-green">The Quant Solution</span>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">🆓</div>
+              <div class="feature-text">
+                <h4>100% Free, MIT Open Source &amp; $0 Commissions</h4>
+                <p>Zero software licensing fees, zero paywalls. Paired with Alpaca Markets for true commission-free US stock and ETF trading.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">🔍</div>
+              <div class="feature-text">
+                <h4>Full Multi-Modal AI Reasoning &amp; Audit Trail</h4>
+                <p>Synthesizes 5 technical indicators, live news sentiment, SEC earnings surprises, and macro yields into structured JSON with an explicit written thesis.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">💾</div>
+              <div class="feature-text">
+                <h4>Crash-Safe Disk-Persisted Plans</h4>
+                <p>Dip-hunt re-entries, buy-backs, and follow-on flip plans are committed to local SQLite disk per account. System restarts resume right where they left off.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">🪙</div>
+              <div class="feature-text">
+                <h4>Macro Precious Metals &amp; Cross-Asset Intelligence</h4>
+                <p>Empirically derived cross-asset fusion blending Treasury yields, 1Y z-scored Gold-to-Silver Ratio (GSR), and the 200-day trend regime.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: rgba(16, 185, 129, 0.08); border-radius: 12px; padding: 14px 20px; font-size: 13.5px; color: #6ee7b7; font-family: 'IBM Plex Mono', monospace;">
+            ✓ Result: Sovereign control, institutional risk guardrails, and verified execution.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>AlgoPaca Architecture Presentation</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 03: ARCHITECTURE OVERVIEW
+       ========================================== -->
+  <section class="slide" id="slide-3">
+    <div class="ambient-glow glow-top-right glow-cyan"></div>
+    <div class="ambient-glow glow-bottom-left glow-violet"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">System Architecture</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge">Engineering Pipeline</span>
+        <span class="slide-number">03 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">End-to-End <span class="gradient-text">Institutional Execution Pipeline</span></h2>
+      <p class="slide-subtitle">
+        A deterministic four-stage lifecycle ensures every market tick passes through macro intelligence, quantitative strategy logic, strict mechanical risk filters, and fail-safe order execution.
+      </p>
+
+      <div class="grid-4" style="flex: 1; margin-bottom: 22px;">
+        <!-- Stage 1 -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span class="pill pill-cyan">Stage 01</span>
+            <span style="font-size: 20px;">📡</span>
+          </div>
+          <h3 style="font-size: 19px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Market Ingestion &amp; Macro</h3>
+          <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 18px;">
+            Real-time multi-source data ingestion covering price, sentiment, and macro fundamentals.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1;">
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Alpaca SIP 1m/5m/1d Bars</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Live Financial News Stream</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Nasdaq Earnings (PEAD)</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Treasury Yields &amp; Metals Intel</div>
+          </div>
+        </div>
+
+        <!-- Stage 2 -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span class="pill pill-gold">Stage 02</span>
+            <span style="font-size: 20px;">🧠</span>
+          </div>
+          <h3 style="font-size: 19px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Strategy Core &amp; Reasoning</h3>
+          <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 18px;">
+            Algorithmic signal generation powered by 6 distinct engines and multi-provider LLMs.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1;">
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Day Trading (VWAP &amp; ORB)</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• AI Multi-Modal Desk Brain</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• SMA, Dip &amp; Pair Engines</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• 10 Composable Blueprints</div>
+          </div>
+        </div>
+
+        <!-- Stage 3 -->
+        <div class="card card-glow-crimson" style="display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span class="pill pill-red">Stage 03</span>
+            <span style="font-size: 20px;">🛡️</span>
+          </div>
+          <h3 style="font-size: 19px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Pre-Trade Risk Gates</h3>
+          <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 18px;">
+            Zero hallucination. Deterministic pre-trade circuit breakers and sizing equations.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1;">
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Daily Loss Circuit Breaker</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Volatility-Adjusted ATR Sizing</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Max Open Position Cap</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Real-Time Portfolio Heat Check</div>
+          </div>
+        </div>
+
+        <!-- Stage 4 -->
+        <div class="card card-glow-emerald" style="display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span class="pill pill-green">Stage 04</span>
+            <span style="font-size: 20px;">⚡</span>
+          </div>
+          <h3 style="font-size: 19px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Alpaca Execution &amp; Lifecycle</h3>
+          <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 18px;">
+            Order submission, options overlay, bracket stops, and post-exit follow-on state.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1;">
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Alpaca Trading &amp; Options API</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Native MCP Server (8 Tools)</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Headless Alpaca CLI Execution</div>
+            <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px;">• Post-Exit Dip-Hunt &amp; Flip Plans</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tech Stack Badges Bar -->
+      <div style="background: rgba(14, 21, 36, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em;">Core Tech Stack</span>
+        <div style="display: flex; gap: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;">
+          <span style="color: #38bdf8;">Alpaca Trading API</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #f59e0b;">Alpaca Options API</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #c084fc;">Native MCP Server</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #34d399;">Alpaca CLI</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #60a5fa;">FastAPI &amp; Python 3.10+</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #cbd5e1;">Vanilla PWA</span>
+          <span style="color: #64748b;">•</span>
+          <span style="color: #f87171;">Docker Ready</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Institutional Modular Architecture</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 04: 6 QUANT ENGINES
+       ========================================== -->
+  <section class="slide" id="slide-4">
+    <div class="ambient-glow glow-top-right glow-gold"></div>
+    <div class="ambient-glow glow-bottom-left glow-cyan"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Strategy Arsenal</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge gold">6 Trading Engines</span>
+        <span class="slide-number">04 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">6 Algorithmic Engines. <span class="gradient-gold">40+ Tuned Presets.</span></h2>
+      <p class="slide-subtitle">
+        From sub-minute intraday scalping to macro swing rotation, AlgoPaca includes battle-tested quantitative engines ready to trade out-of-the-box or compose into custom blueprints.
+      </p>
+
+      <div class="grid-6" style="flex: 1; margin-bottom: 18px;">
+        <!-- Engine 1: Day Trading -->
+        <div class="card card-glow-cyan" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--cyan);">1. Intraday Day-Trading</h3>
+              <span class="pill pill-cyan">1m / 5m / 15m</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              Minute execution with VWAP Trend, 15m Opening Range Breakout (ORB) &amp; Breakdown, and Momentum Scalps.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-cyan">VWAP Trend</span>
+              <span class="pill pill-cyan">15m ORB</span>
+              <span class="pill pill-cyan">EOD Square-Off</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            13 Presets • Long Only, Short Only, Two-Way (Long &amp; Short)
+          </div>
+        </div>
+
+        <!-- Engine 2: AI Desk Brain -->
+        <div class="card card-glow-gold" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--gold);">2. AI Desk Brain</h3>
+              <span class="pill pill-gold">Multi-Modal Quant</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              LLM synthesizes RSI, MACD, BB, ATR, ADX, live news, SEC earnings surprises, and macro metals into JSON actions.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-gold">Balanced</span>
+              <span class="pill pill-gold">PEAD Earnings</span>
+              <span class="pill pill-gold">Metals Macro</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            Confidence scoring • Human-approved prompt feedback loop
+          </div>
+        </div>
+
+        <!-- Engine 3: SMA Trend -->
+        <div class="card card-glow-emerald" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--emerald);">3. SMA Trend Following</h3>
+              <span class="pill pill-green">Trend Following</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              Moving average crossover filters across single names or watchlists with ATR trailing stops.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-green">Classic (10/30)</span>
+              <span class="pill pill-green">Fibonacci (8/21)</span>
+              <span class="pill pill-green">Golden Cross</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            Includes Gold Momentum (50/150) &amp; Custom moving average pairs
+          </div>
+        </div>
+
+        <!-- Engine 4: Dip Hunter -->
+        <div class="card card-glow-violet" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--violet);">4. Quantitative Dip Hunter</h3>
+              <span class="pill pill-purple">Mean Reversion</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              Exploits capitulation washouts and recovery bounces using RSI washouts and lower Bollinger Band taps.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-purple">Deep Dip</span>
+              <span class="pill pill-purple">Mild Pullback</span>
+              <span class="pill pill-purple">Washout</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            Gold Bullion Dip Hunter preset for physical metal proxies
+          </div>
+        </div>
+
+        <!-- Engine 5: Pair Rotation -->
+        <div class="card card-glow-cyan" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--cyan);">5. Pair &amp; Regime Rotation</h3>
+              <span class="pill pill-cyan">Relative Value</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              Dynamic impulse rotation between 2 linked assets. Allocates to the winning regime or moves to cash.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-cyan">GLD / SLV</span>
+              <span class="pill pill-cyan">GLD / GDX</span>
+              <span class="pill pill-cyan">Cash When Weak</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            Dynamic cash preservation when macro regimes break down
+          </div>
+        </div>
+
+        <!-- Engine 6: Regime L/S -->
+        <div class="card card-glow-emerald" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--emerald);">6. Regime Long/Short</h3>
+              <span class="pill pill-green">Dual Momentum</span>
+            </div>
+            <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+              Fast/slow EMA dual momentum with ADX trend strength gating. Holds through chop, exits on signal flip.
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="pill pill-green">ADX Filter</span>
+              <span class="pill pill-green">Dual EMA</span>
+              <span class="pill pill-green">IS / OOS Validation</span>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            Includes in-sample / out-of-sample backtest validation harness
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Blueprints Bar -->
+      <div style="background: rgba(14, 21, 36, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+        <span style="color: #cbd5e1; font-weight: 600;">📈 <strong>Options Alpha Overlay Compatible:</strong> All 6 engines route signals into defined-risk vertical debit spreads, calls/puts, or covered hedges via Alpaca Options API.</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; color: var(--gold);">10 Ready Blueprints • Custom Presets</span>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>6 Composable Quantitative Engines • Modular Parameters</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 05: MULTI-PROVIDER AI INTELLIGENCE
+       ========================================== -->
+  <section class="slide" id="slide-5">
+    <div class="ambient-glow glow-top-right glow-violet"></div>
+    <div class="ambient-glow glow-bottom-left glow-cyan"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">AI Brain &amp; Synthesis</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge violet">Multi-Provider AI</span>
+        <span class="slide-number">05 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Frontier &amp; Open-Source AI. <span class="gradient-text">Structured Decision Output.</span></h2>
+      <p class="slide-subtitle">
+        Switch seamlessly between Google Gemini, Anthropic Claude, OpenAI, and xAI Grok — with out-of-the-box compatibility for Featherless AI serverless open-source models (Llama-3, DeepSeek, Qwen). The AI synthesizes market telemetry into strict JSON schemas with confidence scores and written theses.
+      </p>
+
+      <!-- Top: 4 Providers Row -->
+      <div class="grid-4" style="margin-bottom: 22px;">
+        <div class="card" style="padding: 18px 20px; border-top: 3px solid #38bdf8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h4 style="font-size: 16px; font-weight: 700; color: #f8fafc;">Google Gemini</h4>
+            <span class="pill pill-cyan" style="font-size: 10px;">Sub-Second</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;"><strong>Models:</strong> 3.6 Flash, 3.5 Flash, 3.1 Pro</div>
+          <div style="font-size: 12px; color: #94a3b8; line-height: 1.4;">Extensive context windows for streaming financial news &amp; earnings transcripts.</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; border-top: 3px solid #c084fc;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h4 style="font-size: 16px; font-weight: 700; color: #f8fafc;">Anthropic Claude</h4>
+            <span class="pill pill-purple" style="font-size: 10px;">Deductive Logic</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;"><strong>Models:</strong> 3.7 Sonnet, Opus 5, Haiku 4.5</div>
+          <div style="font-size: 12px; color: #94a3b8; line-height: 1.4;">Nuanced technical analysis &amp; strict compliance with user risk guardrails.</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; border-top: 3px solid #10b981;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h4 style="font-size: 16px; font-weight: 700; color: #f8fafc;">OpenAI</h4>
+            <span class="pill pill-green" style="font-size: 10px;">Deterministic</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;"><strong>Models:</strong> GPT-5.6 Sol / Terra, GPT-5.4</div>
+          <div style="font-size: 12px; color: #94a3b8; line-height: 1.4;">Industry-standard structured JSON output matching exact mathematical criteria.</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; border-top: 3px solid #f59e0b;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h4 style="font-size: 16px; font-weight: 700; color: #f8fafc;">xAI Grok</h4>
+            <span class="pill pill-gold" style="font-size: 10px;">Real-Time Macro</span>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;"><strong>Models:</strong> Grok 4, Grok 4 Fast, Grok 3</div>
+          <div style="font-size: 12px; color: #94a3b8; line-height: 1.4;">High-speed social sentiment extraction &amp; cross-market momentum detection.</div>
+        </div>
+      </div>
+
+      <!-- Bottom: JSON Contract & Key Principles -->
+      <div class="grid-2" style="flex: 1;">
+        <!-- Left: Code Box -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column; padding: 20px 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 15px; font-weight: 700; color: #f8fafc;">Standardized Decision Contract</span>
+            <span class="pill pill-cyan">Structured JSON</span>
+          </div>
+          <div class="code-container" style="flex: 1;">
+<pre>{
+  <span class="code-key">"symbol"</span>: <span class="code-str">"NVDA"</span>,
+  <span class="code-key">"action"</span>: <span class="code-val">"BUY"</span>,
+  <span class="code-key">"confidence"</span>: <span class="code-num">0.82</span>,
+  <span class="code-key">"strategy"</span>: <span class="code-str">"ai_vwap_momentum"</span>,
+  <span class="code-key">"entry_price"</span>: <span class="code-num">124.50</span>,
+  <span class="code-key">"stop_loss_atr"</span>: <span class="code-num">1.5</span>,
+  <span class="code-key">"target_rr"</span>: <span class="code-num">2.0</span>,
+  <span class="code-key">"macro_bias"</span>: { <span class="code-key">"metals_score"</span>: <span class="code-num">+0.74</span>, <span class="code-key">"yields_trend"</span>: <span class="code-str">"softening"</span> },
+  <span class="code-key">"thesis"</span>: <span class="code-str">"Clean 15m VWAP reclaim following positive Q3 datacenter revenue surprise. RSI (56) shows healthy accumulation with Treasury yields retreating from 4.30%."</span>
+}</pre>
+          </div>
+        </div>
+
+        <!-- Right: Core Guarantees -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column; justify-content: space-between; padding: 24px;">
+          <div>
+            <span class="pill pill-gold" style="margin-bottom: 12px;">Architectural Law</span>
+            <h3 style="font-size: 22px; font-weight: 800; color: #f8fafc; margin-bottom: 14px;">
+              The AI Veto Principle
+            </h3>
+            <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 18px;">
+              The LLM acts as an <strong>intelligent gatekeeper</strong>, not an unchecked trader. It evaluates technical indicators and live context to decide whether to confirm or veto a trade.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #e2e8f0;">
+                ✓ <strong>Confidence Threshold Gate:</strong> Set minimum confidence (e.g. 0.70). Lower scores are rejected before execution.
+              </div>
+              <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #e2e8f0;">
+                ✓ <strong>Can Veto, Never Invent:</strong> The model can abort a questionable setup, but cannot fabricate random trades.
+              </div>
+              <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #e2e8f0;">
+                ✓ <strong>Zero Risk Rule Bypass:</strong> An AI signal must still clear all 7 mechanical risk gates.
+              </div>
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8; background: rgba(245, 158, 11, 0.08); padding: 10px 16px; border-radius: 8px;">
+            Deterministic calculations in Python • LLM handles semantic synthesis
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Featherless AI Compatible • Multi-Provider Zero Lock-in • Switch Providers Instantly</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 06: PRECIOUS METALS & MACRO INTEL
+       ========================================== -->
+  <section class="slide" id="slide-6">
+    <div class="ambient-glow glow-top-right glow-gold"></div>
+    <div class="ambient-glow glow-bottom-left glow-gold"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Macro Intelligence</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge gold">Metals &amp; Macro</span>
+        <span class="slide-number">06 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Empirical Precious Metals <span class="gradient-gold">&amp; Macro Fusion</span></h2>
+      <p class="slide-subtitle">
+        Real-time cross-asset data fusion across the full Alpaca metals universe. Factor weights are fitted strictly on measured 2007–2025 predictive power, not arbitrary market folklore.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: Factor Weights Breakdown -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h3 style="font-size: 22px; font-weight: 700; color: var(--gold-light);">Empirical Macro Weights</h3>
+              <span class="pill pill-gold">Fitted on 2007–2025 Data</span>
+            </div>
+
+            <!-- Weight Bars -->
+            <div style="display: flex; flex-direction: column; gap: 18px;">
+              
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+                  <span style="color: #f8fafc; font-weight: 600;">1. Treasury Yield Direction (10Y / 2Y)</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; color: var(--gold); font-weight: 700;">Weight: 0.40</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 9999px; overflow: hidden;">
+                  <div style="background: linear-gradient(90deg, #f59e0b, #fbbf24); width: 40%; height: 100%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+                  <span style="color: #f8fafc; font-weight: 600;">2. 1-Year Z-Scored Gold-to-Silver Ratio (GSR)</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; color: var(--gold); font-weight: 700;">Weight: 0.35</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 9999px; overflow: hidden;">
+                  <div style="background: linear-gradient(90deg, #f59e0b, #fbbf24); width: 35%; height: 100%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 6px;">
+                  <span style="color: #f8fafc; font-weight: 600;">3. 200-Day Trend Regime (Moving Average Slope)</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; color: var(--gold); font-weight: 700;">Weight: 0.15</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 9999px; overflow: hidden;">
+                  <div style="background: linear-gradient(90deg, #f59e0b, #fbbf24); width: 15%; height: 100%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+                  <span style="color: #f8fafc; font-weight: 600;">4. US Dollar Index Momentum (UUP / DXY)</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; color: var(--gold); font-weight: 700;">Weight: 0.10</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 9999px; overflow: hidden;">
+                  <div style="background: linear-gradient(90deg, #f59e0b, #fbbf24); width: 10%; height: 100%;"></div>
+                </div>
+              </div>
+
+              <div style="opacity: 0.5;">
+                <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+                  <span style="color: #94a3b8; font-weight: 600;">5. Miner Relative Strength (GDX/GLD)</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; color: #64748b; font-weight: 700;">Weight: 0.00 (IC: −0.01)</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 9999px; overflow: hidden;">
+                  <div style="background: #64748b; width: 0%; height: 100%;"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div style="background: rgba(245, 158, 11, 0.08); border-radius: 12px; padding: 12px 18px; font-size: 13px; color: #fde68a;">
+            💡 <strong>Zero Folklore:</strong> Miner strength is often touted in retail trading, but backtests revealed an Information Coefficient (IC) of −0.01. AlgoPaca assigns it exactly zero weight.
+          </div>
+        </div>
+
+        <!-- Right: Forward Return Monotonicity -->
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h3 style="font-size: 22px; font-weight: 700; color: #f8fafc;">Statistical Return Monotonicity</h3>
+              <span class="pill pill-green">Spearman IC: +0.11</span>
+            </div>
+
+            <p style="font-size: 14px; color: #94a3b8; margin-bottom: 20px;">
+              The resulting macro score demonstrates strict monotonic predictability on GLD forward 20-day returns across historical testing bands:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              
+              <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); padding: 14px 20px; border-radius: 12px;">
+                <div>
+                  <div style="font-weight: 700; color: #fca5a5; font-size: 15px;">Most Bearish Score Band</div>
+                  <div style="font-size: 12px; color: #94a3b8;">High real yields, spiking DXY, elevated GSR</div>
+                </div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 800; color: var(--crimson-light);">−0.29%</div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); padding: 14px 20px; border-radius: 12px;">
+                <div>
+                  <div style="font-weight: 700; color: #cbd5e1; font-size: 15px;">Neutral Regime Band</div>
+                  <div style="font-size: 12px; color: #94a3b8;">Balanced macro signals, normal volatility</div>
+                </div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 800; color: #cbd5e1;">+0.38%</div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); padding: 14px 20px; border-radius: 12px;">
+                <div>
+                  <div style="font-weight: 700; color: #86efac; font-size: 15px;">Most Bullish Score Band</div>
+                  <div style="font-size: 12px; color: #94a3b8;">Falling yields, softening dollar, positive 200d MA</div>
+                </div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 800; color: var(--emerald-light);">+1.14%</div>
+              </div>
+
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;">
+            Universe: GLD, IAU, UGL, GLL, PHYS, SLV, AGQ, ZSL, SIL, SILJ, PSLV, GDX, GDXJ
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Rigorous Quantitative Validation • Macro Cross-Asset Strategy</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 07: 7 MECHANICAL RISK GUARDRAILS
+       ========================================== -->
+  <section class="slide" id="slide-7">
+    <div class="ambient-glow glow-top-right glow-crimson"></div>
+    <div class="ambient-glow glow-bottom-left glow-gold"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Risk Architecture</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge crimson">7 Risk Guardrails</span>
+        <span class="slide-number">07 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Pre-Execution Risk Gates. <span class="gradient-gold">Capital Preservation First.</span></h2>
+      <p class="slide-subtitle">
+        Signals must survive 7 strict mechanical filters before an order reaches Alpaca. Configured out of the box to safeguard the $100,000 hackathon paper account starting balance, with ATR volatility sizing and hard drawdown halts.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: 7 Gates Flow -->
+        <div class="card card-glow-crimson" style="padding: 24px; display: flex; flex-direction: column; justify-content: space-between;">
+          <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 14px;">The 7 Pre-Trade Checkpoints</h3>
+
+          <div style="display: flex; flex-direction: column; gap: 9px;">
+            
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 1</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Daily Loss Circuit Breaker</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Halt desk if Daily P&L &le; −X%</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 2</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Max Concurrent Open Positions</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Hard cap on open inventory</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 3</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Spread &amp; Liquidity Sanity Gate</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Rejects wide bid/ask anomalies</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 4</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Post-Loss Cooldown Lockout</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Anti-revenge cooldown after stop-out</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-gold">Gate 5</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Volatility-Adjusted ATR Sizing</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #fbbf24;">(Equity &times; Risk%) / (ATR &times; Mult)</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 6</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Max Portfolio Allocation Cap</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Max single symbol allocation (e.g. 25%)</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); padding: 9px 14px; border-radius: 10px;">
+              <span class="pill pill-red">Gate 7</span>
+              <div style="font-size: 13.5px; color: #f1f5f9; font-weight: 600;">Real-Time Portfolio Heat Check</div>
+              <div style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8;">Total aggregate open risk across book</div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Right: Asymmetry Principle & Volatility Sizing -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          
+          <!-- Asymmetry Box -->
+          <div class="card card-glow-gold" style="padding: 24px;">
+            <span class="pill pill-gold" style="margin-bottom: 10px;">Core Design Law</span>
+            <h3 style="font-size: 21px; font-weight: 800; color: #f8fafc; margin-bottom: 10px;">
+              Bots are Refused. <span style="color: var(--cyan);">Humans are Advised.</span>
+            </h3>
+            <p style="font-size: 13.5px; color: #cbd5e1; line-height: 1.55; margin-bottom: 14px;">
+              An autonomous bot that trips any risk gate is refused outright — it logs the exact breach and halts. A human typing a ticket on the Advanced Order desk sees <strong>every breach at once</strong> with live portfolio heat, and must explicitly check an override before submission.
+            </p>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: rgba(255,255,255,0.04); padding: 10px 14px; border-radius: 8px; color: #cbd5e1;">
+              "The person is looking at the screen and may see what the rules cannot."
+            </div>
+          </div>
+
+          <!-- Volatility Sizing Box -->
+          <div class="card" style="padding: 24px; flex: 1;">
+            <span class="pill pill-green" style="margin-bottom: 10px;">Dynamic Sizing Equation</span>
+            <h4 style="font-size: 17px; font-weight: 700; color: var(--emerald-light); margin-bottom: 8px;">
+              Volatility-Adjusted Position Sizing
+            </h4>
+            <div style="background: #070b14; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 15px; color: #34d399; margin-bottom: 10px;">
+              Shares = (Total Equity &times; Risk%) / (ATR<sub>14</sub> &times; Multiplier)
+            </div>
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
+              Higher volatility automatically scales down share sizing. Quiet markets permit larger size while keeping the actual dollar risk completely constant across every setup.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Deterministic Pre-Trade Circuit Breakers</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 08: EXITS & POST-EXIT AUTOMATION
+       ========================================== -->
+  <section class="slide" id="slide-8">
+    <div class="ambient-glow glow-top-right glow-emerald"></div>
+    <div class="ambient-glow glow-bottom-left glow-violet"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Position Lifecycle</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge emerald">Exits &amp; Post-Exit</span>
+        <span class="slide-number">08 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Active Exit Desk &amp; <span class="gradient-emerald">Crash-Safe Post-Exit Automation</span></h2>
+      <p class="slide-subtitle">
+        Alpaca has no native "close-then-open" order class. AlgoPaca manages the complete order lifecycle locally, persisting armed post-exit plans to disk so restarts resume seamlessly.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: In-Trade Position Exits -->
+        <div class="card card-glow-emerald" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: var(--emerald-light);">1-Click Position Desk Exits</h3>
+              <span class="pill pill-green">In-Trade Protection</span>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">🛡️</div>
+              <div class="feature-text">
+                <h4>Quick Stop Loss Risk Chips</h4>
+                <p>Attach stops instantly using predefined equity chips (1%, 2%, 3%, 5%, 8%, 10%) or custom dollar amounts.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">🎯</div>
+              <div class="feature-text">
+                <h4>Zero-Risk Breakeven Ratchet</h4>
+                <p>One-click ratchet moves your stop to entry price ($entry &plusmn; $0.01) immediately upon hitting +1.0R profit, securing a free roll.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">📈</div>
+              <div class="feature-text">
+                <h4>Dynamic Trailing Stop Loss (%)</h4>
+                <p>Follows the peak price upwards dynamically, locking in accumulated paper profits during explosive runs.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--emerald-light);">⚖️</div>
+              <div class="feature-text">
+                <h4>Partial Scaling with Live P&amp;L Estimates</h4>
+                <p>Scale out 25%, 50%, or 75% of your lot. The desk calculates estimated realized P&amp;L before you confirm.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.03); padding: 12px 18px; border-radius: 10px;">
+            Includes Pre-Market &amp; After-Hours Quote Mark-to-Market
+          </div>
+        </div>
+
+        <!-- Right: Post-Exit Automation -->
+        <div class="card card-glow-violet" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: var(--violet-light);">Crash-Safe Post-Exit Plans</h3>
+              <span class="pill pill-purple">Survives Reboots</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              
+              <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 12px; padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <strong style="color: #e9d5ff; font-size: 15px;">1. Dip Hunt Re-Entry Plan</strong>
+                  <span class="pill pill-purple">Dip Buying</span>
+                </div>
+                <p style="font-size: 13px; color: #cbd5e1; line-height: 1.45;">
+                  "If my stop fills, re-enter lower." Watches for a further dip % drop. Buys immediately if reached within timer; otherwise leaves a resting limit order.
+                </p>
+              </div>
+
+              <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <strong style="color: #bae6fd; font-size: 15px;">2. Capital Re-Investment Plan</strong>
+                  <span class="pill pill-cyan">Compounding</span>
+                </div>
+                <p style="font-size: 13px; color: #cbd5e1; line-height: 1.45;">
+                  "When this sell fills, put the cash back to work." Starts clock upon sell fill, recalculates available buying power, and buys back at target.
+                </p>
+              </div>
+
+              <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <strong style="color: #fde68a; font-size: 15px;">3. Next-Ticket Follow-On Flip</strong>
+                  <span class="pill pill-gold">Regime Flip</span>
+                </div>
+                <p style="font-size: 13px; color: #cbd5e1; line-height: 1.45;">
+                  "When this close fills, open opposite direction or rotate into symbol Y." Flip long&rarr;short or swap from gold into tech stocks automatically.
+                </p>
+              </div>
+
+            </div>
+          </div>
+
+          <div style="background: rgba(168, 85, 247, 0.1); border-radius: 10px; padding: 12px 18px; font-size: 12.5px; color: #e9d5ff; font-family: 'IBM Plex Mono', monospace;">
+            ✓ Plans persisted to SQLite disk per account; a paper plan never executes live.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Stateful Post-Execution Workflow Engine</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 09: USER EXPERIENCE & MOBILE PWA
+       ========================================== -->
+  <section class="slide" id="slide-9">
+    <div class="ambient-glow glow-top-right glow-cyan"></div>
+    <div class="ambient-glow glow-bottom-left glow-emerald"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">User Experience</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge">Web &amp; Mobile PWA</span>
+        <span class="slide-number">09 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Desktop Power. <span class="gradient-text">Mobile-First PWA Freedom.</span></h2>
+      <p class="slide-subtitle">
+        A lightning-fast Vanilla JS/CSS terminal with zero bloated dependencies. Complete with an interactive Auto-Trade approval queue, real-time push notifications, and multi-user isolation.
+      </p>
+
+      <div class="grid-3" style="flex: 1;">
+        <!-- Card 1: Mobile PWA -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span style="font-size: 26px;">📱</span>
+              <span class="pill pill-cyan">PWA Ready</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Mobile-First PWA Shell</h3>
+            <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px;">
+              Install directly to home screen on iOS &amp; Android. Seamless touch interaction designed for on-the-go desk monitoring.
+            </p>
+
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+              <div style="font-size: 12px; color: #38bdf8; font-family: 'IBM Plex Mono', monospace; margin-bottom: 8px;">BOTTOM NAVIGATION BAR</div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: #cbd5e1;">
+                <span>[Desk]</span>
+                <span>[Orders]</span>
+                <span style="color: var(--gold);">[Auto-Trade]</span>
+                <span>[Positions]</span>
+                <span>[Menu]</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+            <div>• Sticky masthead ticker search</div>
+            <div>• 4 Themes (Obsidian, Slate, Emerald, Daylight)</div>
+            <div>• Multi-language: EN, BN, ES, FR, HI</div>
+          </div>
+        </div>
+
+        <!-- Card 2: Approval Queue -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span style="font-size: 26px;">🚦</span>
+              <span class="pill pill-gold">Human in the Loop</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Auto-Trade Approval Queue</h3>
+            <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px;">
+              Prefer oversight over 100% autonomous trading? Stage setups in the approval queue before submission.
+            </p>
+
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-weight: 700; color: #fde68a;">NVDA &bull; BUY &bull; $124.50</span>
+                <span class="pill pill-green" style="font-size: 10px;">82% Conf</span>
+              </div>
+              <div style="font-size: 11.5px; color: #cbd5e1; margin-bottom: 8px;">15m VWAP Trend Rider &bull; ATR Stop: $122.10</div>
+              <div style="display: flex; gap: 8px;">
+                <span style="background: #10b981; color: #000; font-weight: 700; padding: 3px 10px; border-radius: 4px; font-size: 11px;">[Approve]</span>
+                <span style="background: rgba(255,255,255,0.1); color: #fff; padding: 3px 10px; border-radius: 4px; font-size: 11px;">[Reject]</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+            <div>• Web push browser notifications</div>
+            <div>• Branded HTML email alert dispatch</div>
+            <div>• 1-Click trade approval from phone</div>
+          </div>
+        </div>
+
+        <!-- Card 3: Multi-User Security -->
+        <div class="card card-glow-emerald" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span style="font-size: 26px;">👥</span>
+              <span class="pill pill-green">RBAC Ready</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 10px;">Multi-User Isolation &amp; RBAC</h3>
+            <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px;">
+              Enterprise isolation ready for prop desks or multiple traders. Strict role-based permissions and isolated workspaces.
+            </p>
+
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+              <div style="font-size: 12px; color: #34d399; font-family: 'IBM Plex Mono', monospace; margin-bottom: 8px;">ROLE HIERARCHY</div>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; font-family: 'IBM Plex Mono', monospace; color: #cbd5e1;">
+                <div><span style="color: #c084fc;">Owner</span> &rarr; Full system config, SMTP &amp; users</div>
+                <div><span style="color: #38bdf8;">Admin</span> &rarr; Desk oversight &amp; queue controls</div>
+                <div><span style="color: #94a3b8;">Member</span> &rarr; Personal account isolation</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+            <div>• User-scoped Alpaca &amp; AI keys</div>
+            <div>• Active session &amp; device revocation</div>
+            <div>• GDPR-compliant data export &amp; purge</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Zero-Framework Vanilla Stack • Blazing Fast 60fps Experience</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 10: HISTORY REVIEW & THE LESSONS LOOP
+       ========================================== -->
+  <section class="slide" id="slide-10">
+    <div class="ambient-glow glow-top-right glow-violet"></div>
+    <div class="ambient-glow glow-bottom-left glow-gold"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Continuous Learning</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge violet">Desk Review &amp; Backtest</span>
+        <span class="slide-number">10 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Deterministic Review. <span class="gradient-text">The Self-Improving Lessons Loop.</span></h2>
+      <p class="slide-subtitle">
+        Every metric on the History Review is calculated mathematically in Python; the LLM is only asked to narrate the finished figures. Approved post-mortem lessons feed back into live prompts.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: Deterministic Review -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: #f8fafc;">Deterministic Analytics First</h3>
+              <span class="pill pill-cyan">Zero Hallucination</span>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--cyan);">📊</div>
+              <div class="feature-text">
+                <h4>Engine P&amp;L &amp; Preset Attribution</h4>
+                <p>Calculates realized win rates, profit factors, and dollar returns broken down by specific engine and preset.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--cyan);">🎯</div>
+              <div class="feature-text">
+                <h4>Confidence Calibration Scoring</h4>
+                <p>Statistically verifies if high-confidence entries (&gt;0.80) actually produce higher win rates than lower confidence entries.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <div class="feature-icon-box" style="color: var(--cyan);">⏱️</div>
+              <div class="feature-text">
+                <h4>Hold Time &amp; Execution Blocks</h4>
+                <p>Audits average trade duration, distribution of stop-outs vs target limits, and reasons behind risk-blocked setups.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: rgba(56, 189, 248, 0.08); border-radius: 12px; padding: 14px 20px; font-size: 13px; color: #bae6fd;">
+            💡 <strong>No Hallucinated Math:</strong> A hallucinated P&amp;L on a quant trading desk is unacceptable. Python computes the numbers; the LLM provides prose narrative only.
+          </div>
+        </div>
+
+        <!-- Right: The Lessons Loop & Backtesting -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: var(--gold-light);">The Human-Gated Lessons Loop</h3>
+              <span class="pill pill-gold">Prompt Feedback</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 12px 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="pill pill-green">Step 1</span>
+                  <strong style="color: #f8fafc; font-size: 14px;">Post-Mortem Trade Analysis</strong>
+                </div>
+                <p style="font-size: 12.5px; color: #94a3b8;">
+                  Compares entry thesis against real market outcome to pinpoint execution flaws.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 12px 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="pill pill-gold">Step 2</span>
+                  <strong style="color: #f8fafc; font-size: 14px;">Explicit Human Click Approval</strong>
+                </div>
+                <p style="font-size: 12.5px; color: #94a3b8;">
+                  A lesson only reaches the live bot if a human trader reads and explicitly approves it.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 12px 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="pill pill-purple">Step 3</span>
+                  <strong style="color: #f8fafc; font-size: 14px;">Injected into Live AI Prompts</strong>
+                </div>
+                <p style="font-size: 12.5px; color: #94a3b8;">
+                  Saved lessons are prepended into live strategy cycles for matching symbols.
+                </p>
+              </div>
+            </div>
+
+            <!-- Injected Prompt Box Preview -->
+            <div class="code-container" style="padding: 12px 16px; font-size: 12px;">
+              <div style="color: #fbbf24; font-weight: 600; margin-bottom: 4px;">// LIVE AI PROMPT INJECTION SAMPLE:</div>
+              <div style="color: #94a3b8;">[APPROVED DESK LESSON for NVDA]: "Do not enter long breakout setups when overall tech sector breadth is negative and SPY is below its 15m VWAP."</div>
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+            Plus Walk-Forward Daily &amp; Intraday Backtesting with Side-by-Side Run Comparison.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Continuous Strategy Improvement • Verified Trade Post-Mortems</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 11: OPTIONS OVERLAY & MCP SERVER
+       ========================================== -->
+  <section class="slide" id="slide-11">
+    <div class="ambient-glow glow-top-right glow-cyan"></div>
+    <div class="ambient-glow glow-bottom-left glow-violet"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Advanced Integrations</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge cyan">Options &amp; Dual Agent Stack</span>
+        <span class="slide-number">11 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">Alpaca Options Overlay &amp; <span class="gradient-text">Dual Agent Interfaces (MCP + CLI)</span></h2>
+      <p class="slide-subtitle">
+        Translate directional equity signals into defined-risk options contracts via Alpaca Options API, with dual agent execution: interactive tool-calling via Native MCP Server and headless automated execution via Alpaca CLI.
+      </p>
+
+      <div class="grid-2" style="flex: 1; align-items: stretch;">
+        <!-- Left: Options Overlay -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: #f8fafc;">Alpaca Options Overlay Engine</h3>
+              <span class="pill pill-cyan">Defined-Risk Derivatives</span>
+            </div>
+
+            <p style="font-size: 13.5px; color: #94a3b8; margin-bottom: 16px; line-height: 1.5;">
+              Converts underlying equity setups into defined-risk options contracts with automated DTE target (21–45 days), delta targeting, and real-time Greek telemetry.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 11px;">
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-weight: 700; color: var(--cyan); margin-bottom: 3px; font-size: 14.5px;">Vertical Debit Spreads</div>
+                <div style="font-size: 12.5px; color: #94a3b8;">Bull Call &amp; Bear Put spreads capping maximum capital loss strictly to the net debit premium paid.</div>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-weight: 700; color: var(--emerald-light); margin-bottom: 3px; font-size: 14.5px;">Long Directional Options (ATM/OTM)</div>
+                <div style="font-size: 12.5px; color: #94a3b8;">High-delta calls and puts for asymmetric directional breakout setups and earnings moves.</div>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-weight: 700; color: var(--gold); margin-bottom: 3px; font-size: 14.5px;">Covered Hedges &amp; Income Writing</div>
+                <div style="font-size: 12.5px; color: #94a3b8;">Protective puts and covered call overwrites against held equity positions to harvest Theta decay.</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #cbd5e1; background: rgba(56, 189, 248, 0.08); padding: 12px 18px; border-radius: 10px;">
+            ✓ Directly integrated into Alpaca Markets Options Chains &amp; Trading API
+          </div>
+        </div>
+
+        <!-- Right: Dual Agent Interfaces (MCP + CLI) -->
+        <div class="card card-glow-violet" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="font-size: 21px; font-weight: 700; color: var(--violet-light);">Dual Agent Interfaces: MCP + CLI</h3>
+              <span class="pill pill-purple">MCP &amp; CLI Modalities</span>
+            </div>
+
+            <p style="font-size: 13.5px; color: #94a3b8; margin-bottom: 14px; line-height: 1.5;">
+              Fulfills both hackathon modalities: Connect interactive AI assistants via Model Context Protocol, or drive headless execution pipelines with Alpaca CLI.
+            </p>
+
+            <!-- Dual Interface Cards -->
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
+              <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 10px; padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <strong style="color: #e9d5ff; font-size: 13.5px;">🔌 Native MCP Server (8 Tools)</strong>
+                  <span class="pill pill-purple" style="font-size: 10px;">Cursor / Claude</span>
+                </div>
+                <div style="font-size: 11.5px; font-family: 'IBM Plex Mono', monospace; color: #c4b5fd;">
+                  get_account • get_positions • run_strategy_cycle • place_order • run_backtest
+                </div>
+              </div>
+
+              <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <strong style="color: #bae6fd; font-size: 13.5px;">⌨️ Headless Alpaca CLI Automation</strong>
+                  <span class="pill pill-cyan" style="font-size: 10px;">Cron / CI / Terminal</span>
+                </div>
+                <div style="font-size: 11.5px; font-family: 'IBM Plex Mono', monospace; color: #7dd3fc;">
+                  alpaca order buy • alpaca position list • structured JSON output for long-running bots
+                </div>
+              </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #cbd5e1;">
+              <em>"Claude, check our $100k Alpaca paper portfolio, screen NVDA options chain, and deploy a Bull Call spread."</em>
+            </div>
+          </div>
+
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #e9d5ff; background: rgba(168, 85, 247, 0.1); padding: 12px 18px; border-radius: 10px;">
+            Run: <code>./run_mcp.sh</code> &bull; Seamless Claude Desktop, Cursor &amp; Alpaca CLI Integration
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Alpaca Options Derivatives &amp; Dual Agent Interfaces (MCP + CLI)</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==========================================
+       SLIDE 12: ONE-PAGE TECHNICAL SUMMARY (HACKATHON WRITE-UP)
+       ========================================== -->
+  <section class="slide" id="slide-12">
+    <div class="ambient-glow glow-top-right glow-gold"></div>
+    <div class="ambient-glow glow-bottom-left glow-cyan"></div>
+
+    <div class="slide-header">
+      <div class="header-brand">
+        <div class="brand-logo-mini">
+          <svg width="28" height="28" viewBox="0 0 100 100"><use href="#global-paca-mark"/></svg>
+        </div>
+        <div class="brand-name">Algo<span>Paca</span></div>
+        <div class="brand-tag">Hackathon Architecture Write-Up</div>
+      </div>
+      <div class="header-meta">
+        <span class="category-badge gold">One-Page Technical Summary</span>
+        <span class="slide-number">12 / 12</span>
+      </div>
+    </div>
+
+    <div class="slide-body">
+      <h2 class="slide-title">One-Page Technical Summary: <span class="gradient-gold">AI Logic, Risk Gates &amp; Alpaca Stack</span></h2>
+      <p class="slide-subtitle">
+        Official Hackathon Architecture Write-Up fulfilling all judging requirements for the Lablab.ai Alpaca AI Trading Agents Hackathon.
+      </p>
+
+      <div class="grid-3" style="flex: 1; margin-bottom: 20px;">
+        <!-- Card 1: AI Logic -->
+        <div class="card card-glow-cyan" style="display: flex; flex-direction: column; justify-content: space-between; padding: 22px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span class="pill pill-cyan">Pillar 01 • AI Core</span>
+              <span style="font-size: 22px;">🧠</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 12px;">AI Logic &amp; Reasoning</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #38bdf8; font-size: 13px; display: block; margin-bottom: 2px;">Multi-Provider Brain &amp; Featherless</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Interchangeable engine supporting Gemini, Claude, GPT, Grok, and Featherless AI open-source financial models.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #38bdf8; font-size: 13px; display: block; margin-bottom: 2px;">Strict Decision JSON Contract</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Models ingest quantitative indicators (RSI, VWAP, ATR, MACD, BB) and return strictly validated actions with confidence &ge; 0.70.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #38bdf8; font-size: 13px; display: block; margin-bottom: 2px;">The AI Veto Principle</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  LLM serves as an intelligent gatekeeper: it can veto questionable setups based on macro/news, but can never hallucinate math or bypass risk rules.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #38bdf8; font-size: 13px; display: block; margin-bottom: 2px;">Closed-Loop Lessons Feedback</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Automated trade post-mortems generate lessons that, upon human click approval, are injected into future live agent prompts.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Risk Gates -->
+        <div class="card card-glow-crimson" style="display: flex; flex-direction: column; justify-content: space-between; padding: 22px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span class="pill pill-red">Pillar 02 • Risk Gates</span>
+              <span style="font-size: 22px;">🛡️</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 12px;">Deterministic Risk Gates</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #f87171; font-size: 13px; display: block; margin-bottom: 2px;">7 Pre-Execution Circuit Breakers</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Daily Loss Breaker, Max Open Positions, Spread Sanity, Post-Loss Cooldown, ATR Sizing, Allocation Cap, and Portfolio Heat Check.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #f87171; font-size: 13px; display: block; margin-bottom: 2px;">$100,000 Portfolio Calibration</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Tuned for competition paper portfolios to strictly govern max single-ticket risk (1-2% equity) and eliminate margin calls.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #f87171; font-size: 13px; display: block; margin-bottom: 2px;">Volatility-Adjusted ATR Sizing</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Dynamically scales share/contract quantities inversely to market volatility, guaranteeing constant dollar risk across setups.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #f87171; font-size: 13px; display: block; margin-bottom: 2px;">Crash-Safe Persistence (SQLite)</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Post-exit automation plans (Dip Hunt Re-entry, Compounding Reinvestment, Regime Flip) survive server restarts without loss of state.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Alpaca Infrastructure -->
+        <div class="card card-glow-gold" style="display: flex; flex-direction: column; justify-content: space-between; padding: 22px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span class="pill pill-gold">Pillar 03 • Alpaca Stack</span>
+              <span style="font-size: 22px;">⚡</span>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 12px;">Alpaca Infrastructure</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 2px;">Native Trading API &amp; Market Data</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Full SIP multi-timeframe market bars, real-time WebSocket quotes, bracket orders, and account telemetry.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 2px;">Alpaca Options Derivatives</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Automated Options Chain screening with DTE targeting (21–45d), vertical debit spreads, long calls/puts, and covered hedges.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 2px;">Dual Agent Interface (MCP + CLI)</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Native Model Context Protocol server (8 tools) for Claude/Cursor plus Alpaca CLI automation for headless cron agent runs.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 10px 12px;">
+                <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 2px;">Isolated Paper Trading Desk</strong>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.45; margin: 0;">
+                  Zero real-money risk; verified execution against live market books in Alpaca's paper trading environment.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Submission Verification Bar -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; text-align: center;">
+          <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">PUBLIC GITHUB REPO</div>
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--gold);">github.com/mdjwel/algopaca</div>
+          <div style="font-size: 11px; color: #34d399; margin-top: 2px;">MIT License • 254 Tests Passing</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; text-align: center;">
+          <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">LIVE DEMO PLATFORM</div>
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--cyan);">algopaca.spiderdevs.xyz</div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Full Web &amp; Mobile PWA</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; text-align: center;">
+          <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">HACKATHON ACCOUNT ID</div>
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--emerald-light);">Dedicated Paper Account</div>
+          <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">$100,000 Starting Balance</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; text-align: center;">
+          <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">60-SECOND DOCKER LAUNCH</div>
+          <div style="font-size: 13.5px; font-weight: 700; color: #f8fafc; font-family: 'IBM Plex Mono', monospace;">docker compose up -d</div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Zero SaaS Fees • Self-Hosted</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>AlgoPaca Official Hackathon Write-Up • Lablab.ai Alpaca AI Trading Agents Hackathon • MIT Open Source</div>
+      <div class="links">
+        <span>github.com/mdjwel/algopaca</span>
+        <span>algopaca.spiderdevs.xyz</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Interactive Floating Controls -->
+<div class="screen-controls">
+  <span style="font-size: 13px; font-family: 'IBM Plex Mono', monospace; color: #94a3b8;" id="slideIndicator">Slide 1 / 12</span>
+  <button class="ctrl-btn" onclick="prevSlide()">&#8592; Prev</button>
+  <button class="ctrl-btn" onclick="nextSlide()">Next &#8594;</button>
+  <button class="ctrl-btn" onclick="toggleFullscreen()">Fullscreen (F)</button>
+  <button class="ctrl-btn gold" onclick="window.print()">Print / PDF (P)</button>
+</div>
+
+<!-- Embedded Global SVG Definition of the Alpaca Mark -->
+<svg style="display: none;">
+  <defs>
+    <g id="global-paca-mark" viewBox="0 0 100 100">
+      <rect x="0" y="0" width="100" height="100" rx="24" fill="#0e1626" stroke="#f59e0b" stroke-width="2"/>
+      <g transform="translate(4, 2) scale(0.18)">
+        <!-- Back Ear -->
+        <polygon points="195,190 190,95 235,160 230,205" fill="#78350F"/>
+        <!-- Front Ear -->
+        <polygon points="230,175 240,75 285,150 265,195" fill="#D97706"/>
+        <polygon points="240,75 285,150 256,165" fill="#FEF08A"/>
+        <polygon points="240,75 256,165 230,175" fill="#FBBF24"/>
+        <!-- Crown -->
+        <polygon points="195,190 230,175 265,195 250,225 205,220" fill="#FBBF24"/>
+        <!-- Forehead & Snout -->
+        <polygon points="265,195 335,215 285,250 250,225" fill="#FEF08A"/>
+        <polygon points="335,215 385,238 348,272 285,250" fill="#FBBF24"/>
+        <polygon points="385,238 410,256 385,282 348,272" fill="#92400E"/>
+        <!-- Eye -->
+        <polygon points="298,228 322,234 314,248 292,242" fill="#09131F"/>
+        <circle cx="308" cy="238" r="4.5" fill="#38BDF8"/>
+        <circle cx="308" cy="238" r="2" fill="#FFFFFF"/>
+        <!-- Jaw -->
+        <polygon points="385,282 348,272 315,310 350,318" fill="#451A03"/>
+        <polygon points="348,272 285,250 315,310" fill="#78350F"/>
+        <!-- Throat & Cheek -->
+        <polygon points="205,220 250,225 285,250 260,300 195,275" fill="#92400E"/>
+        <!-- Quantitative Trend Pillars -->
+        <polygon points="260,300 315,310 295,415 240,415" fill="#10B981"/>
+        <polygon points="315,310 350,318 330,415 295,415" fill="#047857"/>
+        <polygon points="195,275 260,300 240,415 175,415" fill="#F59E0B"/>
+        <polygon points="150,320 195,275 175,415 130,415" fill="#78350F"/>
+        <!-- Trend line -->
+        <path d="M 115 390 L 180 340 L 235 365 L 320 270 L 375 220 L 420 170" fill="none" stroke="#FDE047" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="420" cy="170" r="9" fill="#FEF08A" stroke="#B45309" stroke-width="2"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 12;
+
+  function updateSlide(idx) {
+    if (idx < 1) idx = 1;
+    if (idx > totalSlides) idx = totalSlides;
+    currentSlide = idx;
+    const target = document.getElementById('slide-' + currentSlide);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+    const indicator = document.getElementById('slideIndicator');
+    if (indicator) {
+      indicator.textContent = `Slide ${currentSlide} / ${totalSlides}`;
+    }
+  }
+
+  function nextSlide() { updateSlide(currentSlide + 1); }
+  function prevSlide() { updateSlide(currentSlide - 1); }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'Space') {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key.toLowerCase() === 'f') {
+      toggleFullscreen();
+    } else if (e.key.toLowerCase() === 'p') {
+      window.print();
+    }
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        const num = parseInt(id.replace('slide-', ''), 10);
+        if (num) {
+          currentSlide = num;
+          const indicator = document.getElementById('slideIndicator');
+          if (indicator) indicator.textContent = `Slide ${currentSlide} / ${totalSlides}`;
+        }
+      }
+    });
+  }, { threshold: 0.5 });
+
+  document.querySelectorAll('.slide').forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

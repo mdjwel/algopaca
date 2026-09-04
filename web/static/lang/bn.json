@@ -998,6 +998,7 @@
   "manual_help_limit": "লিমিট DAY অর্ডার — দাম সেখানে না এলে অপেক্ষা করে।",
   "manual_help_market": "সাধারণ সময়ে মার্কেট DAY অর্ডার।",
   "manual_help_offrth": "{session}: বর্ধিত সময়ের Limit {tif} অর্ডার।",
+  "manual_help_offrth_synth": "{session}: সিন্থেটিক এক্সটেন্ডেড-আওয়ার্স {type} {tif} অর্ডার।",
   "manual_help_queued": "{session}: নিয়মিত সময়ের জন্য {type} {tif} অর্ডার সারিতে।",
   "manual_help_sell": "বিক্রির আগে প্রোটেক্টিভ স্টপ বাতিল করা হয়।",
   "manual_risk_help_short": "শেয়ার সংখ্যা এমনভাবে ঠিক হয় যাতে স্টপ-আউটে আপনার ঝুঁকি বাজেটই খরচ হয়: ইকুইটি × ঝুঁকি % ÷ (ATR × গুণক)। ভোলাটিলিটি বেশি হলে একই ডলার ঝুঁকিতে কম শেয়ার।",
@@ -1330,12 +1331,13 @@
   "limits_overridden": "সীমা উপেক্ষা করা হয়েছে",
   "err_breach_confirm": "এই টিকিটটি ডেস্কের একটি ঝুঁকি সীমা অতিক্রম করছে। উপরের সতর্কতাগুলো দেখে আবার পাঠিয়ে নিশ্চিত করুন।",
   "order_duplicate_toast": "এইমাত্র পাঠানো টিকিটের হুবহু একই — দুবার কিছু পাঠানো হয়নি।",
-  "err_type_closed": "২৪ ঘণ্টার বাজার কেবল Limit অর্ডার নেয়। ওপেনের জন্য সারিতে রাখতে Regular hours বেছে নিন।",
-  "err_type_24h": "২৪ ঘণ্টার বাজার কেবল Limit অর্ডার নেয়। ওপেনের জন্য সারিতে রাখতে Regular hours বেছে নিন।",
+  "err_type_closed": "২৪ ঘণ্টার বাজার কেবল Limit, Stop-Limit এবং Trailing Stop অর্ডার গ্রহণ করে। ওপেনের জন্য সারিতে রাখতে Regular hours বেছে নিন।",
+  "err_type_24h": "২৪ ঘণ্টার বাজার কেবল Limit, Stop-Limit এবং Trailing Stop অর্ডার গ্রহণ করে। ওপেনের জন্য সারিতে রাখতে Regular hours বেছে নিন।",
   "err_trigger_price": "ট্রিগার দাম $0.00-এর বেশি হতে হবে।",
   "err_trail_percent": "0-এর বেশি একটি ট্রেইল শতাংশ দিন।",
   "err_extended_tif": "২৪ ঘণ্টার মার্কেট অর্ডারে Day অথবা GTC মেয়াদ ব্যবহার করতে হবে।",
   "err_fractional_tif": "ভগ্নাংশ স্টক অর্ডারে Day মেয়াদ ব্যবহার করতে হবে।",
+  "err_extended_fractional": "এক্সটেন্ডেড আওয়ার্স অর্ডারের জন্য পূর্ণ শেয়ার (whole shares) প্রয়োজন। ফ্র্যাকশনাল শেয়ার শুধুমাত্র সাধারণ মার্কেট আওয়ার্সে সমর্থিত।",
   "err_not_fractionable": "Alpaca-তে {symbol}-এ ভগ্নাংশ শেয়ার সমর্থিত নয় — পূর্ণ শেয়ারে টিকিটের সাইজ দিন।",
   "breach_daily_loss": "দৈনিক ক্ষতির সীমা ছুঁয়েছে ({actual}% ≤ −{limit}%) — ডেস্ক আজ নতুন ঝুঁকি নেওয়া বন্ধ রাখত।",
   "breach_max_positions": "একসঙ্গে সর্বোচ্চ পজিশন পূর্ণ হয়েছে ({current}/{limit})।",
@@ -2302,5 +2304,7 @@
   "header_search_action_auto": "অটো",
   "header_search_action_history": "হিস্ট্রি",
   "header_search_press_enter": "অর্ডার টিকিট খুলতে Enter চাপুন",
-  "header_search_holding_badge": "হোল্ডিং"
+  "header_search_holding_badge": "হোল্ডিং",
+  "help_session_24h_synthetic": "সিন্থেটিক এক্সটেন্ডেড-আওয়ার্স সুরক্ষা। অ্যালগোপাকা প্রি-মার্কেট, আফটার-আওয়ার্স এবং ওভারনাইট সেশনে লাইভ কোট ট্র্যাক করবে এবং ট্রিগার হলে একটি অনুমোদিত লিমিট অর্ডার পাঠাবে।",
+  "synthetic_extended": "সিন্থেটিক এক্সটেন্ডেড"
 }

@@ -16,7 +16,8 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from alpaca.trading.enums import OrderSide
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import LimitOrderRequest
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,14 @@ from bot.backtest import (
     run_portfolio_backtest,
     summary_from_result,
 )
-from bot import backtest_store, dip_hunt_store, followon_store, reinvest_store, custom_engine_store
+from bot import (
+    backtest_store,
+    custom_engine_store,
+    dip_hunt_store,
+    followon_store,
+    reinvest_store,
+    synthetic_order_store,
+)
 from bot.dip_hunt import (
     ACTIVE_STATUSES as _DIP_HUNT_ACTIVE,
     CANCELLABLE_STATUSES as _DIP_HUNT_CANCELLABLE,
@@ -423,6 +431,11 @@ class AppState:
         self._dip_hunt_seq: int = 0
         self._dip_hunt_thread: threading.Thread | None = None
         self._dip_hunt_stop = threading.Event()
+        # Synthetic orders: extended-hours stop_limit and trailing_stop orders.
+        self.synthetic_orders: dict[str, dict[str, Any]] = {}
+        self._synthetic_order_seq: int = 0
+        self._synthetic_order_thread: threading.Thread | None = None
+        self._synthetic_order_stop = threading.Event()
         self.ai_ready: dict[str, bool] = {
             "openai": False,
             "gemini": False,
@@ -442,6 +455,7 @@ class AppState:
         creds = AUTH_STORE.get_user_credentials(self.user_id)
         self._live_session_authorized: bool = bool(creds.get("live_authorized"))
         self.bootstrap_settings()
+        self.bootstrap_synthetic_orders()
 
     def _bound_worker(self, fn):
         return fn
@@ -914,6 +928,7 @@ class AppState:
                 "trading_mode": account.get("trading_mode"),
             },
         }
+        self.bootstrap_synthetic_orders()
         return {
             "ok": True,
             "trading_mode": mode_status,
@@ -950,6 +965,11 @@ class AppState:
         if dip_thread is not None and dip_thread.is_alive():
             dip_thread.join(timeout=2.0)
 
+        self._synthetic_order_stop.set()
+        synth_thread = self._synthetic_order_thread
+        if synth_thread is not None and synth_thread.is_alive():
+            synth_thread.join(timeout=2.0)
+
         # A dip buy may already be resting at the broker. Cancel it while the
         # environment still points at the old account; after the switch there
         # is no safe way to reach that order. A failed cancellation is reported
@@ -964,6 +984,11 @@ class AppState:
                 dict(plan)
                 for plan in self.reinvest_plans.values()
                 if str(plan.get("status") or "") == "awaiting_fill"
+            ]
+            parked_synths = [
+                dict(o)
+                for o in self.synthetic_orders.values()
+                if str(o.get("status") or "") == "triggered" and o.get("alpaca_order_id")
             ]
         dip_cancel_errors: dict[str, str] = {}
         dip_service: AlpacaService | None = None
@@ -994,6 +1019,16 @@ class AppState:
                     self._cancel_resting_reinvest_buy(plan, service=buyback_service)
                 except Exception as exc:
                     buyback_cancel_errors[str(plan.get("id") or "")] = str(exc)
+
+        if parked_synths:
+            synth_service = buyback_service or dip_service or AlpacaService(self._base_config())
+            for s_ord in parked_synths:
+                alp_id = s_ord.get("alpaca_order_id")
+                if alp_id:
+                    try:
+                        synth_service.cancel_order(alp_id)
+                    except Exception as exc:
+                        logger.debug("Failed to cancel parked synthetic limit order %s: %s", alp_id, exc)
 
         with self.lock:
             for plan in list(self.reinvest_plans.values()):
@@ -1070,6 +1105,7 @@ class AppState:
         self._persist_reinvest_plans()
         self._persist_followon_plans()
         self._persist_dip_hunt_plans()
+        self._persist_synthetic_orders()
 
     def _require_live_execution(self) -> None:
         """Block real Live orders unless allow_live is set."""
@@ -4482,10 +4518,13 @@ class AppState:
                 + ", ".join(sorted(MANUAL_TIME_IN_FORCE))
             )
         extended = bool(extended_hours)
-        if extended and (otype != "limit" or tif not in {"day", "gtc"}):
+        if extended and (
+            otype not in {"limit", "stop_limit", "trailing_stop"}
+            or tif not in {"day", "gtc"}
+        ):
             raise ValueError(
-                "Extended-hours orders must be limit orders with DAY or GTC "
-                "time in force."
+                "Extended-hours orders must be limit, stop-limit, or trailing stop "
+                "orders with DAY or GTC time in force."
             )
 
         with self.lock:
@@ -4653,6 +4692,17 @@ class AppState:
             if whole_qty != order_qty:
                 order_qty = whole_qty
                 qty_whole_for_stop = True
+
+        if extended and order_qty > 0 and order_qty != float(int(order_qty)):
+            whole = float(int(order_qty))
+            if whole < 1:
+                raise ValueError(
+                    f"This ticket sizes to {order_qty:.2f} shares of {symbol}, and "
+                    "extended-hours orders require at least 1 whole share. Fractional shares "
+                    "are not supported outside regular market hours."
+                )
+            order_qty = whole
+            qty_truncated = True
 
         if dip_hunt_plan is not None and stop_pct <= 0:
             raise ValueError(
@@ -5008,6 +5058,37 @@ class AppState:
         if side_raw in _MANUAL_EXIT_ACTIONS:
             cancelled = service.cancel_open_stop_orders(symbol)
             cancelled_stops = cancelled if isinstance(cancelled, int) else 0
+            cancelled_stops += self._cancel_synthetic_orders_for_symbol(symbol)
+
+        if extended and otype in {"stop_limit", "trailing_stop"}:
+            synth = self._register_synthetic_order(
+                symbol=symbol,
+                side=order_side.value if hasattr(order_side, "value") else str(order_side).lower(),
+                qty=order_qty,
+                order_type=otype,
+                time_in_force=tif,
+                stop_price=trigger,
+                limit_price=limit,
+                trail_percent=trail_pct_val,
+                trail_price=trail_amt_val,
+                client_order_id=ticket_id,
+            )
+            payload["order_id"] = synth["id"]
+            payload["order_qty"] = synth["qty"]
+            payload["submitted_type"] = f"synthetic_{otype}"
+            payload["synthetic"] = synth
+            payload["reason"] = (
+                f"Synthetic extended-hours {otype.replace('_', ' ')} armed ({synth['id']})"
+            )
+            if cancelled_stops > 0:
+                payload["reason"] += f" | cancelled {cancelled_stops} prior stop(s)"
+            position_after = service.get_position_qty(symbol)
+            payload["position"] = position_after
+            self._invalidate_manual_heat()
+            with self.lock:
+                self.last_result = payload
+                self.last_position = position_after
+            return payload
 
         try:
             submitted, oto_stop = service.submit_manual_order(
@@ -5353,6 +5434,8 @@ class AppState:
         # Handle cancellation actions first
         if action == "cancel_stops":
             cancelled = service.cancel_open_stop_orders(symbol)
+            synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
+            cancelled = (cancelled if isinstance(cancelled, int) else 0) + synth_cancelled
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
         if action == "cancel_take_profit":
@@ -5361,6 +5444,8 @@ class AppState:
             return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
         if action == "cancel_all":
             res = service.cancel_open_exit_orders(symbol)
+            synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
+            res["cancelled_stops"] = (res.get("cancelled_stops") or 0) + synth_cancelled
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, **res}
 
@@ -5526,6 +5611,34 @@ class AppState:
         order_id = str(order_id or "").strip()
         if not order_id:
             raise ValueError("Order id is required")
+        if order_id.startswith("synth_") or order_id in self.synthetic_orders:
+            synth = self.get_synthetic_order(order_id)
+            if not synth:
+                raise ValueError(f"Could not read order {order_id}: Synthetic order not found")
+            status = synth.get("status") or "waiting"
+            if status == "waiting":
+                alpaca_status = "held"
+            elif status in {"canceled", "cancelled"}:
+                alpaca_status = "canceled"
+            else:
+                alpaca_status = status
+            return {
+                "id": synth["id"],
+                "client_order_id": synth.get("client_order_id"),
+                "symbol": synth["symbol"],
+                "qty": str(synth["qty"]),
+                "side": synth["side"],
+                "type": synth["order_type"],
+                "status": alpaca_status,
+                "submitted_at": synth.get("created_at_iso"),
+                "filled_at": synth.get("settled_at_iso") if status == "filled" else None,
+                "filled_qty": str(synth["qty"]) if status == "filled" else "0",
+                "limit_price": str(synth["limit_price"]) if synth.get("limit_price") else None,
+                "stop_price": str(synth["stop_price"]) if synth.get("stop_price") else None,
+                "extended_hours": True,
+                "is_synthetic": True,
+                "message": synth.get("message"),
+            }
         service = AlpacaService(self._base_config())
         try:
             return service.get_order_snapshot(order_id)
@@ -5542,6 +5655,14 @@ class AppState:
             raise ValueError("Pass an order id or a symbol to cancel")
         self._require_manual_book_control()
         self._require_live_execution()
+        if order_id and (order_id.startswith("synth_") or order_id in self.synthetic_orders):
+            cancelled = 1 if self.cancel_synthetic_order(order_id) else 0
+            return {
+                "cancelled": cancelled,
+                "order_id": order_id,
+                "symbol": symbol,
+                "synthetic": True,
+            }
         service = AlpacaService(self._base_config())
         if order_id:
             try:
@@ -5585,12 +5706,14 @@ class AppState:
             order_ids=ids,
             message="Cancelled because its watched order was cancelled.",
         )
+        synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
         return {
-            "cancelled": len(cancelled_ids),
+            "cancelled": len(cancelled_ids) + synth_cancelled,
             "symbol": symbol,
             "followon_cancelled": plans_cancelled,
             "reinvest_cancelled": reinvest_cancelled,
             "dip_hunt_cancelled": dip_hunt_cancelled,
+            "synthetic_cancelled": synth_cancelled,
         }
 
     def list_orders(
@@ -5625,6 +5748,40 @@ class AppState:
             after=after_dt,
             until=until_dt,
         )
+        with self.lock:
+            triggered_map = {
+                o["alpaca_order_id"]: o["id"]
+                for o in self.synthetic_orders.values()
+                if o.get("alpaca_order_id")
+            }
+        for ord_row in orders:
+            alp_id = ord_row.get("id")
+            if alp_id and alp_id in triggered_map:
+                ord_row["synthetic_parent_id"] = triggered_map[alp_id]
+                ord_row["is_synthetic_child"] = True
+
+        if status_key == "open":
+            with self.lock:
+                active_synths = [
+                    self._serialize_synthetic_blotter_order(o)
+                    for o in self.synthetic_orders.values()
+                    if o.get("status") == "waiting"
+                    and (not symbols or o.get("symbol") in symbols)
+                    and (not side_key or o.get("side") == side_key)
+                ]
+            orders = active_synths + orders
+        elif status_key == "closed":
+            with self.lock:
+                closed_synths = [
+                    self._serialize_synthetic_blotter_order(o)
+                    for o in self.synthetic_orders.values()
+                    if o.get("status") not in synthetic_order_store.ACTIVE_STATUSES
+                    and (not symbols or o.get("symbol") in symbols)
+                    and (not side_key or o.get("side") == side_key)
+                    and not o.get("alpaca_order_id")
+                ]
+            orders = closed_synths + orders
+
         # The KPI rail and the cancel-all count speak for the whole account, so
         # they never inherit the symbol, side, or window scoping the list uses.
         if status_key == "open" and not symbols and not side_key and not after_dt and not until_dt:
@@ -5632,6 +5789,14 @@ class AppState:
             open_limit = limit
         else:
             open_rows = service.list_orders(status="open", limit=500)
+            if status_key == "open":
+                with self.lock:
+                    all_active_synths = [
+                        self._serialize_synthetic_blotter_order(o)
+                        for o in self.synthetic_orders.values()
+                        if o.get("status") == "waiting"
+                    ]
+                open_rows = all_active_synths + open_rows
             open_limit = 500
         working = [o for o in open_rows if not o.get("is_stop")]
         conditional = [o for o in open_rows if o.get("is_stop")]
@@ -5900,6 +6065,7 @@ class AppState:
                 exclude_order_ids=failed_ids,
                 message="Cancelled because all open orders were cancelled.",
             )
+            result["synthetic_cancelled"] = self._cancel_synthetic_orders_for_symbol("")
         return result
 
     def replace_manual_order(
@@ -5916,6 +6082,45 @@ class AppState:
         self._require_manual_book_control()
         self._require_live_execution()
         order_id = str(order_id or "").strip()
+
+        if order_id.startswith("synth_") or order_id in self.synthetic_orders:
+            with self.lock:
+                synth = self.synthetic_orders.get(order_id)
+                if not synth or synth.get("status") not in synthetic_order_store.ACTIVE_STATUSES:
+                    raise ValueError(f"Synthetic order {order_id} is not active and cannot be modified.")
+                if synth.get("status") == "waiting":
+                    if qty is not None and float(qty) > 0:
+                        synth["qty"] = float(qty)
+                    if limit_price is not None and float(limit_price) > 0:
+                        synth["limit_price"] = float(limit_price)
+                    if stop_price is not None and float(stop_price) > 0:
+                        synth["stop_price"] = float(stop_price)
+                    if time_in_force:
+                        synth["time_in_force"] = time_in_force.lower()
+                    if trail is not None and float(trail) > 0:
+                        if synth.get("trail_percent") is not None:
+                            synth["trail_percent"] = float(trail)
+                        else:
+                            synth["trail_price"] = float(trail)
+                    synth["message"] = "Order parameters updated by user."
+                    serialized = self._serialize_synthetic_blotter_order(synth)
+                else:
+                    alp_id = synth.get("alpaca_order_id")
+                    if not alp_id:
+                        raise ValueError(f"Synthetic order {order_id} triggered without a broker ID.")
+                    service = AlpacaService(self._base_config())
+                    order = service.replace_order(
+                        alp_id,
+                        qty=qty,
+                        limit_price=limit_price,
+                        stop_price=stop_price,
+                        time_in_force=time_in_force,
+                        trail=trail,
+                    )
+                    serialized = order
+            self._persist_synthetic_orders()
+            return {"order": serialized}
+
         service = AlpacaService(self._base_config())
         self._begin_rewriting_order(order_id)
         try:
@@ -8620,6 +8825,472 @@ class AppState:
         result.pop("error_count", None)
         return result
 
+    # ------------------------------------------------------------------
+    # Synthetic Extended Orders (Stop-Limit & Trailing Stop)
+    # ------------------------------------------------------------------
+
+    def _persist_synthetic_orders(self) -> None:
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        with self.lock:
+            snapshot = {oid: dict(o) for oid, o in self.synthetic_orders.items()}
+        try:
+            synthetic_order_store.save_orders(
+                snapshot, workspace_dir=self.workspace_dir, paper=paper
+            )
+        except Exception as exc:
+            logger.warning("could not persist synthetic orders: %s", exc)
+
+    def bootstrap_synthetic_orders(self) -> int:
+        creds = AUTH_STORE.get_user_credentials(self.user_id)
+        paper = creds.get("trading_mode", "paper") != "live"
+        try:
+            stored = synthetic_order_store.load_orders(
+                workspace_dir=self.workspace_dir, paper=paper
+            )
+        except Exception as exc:
+            logger.warning("could not load synthetic orders: %s", exc)
+            return 0
+        if not stored:
+            return 0
+        resumed = 0
+        with self.lock:
+            for oid, order in stored.items():
+                self.synthetic_orders[oid] = order
+                if order.get("status") in synthetic_order_store.ACTIVE_STATUSES:
+                    resumed += 1
+        if resumed > 0:
+            self._start_synthetic_order_watcher()
+        return resumed
+
+    def _trim_synthetic_orders_locked(self, keep: int = 100) -> None:
+        if len(self.synthetic_orders) <= keep:
+            return
+        finished = [
+            (float(o.get("created_at") or 0.0), oid)
+            for oid, o in self.synthetic_orders.items()
+            if o.get("status") not in synthetic_order_store.ACTIVE_STATUSES
+        ]
+        finished.sort()
+        for _, oid in finished[: len(self.synthetic_orders) - keep]:
+            self.synthetic_orders.pop(oid, None)
+
+    def _register_synthetic_order(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float,
+        order_type: str,
+        time_in_force: str,
+        stop_price: float | None = None,
+        limit_price: float | None = None,
+        trail_percent: float | None = None,
+        trail_price: float | None = None,
+        client_order_id: str | None = None,
+    ) -> dict[str, Any]:
+        now = time.time()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        order_id = f"synth_{uuid4().hex[:12]}"
+
+        high_water = None
+        low_water = None
+        if order_type == "trailing_stop":
+            try:
+                service = AlpacaService(self._base_config())
+                mark = service.get_mark_price(symbol)
+                px = float(mark.get("price") or 0)
+            except Exception:
+                px = float(stop_price or limit_price or 0)
+            if side == "sell":
+                high_water = px if px > 0 else (float(stop_price or 0) if stop_price else None)
+            else:
+                low_water = px if px > 0 else (float(stop_price or 0) if stop_price else None)
+
+        order_entry = {
+            "id": order_id,
+            "client_order_id": client_order_id,
+            "user_id": self.user_id,
+            "symbol": symbol.upper(),
+            "side": side.lower(),
+            "qty": float(qty),
+            "order_type": order_type,
+            "time_in_force": time_in_force,
+            "stop_price": float(stop_price) if stop_price is not None else None,
+            "limit_price": float(limit_price) if limit_price is not None else None,
+            "trail_percent": float(trail_percent) if trail_percent is not None else None,
+            "trail_price": float(trail_price) if trail_price is not None else None,
+            "high_water_mark": high_water,
+            "low_water_mark": low_water,
+            "extended_hours": True,
+            "status": "waiting",
+            "message": "Watching quotes in extended hours.",
+            "alpaca_order_id": None,
+            "created_at": now,
+            "created_at_iso": now_iso,
+            "triggered_at": None,
+            "settled_at_iso": None,
+            "error_count": 0,
+        }
+        with self.lock:
+            self.synthetic_orders[order_id] = order_entry
+            self._trim_synthetic_orders_locked()
+        self._persist_synthetic_orders()
+        self._start_synthetic_order_watcher()
+        logger.info(
+            "Registered synthetic extended %s order for %s: %s qty=%s",
+            order_type,
+            symbol,
+            side,
+            qty,
+        )
+        return dict(order_entry)
+
+    def _start_synthetic_order_watcher(self) -> None:
+        with self.lock:
+            alive = (
+                self._synthetic_order_thread is not None
+                and self._synthetic_order_thread.is_alive()
+            )
+            if alive:
+                return
+            self._synthetic_order_stop.clear()
+            thread = threading.Thread(
+                target=self._bound_worker(self._synthetic_order_worker),
+                name="synthetic-order-watcher",
+                daemon=True,
+            )
+            self._synthetic_order_thread = thread
+        thread.start()
+
+    def _synthetic_order_worker(self) -> None:
+        while not self._synthetic_order_stop.is_set():
+            with self.lock:
+                pending = [
+                    oid
+                    for oid, o in self.synthetic_orders.items()
+                    if o.get("status") in synthetic_order_store.ACTIVE_STATUSES
+                ]
+            if not pending:
+                return
+            for order_id in pending:
+                if self._synthetic_order_stop.is_set():
+                    return
+                try:
+                    self._advance_synthetic_order(order_id)
+                except Exception:
+                    logger.exception("Synthetic order %s failed to advance", order_id)
+            self._synthetic_order_stop.wait(3.0)
+
+    def _advance_synthetic_order(self, order_id: str) -> None:
+        with self.lock:
+            order = self.synthetic_orders.get(order_id)
+            if order is None or order.get("status") not in synthetic_order_store.ACTIVE_STATUSES:
+                return
+            snapshot = dict(order)
+
+        symbol = snapshot["symbol"]
+        side = snapshot["side"]
+        otype = snapshot["order_type"]
+        status = snapshot.get("status")
+        tif = str(snapshot.get("time_in_force") or "day").lower()
+
+        service = AlpacaService(self._base_config())
+
+        alpaca_id = snapshot.get("alpaca_order_id")
+        if status == "triggered" and alpaca_id:
+            try:
+                alp_order = service.get_order_snapshot(alpaca_id)
+                alp_status = alp_order.get("status")
+                if alp_status == "filled":
+                    self._settle_synthetic_order(
+                        order_id,
+                        status="filled",
+                        message=f"Limit order filled in extended hours at ${alp_order.get('filled_avg_price') or 'market'}.",
+                    )
+                    return
+                elif alp_status in {"canceled", "cancelled", "expired", "rejected"}:
+                    self._settle_synthetic_order(
+                        order_id,
+                        status=alp_status,
+                        message=f"Extended limit order was {alp_status} by broker.",
+                    )
+                    return
+            except Exception as exc:
+                logger.debug("Could not read order %s: %s", alpaca_id, exc)
+            return
+
+        # Check day-order expiry (8:00 PM ET close of extended day):
+        if tif == "day":
+            created_at = float(snapshot.get("created_at") or 0.0)
+            if synthetic_order_store.is_day_order_expired(created_at):
+                self._settle_synthetic_order(
+                    order_id,
+                    status="expired",
+                    message="Day order expired at the end of the extended-hours trading session (8:00 PM ET).",
+                )
+                return
+
+        try:
+            mark = service.get_mark_price(symbol)
+            current_price = float(mark.get("price") or 0.0)
+        except Exception as exc:
+            logger.debug("Could not fetch mark price for %s: %s", symbol, exc)
+            return
+
+        if current_price <= 0:
+            return
+
+        triggered = False
+        limit_to_send = None
+
+        if otype == "stop_limit":
+            stop_price = float(snapshot.get("stop_price") or 0)
+            limit_to_send = float(snapshot.get("limit_price") or 0)
+            if side == "sell" and current_price <= stop_price:
+                triggered = True
+            elif side == "buy" and current_price >= stop_price:
+                triggered = True
+
+        elif otype == "trailing_stop":
+            trail_pct = snapshot.get("trail_percent")
+            trail_px = snapshot.get("trail_price")
+
+            if side == "sell":
+                hwm = max(float(snapshot.get("high_water_mark") or current_price), current_price)
+                if trail_pct is not None and float(trail_pct) > 0:
+                    calc_stop = round(hwm * (1.0 - float(trail_pct) / 100.0), 2)
+                elif trail_px is not None and float(trail_px) > 0:
+                    calc_stop = round(hwm - float(trail_px), 2)
+                else:
+                    calc_stop = None
+
+                with self.lock:
+                    live = self.synthetic_orders.get(order_id)
+                    if live:
+                        live["high_water_mark"] = hwm
+                        if calc_stop is not None:
+                            live["stop_price"] = calc_stop
+
+                if calc_stop is not None and current_price <= calc_stop:
+                    triggered = True
+                    limit_to_send = snapshot.get("limit_price") or round(current_price * 0.995, 2)
+
+            elif side == "buy":
+                lwm = min(float(snapshot.get("low_water_mark") or current_price), current_price)
+                if trail_pct is not None and float(trail_pct) > 0:
+                    calc_stop = round(lwm * (1.0 + float(trail_pct) / 100.0), 2)
+                elif trail_px is not None and float(trail_px) > 0:
+                    calc_stop = round(lwm + float(trail_px), 2)
+                else:
+                    calc_stop = None
+
+                with self.lock:
+                    live = self.synthetic_orders.get(order_id)
+                    if live:
+                        live["low_water_mark"] = lwm
+                        if calc_stop is not None:
+                            live["stop_price"] = calc_stop
+
+                if calc_stop is not None and current_price >= calc_stop:
+                    triggered = True
+                    limit_to_send = snapshot.get("limit_price") or round(current_price * 1.005, 2)
+
+        if triggered and limit_to_send is not None and limit_to_send > 0:
+            self._execute_synthetic_trigger(
+                order_id=order_id,
+                snapshot=snapshot,
+                service=service,
+                current_price=current_price,
+                limit_price=limit_to_send,
+            )
+
+    def _execute_synthetic_trigger(
+        self,
+        *,
+        order_id: str,
+        snapshot: dict[str, Any],
+        service: Any,
+        current_price: float,
+        limit_price: float,
+    ) -> None:
+        symbol = snapshot["symbol"]
+        qty = snapshot["qty"]
+        side = snapshot["side"]
+        tif = snapshot.get("time_in_force", "day")
+        time_in_force = TimeInForce.DAY if tif == "day" else TimeInForce.GTC
+
+        logger.info(
+            "Triggering synthetic order %s (%s %s %s @ mark $%.2f, limit $%.2f)",
+            order_id,
+            snapshot["order_type"],
+            side,
+            symbol,
+            current_price,
+            limit_price,
+        )
+
+        try:
+            order_req = LimitOrderRequest(
+                symbol=symbol,
+                qty=qty,
+                side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+                limit_price=normalize_stock_order_price(limit_price, field="limit_price"),
+                time_in_force=time_in_force,
+                extended_hours=True,
+            )
+            submitted = service.trading.submit_order(order_req)
+            sub_id = str(submitted.id)
+            with self.lock:
+                order = self.synthetic_orders.get(order_id)
+                if order:
+                    order["status"] = "triggered"
+                    order["alpaca_order_id"] = sub_id
+                    order["triggered_at"] = time.time()
+                    order["message"] = (
+                        f"Triggered at ${current_price:.2f}. Limit order submitted: {sub_id}"
+                    )
+            self._persist_synthetic_orders()
+            logger.info(
+                "Synthetic order %s successfully submitted Alpaca limit order %s",
+                order_id,
+                sub_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to submit triggered limit order for %s: %s", order_id, exc)
+            with self.lock:
+                order = self.synthetic_orders.get(order_id)
+                if order:
+                    order["error_count"] = int(order.get("error_count") or 0) + 1
+                    order["message"] = f"Trigger failed to submit limit order: {exc}"
+                    if order["error_count"] >= 5:
+                        order["status"] = "failed"
+                        order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
+            self._persist_synthetic_orders()
+
+    def _settle_synthetic_order(
+        self, order_id: str, status: str, message: str, **extra
+    ) -> None:
+        with self.lock:
+            order = self.synthetic_orders.get(order_id)
+            if order is None:
+                return
+            order["status"] = status
+            order["message"] = message
+            order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
+            order.update(extra)
+        self._persist_synthetic_orders()
+
+    def cancel_synthetic_order(self, order_id: str) -> bool:
+        alpaca_id = None
+        with self.lock:
+            order = self.synthetic_orders.get(order_id)
+            if not order or order.get("status") not in synthetic_order_store.ACTIVE_STATUSES:
+                return False
+            alpaca_id = order.get("alpaca_order_id")
+            order["status"] = "cancelled"
+            order["message"] = "Cancelled by user."
+            order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
+        if alpaca_id:
+            try:
+                service = AlpacaService(self._base_config())
+                service.cancel_order(alpaca_id)
+            except Exception as exc:
+                logger.debug("Failed to cancel underlying Alpaca order %s: %s", alpaca_id, exc)
+        self._persist_synthetic_orders()
+        return True
+
+    def _cancel_synthetic_orders_for_symbol(self, symbol: str = "") -> int:
+        symbol = str(symbol or "").upper().strip()
+        cancelled = 0
+        alpaca_ids_to_cancel: list[str] = []
+        with self.lock:
+            for order in self.synthetic_orders.values():
+                if (not symbol or order.get("symbol") == symbol) and order.get(
+                    "status"
+                ) in synthetic_order_store.ACTIVE_STATUSES:
+                    alp_id = order.get("alpaca_order_id")
+                    if alp_id:
+                        alpaca_ids_to_cancel.append(alp_id)
+                    order["status"] = "cancelled"
+                    order["message"] = (
+                        "Cancelled by user (cancel all)."
+                        if not symbol
+                        else f"Cancelled all open orders for {symbol}."
+                    )
+                    order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
+                    cancelled += 1
+        if alpaca_ids_to_cancel:
+            try:
+                service = AlpacaService(self._base_config())
+                for a_id in alpaca_ids_to_cancel:
+                    try:
+                        service.cancel_order(a_id)
+                    except Exception as exc:
+                        logger.debug("Failed to cancel underlying Alpaca order %s: %s", a_id, exc)
+            except Exception as exc:
+                logger.debug("Failed to create AlpacaService to cancel orders: %s", exc)
+        if cancelled:
+            self._persist_synthetic_orders()
+        return cancelled
+
+    def get_synthetic_order(self, order_id: str) -> dict[str, Any] | None:
+        with self.lock:
+            order = self.synthetic_orders.get(order_id)
+            return dict(order) if order else None
+
+    def list_synthetic_orders(self, symbol: str = "") -> list[dict[str, Any]]:
+        sym = str(symbol or "").upper().strip()
+        with self.lock:
+            orders = [
+                dict(o)
+                for o in self.synthetic_orders.values()
+                if not sym or o.get("symbol") == sym
+            ]
+        orders.sort(key=lambda o: float(o.get("created_at") or 0.0), reverse=True)
+        return orders
+
+    def _serialize_synthetic_blotter_order(
+        self, synth: dict[str, Any]
+    ) -> dict[str, Any]:
+        otype = str(synth.get("order_type") or "stop_limit")
+        status = str(synth.get("status") or "waiting")
+        qty = float(synth.get("qty") or 0.0)
+        if status == "waiting":
+            disp_status = "held"
+        elif status in {"canceled", "cancelled"}:
+            disp_status = "canceled"
+        else:
+            disp_status = status
+        return {
+            "id": synth["id"],
+            "client_order_id": synth.get("client_order_id"),
+            "symbol": synth["symbol"],
+            "side": synth["side"],
+            "type": otype,
+            "order_class": "synthetic",
+            "status": disp_status,
+            "qty": qty,
+            "filled_qty": qty if status == "filled" else 0.0,
+            "filled_avg_price": None,
+            "notional": None,
+            "limit_price": synth.get("limit_price"),
+            "stop_price": synth.get("stop_price"),
+            "trail_percent": synth.get("trail_percent"),
+            "trail_price": synth.get("trail_price"),
+            "time_in_force": synth.get("time_in_force", "day"),
+            "extended_hours": True,
+            "submitted_at": synth.get("created_at_iso"),
+            "updated_at": synth.get("settled_at_iso") or synth.get("created_at_iso"),
+            "filled_at": synth.get("settled_at_iso") if status == "filled" else None,
+            "canceled_at": synth.get("settled_at_iso") if status in {"canceled", "cancelled"} else None,
+            "is_stop": True,
+            "is_synthetic": True,
+            "is_cancelable": status in synthetic_order_store.ACTIVE_STATUSES,
+            "is_replaceable": status in synthetic_order_store.ACTIVE_STATUSES,
+            "message": synth.get("message"),
+        }
+
     def start_loop(self) -> None:
         self._require_live_execution()
         with self.lock:
@@ -9281,10 +9952,12 @@ class AppState:
         if target.get("cancel_stops"):
             try:
                 cancelled = service.cancel_open_stop_orders(symbol)
-                if cancelled:
+                synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
+                total_cancelled = (cancelled if isinstance(cancelled, int) else 0) + synth_cancelled
+                if total_cancelled:
                     logger.info(
                         "cancelled %s protective stop(s) before approved %s %s",
-                        cancelled,
+                        total_cancelled,
                         action,
                         symbol,
                     )

@@ -1008,6 +1008,7 @@
   "manual_help_limit": "Limit DAY order — it rests until price trades there.",
   "manual_help_market": "Market DAY order in regular hours.",
   "manual_help_offrth": "{session}: extended-hours Limit {tif} order.",
+  "manual_help_offrth_synth": "{session}: synthetic extended-hours {type} {tif} order.",
   "manual_help_queued": "{session}: {type} {tif} order queued for regular hours.",
   "manual_help_sell": "Protective stops are cancelled before a sell.",
   "manual_risk_help_short": "Shares are set so a stop-out costs your risk budget: equity × risk % ÷ (ATR × multiplier). More volatility means fewer shares for the same dollar risk.",
@@ -1340,12 +1341,13 @@
   "limits_overridden": "Limits overridden",
   "err_breach_confirm": "This ticket crosses a desk risk limit. Review the warnings above and submit again to confirm.",
   "order_duplicate_toast": "Identical to the ticket just sent — nothing was placed twice.",
-  "err_type_closed": "The 24-hour market only accepts Limit orders. Switch to Regular hours to queue this ticket for the open.",
-  "err_type_24h": "The 24-hour market only accepts Limit orders. Switch to Regular hours to queue this ticket for the open.",
+  "err_type_closed": "The 24-hour market only accepts Limit, Stop-Limit, and Trailing Stop orders. Switch to Regular hours to queue this ticket for the open.",
+  "err_type_24h": "The 24-hour market only accepts Limit, Stop-Limit, and Trailing Stop orders. Switch to Regular hours to queue this ticket for the open.",
   "err_trigger_price": "Trigger price must be greater than $0.00.",
   "err_trail_percent": "Enter a trail percentage greater than 0.",
   "err_extended_tif": "24-hour market orders must use Day or GTC time in force.",
   "err_fractional_tif": "Fractional stock orders must use Day time in force.",
+  "err_extended_fractional": "Extended-hours orders require whole shares. Fractional shares are only supported during regular market hours.",
   "err_not_fractionable": "{symbol} does not support fractional shares at Alpaca — size this ticket in whole shares.",
   "breach_daily_loss": "Daily loss limit hit ({actual}% ≤ −{limit}%) — the desk would stop taking new risk today.",
   "breach_max_positions": "Max concurrent positions reached ({current}/{limit}).",
@@ -2302,5 +2304,7 @@
   "header_search_action_auto": "Auto",
   "header_search_action_history": "History",
   "header_search_press_enter": "Press Enter to open Order Ticket",
-  "header_search_holding_badge": "Holding"
+  "header_search_holding_badge": "Holding",
+  "help_session_24h_synthetic": "Synthetic extended-hours protection. Algopaca monitors quotes during pre-market, after-hours, and overnight, and submits an eligible limit order when triggered.",
+  "synthetic_extended": "Synthetic Extended"
 }
