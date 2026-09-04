@@ -1225,7 +1225,7 @@
 
     tabs.forEach((tab, index) => {
       tab.addEventListener("click", () => {
-        switchEngineTab(tab);
+        switchEngineTab(tab, true);
         restartAutoRotate();
       });
 
@@ -1249,6 +1249,16 @@
         }
       });
     });
+
+    const tabsContainer = document.querySelector(".showcase-engine-tabs");
+    if (tabsContainer) {
+      tabsContainer.addEventListener("wheel", (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabsContainer.scrollWidth > tabsContainer.clientWidth) {
+          e.preventDefault();
+          tabsContainer.scrollLeft += e.deltaY;
+        }
+      }, { passive: false });
+    }
 
     // Pause on hover / touch / focus for usability & accessibility
     if (moduleContainer) {

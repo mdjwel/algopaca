@@ -504,6 +504,12 @@ function syncSellFillButtons() {
   }
   const locked = loopRunning || busy || !(held > 0);
   const halfShares = sellFillShares("half");
+
+  const fillGroups = $("manual-sell-group")?.querySelectorAll(".qty-fill-group");
+  fillGroups?.forEach((fg) => {
+    fg.hidden = !(held > 0);
+  });
+
   $("manual-sell-group")?.querySelectorAll("[data-sell-fill]").forEach((btn) => {
     const on = btn.dataset.sellFill === "half" ? isHalf : isAll;
     btn.classList.toggle("is-active", on);
@@ -532,6 +538,66 @@ function syncSellUnitToggle() {
   } else {
     unit?.setAttribute("data-tooltip", tx("dollars_title", "Dollars"));
   }
+}
+
+/** Sync quote fill pills (Bid, Mid, Mark, Ask, At stop, BP %) conditionally */
+function syncQuoteFillButtons() {
+  const quote = manualContext?.quote || {};
+  const hasBid = Number(quote.bid) > 0;
+  const hasAsk = Number(quote.ask) > 0;
+  const hasPrice = Number(quote.price) > 0;
+  const hasMark = hasPrice || hasBid || hasAsk;
+  const hasMid = (hasBid && hasAsk) || hasMark;
+  const locked = loopRunning || busy;
+
+  const setBtn = (id, available) => {
+    const btn = $(id);
+    if (btn) {
+      btn.disabled = !available || locked;
+      btn.classList.toggle("is-disabled", !available || locked);
+    }
+  };
+
+  // Limit price quote helpers
+  setBtn("btn-limit-bid", hasBid);
+  setBtn("btn-limit-mid", hasMid);
+  setBtn("btn-limit-mark", hasMark);
+  setBtn("btn-limit-ask", hasAsk);
+
+  // Stop trigger price quote helpers
+  setBtn("btn-stop-bid", hasBid);
+  setBtn("btn-stop-mid", hasMid);
+  setBtn("btn-stop-mark", hasMark);
+  setBtn("btn-stop-ask", hasAsk);
+
+  // Re-invest buy-back quote helpers
+  setBtn("btn-reinvest-bid", hasBid);
+  setBtn("btn-reinvest-mid", hasMid);
+  setBtn("btn-reinvest-mark", hasMark);
+  setBtn("btn-reinvest-ask", hasAsk);
+
+  // Follow-on target limit quote helpers
+  setBtn("btn-followon-bid", hasBid);
+  setBtn("btn-followon-mid", hasMid);
+  setBtn("btn-followon-mark", hasMark);
+  setBtn("btn-followon-ask", hasAsk);
+
+  // Stop-limit at-stop button
+  const stopPx = Number(currentEstimate()?.stopPrice);
+  const hasStop = Number.isFinite(stopPx) && stopPx > 0;
+  const btnStopLimitAtStop = $("btn-stop-limit-at-stop");
+  if (btnStopLimitAtStop) {
+    btnStopLimitAtStop.disabled = !hasStop || locked;
+    btnStopLimitAtStop.classList.toggle("is-active", stopLimitPinnedToStop && hasStop);
+    btnStopLimitAtStop.setAttribute("aria-pressed", stopLimitPinnedToStop && hasStop ? "true" : "false");
+  }
+
+  // Notional BP fill buttons (25%, 50%, Max)
+  const bp = Number(manualContext?.buying_power);
+  const hasBp = Number.isFinite(bp) && bp > 0;
+  document.querySelectorAll("[data-notional-fill]").forEach((btn) => {
+    btn.disabled = !hasBp || locked;
+  });
 }
 
 /** Switching # ↔ $ keeps the same economic size when a mark is known. */
@@ -689,7 +755,13 @@ function manualFollowOnPayload() {
 }
 
 function manualBracketEnabled() {
-  return manualSide() === "buy" && manualFormValue("bracket_enabled", true) === true;
+  const form = $("manual-order");
+  const checked = form?.elements?.bracket_enabled ? form.elements.bracket_enabled.checked : true;
+  return (
+    manualSide() === "buy" &&
+    ["market", "limit"].includes(manualOrderType()) &&
+    checked === true
+  );
 }
 
 /**
@@ -1283,6 +1355,146 @@ async function cancelRestingOrder(orderId) {
   }
 }
 
+/**
+ * Place default sizing and pricing values based on the stock price, ATR, and account equity
+ * so the ticket sizes to at least 1 whole share and prevents "less than one whole share" errors.
+ */
+function applyStockPriceDefaults(data) {
+  if (!data) return;
+  const quote = data.quote || {};
+  const mark = Number(quote.price);
+  if (!(mark > 0)) return;
+
+  const equity = Number(data.equity ?? data.account?.equity ?? manualContext?.equity ?? manualContext?.account?.equity ?? 0);
+  const atr = Number(data.atr ?? manualContext?.atr ?? 0);
+  const fallbackStopPct = Number(data.stop_loss_pct ?? manualContext?.stop_loss_pct ?? 5);
+  let atrMult = Number(manualFormValue("ai_atr_stop_mult", 1.8) || 1.8);
+  if (!(atrMult >= MIN_ATR_STOP_MULT && atrMult <= MAX_ATR_STOP_MULT)) {
+    atrMult = 1.8;
+  }
+
+  let stopDistance = atr > 0 ? atr * atrMult : mark * (fallbackStopPct / 100);
+  if (!(stopDistance > 0)) stopDistance = mark * 0.05;
+
+  // 1. Risk mode sizing: Ensure risk % is large enough to size to at least 1 whole share
+  if (equity > 0 && stopDistance > 0) {
+    const currentRisk = Number(manualFormValue("ai_risk_pct", 0.5) || 0.5);
+    const potentialShares = Math.floor(
+      Math.min((equity * (currentRisk / 100)) / stopDistance, equity / mark)
+    );
+
+    if (potentialShares < 1) {
+      let neededRiskPct = (stopDistance / equity) * 100;
+
+      // If needed risk exceeds the 10% maximum limit and symbol has ATR, lower multiplier
+      if (neededRiskPct > 10 && atr > 0) {
+        const maxAffordableStop = equity * 0.095;
+        const safeMult = Math.max(
+          MIN_ATR_STOP_MULT,
+          Math.floor((maxAffordableStop / atr) * 10) / 10
+        );
+        setManualFormValue("ai_atr_stop_mult", safeMult);
+        atrMult = safeMult;
+        stopDistance = atr * atrMult;
+        neededRiskPct = (stopDistance / equity) * 100;
+      }
+
+      // Round up to nearest 0.05% step so it's clean and guarantees >= 1 whole share
+      const cleanRisk = Math.min(10, Math.max(0.5, Math.ceil(neededRiskPct * 20) / 20));
+      setManualFormValue("ai_risk_pct", cleanRisk);
+      const riskInput = $("manual-ai-risk-pct");
+      if (riskInput) riskInput.placeholder = String(cleanRisk);
+    }
+  }
+
+  // 2. Notional mode sizing: Ensure default dollar amount covers at least 1 whole share
+  const currentNotional = Number(manualFormValue("notional", 0) || 0);
+  const defaultNotional = Math.max(Math.ceil(mark), Math.min(1000, Math.ceil(mark * 5)));
+  if (!(currentNotional >= mark)) {
+    setManualFormValue("notional", defaultNotional);
+  }
+  const notionalInput = $("manual-notional");
+  if (notionalInput) notionalInput.placeholder = String(defaultNotional);
+
+  // 3. Qty mode sizing: Ensure at least 1 whole share
+  const currentQty = Number(manualFormValue("buy_qty", 0) || 0);
+  if (!(currentQty >= 1)) {
+    setManualFormValue("buy_qty", 1);
+  }
+  const qtyInput = $("manual-buy-qty");
+  if (qtyInput) qtyInput.placeholder = "1";
+
+  // 4. Limit price: Default to live mark price if empty
+  const currentLimit = Number(manualFormValue("limit_price", 0) || 0);
+  if (!(currentLimit > 0)) {
+    setManualFormValue("limit_price", normalizeStockPrice(mark));
+  }
+  const limitInput = $("manual-limit");
+  if (limitInput) limitInput.placeholder = String(normalizeStockPrice(mark));
+
+  // 5. Trigger / Stop price: Default to sensible stop below mark if empty
+  const currentStop = Number(manualFormValue("stop_price", 0) || 0);
+  if (!(currentStop > 0)) {
+    const defaultStop = mark > stopDistance ? mark - stopDistance : mark * 0.95;
+    setManualFormValue("stop_price", normalizeStockPrice(defaultStop));
+    const stopInput = $("manual-stop-price");
+    if (stopInput) stopInput.placeholder = String(normalizeStockPrice(defaultStop));
+  }
+
+  // 6. Trailing stop percent: Default based on volatility or 3%
+  const currentTrail = Number(manualFormValue("trail_percent", 0) || 0);
+  const trailInput = $("manual-trail-percent");
+  const stats = data.stats || {};
+  const atrPct = Number(stats.atr_pct);
+  const defaultTrail = Number.isFinite(atrPct) && atrPct > 0 ? Math.min(50, Math.max(1, Math.round(atrPct * 1.5 * 10) / 10)) : 3;
+  if (!(currentTrail > 0)) {
+    setManualFormValue("trail_percent", defaultTrail);
+  }
+  if (trailInput) trailInput.placeholder = String(defaultTrail);
+
+  // 7. Sell / Short defaults: Ensure at least 1 share
+  const currentSellQty = Number(manualFormValue("sell_qty", 0) || 0);
+  if (!(currentSellQty >= 1)) {
+    setManualFormValue("sell_qty", 1);
+  }
+  const currentSellNotional = Number(manualFormValue("sell_notional", 0) || 0);
+  if (!(currentSellNotional >= mark)) {
+    setManualFormValue("sell_notional", Math.ceil(mark).toFixed(2));
+  }
+
+  // 8. Protective Bracket options defaults based on stock price & ATR
+  const currentAtrMult = Number(manualFormValue("ai_atr_stop_mult", 0) || 0);
+  if (!(currentAtrMult >= MIN_ATR_STOP_MULT && currentAtrMult <= MAX_ATR_STOP_MULT)) {
+    setManualFormValue("ai_atr_stop_mult", atrMult);
+  }
+  const atrMultInput = $("manual-ai-atr-mult");
+  if (atrMultInput) atrMultInput.placeholder = String(atrMult);
+
+  const currentTpR = Number(manualFormValue("take_profit_r", 0) || 0);
+  if (!(currentTpR > 0)) {
+    setManualFormValue("take_profit_r", 2);
+  }
+  const tpRInput = $("manual-take-profit-r");
+  if (tpRInput) tpRInput.placeholder = "2";
+
+  const calculatedStopPx = mark > stopDistance ? mark - stopDistance : mark * 0.95;
+  const currentStopLimitPx = Number(manualFormValue("stop_limit_price", 0) || 0);
+  const stopLimitInput = $("manual-stop-limit-price");
+  if (stopLimitInput) {
+    stopLimitInput.placeholder = String(normalizeStockPrice(calculatedStopPx));
+  }
+
+  const currentStopLimitOffset = Number(manualFormValue("stop_limit_offset_pct", -1));
+  if (currentStopLimitOffset < 0 || isNaN(currentStopLimitOffset)) {
+    setManualFormValue("stop_limit_offset_pct", 0);
+  }
+  const stopLimitOffsetInput = $("manual-stop-limit-offset");
+  if (stopLimitOffsetInput) stopLimitOffsetInput.placeholder = "0";
+
+  // Clear any existing manual error
+  setManualError(null);
+}
+
 function applyManualContext(data, errorMsg = null) {
   manualContext = data || null;
   manualContextFetchedAt = data ? Date.now() : 0;
@@ -1472,6 +1684,7 @@ function applyManualContext(data, errorMsg = null) {
   }
   announceContext(data);
   renderQuickChips();
+  applyStockPriceDefaults(data);
   syncManualUi();
 }
 
@@ -1798,6 +2011,7 @@ function renderQuickChips() {
       return `<button type="button" class="quick-chip${active}" data-chip-symbol="${escapeHtml(c.symbol)}"><strong>${escapeHtml(c.symbol)}</strong>${badgeHtml}</button>`;
     })
     .join("");
+  wrap.hidden = chips.length === 0;
 }
 
 /** Open positions for the quick-chip rail. A failed fetch keeps the last
@@ -1870,36 +2084,12 @@ function scheduleManualContextRefresh() {
 
 /** Order types Alpaca will accept in the session the ticket is being typed in. */
 function syncManualTypeUi() {
-  const protectedEntry = manualIsEntry() && manualBracketEnabled();
   const typeSelect = $("manual-order-type");
   const warn = $("manual-session-warn");
+  const currentType = manualOrderType();
+  const isMarket = currentType === "market";
 
-  // Entries with a protective bracket carry an OTO/bracket stop, which Alpaca only supports on
-  // Market/Limit parents. Unprotected entries and other types stay selectable any session.
-  const allowedTypes = protectedEntry
-    ? ["market", "limit"]
-    : ["market", "limit", "stop", "stop_limit", "trailing_stop"];
-  if (!allowedTypes.includes(manualOrderType())) {
-    const droppedType = manualOrderTypeLabel(manualOrderType());
-    setManualFormValue("order_type", "market");
-    // This only fires on the actual transition (Sell → Buy with a
-    // stop-family type still selected) — the next pass finds "market"
-    // already allowed, so it never repeats on every keystroke.
-    showToast(
-      tx(
-        "manual_order_type_reset_toast",
-        "Order type switched to Market — protected entries only support Market or Limit ({type} would not carry a stop).",
-        { type: droppedType }
-      ),
-      "error"
-    );
-  }
-  // Non-limit types cannot fill in the 24-hour market. Pin the session so a
-  // Market/Stop ticket sent in pre-market queues for the open instead of
-  // being rejected as an extended-hours order.
-  if (manualOrderTypeIsRthOnly() && manualExtendedHours()) {
-    setManualFormValue("trading_session", "regular");
-  }
+  const allowedTypes = ["market", "limit", "stop", "stop_limit", "trailing_stop"];
   if (typeSelect) {
     [...typeSelect.options].forEach((opt) => {
       opt.disabled = !allowedTypes.includes(opt.value);
@@ -1909,40 +2099,53 @@ function syncManualTypeUi() {
     decorateOrderTypeSelect(typeSelect);
   }
 
+  // Non-limit types cannot fill in the 24-hour market.
+  if (manualOrderTypeIsRthOnly() && manualExtendedHours()) {
+    setManualFormValue("trading_session", "regular");
+  }
+
   const tifSelect = $("manual-tif");
   if (tifSelect) {
-    // OTO/bracket and conditional orders support DAY/GTC. 24-hour market
-    // limits support both for whole shares; fractional orders are DAY only.
-    // A short is floored to whole shares before it goes out, so a fractional
-    // number in the Sell box must not drag its time in force down to DAY.
     const exitQty = manualIsExit() && !manualOpensShort() ? manualSellQty() : 0;
     const fractionalExit = exitQty > 0 && !Number.isInteger(exitQty);
-    const dayOrGtcOnly =
-      manualExtendedHours() ||
-      protectedEntry ||
-      ["stop", "stop_limit", "trailing_stop"].includes(manualOrderType());
-    const allowedTifs = fractionalExit
-      ? ["day"]
-      : dayOrGtcOnly
-        ? ["day", "gtc"]
-        : ["day", "gtc", "ioc", "fok", "opg", "cls"];
+    const protectedEntry = manualIsEntry() && manualBracketEnabled() && ["market", "limit"].includes(currentType);
+
+    // Alpaca strictly requires DAY for Market orders:
+    let allowedTifs;
+    if (isMarket) {
+      allowedTifs = ["day"];
+    } else if (fractionalExit) {
+      allowedTifs = ["day"];
+    } else if (manualExtendedHours() || protectedEntry || ["stop", "stop_limit", "trailing_stop"].includes(currentType)) {
+      allowedTifs = ["day", "gtc"];
+    } else {
+      allowedTifs = ["day", "gtc", "ioc", "fok", "opg", "cls"];
+    }
+
     if (!allowedTifs.includes(manualTimeInForce())) {
       setManualFormValue("time_in_force", "day");
     }
     [...tifSelect.options].forEach((opt) => {
       const allowed = allowedTifs.includes(opt.value);
       opt.disabled = !allowed;
-      // 24-hour market only accepts DAY/GTC — drop the rest from the list
-      // rather than leaving them visible but greyed out.
-      opt.hidden = manualExtendedHours() && !allowed;
+      opt.hidden = !allowed;
     });
     tifSelect.closest(".manual-tif-field")?.classList.toggle(
       "tif-day-gtc-only",
-      manualExtendedHours()
+      manualExtendedHours() || isMarket
     );
-    tifSelect.disabled = loopRunning || busy;
+    tifSelect.disabled = isMarket || loopRunning || busy;
     ensureNiceSelect(tifSelect);
     decorateTifSelect(tifSelect);
+  }
+
+  const tifCol = tifSelect?.closest(".manual-tif-col");
+  if (tifCol) {
+    tifCol.hidden = isMarket;
+  }
+  const tifLimitRow = tifSelect?.closest(".manual-tif-limit-row");
+  if (tifLimitRow) {
+    tifLimitRow.hidden = isMarket;
   }
 
   syncTradingSessionUi();
@@ -1977,6 +2180,7 @@ function syncManualTypeUi() {
   syncTifHelp();
   syncLimitOffset();
   syncTriggerOffset();
+  syncQuoteFillButtons();
 }
 
 function etWeekdayUtc(year, month, day) {
@@ -2104,14 +2308,25 @@ function decorateTifSelect(select) {
 
 function syncTradingSessionUi() {
   const form = $("manual-order");
+  const sessionField = $("manual-session-field");
+  const currentType = manualOrderType();
+  const isLimit = currentType === "limit";
+
+  // 24-hour market is exclusively supported for Limit orders on Alpaca.
+  // When placing Market, Stop, Stop Limit, or Trailing Stop, hide session choice.
+  if (sessionField) {
+    sessionField.hidden = !isLimit;
+  }
+
   const overnight = form?.querySelector('input[name="trading_session"][value="24h"]');
   const regular = form?.querySelector('input[name="trading_session"][value="regular"]');
   const locked = loopRunning || busy;
   const rthOnlyType = manualOrderTypeIsRthOnly();
-  const lock24h = rthOnlyType;
+  const lock24h = rthOnlyType || !isLimit;
   if (overnight) {
     if (lock24h && overnight.checked) {
       setManualFormValue("trading_session", "regular");
+      if (regular) regular.checked = true;
     }
     overnight.disabled = lock24h || locked;
     const segment = overnight.closest(".segment");
@@ -2143,26 +2358,26 @@ function syncTradingSessionUi() {
 
   const help = $("manual-session-help");
   if (help) {
-    if (rthOnlyType) {
-      help.textContent = tx(
-        "help_session_rth_type",
-        "This order type fills in regular hours only. Sent now, it rests until the open."
-      );
-    } else if (manualExtendedHours()) {
-      help.textContent = manualIsEntry()
-        ? tx(
-            "help_session_24h_entry",
-            "Limit Day or GTC. Alpaca cannot attach a stop to a 24-hour order — the desk arms the stop after this ticket fills."
-          )
-        : tx(
-            "help_session_24h",
-            "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
-          );
+    if (!isLimit) {
+      help.hidden = true;
     } else {
-      help.textContent = tx(
-        "help_session_regular",
-        "Regular hours fill 9:30 am–4:00 pm ET. Day orders cancel at the 4:00 pm close. Choose 24 hour market to fill overnight, pre-market, or after hours."
-      );
+      help.hidden = false;
+      if (manualExtendedHours()) {
+        help.textContent = manualIsEntry()
+          ? tx(
+              "help_session_24h_entry",
+              "Limit Day or GTC. Alpaca cannot attach a stop to a 24-hour order — the desk arms the stop after this ticket fills."
+            )
+          : tx(
+              "help_session_24h",
+              "Limit Day or GTC. Day orders stay live through overnight, pre-market, regular, and after-hours, then cancel at 8:00 pm ET."
+            );
+      } else {
+        help.textContent = tx(
+          "help_session_regular",
+          "Regular hours fill 9:30 am–4:00 pm ET. Day orders cancel at the 4:00 pm close. Choose 24 hour market to fill overnight, pre-market, or after hours."
+        );
+      }
     }
   }
 
@@ -2465,12 +2680,13 @@ function calculateSizeEstimate() {
     // `ai_qty_for_risk` never lets one position exceed the account.
     exactShares = Math.min((equity * (riskPct / 100)) / stopDistance, equity / mark);
   }
-  // A protected buy goes out as an OTO order, and Alpaca refuses fractional
-  // quantities on those ("fractional orders must be simple orders") — so the
-  // desk floors to whole shares in every session, not only outside RTH. A 24h
-  // Limit carries no OTO (the stop is armed after the fill), so nothing floors
-  // it and the panel must not pretend otherwise.
   const wholeOnly = manualQtyIsWholeOnly();
+  if (wholeOnly && sizeMode === "risk" && equity >= mark && exactShares < 1) {
+    const minNeededRisk = (stopDistance / equity) * 100;
+    if (minNeededRisk <= 10) {
+      exactShares = 1;
+    }
+  }
   const shares = wholeOnly ? Math.floor(exactShares) : exactShares;
   const truncated = shares !== exactShares;
   if (!(shares > 0)) {
@@ -2781,7 +2997,8 @@ function updateSizeEstimate() {
   note.classList.remove("warn");
   grid.hidden = false;
   applyEstimateGridMode(
-    calc.isShortEntry ? "short" : calc.isExit ? "exit" : "entry"
+    calc.isShortEntry ? "short" : calc.isExit ? "exit" : "entry",
+    calc
   );
 
   if (calc.isShortEntry) {
@@ -2922,7 +3139,7 @@ function updateSizeEstimate() {
   if (bracketVisualizer) {
     // A take-profit of 0 sends a stop-only bracket — a real, common choice,
     // not an incomplete one, so entry + stop still earn a diagram.
-    if (!calc.isExit && calc.entry > 0 && calc.stopPrice > 0) {
+    if (!calc.isExit && !calc.isShortEntry && manualBracketEnabled() && calc.entry > 0 && calc.stopPrice > 0) {
       const hasTarget = calc.targetPrice > 0;
       bracketVisualizer.hidden = false;
       const targetTier = bracketVisualizer.querySelector(".target-tier");
@@ -2995,10 +3212,11 @@ function updateSizeEstimate() {
   if (inlineBadge) {
     if (!calc.isExit && calc.shares > 0 && calc.cost > 0) {
       inlineBadge.hidden = false;
-      const stopDist = calc.stopPrice != null && calc.entry > 0
+      const bracketOn = manualBracketEnabled();
+      const stopDist = bracketOn && calc.stopPrice != null && calc.entry > 0
         ? ` · ${escapeHtml(tx("stop_price", "Stop"))}: <strong>${stockPrice(calc.stopPrice)}</strong>`
         : "";
-      const riskDist = calc.riskDollars != null
+      const riskDist = bracketOn && calc.riskDollars != null
         ? ` · ${escapeHtml(tx("max_risk", "Max risk"))}: <strong>${money(calc.riskDollars)}</strong>`
         : "";
       inlineBadge.innerHTML = `
@@ -3015,7 +3233,7 @@ function updateSizeEstimate() {
   // the Protective Bracket switched off there is no stop distance to derive,
   // so this warned — and painted the whole panel orange — about a number the
   // ticket never wanted.
-  if (!calc.usesAtr && calc.stopPrice != null) {
+  if (!calc.usesAtr && calc.stopPrice != null && manualBracketEnabled()) {
     notes.push(
       tx(
         "estimate_no_atr",
@@ -3078,15 +3296,28 @@ const MANUAL_ENTRY_ONLY_ROWS = [
  *
  * ``mode`` is one of "entry", "exit", "short".
  */
-function applyEstimateGridMode(mode) {
+function applyEstimateGridMode(mode, calc) {
   const isExit = mode === "exit";
   const isShort = mode === "short";
-  MANUAL_ENTRY_ONLY_ROWS.forEach((id) => {
-    const row = $(id);
-    // A short carries no bracket, so its stop / target / risk cells would all
-    // read "—".
-    if (row) row.hidden = isExit || isShort;
-  });
+  const hasBracket = !isExit && !isShort && manualBracketEnabled();
+  const hasTarget = hasBracket && Number(calc?.targetPrice) > 0;
+  const hasStopLimit = hasBracket && Number(calc?.stopLimitPrice) > 0;
+
+  const rowStop = $("est-row-stop");
+  if (rowStop) rowStop.hidden = isExit || isShort || !hasBracket;
+
+  const rowStopLimit = $("est-row-stop-limit");
+  if (rowStopLimit) rowStopLimit.hidden = isExit || isShort || !hasBracket || !hasStopLimit;
+
+  const rowRisk = $("est-row-risk");
+  if (rowRisk) rowRisk.hidden = isExit || isShort || !hasBracket;
+
+  const rowTarget = $("est-row-target");
+  if (rowTarget) rowTarget.hidden = isExit || isShort || !hasBracket || !hasTarget;
+
+  const rowRr = $("est-row-rr");
+  if (rowRr) rowRr.hidden = isExit || isShort || !hasBracket || !hasTarget;
+
   const costLabel = $("est-cost-label");
   if (costLabel) {
     costLabel.textContent = isShort
@@ -3326,9 +3557,13 @@ function syncManualSideUi() {
   const sellGroup = $("manual-sell-group");
   const buySizingBlock = $("manual-buy-sizing-block");
   const riskGroup = $("manual-risk-group");
+  const dipHuntGroup = $("manual-dip-hunt-group");
+  const isBuy = side === "buy";
+  const typeAllowed = ["market", "limit"].includes(manualOrderType());
   if (sellGroup) sellGroup.hidden = !isExit;
   if (buySizingBlock) buySizingBlock.hidden = isExit;
-  if (riskGroup) riskGroup.hidden = isExit;
+  if (riskGroup) riskGroup.hidden = !isBuy || !typeAllowed;
+  if (dipHuntGroup) dipHuntGroup.hidden = !isBuy || !typeAllowed || !manualBracketEnabled();
 
   const sideInputs = form?.elements?.side;
   if (sideInputs instanceof RadioNodeList) {
@@ -3822,24 +4057,41 @@ function syncManualFollowOnUi() {
 function syncManualBracketUi() {
   const group = $("manual-risk-group");
   const isBuy = manualSide() === "buy";
-  if (group) group.hidden = !isBuy;
+  const typeAllowed = ["market", "limit"].includes(manualOrderType());
+  const shouldShow = isBuy && typeAllowed;
+  if (group) group.hidden = !shouldShow;
 
-  const enabled = manualBracketEnabled();
+  const form = $("manual-order");
+  const toggle = form?.elements?.bracket_enabled;
+  const isChecked = toggle ? toggle.checked : true;
+  const enabled = shouldShow && isChecked;
+
   const fields = $("manual-bracket-fields");
   if (fields) fields.hidden = !enabled;
-  const toggle = $("manual-bracket-enabled");
-  if (toggle) toggle.disabled = !isBuy || loopRunning || busy;
+  if (toggle) toggle.disabled = !shouldShow || loopRunning || busy;
 
   const atrInput = $("manual-ai-atr-mult");
-  if (atrInput) atrInput.disabled = !enabled || !isBuy || loopRunning || busy;
+  if (atrInput) atrInput.disabled = !enabled || loopRunning || busy;
   const tpInput = $("manual-take-profit-r");
-  if (tpInput) tpInput.disabled = !enabled || !isBuy || loopRunning || busy;
+  if (tpInput) tpInput.disabled = !enabled || loopRunning || busy;
+  const explicitStopLimit = Number(manualFormValue("stop_limit_price", "")) > 0;
   const stopLimitOffset = $("manual-stop-limit-offset");
-  if (stopLimitOffset) stopLimitOffset.disabled = !enabled || !isBuy || loopRunning || busy;
+  if (stopLimitOffset) {
+    stopLimitOffset.disabled = !enabled || explicitStopLimit || loopRunning || busy;
+    const offsetLabel = $("manual-stop-limit-label");
+    if (offsetLabel) {
+      offsetLabel.classList.toggle("is-disabled", explicitStopLimit);
+    }
+  }
   const stopLimitPrice = $("manual-stop-limit-price");
-  if (stopLimitPrice) stopLimitPrice.disabled = !enabled || !isBuy || loopRunning || busy;
+  if (stopLimitPrice) stopLimitPrice.disabled = !enabled || loopRunning || busy;
   const btnStopLimitAtStop = $("btn-stop-limit-at-stop");
-  if (btnStopLimitAtStop) btnStopLimitAtStop.disabled = !enabled || !isBuy || loopRunning || busy;
+  if (btnStopLimitAtStop) {
+    const hasStop = Number(currentEstimate()?.stopPrice) > 0;
+    btnStopLimitAtStop.disabled = !enabled || !hasStop || loopRunning || busy;
+    btnStopLimitAtStop.classList.toggle("is-active", stopLimitPinnedToStop && hasStop);
+    btnStopLimitAtStop.setAttribute("aria-pressed", stopLimitPinnedToStop && hasStop ? "true" : "false");
+  }
 
   const badge = $("manual-bracket-summary-badge");
   if (badge) {
@@ -3852,19 +4104,44 @@ function syncManualBracketUi() {
       badge.textContent = `${atrMult > 0 ? `${atrMult}× ATR` : "Stop"} · ${tpText}`;
     }
   }
+
+  syncBuyUnitToggle(enabled);
+}
+
+function syncBuyUnitToggle(bracketActive) {
+  const form = $("manual-order");
+  const riskUnit = form?.querySelector('.qty-unit input[value="risk"]')?.closest(".qty-unit");
+  const riskInput = form?.querySelector('input[name="buy_size_mode"][value="risk"]');
+  if (riskUnit && riskInput) {
+    riskUnit.hidden = !bracketActive;
+    riskInput.disabled = !bracketActive || loopRunning || busy;
+  }
+  if (!bracketActive && manualBuySizeMode() === "risk") {
+    setManualFormValue("buy_size_mode", "notional");
+    const notionalInput = form?.querySelector('input[name="buy_size_mode"][value="notional"]');
+    if (notionalInput) notionalInput.checked = true;
+  }
 }
 
 function syncManualDipHuntUi() {
   const group = $("manual-dip-hunt-group");
   const isBuy = manualSide() === "buy";
+  const typeAllowed = ["market", "limit"].includes(manualOrderType());
   const bracketOn = manualBracketEnabled();
-  if (group) group.hidden = !isBuy;
+  const shouldShow = isBuy && typeAllowed && bracketOn;
+  if (group) group.hidden = !shouldShow;
 
-  const enabled = manualDipHuntEnabled() && bracketOn;
+  const form = $("manual-order");
+  const toggle = form?.elements?.dip_hunt_enabled;
+  if (!shouldShow && toggle && toggle.checked) {
+    toggle.checked = false;
+  }
+  const isChecked = toggle ? toggle.checked : false;
+  const enabled = shouldShow && isChecked;
+
   const fields = $("manual-dip-hunt-fields");
   if (fields) fields.hidden = !enabled;
-  const toggle = $("manual-dip-hunt-enabled");
-  if (toggle) toggle.disabled = !isBuy || !bracketOn || loopRunning || busy;
+  if (toggle) toggle.disabled = !shouldShow || loopRunning || busy;
 
   const waitInput = $("manual-dip-hunt-wait");
   if (waitInput) waitInput.disabled = !enabled || loopRunning || busy;
@@ -3914,6 +4191,7 @@ function selectManualSide(side) {
   if (manualSide() === next) return false;
   setManualFormValue("side", next);
   formDirtyManual = true;
+  if (manualContext) applyStockPriceDefaults(manualContext);
   saveManualFormDraft();
   syncManualUi();
   scheduleServerPreview();
@@ -5454,9 +5732,11 @@ function renderConfirmationModal(payload) {
     ],
     [
       tx("order_type", "Order type"),
-      `${TYPE_LABELS[payload.order_type] || payload.order_type} · ${String(
-        payload.time_in_force || "day"
-      ).toUpperCase()} · ${tifExpireHint(payload.time_in_force || "day")}`,
+      payload.order_type === "market"
+        ? `${TYPE_LABELS[payload.order_type] || payload.order_type} · DAY`
+        : `${TYPE_LABELS[payload.order_type] || payload.order_type} · ${String(
+            payload.time_in_force || "day"
+          ).toUpperCase()} · ${tifExpireHint(payload.time_in_force || "day")}`,
     ],
   ];
 
@@ -5469,15 +5749,17 @@ function renderConfirmationModal(payload) {
   if (payload.trail_percent) {
     rows.push([tx("trail_percent", "Trail %"), `${payload.trail_percent}%`]);
   }
-  if (payload.extended_hours) {
-    rows.push([tx("trading_session", "Trading session"), tx("session_24h", "24 hour market")]);
+  if (payload.order_type === "limit") {
+    if (payload.extended_hours) {
+      rows.push([tx("trading_session", "Trading session"), tx("session_24h", "24 hour market")]);
+    } else {
+      rows.push([tx("trading_session", "Trading session"), tx("session_regular", "Regular hours")]);
+    }
   } else if (manualContext && manualContext.is_open === false) {
     rows.push([
       tx("activates", "Activates"),
       tx("activates_rth_queued", "Regular hours"),
     ]);
-  } else {
-    rows.push([tx("trading_session", "Trading session"), tx("session_regular", "Regular hours")]);
   }
 
   if (calc && !calc.blocked) {
@@ -5512,47 +5794,56 @@ function renderConfirmationModal(payload) {
       rows.push(
         [tx("est_position_size", "Position size"), `${formatQty(calc.shares)} ${tx("shares", "shares")}`],
         [tx("entry_price", "Entry price"), stockPrice(calc.entry)],
-        [tx("est_cost", "Est. cost"), money(calc.cost)],
-        [
+        [tx("est_cost", "Est. cost"), money(calc.cost)]
+      );
+
+      const hasBracket = manualBracketEnabled();
+      if (hasBracket) {
+        rows.push([
           tx("stop_price", "Stop"),
           calc.stopPrice != null ? stockPrice(calc.stopPrice) : tx("target_off", "off"),
-        ],
-        [
-          tx("stop_limit_price", "Sell limit"),
-          calc.stopLimitPrice != null
-            ? stockPrice(calc.stopLimitPrice)
-            : tx("stop_limit_market", "market"),
-        ],
-        [
-          tx("target_price", "Target"),
-          calc.targetPrice != null
-            ? `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR}R`
-            : tx("target_off", "off"),
-        ],
-        [
-          tx("max_risk", "Max risk"),
-          calc.riskDollars == null
-            ? "—"
-            : `${money(calc.riskDollars)}${
-                calc.equity > 0
-                  ? ` (${((calc.riskDollars / calc.equity) * 100).toFixed(2)}% ${tx(
-                      "of_equity",
-                      "of equity"
-                    )})`
-                  : ""
-              }`,
-          "warn",
-        ],
-        [
-          tx("risk_reward", "Risk / reward"),
-          calc.riskReward
-            ? tx("risk_reward_value", "{ratio}:1 · {reward} up", {
-                ratio: calc.riskReward.ratio.toFixed(2),
-                reward: money(calc.riskReward.reward),
-              })
-            : tx("target_off", "off"),
-        ]
-      );
+        ]);
+        if (calc.stopLimitPrice != null) {
+          rows.push([
+            tx("stop_limit_price", "Sell limit"),
+            stockPrice(calc.stopLimitPrice),
+          ]);
+        }
+        if (calc.targetPrice != null) {
+          rows.push([
+            tx("target_price", "Target"),
+            `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR}R`,
+          ]);
+        }
+        if (calc.riskDollars != null) {
+          rows.push([
+            tx("max_risk", "Max risk"),
+            `${money(calc.riskDollars)}${
+              calc.equity > 0
+                ? ` (${((calc.riskDollars / calc.equity) * 100).toFixed(2)}% ${tx(
+                    "of_equity",
+                    "of equity"
+                  )})`
+                : ""
+            }`,
+            "warn",
+          ]);
+        }
+        if (calc.riskReward) {
+          rows.push([
+            tx("risk_reward", "Risk / reward"),
+            tx("risk_reward_value", "{ratio}:1 · {reward} up", {
+              ratio: calc.riskReward.ratio.toFixed(2),
+              reward: money(calc.riskReward.reward),
+            }),
+          ]);
+        }
+      } else {
+        rows.push([
+          tx("bracket_legend", "Protective Bracket"),
+          tx("bracket_off", "off"),
+        ]);
+      }
       if (calc.projectedRiskPct != null) {
         rows.push([
           tx("portfolio_heat", "Portfolio heat"),
@@ -5903,8 +6194,16 @@ async function submitConfirmedOrder() {
         "error"
       );
     } else {
-      const ordersToastLink = ` <a class="toast-link-btn" href="${pagePath("orders")}">${escapeHtml(
-        tx("nav_orders", "Orders")
+      const otype = String(
+        r.order_type || payload?.order_type || sent?.order_type || manualOrderType() || ""
+      ).toLowerCase();
+      const isMarket = otype === "market";
+      const targetPage = isMarket ? "positions" : "orders";
+      const targetLabel = isMarket
+        ? tx("nav_positions", "Positions")
+        : tx("nav_orders", "Orders");
+      const toastActionLink = ` <a class="toast-link-btn" href="${pagePath(targetPage)}">${escapeHtml(
+        targetLabel
       )}</a>`;
       const timeStr = typeof formatTradeExecutionTime === "function" ? formatTradeExecutionTime(r.submitted_at || r.ts || r.iso || Date.now()) : "";
       const timePart = timeStr ? ` · ${timeStr}` : "";
@@ -5922,7 +6221,7 @@ async function submitConfirmedOrder() {
             ? ` · ${tx("stop_price", "Stop")} ${stockPrice(r.stop_loss.stop_price)}`
             : ""),
         "ok",
-        ordersToastLink
+        toastActionLink
       );
     }
     // A definitive broker result ends this attempt. An intentional second
@@ -6667,6 +6966,9 @@ manualForm?.addEventListener("change", (ev) => {
   }
   if (name === "sell_mode") {
     convertSellQtyOnUnitToggle(ev.target?.value);
+  }
+  if (name === "buy_size_mode" && manualContext) {
+    applyStockPriceDefaults(manualContext);
   }
   syncManualUi();
   saveManualFormDraft();

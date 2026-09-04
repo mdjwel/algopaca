@@ -60,8 +60,9 @@
   display: none;
 }
 
-.manual-quick-chips:empty {
-  display: none;
+.manual-quick-chips:empty,
+.manual-quick-chips[hidden] {
+  display: none !important;
 }
 
 .quick-chip {
@@ -554,7 +555,7 @@ a.ghost.small {
 
 .manual-form details.field-group.manual-accordion,
 .manual-form details.manual-accordion {
-  display: block !important;
+  display: block;
   width: 100%;
   padding: 0.75rem 0.85rem !important;
   border-radius: var(--radius-md);
@@ -726,8 +727,10 @@ a.ghost.small {
   border: 1px solid color-mix(in srgb, var(--buy) 24%, transparent);
 }
 
-.manual-form .field-group[hidden] {
-  display: none;
+.manual-form .field-group[hidden],
+.manual-form details.manual-accordion[hidden],
+.manual-form details.field-group.manual-accordion[hidden] {
+  display: none !important;
 }
 
 .manual-form .field-group legend {
@@ -778,8 +781,9 @@ a.ghost.small {
 }
 
 .manual-form label[hidden],
+.manual-form details[hidden],
 .manual-form [hidden] {
-  display: none;
+  display: none !important;
 }
 
 /* Side / order-type segmented controls — the side of a trade is the most
@@ -1067,6 +1071,10 @@ a.ghost.small {
   align-items: start;
 }
 
+.manual-tif-limit-row[hidden] {
+  display: none !important;
+}
+
 .manual-tif-limit-row:has(#manual-limit-row[hidden]) {
   grid-template-columns: 1fr;
 }
@@ -1075,6 +1083,10 @@ a.ghost.small {
   display: grid;
   gap: 0.35rem;
   min-width: 0;
+}
+
+.manual-tif-col[hidden] {
+  display: none !important;
 }
 
 .manual-tif-col > .manual-tif-field,
@@ -1638,7 +1650,7 @@ a.ghost.small {
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1665,11 +1677,15 @@ body.modal-open {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(4, 8, 14, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: -1;
 }
 
 .modal-content {
+  position: relative;
+  z-index: 1;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);

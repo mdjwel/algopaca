@@ -1007,7 +1007,7 @@ label.switch-item:has(input:focus-visible) {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;

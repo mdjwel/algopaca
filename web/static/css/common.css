@@ -42,7 +42,7 @@
   --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.7);
   --display: "Fraunces", Georgia, serif;
   --ui: "Schibsted Grotesk", "Avenir Next", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --mono: "IBM Plex Mono", "SF Mono", Monaco, Menlo, Consolas, "Roboto Mono", "Ubuntu Mono", monospace;
   --mobile-nav-height: 62px;
   --mobile-header-height: 52px;
   color-scheme: dark;
@@ -819,7 +819,7 @@ select.lang-select.hidden-select {
   display: inline-flex;
   align-items: center;
   width: auto;
-  min-width: 6.8rem;
+  min-width: 0;
   height: 2.15rem;
   line-height: 2.15rem;
   font-family: var(--mono);
@@ -830,7 +830,7 @@ select.lang-select.hidden-select {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding-left: 1.75rem;
-  padding-right: 1.45rem;
+  padding-right: 1.4rem;
   background-color: color-mix(in srgb, var(--panel) 85%, transparent);
   background-image: none !important;
   backdrop-filter: blur(12px);
@@ -858,7 +858,7 @@ select.lang-select.hidden-select {
   right: 0.55rem;
   width: 5px;
   height: 5px;
-  margin-top: -4px;
+  margin-top: 1px;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 

@@ -100,9 +100,13 @@ function openPosModal(id) {
   posModalReturnFocus = document.activeElement;
   modal.hidden = false;
   document.body.style.overflow = "hidden";
-  const focusTarget = modal.querySelector(
-    "input:not([type=hidden]), button, select, [href], [tabindex]:not([tabindex='-1'])"
-  );
+  const focusTarget =
+    modal.querySelector("input:not([type=hidden]):not([disabled])") ||
+    modal.querySelector(".pos-modal-body button:not([disabled])") ||
+    modal.querySelector(
+      "button:not([disabled]):not(.pos-modal-close), select, [href], [tabindex]:not([tabindex='-1'])"
+    ) ||
+    modal.querySelector("button, [tabindex]");
   if (focusTarget) focusTarget.focus();
 }
 
@@ -1317,6 +1321,11 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
 
   setExitMode(initialMode || "stop_loss");
   openPosModal("pos-exit-modal");
+
+  if (slInput && (initialMode === "stop_loss" || !initialMode)) {
+    slInput.focus();
+    slInput.select();
+  }
 }
 
 function closeExitStrategyModal() {
