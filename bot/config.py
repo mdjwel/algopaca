@@ -253,6 +253,8 @@ class Config:
     # 0 = stop-market (fill at whatever prints). >0 = stop-limit cushion % past
     # the trigger so the exit refuses a worse print (long: below stop; short: above).
     stop_limit_offset_pct: float = 0.0
+    stop_loss_24h: bool = True
+    metals_reversal_buy_on_stop: bool = True
     lang: str = DEFAULT_LANG  # desk language; the AI writes thesis / risks in it
     # Options overlay — every strategy cycle maps its equity view onto Alpaca options.
     options_enabled: bool = True
@@ -408,6 +410,8 @@ class Config:
         ai_max_spread_bps: float | None = None,
         ai_reversal_conf_bump: float | None = None,
         stop_limit_offset_pct: float | None = None,
+        stop_loss_24h: bool | None = None,
+        metals_reversal_buy_on_stop: bool | None = None,
         openai_model: str | None = None,
         gemini_model: str | None = None,
         anthropic_model: str | None = None,
@@ -841,6 +845,12 @@ class Config:
             ai_max_spread_bps=max_spread,
             ai_reversal_conf_bump=conf_bump,
             stop_limit_offset_pct=stop_limit_offset,
+            stop_loss_24h=self.stop_loss_24h if stop_loss_24h is None else bool(stop_loss_24h),
+            metals_reversal_buy_on_stop=(
+                self.metals_reversal_buy_on_stop
+                if metals_reversal_buy_on_stop is None
+                else bool(metals_reversal_buy_on_stop)
+            ),
             openai_model=openai_model or self.openai_model,
             gemini_model=gemini_model or self.gemini_model,
             anthropic_model=anthropic_model or self.anthropic_model,
@@ -956,6 +966,8 @@ class Config:
         ai_max_spread_bps: float = 25.0,
         ai_reversal_conf_bump: float = 0.15,
         stop_limit_offset_pct: float = 0.0,
+        stop_loss_24h: bool = True,
+        metals_reversal_buy_on_stop: bool = True,
         lang: str = DEFAULT_LANG,
         risk_engine_enabled: bool = True,
         options_enabled: bool = True,
@@ -1043,6 +1055,8 @@ class Config:
             ai_max_spread_bps=ai_max_spread_bps,
             ai_reversal_conf_bump=ai_reversal_conf_bump,
             stop_limit_offset_pct=stop_limit_offset_pct,
+            stop_loss_24h=bool(stop_loss_24h),
+            metals_reversal_buy_on_stop=bool(metals_reversal_buy_on_stop),
             lang=lang,
             risk_engine_enabled=risk_engine_enabled,
             options_enabled=options_enabled,
@@ -1394,6 +1408,10 @@ class Config:
             stop_limit_offset_pct=max(
                 0.0, min(50.0, float(_e("STOP_LIMIT_OFFSET_PCT", "0")))
             ),
+            stop_loss_24h=_e("STOP_LOSS_24H", "true").lower() in ("1", "true", "yes"),
+            metals_reversal_buy_on_stop=_e(
+                "METALS_REVERSAL_BUY_ON_STOP", "true"
+            ).lower() in ("1", "true", "yes"),
             ai_max_spread_bps=max(
                 0.0, min(1000.0, float(_e("AI_MAX_SPREAD_BPS", "25")))
             ),

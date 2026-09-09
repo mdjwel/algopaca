@@ -184,6 +184,31 @@
             </div>
           </section>
 
+          <!-- Multi Auto-Trade Runners Panel -->
+          <section class="panel multi-runners-panel" id="multi-runners-card" hidden aria-labelledby="multi-runners-heading">
+            <div class="panel-head">
+              <div class="panel-head-title-wrap">
+                <span class="multi-runner-beacon" aria-hidden="true">
+                  <span class="beacon-ring"></span>
+                  <span class="beacon-core"></span>
+                </span>
+                <h2 id="multi-runners-heading" data-i18n="active_auto_trades">Active Auto-Trades</h2>
+                <span id="multi-runners-badge" class="badge badge-copper">0</span>
+              </div>
+              <div class="panel-head-actions">
+                <a href="/positions" class="ghost btn-history-link">
+                  <span data-i18n="manage_in_positions">Manage in Positions</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </a>
+                <button type="button" id="btn-stop-all-runners" class="btn btn-sm btn-ghost-danger" data-i18n="stop_all_autotrades">Stop All Auto-Trades</button>
+              </div>
+            </div>
+            <div class="multi-runners-body">
+              <p class="panel-hint" data-i18n="multi_runners_hint">Per-ticker runners started from the Positions page. Each one trades its own symbol under its own strategy.</p>
+              <div id="multi-runners-list" class="multi-runners-list"></div>
+            </div>
+          </section>
+
         </div>
 
         <aside class="console">

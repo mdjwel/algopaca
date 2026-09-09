@@ -3467,4 +3467,277 @@ a.pos-prot-badge.orders:focus-visible {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Active Multi Auto-Trades Banner & Components
+   --------------------------------------------------------------------------- */
+
+.pos-autotrades-panel {
+  border: 1px solid rgba(224, 138, 76, 0.25);
+  background: linear-gradient(135deg, rgba(224, 138, 76, 0.06) 0%, rgba(13, 19, 31, 0.95) 100%);
+  margin-bottom: 1.25rem;
+  border-radius: var(--radius-md, 12px);
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.pos-autotrade-beacon {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  margin-right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-autotrade-beacon .beacon-core {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  display: block;
+}
+
+.pos-autotrade-beacon .beacon-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid #10b981;
+  opacity: 0.8;
+  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.pos-autotrades-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
+}
+
+.pos-autotrade-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pos-autotrade-chip:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(224, 138, 76, 0.4);
+}
+
+.pos-autotrade-chip-sym {
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--copper, #e08a4c);
+}
+
+.pos-autotrade-chip-engine {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.78rem;
+}
+
+.pos-autotrade-chip-sig {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.pos-autotrade-chip-sig.buy {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.pos-autotrade-chip-sig.sell {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.pos-autotrade-chip-sig.hold {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.pos-autotrade-chip-price {
+  font-family: var(--font-mono, monospace);
+  color: var(--text, #f8fafc);
+  font-size: 0.8rem;
+}
+
+.pos-autotrade-chip-stop {
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.pos-autotrade-chip-stop:hover {
+  background: rgba(239, 68, 68, 0.28);
+  color: #fff;
+}
+
+/* Row Badge in Table */
+.pos-row-autotrade-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(224, 138, 76, 0.12);
+  border: 1px solid rgba(224, 138, 76, 0.35);
+  color: #f6ad55;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  letter-spacing: 0.02em;
+}
+
+.pos-row-autotrade-badge .badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+}
+
+/* Table and Card Action Button */
+.pos-act-autotrade {
+  color: var(--copper, #e08a4c);
+  font-weight: 600;
+}
+
+.pos-act-autotrade.is-running {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  font-weight: 600;
+}
+
+.pos-act-autotrade.is-running:hover,
+.pos-act-autotrade.is-running:focus-visible {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.55);
+}
+
+.btn-pos-autotrade.is-running {
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+
+/* Auto-Trade Modal Styling */
+.pos-autotrade-card {
+  max-width: 580px;
+  width: 95%;
+}
+
+.pos-autotrade-active-card {
+  background: rgba(224, 138, 76, 0.08);
+  border: 1px solid rgba(224, 138, 76, 0.25);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.15rem;
+}
+
+.pos-autotrade-active-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pos-autotrade-active-meta {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.pos-autotrade-active-reason {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0.4rem 0 0.75rem;
+}
+
+.pos-autotrade-targets {
+  margin-bottom: 1rem;
+}
+
+.pos-autotrade-targets-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.pos-autotrade-target-pill {
+  padding: 0.25rem 0.6rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.pos-autotrade-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 1.15rem;
+}
+
+.pos-autotrade-params-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.pos-autotrade-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pos-signal-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.pos-signal-badge.buy { background: #065f46; color: #a7f3d0; }
+.pos-signal-badge.sell { background: #991b1b; color: #fecaca; }
+.pos-signal-badge.hold { background: #334155; color: #cbd5e1; }
+
+
 

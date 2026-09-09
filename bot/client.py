@@ -270,8 +270,14 @@ def bar_session_date(ts: Any) -> date | None:
 
 
 class AlpacaService:
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self,
+        config: Config,
+        *,
+        synthetic_order_handler: Any | None = None,
+    ) -> None:
         self.config = config
+        self.synthetic_order_handler = synthetic_order_handler
         has_creds = bool((config.api_key or "").strip() and (config.secret_key or "").strip())
         if has_creds:
             self._trading: TradingClient | None = TradingClient(
@@ -288,6 +294,15 @@ class AlpacaService:
             self._data = None
         self._option_data = None
         self._mark_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    def _get_synthetic_handler(self) -> Any | None:
+        if self.synthetic_order_handler is not None:
+            return self.synthetic_order_handler
+        try:
+            from bot.web_state import STATE
+            return STATE
+        except Exception:
+            return None
 
     @property
     def trading(self) -> TradingClient:
@@ -1596,6 +1611,12 @@ class AlpacaService:
                 cancelled += 1
             except Exception:
                 continue
+        handler = self._get_synthetic_handler()
+        if handler and hasattr(handler, "cancel_synthetic_stop_for_symbol"):
+            try:
+                cancelled += handler.cancel_synthetic_stop_for_symbol(symbol)
+            except Exception as exc:
+                logger.debug("Could not cancel synthetic stops for %s: %s", symbol, exc)
         return cancelled
 
     def cancel_open_take_profit_orders(self, symbol: str) -> int:
@@ -1921,6 +1942,12 @@ class AlpacaService:
                         cancelled.append(leg_id)
                     except Exception:
                         pass
+        handler = self._get_synthetic_handler()
+        if handler and hasattr(handler, "cancel_synthetic_stop_for_symbol"):
+            try:
+                handler.cancel_synthetic_stop_for_symbol(symbol)
+            except Exception:
+                pass
         return cancelled
 
     @staticmethod
@@ -2026,6 +2053,24 @@ class AlpacaService:
                 return None
             abs_qty = min(abs_qty, requested)
         if self.has_open_stop_sell(symbol):
+            if getattr(self.config, "stop_loss_24h", True):
+                handler = self._get_synthetic_handler()
+                if handler and hasattr(handler, "sync_strategy_stop"):
+                    cur_stop = self.current_stop_price(symbol)
+                    if cur_stop and cur_stop > 0:
+                        offset = float(getattr(self.config, "stop_limit_offset_pct", 0) or 0)
+                        lim = limit_price_for_stop(cur_stop, offset, short=is_short)
+                        try:
+                            handler.sync_strategy_stop(
+                                symbol=symbol,
+                                side="buy" if is_short else "sell",
+                                qty=abs_qty,
+                                stop_price=cur_stop,
+                                limit_price=lim,
+                                source="strategy_resting",
+                            )
+                        except Exception as exc:
+                            logger.debug("Could not sync synthetic stop for %s: %s", symbol, exc)
             return None
         avg = self.get_avg_entry_price(symbol)
         if avg is None:
@@ -2069,6 +2114,22 @@ class AlpacaService:
         if limit is not None:
             info["limit_price"] = limit
             info["offset_pct"] = offset
+        if getattr(self.config, "stop_loss_24h", True):
+            handler = self._get_synthetic_handler()
+            if handler and hasattr(handler, "sync_strategy_stop"):
+                try:
+                    synth = handler.sync_strategy_stop(
+                        symbol=symbol,
+                        side="buy" if is_short else "sell",
+                        qty=stop_qty,
+                        stop_price=stop_price,
+                        limit_price=limit,
+                        source="strategy",
+                    )
+                    if synth:
+                        info["synthetic_order_id"] = synth.get("id")
+                except Exception as exc:
+                    logger.debug("Could not sync synthetic stop for %s: %s", symbol, exc)
         return info
 
     def recent_activity(self, symbol: str, *, lookback_minutes: int = 1440) -> dict[str, Any]:
@@ -2173,6 +2234,22 @@ class AlpacaService:
         if limit is not None:
             info["limit_price"] = limit
             info["offset_pct"] = offset
+        if getattr(self.config, "stop_loss_24h", True):
+            handler = self._get_synthetic_handler()
+            if handler and hasattr(handler, "sync_strategy_stop"):
+                try:
+                    synth = handler.sync_strategy_stop(
+                        symbol=symbol,
+                        side="buy" if is_short else "sell",
+                        qty=stop_qty,
+                        stop_price=stop_price,
+                        limit_price=limit,
+                        source="strategy_replace",
+                    )
+                    if synth:
+                        info["synthetic_order_id"] = synth.get("id")
+                except Exception as exc:
+                    logger.debug("Could not sync synthetic stop replacement for %s: %s", symbol, exc)
         return info
 
     def submit_order(
@@ -2236,7 +2313,27 @@ class AlpacaService:
                         short=short_stop,
                     )
             order = MarketOrderRequest(**kwargs)
-            return self.trading.submit_order(order)
+            res = self.trading.submit_order(order)
+            if attach_stop and level is not None and getattr(self.config, "stop_loss_24h", True):
+                handler = self._get_synthetic_handler()
+                if handler and hasattr(handler, "sync_strategy_stop"):
+                    try:
+                        lim = limit_price_for_stop(
+                            level,
+                            float(getattr(self.config, "stop_limit_offset_pct", 0) or 0),
+                            short=short_stop,
+                        )
+                        handler.sync_strategy_stop(
+                            symbol=symbol,
+                            side="buy" if short_stop else "sell",
+                            qty=float(qty),
+                            stop_price=level,
+                            limit_price=lim,
+                            source="strategy_oto",
+                        )
+                    except Exception as exc:
+                        logger.debug("Could not sync synthetic OTO stop for %s: %s", symbol, exc)
+            return res
 
         if session == "closed":
             raise ValueError(
@@ -2597,13 +2694,30 @@ class AlpacaService:
             **trail,
         )
         submitted = self.trading.submit_order(order)
-        return {
+        info = {
             "id": str(submitted.id),
             "qty": stop_qty,
             "side": "buy" if is_short else "sell",
             "type": "trailing_stop",
             **trail,
         }
+        if getattr(self.config, "stop_loss_24h", True):
+            handler = self._get_synthetic_handler()
+            if handler and hasattr(handler, "sync_strategy_trailing_stop"):
+                try:
+                    synth = handler.sync_strategy_trailing_stop(
+                        symbol=symbol,
+                        side="buy" if is_short else "sell",
+                        qty=stop_qty,
+                        trail_percent=trail_percent,
+                        trail_price=trail_price,
+                        source="strategy_trailing",
+                    )
+                    if synth:
+                        info["synthetic_order_id"] = synth.get("id")
+                except Exception as exc:
+                    logger.debug("Could not sync synthetic trailing stop for %s: %s", symbol, exc)
+        return info
 
     def arm_take_profit(
         self,

@@ -21,6 +21,11 @@ from bot.ai_risk import (
 )
 from bot.client import AlpacaService
 from bot.config import Config, normalize_lang
+from bot.metals_intel import (
+    check_imminent_economic_events,
+    is_precious_metal,
+    protect_metals_position_before_event,
+)
 from bot.options_overlay import apply_options_overlays
 from bot.strategy import Signal, StrategyResult
 
@@ -577,6 +582,25 @@ class AiTradingBot:
             out["actions"] = actions
             logger.info("%s | managed: %s", symbol, "; ".join(actions))
             return out
+
+        # 2) Pre-event economic data protection for Gold & Silver (5m release window)
+        if is_precious_metal(symbol):
+            cal = context.get("economic_calendar")
+            events_5m = check_imminent_economic_events(cal, window_minutes=5.0)
+            if events_5m:
+                prot = protect_metals_position_before_event(
+                    service=self.service,
+                    symbol=symbol,
+                    event=events_5m[0],
+                    reversal_buy=bool(getattr(self.config, "metals_reversal_buy_on_stop", True)),
+                )
+                if prot:
+                    out["event_protection"] = prot
+                    if prot.get("action_taken") == "updated":
+                        actions.append(
+                            f"event stop 5m before {prot['event_title'][:15]} @${prot['stop_price']:.2f}"
+                        )
+                        position["stop_price"] = prot["stop_price"]
 
         target = desired_stop(
             self.config,

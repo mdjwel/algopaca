@@ -11,7 +11,9 @@ from bot.day_presets import get_preset as get_day_preset, list_presets as list_d
 from bot.dip_presets import get_preset as get_dip_preset
 from bot.metals_intel import (
     FACTOR_WEIGHTS,
+    calculate_event_stop_limit_prices,
     calculate_gsr,
+    check_imminent_economic_events,
     classify_bias,
     clip_unit,
     combine_macro_score,
@@ -19,6 +21,7 @@ from bot.metals_intel import (
     get_metal_category,
     is_precious_metal,
     momentum,
+    protect_metals_position_before_event,
     score_dollar,
     score_gsr,
     score_rates,
@@ -208,11 +211,12 @@ class TestMetalsPresets(unittest.TestCase):
     def test_ai_preset_gold_silver_macro(self):
         preset = get_ai_preset("gold_silver_macro")
         self.assertEqual(preset.id, "gold_silver_macro")
-        # Wider stop and a shorter R target: gridding the exits on GLD showed
-        # returns improving as the stop widened and decaying past a ~3R target.
+        # Wider stop and a longer 4.0R target to let multi-week trends run for large gains.
+        # trail_after_r set to 2.0R so pullbacks don't choke winners prematurely.
         self.assertEqual(preset.atr_stop_mult, 2.2)
-        self.assertEqual(preset.take_profit_r, 3.0)
-        self.assertEqual(preset.trail_after_r, 1.2)
+        self.assertEqual(preset.take_profit_r, 4.0)
+        self.assertEqual(preset.trail_after_r, 2.0)
+        self.assertEqual(preset.min_confidence, 0.70)
         self.assertEqual(preset.max_positions, 2)
         self.assertIn("Gold/Silver ratio", preset.instructions)
         # The playbook must carry the calibrated regime gate, not a breakout gate.
@@ -228,24 +232,214 @@ class TestMetalsPresets(unittest.TestCase):
         self.assertEqual(bp["base_engine"], "ai")
         self.assertEqual(bp["choices"]["ai_preset"], "gold_silver_macro")
         self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GDX, UGL, GLL, DUST")
-        self.assertEqual(bp["choices"]["ai_take_profit_r"], 3.0)
+        self.assertEqual(bp["choices"]["ai_take_profit_r"], 4.0)
         self.assertEqual(bp["choices"]["ai_atr_stop_mult"], 2.2)
-        self.assertEqual(bp["choices"]["ai_trail_after_r"], 1.2)
-        # The factors are daily; running the blueprint intraday only multiplied
-        # decisions without adding signal.
+        self.assertEqual(bp["choices"]["ai_trail_after_r"], 2.0)
+        self.assertEqual(bp["choices"]["ai_min_confidence"], 0.70)
         self.assertEqual(bp["choices"]["bar_timeframe"], "1Day")
 
     def test_day_trading_preset(self):
         preset = get_day_preset("ai_metals_breakout")
         self.assertEqual(preset.id, "ai_metals_breakout")
         self.assertTrue(preset.use_ai_confirm)
-        self.assertEqual(preset.side, "long_short")
-        self.assertEqual(preset.profit_target_r, 2.8)
-        self.assertEqual(preset.stop_atr_mult, 1.3)
-        self.assertEqual(preset.open_buffer_mins, 12)
+        self.assertEqual(preset.side, "long_only")
+        self.assertEqual(preset.profit_target_r, 3.8)
+        self.assertEqual(preset.stop_atr_mult, 2.0)
+        self.assertEqual(preset.open_buffer_mins, 20)
+        self.assertEqual(preset.max_trades_per_day, 2)
+        self.assertEqual(preset.ema_fast, 13)
+        self.assertEqual(preset.ema_slow, 34)
+        self.assertEqual(preset.ai_min_confidence, 0.72)
 
         all_day_presets = [p["id"] for p in list_day_presets()]
         self.assertIn("ai_metals_breakout", all_day_presets)
+
+
+class TestEconomicEventProtection(unittest.TestCase):
+    def test_calculate_event_stop_limit_prices(self):
+        # Long position: stop below market, limit slightly below stop
+        stop_long, limit_long = calculate_event_stop_limit_prices(
+            current_price=250.0, side="long", stop_buffer_pct=0.8, limit_offset_pct=0.5
+        )
+        self.assertEqual(stop_long, 248.0)
+        self.assertEqual(limit_long, 246.76)
+
+        # Short position: stop above market, limit slightly above stop
+        stop_short, limit_short = calculate_event_stop_limit_prices(
+            current_price=100.0, side="short", stop_buffer_pct=0.8, limit_offset_pct=0.5
+        )
+        self.assertEqual(stop_short, 100.8)
+        self.assertEqual(limit_short, 101.3)
+
+    def test_check_imminent_economic_events(self):
+        now = datetime.now(timezone.utc)
+        calendar = [
+            {
+                "title": "CPI m/m",
+                "impact": "High",
+                "when_utc": (now + timedelta(minutes=4)).isoformat(),
+            },
+            {
+                "title": "FOMC Statement",
+                "impact": "High",
+                "when_utc": (now + timedelta(minutes=25)).isoformat(),
+            },
+            {
+                "title": "Minor Report",
+                "impact": "Low",
+                "when_utc": (now + timedelta(minutes=2)).isoformat(),
+            },
+        ]
+        imminent = check_imminent_economic_events(calendar, window_minutes=5.0)
+        self.assertEqual(len(imminent), 1)
+        self.assertEqual(imminent[0]["title"], "CPI m/m")
+        self.assertAlmostEqual(imminent[0]["minutes_away"], 4.0, delta=0.5)
+
+    def test_protect_metals_position_before_event_long(self):
+        service = MagicMock()
+        service.get_position_qty.return_value = 10.0
+        service.get_mark_price.return_value = {"price": 250.0}
+        service.current_stop_price.return_value = 240.0
+        service.replace_stop_loss.return_value = {"id": "ord_123", "stop_price": 248.0}
+
+        synthetic_handler = MagicMock()
+        synthetic_handler.sync_strategy_stop.return_value = {"id": "synth_456"}
+
+        event = {"title": "CPI m/m", "minutes_away": 4.5}
+        result = protect_metals_position_before_event(
+            service=service,
+            symbol="GLD",
+            event=event,
+            stop_buffer_pct=0.8,
+            limit_offset_pct=0.5,
+            synthetic_handler=synthetic_handler,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["symbol"], "GLD")
+        self.assertEqual(result["side"], "long")
+        self.assertEqual(result["stop_price"], 248.0)
+        self.assertEqual(result["limit_price"], 246.76)
+        self.assertEqual(result["action_taken"], "updated")
+        self.assertEqual(result["alpaca_order_id"], "ord_123")
+        service.replace_stop_loss.assert_called_once_with("GLD", 248.0)
+        synthetic_handler.sync_strategy_stop.assert_called_once()
+
+    def test_protect_metals_position_before_event_short_reversal_buy(self):
+        service = MagicMock()
+        service.get_position_qty.return_value = -15.0  # Short position
+        service.get_mark_price.return_value = {"price": 250.0}
+        service.current_stop_price.return_value = 260.0  # Looser stop above
+        service.replace_stop_loss.return_value = {"id": "ord_short_123", "stop_price": 252.0}
+
+        synthetic_handler = MagicMock()
+        synthetic_handler.sync_strategy_stop.return_value = {"id": "synth_rev_456"}
+
+        event = {"title": "CPI m/m", "minutes_away": 4.5}
+        result = protect_metals_position_before_event(
+            service=service,
+            symbol="GLD",
+            event=event,
+            stop_buffer_pct=0.8,
+            limit_offset_pct=0.5,
+            synthetic_handler=synthetic_handler,
+            reversal_buy=True,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["symbol"], "GLD")
+        self.assertEqual(result["side"], "short")
+        self.assertEqual(result["qty"], 15.0)
+        self.assertEqual(result["stop_price"], 252.0)
+        self.assertEqual(result["limit_price"], 253.26)
+        self.assertEqual(result["action_taken"], "updated")
+        self.assertTrue(result["reversal_buy"])
+        self.assertEqual(result["reversal_qty"], 15.0)
+        self.assertEqual(result["reversal_event_title"], "CPI m/m")
+
+        synthetic_handler.sync_strategy_stop.assert_called_once_with(
+            symbol="GLD",
+            side="buy",
+            qty=15.0,
+            stop_price=252.0,
+            limit_price=253.26,
+            source="event_5m_CPI m/m",
+            reversal_buy=True,
+            reversal_qty=15.0,
+            reversal_event_title="CPI m/m",
+        )
+
+    def test_protect_metals_position_maintains_tighter_stop(self):
+        service = MagicMock()
+        service.get_position_qty.return_value = 10.0
+        service.get_mark_price.return_value = {"price": 250.0}
+        # Current stop is at 249.0 (already higher than 248.0 target stop)
+        service.current_stop_price.return_value = 249.0
+
+        synthetic_handler = MagicMock()
+        event = {"title": "CPI m/m", "minutes_away": 3.0}
+        result = protect_metals_position_before_event(
+            service=service,
+            symbol="GLD",
+            event=event,
+            stop_buffer_pct=0.8,
+            synthetic_handler=synthetic_handler,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action_taken"], "maintained_existing_tighter")
+        # Native replace_stop_loss should NOT be called to avoid loosening stop
+        service.replace_stop_loss.assert_not_called()
+
+    def test_protect_metals_ignores_non_metals(self):
+        service = MagicMock()
+        event = {"title": "CPI m/m", "minutes_away": 3.0}
+        result = protect_metals_position_before_event(
+            service=service, symbol="AAPL", event=event
+        )
+        self.assertIsNone(result)
+
+    @patch("bot.metals_intel.fetch_economic_calendar")
+    @patch("bot.web_state.AlpacaService")
+    def test_web_state_check_metals_event_protection(self, mock_service_cls, mock_cal):
+        import tempfile
+        from pathlib import Path
+        from bot.web_state import AppState
+        from bot.auth import AuthStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            auth_store = AuthStore(db_path=tmp_path / "auth.db")
+            user = auth_store.register_user("trader2", "trader2@example.com", "Password123!")
+
+            with patch("bot.web_state.AUTH_STORE", auth_store):
+                state = AppState(workspace_dir=tmp_path, user_id=user["id"])
+
+                svc = mock_service_cls.return_value
+                svc.list_positions.return_value = [{"symbol": "GLD", "qty": 10.0}]
+                svc.get_position_qty.return_value = 10.0
+                svc.get_mark_price.return_value = {"price": 250.0}
+                svc.current_stop_price.return_value = 240.0
+                svc.replace_stop_loss.return_value = {"id": "ord_event", "stop_price": 248.0}
+
+                now = datetime.now(timezone.utc)
+                mock_cal.return_value = [
+                    {
+                        "title": "FOMC Statement",
+                        "impact": "High",
+                        "when_utc": (now + timedelta(minutes=4)).isoformat(),
+                    }
+                ]
+
+                # Run check
+                armed = state.check_metals_event_protection()
+                self.assertEqual(len(armed), 1)
+                self.assertEqual(armed[0]["symbol"], "GLD")
+                self.assertEqual(armed[0]["stop_price"], 248.0)
+
+                # Check deduplication: running a second time should not duplicate
+                armed_2 = state.check_metals_event_protection()
+                self.assertEqual(len(armed_2), 0)
 
     def test_pair_presets(self):
         # All three were retuned toward slower filters and far fewer switches —

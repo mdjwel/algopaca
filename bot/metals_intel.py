@@ -410,6 +410,7 @@ def fetch_metals_macro_context(
     )
     relevant_events: list[dict[str, Any]] = []
     imminent_risk = False
+    events_5m_imminent: list[dict[str, Any]] = []
     now_utc = datetime.now(timezone.utc)
 
     for ev in cal:
@@ -427,6 +428,8 @@ def fetch_metals_macro_context(
                     event_copy["minutes_away"] = round(minutes_diff, 1)
                     if 0 <= minutes_diff <= 45 and impact == "High":
                         imminent_risk = True
+                    if 0.0 <= minutes_diff <= 5.0:
+                        events_5m_imminent.append(event_copy)
                 except Exception:
                     pass
             relevant_events.append(event_copy)
@@ -467,4 +470,224 @@ def fetch_metals_macro_context(
         "metals_macro_bias": metals_macro_bias,
         "macro_risk_level": macro_risk_level,
         "relevant_macro_events": relevant_events[:5],
+        "events_5m_imminent": events_5m_imminent,
     }
+
+
+def check_imminent_economic_events(
+    calendar: list[dict[str, Any]] | None = None,
+    window_minutes: float = 5.0,
+) -> list[dict[str, Any]]:
+    """Return high-impact economic events occurring within `window_minutes` from now."""
+    cal = (
+        calendar
+        if calendar is not None
+        else fetch_economic_calendar(hours_ahead=12, hours_behind=2)
+    )
+    imminent: list[dict[str, Any]] = []
+    now_utc = datetime.now(timezone.utc)
+    for ev in cal:
+        impact = str(ev.get("impact") or "Low")
+        title_lower = str(ev.get("title") or "").lower()
+        is_relevant = (impact == "High") or any(kw in title_lower for kw in _METALS_MACRO_KEYWORDS)
+        if not is_relevant:
+            continue
+        when_utc_str = ev.get("when_utc")
+        if not when_utc_str:
+            continue
+        try:
+            when_dt = datetime.fromisoformat(str(when_utc_str).replace("Z", "+00:00"))
+            if when_dt.tzinfo is None:
+                when_dt = when_dt.replace(tzinfo=timezone.utc)
+            minutes_diff = (when_dt - now_utc).total_seconds() / 60.0
+            if 0.0 <= minutes_diff <= float(window_minutes):
+                ev_copy = dict(ev)
+                ev_copy["minutes_away"] = round(minutes_diff, 1)
+                imminent.append(ev_copy)
+        except Exception:
+            continue
+    imminent.sort(key=lambda x: x.get("minutes_away", 999))
+    return imminent
+
+
+def calculate_event_stop_limit_prices(
+    current_price: float,
+    side: str = "long",
+    stop_buffer_pct: float = 0.8,
+    limit_offset_pct: float = 0.5,
+) -> tuple[float, float]:
+    """Calculate tight protective stop and limit prices based on current price.
+
+    Args:
+        current_price: Current mark/live price of the asset.
+        side: 'long' or 'short'.
+        stop_buffer_pct: Percent away from current price to set the stop (default 0.8%).
+        limit_offset_pct: Percent beyond the stop price to set the limit order (default 0.5%).
+
+    Returns:
+        (stop_price, limit_price) rounded to 2 decimal places.
+    """
+    price = float(current_price)
+    if price <= 0:
+        return 0.0, 0.0
+
+    side_str = str(side).strip().lower()
+    is_short = side_str in {"short", "sell_short"}
+    if is_short:
+        # For short position, stop price is ABOVE current price to cut losses on upward spikes
+        stop = price * (1.0 + stop_buffer_pct / 100.0)
+        limit = stop * (1.0 + limit_offset_pct / 100.0)
+    else:
+        # For long position, stop price is BELOW current price to cut losses on sudden drops
+        stop = price * (1.0 - stop_buffer_pct / 100.0)
+        limit = stop * (1.0 - limit_offset_pct / 100.0)
+
+    return round(stop, 2), round(limit, 2)
+
+
+def protect_metals_position_before_event(
+    service: Any,
+    symbol: str,
+    event: dict[str, Any],
+    *,
+    stop_buffer_pct: float = 0.8,
+    limit_offset_pct: float = 0.5,
+    synthetic_handler: Any = None,
+    reversal_buy: bool = True,
+) -> dict[str, Any] | None:
+    """Set or tighten a protective Stop-Limit order 5 minutes before an economic event.
+
+    Args:
+        service: AlpacaService instance.
+        symbol: Precious metal ticker (e.g. GLD, SLV, IAU, UGL, GDX).
+        event: Economic calendar event dictionary.
+        stop_buffer_pct: Distance in % below/above current price.
+        limit_offset_pct: Distance in % beyond stop price for limit.
+        synthetic_handler: Optional synthetic order handler (web_state) for 24h extended-hours execution.
+        reversal_buy: If True and position is short, automatically reverse into a buy position when stop-loss is hit.
+
+    Returns:
+        Dict with protection details or None if no action taken.
+    """
+    sym = str(symbol).upper().strip()
+    if not is_precious_metal(sym):
+        return None
+
+    try:
+        pos_qty = float(service.get_position_qty(sym) or 0.0)
+    except Exception as exc:
+        logger.warning("Could not read position qty for %s: %s", sym, exc)
+        return None
+
+    if pos_qty == 0.0:
+        return None
+
+    is_short = pos_qty < 0
+    side = "short" if is_short else "long"
+
+    try:
+        mark = service.get_mark_price(sym)
+        current_price = float(mark.get("price") or 0.0)
+    except Exception as exc:
+        logger.warning("Could not read mark price for %s: %s", sym, exc)
+        return None
+
+    if current_price <= 0.0:
+        return None
+
+    target_stop, target_limit = calculate_event_stop_limit_prices(
+        current_price=current_price,
+        side=side,
+        stop_buffer_pct=stop_buffer_pct,
+        limit_offset_pct=limit_offset_pct,
+    )
+
+    if target_stop <= 0 or target_limit <= 0:
+        return None
+
+    # Check current resting stop on Alpaca
+    try:
+        current_stop = service.current_stop_price(sym)
+    except Exception:
+        current_stop = None
+
+    should_update = False
+
+    if current_stop is None or current_stop <= 0:
+        should_update = True
+    elif not is_short:
+        # Long position: tighten stop upward toward current price.
+        # If existing stop is looser (below target_stop), tighten it up to target_stop!
+        # If existing stop is already higher than target_stop (locked in profit), keep the higher stop.
+        if current_stop < target_stop:
+            should_update = True
+    else:
+        # Short position: tighten stop downward toward current price.
+        # If existing stop is looser (above target_stop), tighten it down to target_stop!
+        if current_stop > target_stop:
+            should_update = True
+
+    event_title = str(event.get("title") or "Economic Event")
+    minutes_away = event.get("minutes_away", 5.0)
+
+    armed_info: dict[str, Any] = {
+        "symbol": sym,
+        "side": side,
+        "qty": abs(pos_qty),
+        "current_price": current_price,
+        "stop_price": target_stop,
+        "limit_price": target_limit,
+        "event_title": event_title,
+        "minutes_away": minutes_away,
+        "tightened_from": current_stop,
+        "action_taken": "updated" if should_update else "maintained_existing_tighter",
+        "reversal_buy": bool(reversal_buy and is_short),
+    }
+    if reversal_buy and is_short:
+        armed_info["reversal_qty"] = abs(pos_qty)
+        armed_info["reversal_event_title"] = event_title
+
+    if should_update:
+        # 1. Attempt native Alpaca stop replacement (works if market is in regular hours)
+        try:
+            replace_res = service.replace_stop_loss(sym, target_stop)
+            if replace_res:
+                armed_info["alpaca_order_id"] = replace_res.get("id")
+        except Exception as exc:
+            logger.debug("Native stop replacement for %s skipped or failed: %s", sym, exc)
+
+    # 2. Always register / sync with synthetic 24h stop-limit watcher!
+    # This is CRUCIAL because 8:30 AM ET releases (CPI, NFP) occur in pre-market
+    # where Alpaca rejects native stop orders.
+    handler = synthetic_handler
+    if handler is None and hasattr(service, "_get_synthetic_handler"):
+        handler = service._get_synthetic_handler()
+    if handler and hasattr(handler, "sync_strategy_stop"):
+        try:
+            synth = handler.sync_strategy_stop(
+                symbol=sym,
+                side="buy" if is_short else "sell",
+                qty=abs(pos_qty),
+                stop_price=target_stop,
+                limit_price=target_limit,
+                source=f"event_5m_{event_title[:20]}",
+                reversal_buy=bool(reversal_buy and is_short),
+                reversal_qty=abs(pos_qty) if (reversal_buy and is_short) else None,
+                reversal_event_title=event_title if (reversal_buy and is_short) else None,
+            )
+            if synth:
+                armed_info["synthetic_order_id"] = synth.get("id")
+        except Exception as exc:
+            logger.warning("Failed to sync synthetic event stop for %s: %s", sym, exc)
+
+    logger.info(
+        "Event Protection armed for %s (%s) 5m before '%s': Stop @ $%.2f, Limit @ $%.2f (mark $%.2f)",
+        sym,
+        side,
+        event_title,
+        target_stop,
+        target_limit,
+        current_price,
+    )
+    return armed_info
+

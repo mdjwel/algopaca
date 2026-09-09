@@ -260,14 +260,13 @@ _PRESETS: tuple[AiPreset, ...] = (
         id="gold_silver_macro",
         label="AI Gold & Silver Macro Momentum",
         summary="Calibrated macro & Gold/Silver Ratio playbook: buys pullbacks in confirmed gold uptrends across GLD, SLV, GDX, UGL & inverse short ETFs (GLL, DUST), with a wide ATR stop that lets trends run.",
-        min_confidence=0.62,
-        # Gold punishes tight risk management. Gridding the exit knobs on GLD
-        # (2005-2016 vs 2017-2025) showed returns improving monotonically as the
-        # ATR stop widened (1.2 -> 3.0) and degrading as the R target stretched
-        # past ~3. The old 1.7 / 3.5 pairing sat in the worst corner of both.
+        min_confidence=0.70,
+        # Gold punishes tight risk management and early trailing stops.
+        # Moving trail_after_r to 2.0 and take_profit_r to 4.0 lets trends run
+        # into large winners without getting prematurely choked by pullbacks.
         atr_stop_mult=2.2,
-        take_profit_r=3.0,
-        trail_after_r=1.2,
+        take_profit_r=4.0,
+        trail_after_r=2.0,
         max_positions=2,
         risk_pct=0.6,
         instructions=(
@@ -281,7 +280,7 @@ _PRESETS: tuple[AiPreset, ...] = (
             "durable edge. The US Dollar is far weaker than commonly claimed, and gold-miner leadership has "
             "NO measurable predictive power at all — treat miners_signal as colour, never as a reason.\n"
             "(c) Overtrading is what destroys returns here. Every fast timing rule tested underperformed "
-            "simply holding gold. Time in the trend beats frequency of trades.\n"
+            "simply holding gold. Time in the trend beats frequency of trades. Never scalp or take small micro-profits.\n"
             "LONG gates (all must hold):\n"
             "1. Regime: precious_metals_intel.trend_regime is 'bullish_above_sma200'. This is the single "
             "participation gate — it is what keeps you out of multi-year bear markets like 2012-2015.\n"
@@ -310,8 +309,8 @@ _PRESETS: tuple[AiPreset, ...] = (
             "- Do not chase overextended moves when dist_sma50_atr is beyond +3.2 (long) or -3.2 (short).\n"
             "EXITS & RUNNERS:\n"
             "- Gold's edge is captured by holding trends, so the default answer on an open, working position "
-            "is HOLD. Ratchet the stop to breakeven after 1.2R and let the ATR trail do the work.\n"
-            "- Scale out at the take-profit target; let the remainder trail for multi-week commodity upside.\n"
+            "is HOLD. Never scalp or cut winners early. Ratchet the stop to breakeven after 2.0R and let the ATR trail do the work for large multi-week gains.\n"
+            "- Scale out at the 4.0R take-profit target; let the remainder trail for multi-week commodity upside.\n"
             "- Exit early ONLY on a confirmed regime flip (loss of trend_regime), a macro score that has "
             "crossed below -0.5, or a major contradicting catalyst. Do not exit on short-term weakness alone "
             "— shallow pullbacks inside an uptrend are entries, not exits.\n"

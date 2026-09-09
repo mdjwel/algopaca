@@ -322,6 +322,27 @@ class CancelReinvestIn(BaseModel):
     plan_id: str = Field(..., min_length=1)
 
 
+class MultiTradeStartIn(BaseModel):
+    # Empty means "let the custom engine's own base strategy decide"; a runner
+    # with no engine falls back to SMA.
+    symbols: list[str] | str
+    strategy_mode: str = ""
+    custom_engine_id: Optional[str] = None
+    engine_name: Optional[str] = None
+    settings: Optional[dict[str, Any]] = None
+    bar_timeframe: Optional[str] = None
+    poll_seconds: Optional[int] = None
+    trade_qty: Optional[float] = None
+    trade_notional: Optional[float] = None
+    size_mode: Optional[str] = None
+    stop_loss_pct: Optional[float] = None
+
+
+class MultiTradeStopIn(BaseModel):
+    symbol: Optional[str] = None
+    id: Optional[str] = None
+
+
 class ManualOrderIn(BaseModel):
     symbol: str = "AAPL"
     # Four actions, not two broker sides — see `AppState.place_manual_order`
@@ -2386,6 +2407,94 @@ def clear_resolved_auto_trade_approvals(user: dict = Depends(require_auth)) -> d
         return state.clear_resolved_approvals()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Multi Auto-Trade Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/auto-trade/multi")
+def get_multi_auto_trade_status(user: dict = Depends(require_auth)) -> dict:
+    """List all concurrent ticker auto-trade runners and active symbols map."""
+    state = get_user_state(user["id"])
+    return {
+        "ok": True,
+        "runners": state.list_multi_auto_trades(),
+        "active_runners": state.multi_trader.list_active(),
+        "active_symbols": state.multi_trader.active_symbols_map(),
+    }
+
+
+@app.post("/api/auto-trade/multi/start")
+def start_multi_auto_trade(
+    body: MultiTradeStartIn, user: dict = Depends(require_auth)
+) -> dict:
+    """Start isolated auto-trade runner(s) for one or multiple tickers."""
+    state = get_user_state(user["id"])
+    settings = dict(body.settings or {})
+    if body.bar_timeframe:
+        settings["bar_timeframe"] = body.bar_timeframe
+    if body.poll_seconds is not None:
+        settings["poll_seconds"] = body.poll_seconds
+    if body.trade_qty is not None:
+        settings["trade_qty"] = body.trade_qty
+    if body.trade_notional is not None:
+        settings["trade_notional"] = body.trade_notional
+    if body.size_mode:
+        settings["size_mode"] = body.size_mode
+    if body.stop_loss_pct is not None:
+        settings["stop_loss_pct"] = body.stop_loss_pct
+
+    try:
+        started = state.start_multi_auto_trade(
+            symbols=body.symbols,
+            strategy_mode=body.strategy_mode,
+            custom_engine_id=body.custom_engine_id,
+            engine_name=body.engine_name,
+            settings=settings,
+        )
+        return {
+            "ok": True,
+            "started": started,
+            "active_runners": state.multi_trader.list_active(),
+            "active_symbols": state.multi_trader.active_symbols_map(),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/auto-trade/multi/stop")
+def stop_multi_auto_trade(
+    body: MultiTradeStopIn, user: dict = Depends(require_auth)
+) -> dict:
+    """Stop an isolated auto-trade runner by symbol or ID."""
+    state = get_user_state(user["id"])
+    target = (body.symbol or body.id or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Must provide symbol or id to stop.")
+    stopped = state.stop_multi_auto_trade(target)
+    return {
+        "ok": True,
+        "stopped": stopped,
+        "target": target,
+        "active_runners": state.multi_trader.list_active(),
+        "active_symbols": state.multi_trader.active_symbols_map(),
+    }
+
+
+@app.post("/api/auto-trade/multi/stop-all")
+def stop_all_multi_auto_trades(user: dict = Depends(require_auth)) -> dict:
+    """Stop all currently active auto-trade runners."""
+    state = get_user_state(user["id"])
+    count = state.stop_all_multi_auto_trades()
+    return {
+        "ok": True,
+        "stopped_count": count,
+        "active_runners": state.multi_trader.list_active(),
+        "active_symbols": state.multi_trader.active_symbols_map(),
+    }
 
 
 # ---------------------------------------------------------------------------

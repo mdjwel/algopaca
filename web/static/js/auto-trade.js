@@ -3053,6 +3053,7 @@ function render(state, { forceSettings = false } = {}) {
   lastDeskQuote = state.quote || null;
   renderPendingApprovals(state.pending_approvals);
   renderCurrentLoopOrders(state);
+  renderMultiAutoTrades(state);
   // Desk-session history renders on the History page.
   if (typeof applyHistory === "function") {
     applyHistory(state.loop_history, state.result_history);
@@ -3994,6 +3995,106 @@ $("pending-approvals-list")?.addEventListener("click", (ev) => {
 });
 $("btn-approve-all")?.addEventListener("click", onApproveAllOrders);
 $("btn-reject-all")?.addEventListener("click", onRejectAllOrders);
+
+/* ---------------------------------------------------------------------------
+   Multi Auto-Trade runners — the per-ticker loops started from Positions,
+   mirrored here so the desk's own page can watch and stop them.
+   --------------------------------------------------------------------------- */
+
+function formatRunnerUptime(seconds) {
+  const sec = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(sec / 60);
+  if (mins >= 60) {
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+  return mins > 0 ? `${mins}m ${sec % 60}s` : `${sec}s`;
+}
+
+function renderMultiAutoTrades(state) {
+  const card = $("multi-runners-card");
+  const listEl = $("multi-runners-list");
+  const badgeEl = $("multi-runners-badge");
+  if (!card || !listEl) return;
+
+  const runners = Array.isArray(state?.active_auto_trades) ? state.active_auto_trades : [];
+  if (!runners.length) {
+    card.hidden = true;
+    listEl.innerHTML = "";
+    if (badgeEl) badgeEl.textContent = "0";
+    return;
+  }
+
+  card.hidden = false;
+  if (badgeEl) badgeEl.textContent = String(runners.length);
+
+  listEl.innerHTML = runners
+    .map((runner) => {
+      const sym = String(runner.symbol || "");
+      const engine = runner.engine_name || String(runner.strategy_mode || "").toUpperCase() || "—";
+      const sig = String(runner.last_signal || "hold").toLowerCase();
+      const px = runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "—";
+      const reason = runner.error || runner.last_reason || "—";
+
+      return `
+      <div class="multi-runner-item ${runner.error ? "has-error" : ""}" data-symbol="${escapeHtml(sym)}">
+        <div class="multi-runner-head">
+          <span class="multi-runner-sym mono">${escapeHtml(sym)}</span>
+          <span class="multi-runner-engine">${escapeHtml(engine)}</span>
+          <span class="multi-runner-sig ${escapeHtml(sig)}">${escapeHtml(sig.toUpperCase())}</span>
+          <span class="multi-runner-px mono">${escapeHtml(px)}</span>
+          <button type="button" class="btn btn-sm btn-ghost-danger btn-stop-runner" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("stop_autotrade", "Stop Auto-Trade"))}">
+            ${escapeHtml(tx("stop", "Stop"))}
+          </button>
+        </div>
+        <div class="multi-runner-meta">
+          <span>${escapeHtml(tx("bar_timeframe", "Bar Timeframe"))}: <strong>${escapeHtml(String(runner.timeframe || "—"))}</strong></span>
+          <span>${escapeHtml(tx("poll_interval", "Poll Interval"))}: <strong>${escapeHtml(String(runner.poll_seconds || "—"))}s</strong></span>
+          <span>${escapeHtml(tx("autotrade_cycles", "Cycles"))}: <strong>${escapeHtml(String(runner.cycles_count || 0))}</strong></span>
+          <span>${escapeHtml(tx("autotrade_trades", "Trades"))}: <strong>${escapeHtml(String(runner.trades_count || 0))}</strong></span>
+          <span>${escapeHtml(tx("autotrade_uptime", "Uptime"))}: <strong>${escapeHtml(formatRunnerUptime(runner.uptime_seconds))}</strong></span>
+        </div>
+        <p class="multi-runner-reason">${escapeHtml(tx("last_signal", "Last signal"))}: ${escapeHtml(reason)}</p>
+      </div>`;
+    })
+    .join("");
+}
+
+async function stopRunnerFromDesk(symbol) {
+  if (!symbol) return;
+  try {
+    setBusy(true, tx("stopping_autotrade", "Stopping…"));
+    await api("/api/auto-trade/multi/stop", {
+      method: "POST",
+      body: JSON.stringify({ symbol }),
+    });
+    showToast(tx("autotrade_stopped_toast", "Auto-Trade stopped"), "ok");
+    await refreshStatus();
+  } catch (err) {
+    showToast(err.message || tx("error_stop_autotrade", "Failed to stop auto-trade"), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function stopAllRunnersFromDesk() {
+  try {
+    setBusy(true, tx("stopping_autotrade", "Stopping…"));
+    await api("/api/auto-trade/multi/stop-all", { method: "POST", body: "{}" });
+    showToast(tx("all_autotrades_stopped_toast", "All active auto-trades stopped"), "ok");
+    await refreshStatus();
+  } catch (err) {
+    showToast(err.message || tx("error_stop_autotrade", "Failed to stop auto-trade"), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+$("multi-runners-list")?.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".btn-stop-runner");
+  if (!btn) return;
+  stopRunnerFromDesk(btn.dataset.symbol);
+});
+$("btn-stop-all-runners")?.addEventListener("click", stopAllRunnersFromDesk);
 function validateInlineNotificationEmail() {
   const input = $("field-notification-email");
   const errEl = $("field-notification-email-error");

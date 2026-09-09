@@ -197,6 +197,28 @@
           </div>
         </section>
 
+        <!-- Active Multi Auto-Trades Banner -->
+        <section class="panel pos-autotrades-panel" id="pos-autotrades-section" hidden aria-labelledby="pos-autotrades-heading">
+          <div class="panel-head">
+            <div class="log-heading">
+              <div class="pos-autotrade-beacon" aria-hidden="true">
+                <span class="beacon-core"></span>
+                <span class="beacon-ring"></span>
+              </div>
+              <h2 id="pos-autotrades-heading" data-i18n="active_auto_trades">Active Auto-Trades</h2>
+              <span id="pos-autotrades-count" class="log-count">0</span>
+            </div>
+            <div class="panel-head-actions">
+              <button type="button" id="btn-stop-all-autotrades" class="ghost ghost-danger btn-sm" title="Stop all active auto-trades" data-i18n-title="stop_all_autotrades">
+                <span data-i18n="stop_all_autotrades">Stop All Auto-Trades</span>
+              </button>
+            </div>
+          </div>
+          <div class="pos-autotrades-body">
+            <div id="pos-autotrades-list" class="pos-autotrades-list"></div>
+          </div>
+        </section>
+
         <!-- Main Positions Table / Management Section -->
         <section class="panel positions-panel" id="positions-panel" aria-labelledby="positions-heading">
           <div class="panel-head">
@@ -387,6 +409,9 @@
             </div>
             <div class="pos-batch-floating-actions">
               <button type="button" id="btn-batch-deselect" class="ghost btn-sm" data-i18n="pos_lots_deselect">Deselect</button>
+              <button type="button" id="btn-batch-autotrade" class="button copper btn-sm">
+                <span id="btn-batch-autotrade-text" data-i18n="autotrade_selected">Auto Trade Selected</span>
+              </button>
               <button type="button" id="btn-batch-liquidate" class="primary primary-danger btn-sm">
                 <span id="btn-batch-liquidate-text" data-i18n="liquidate_selected">Close Selected</span>
               </button>
@@ -989,6 +1014,122 @@
         <div class="pos-modal-foot">
           <button type="button" id="btn-exit-modal-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
           <button type="button" id="btn-exit-modal-submit" class="primary" data-i18n="apply_exit_strategy">Apply Exit Strategy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi Auto-Trade Configuration Modal Dialog -->
+    <div id="pos-autotrade-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-autotrade-modal-title" hidden>
+      <div class="pos-modal-card pos-autotrade-card">
+        <div class="pos-modal-head">
+          <div class="pos-modal-title-wrap">
+            <h3 id="pos-autotrade-modal-title" data-i18n="autotrade_modal_title">Auto-Trade Strategy</h3>
+            <span id="pos-autotrade-symbol-badge" class="pos-symbol-badge">AAPL</span>
+            <span id="pos-autotrade-status-badge" class="badge badge-copper" hidden>Running</span>
+          </div>
+          <button type="button" id="btn-autotrade-modal-x" class="pos-modal-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+        </div>
+
+        <div class="pos-modal-body pos-autotrade-body">
+          <!-- Active Runner Status (if already running for this symbol) -->
+          <div id="pos-autotrade-active-card" class="pos-autotrade-active-card" hidden>
+            <div class="pos-autotrade-active-head">
+              <div class="pos-autotrade-beacon" aria-hidden="true">
+                <span class="beacon-core"></span>
+                <span class="beacon-ring"></span>
+              </div>
+              <strong id="pos-autotrade-active-engine">AI Momentum</strong>
+              <span id="pos-autotrade-active-signal" class="pos-signal-badge hold">HOLD</span>
+            </div>
+            <div class="pos-autotrade-active-meta">
+              <span>Price: <strong id="pos-autotrade-active-price">$0.00</strong></span>
+              <span>Cycles: <strong id="pos-autotrade-active-cycles">0</strong></span>
+              <span>Uptime: <strong id="pos-autotrade-active-uptime">0s</strong></span>
+            </div>
+            <p id="pos-autotrade-active-reason" class="pos-autotrade-active-reason">—</p>
+            <div class="pos-autotrade-active-action">
+              <button type="button" id="btn-autotrade-modal-stop" class="button ghost ghost-danger btn-sm" data-i18n="stop_autotrade">
+                Stop Auto-Trade
+              </button>
+            </div>
+          </div>
+
+          <!-- Symbols Selected Info -->
+          <div class="pos-autotrade-targets">
+            <label class="pos-modal-label" data-i18n="target_tickers">Target Ticker(s)</label>
+            <div id="pos-autotrade-targets-chips" class="pos-autotrade-targets-chips"></div>
+          </div>
+
+          <!-- Strategy Source Selector: Standard Strategy vs Saved Custom Engine -->
+          <div class="pos-autotrade-tabs" role="tablist">
+            <button type="button" id="tab-strategy-standard" class="pos-exit-tab is-active" role="tab" aria-selected="true" data-i18n="standard_strategies">Standard Strategies</button>
+            <button type="button" id="tab-strategy-custom" class="pos-exit-tab" role="tab" aria-selected="false" data-i18n="custom_engines">Custom Engines</button>
+          </div>
+
+          <!-- Standard Strategies Options -->
+          <div id="pane-strategy-standard" class="pos-strategy-pane">
+            <label class="pos-modal-label" for="pos-standard-strategy-select" data-i18n="select_strategy">Select Strategy</label>
+            <select id="pos-standard-strategy-select" class="pos-field-select">
+              <option value="sma" selected data-i18n="strategy_sma">SMA Crossover (Fast / Slow Moving Averages)</option>
+              <option value="dip" data-i18n="strategy_dip">Buy The Dip (RSI Oversold Momentum)</option>
+              <option value="ai" data-i18n="strategy_ai">AI Momentum (Adaptive Quant Reasoning)</option>
+              <option value="day" data-i18n="strategy_day">Day Trading (Intraday VWAP / ORB Breakout)</option>
+              <option value="ls" data-i18n="strategy_ls">Long / Short Trend (EMA Crossover + ADX Regime)</option>
+            </select>
+          </div>
+
+          <!-- Custom Engines Options -->
+          <div id="pane-strategy-custom" class="pos-strategy-pane" hidden>
+            <label class="pos-modal-label" for="pos-custom-engine-select" data-i18n="select_custom_engine">Select Custom Engine</label>
+            <select id="pos-custom-engine-select" class="pos-field-select">
+              <option value="" data-i18n="loading_custom_engines">Loading engines…</option>
+            </select>
+            <p id="pos-custom-engine-desc" class="field-help"></p>
+          </div>
+
+          <!-- Quick Parameters Configuration -->
+          <div class="pos-autotrade-params-grid">
+            <div class="pos-autotrade-field">
+              <label class="pos-modal-label" for="pos-autotrade-timeframe" data-i18n="bar_timeframe">Bar Timeframe</label>
+              <select id="pos-autotrade-timeframe" class="pos-field-select">
+                <option value="1Min">1 Min</option>
+                <option value="5Min">5 Min</option>
+                <option value="15Min" selected>15 Min</option>
+                <option value="1Hour">1 Hour</option>
+                <option value="1Day">1 Day</option>
+              </select>
+            </div>
+
+            <div class="pos-autotrade-field">
+              <label class="pos-modal-label" for="pos-autotrade-poll" data-i18n="poll_interval">Poll Interval</label>
+              <select id="pos-autotrade-poll" class="pos-field-select">
+                <option value="15">Every 15s</option>
+                <option value="30" selected>Every 30s</option>
+                <option value="60">Every 1 min</option>
+                <option value="300">Every 5 min</option>
+              </select>
+            </div>
+
+            <div class="pos-autotrade-field">
+              <label class="pos-modal-label" for="pos-autotrade-sizing-mode" data-i18n="order_sizing">Sizing Mode</label>
+              <select id="pos-autotrade-sizing-mode" class="pos-field-select">
+                <option value="qty" selected data-i18n="fixed_shares">Fixed Shares (Qty)</option>
+                <option value="notional" data-i18n="fixed_dollar">Fixed Dollar ($ Notional)</option>
+              </select>
+            </div>
+
+            <div class="pos-autotrade-field">
+              <label class="pos-modal-label" id="pos-autotrade-size-label" for="pos-autotrade-size-input" data-i18n="trade_qty">Trade Quantity</label>
+              <input type="number" id="pos-autotrade-size-input" class="pos-field-input" min="0.01" step="any" value="1" />
+            </div>
+          </div>
+
+          <p id="pos-autotrade-modal-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="pos-modal-foot">
+          <button type="button" id="btn-autotrade-modal-cancel" class="ghost" data-i18n="cancel_modal">Cancel</button>
+          <button type="button" id="btn-autotrade-modal-submit" class="button copper" data-i18n="start_autotrade">Start Auto-Trade</button>
         </div>
       </div>
     </div>

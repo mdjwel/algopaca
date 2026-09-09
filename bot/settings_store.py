@@ -99,6 +99,8 @@ _DEFAULTS: dict[str, Any] = {
     "ai_cooldown_minutes": 60,
     "ai_max_spread_bps": 25.0,
     "stop_limit_offset_pct": 0.0,
+    "stop_loss_24h": True,
+    "metals_reversal_buy_on_stop": True,
     "lang": "en",
     "options_enabled": True,
     "options_style": "vertical",

@@ -1869,3 +1869,157 @@ details.loop-order-accordion[open] > summary.loop-order-summary .loop-order-care
 
 
 
+/* ---------------------------------------------------------------------------
+   Multi Auto-Trade runners panel — the per-ticker loops started from Positions
+   --------------------------------------------------------------------------- */
+
+.multi-runners-panel {
+  border-color: color-mix(in srgb, var(--buy) 35%, var(--line));
+  background: color-mix(in srgb, var(--buy) 4%, var(--panel));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  margin-bottom: 1.25rem;
+}
+
+.multi-runners-panel .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.multi-runners-panel .panel-head-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.multi-runner-beacon {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.multi-runner-beacon .beacon-core {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--buy);
+}
+
+.multi-runner-beacon .beacon-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--buy);
+  opacity: 0.8;
+  animation: multi-runner-pulse 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes multi-runner-pulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multi-runner-beacon .beacon-ring {
+    animation: none;
+  }
+}
+
+.multi-runners-body {
+  padding: 0.5rem 0 0;
+}
+
+.multi-runners-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.6rem;
+}
+
+.multi-runner-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius-sm, 10px);
+  background: color-mix(in srgb, var(--panel) 92%, var(--ink));
+}
+
+.multi-runner-item.has-error {
+  border-color: color-mix(in srgb, var(--sell) 45%, var(--line));
+}
+
+.multi-runner-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.multi-runner-sym {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.multi-runner-engine {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.multi-runner-sig {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+}
+
+.multi-runner-sig.buy {
+  background: color-mix(in srgb, var(--buy) 18%, transparent);
+  color: var(--buy);
+}
+
+.multi-runner-sig.sell {
+  background: color-mix(in srgb, var(--sell) 18%, transparent);
+  color: var(--sell);
+}
+
+.multi-runner-px {
+  font-size: 0.82rem;
+}
+
+.multi-runner-head .btn-stop-runner {
+  margin-left: auto;
+}
+
+.multi-runner-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.multi-runner-reason {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .multi-runner-head .btn-stop-runner {
+    margin-left: 0;
+    width: 100%;
+  }
+}

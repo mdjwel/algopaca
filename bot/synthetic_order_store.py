@@ -49,6 +49,9 @@ _PERSISTED_FIELDS = (
     "triggered_at",
     "settled_at_iso",
     "error_count",
+    "reversal_buy",
+    "reversal_qty",
+    "reversal_event_title",
 )
 
 ACTIVE_STATUSES = frozenset({"waiting", "triggered"})
@@ -148,6 +151,15 @@ def _sanitize(order: dict[str, Any]) -> dict[str, Any] | None:
     raw_status = str(out.get("status") or "waiting").strip().lower()
     out["status"] = raw_status if raw_status in VALID_STATUSES else "waiting"
     out.setdefault("error_count", 0)
+    if "reversal_buy" in out and out["reversal_buy"] is not None:
+        out["reversal_buy"] = bool(out["reversal_buy"])
+    if "reversal_qty" in out and out["reversal_qty"] is not None:
+        try:
+            out["reversal_qty"] = float(out["reversal_qty"])
+        except (TypeError, ValueError):
+            out["reversal_qty"] = None
+    if "reversal_event_title" in out and out["reversal_event_title"] is not None:
+        out["reversal_event_title"] = str(out["reversal_event_title"])
     return out
 
 

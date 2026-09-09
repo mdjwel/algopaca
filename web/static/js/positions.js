@@ -65,6 +65,7 @@ const POS_MODAL_IDS = [
   "pos-liquidate-selected-modal",
   "pos-liquidate-all-modal",
   "pos-exit-modal",
+  "pos-autotrade-modal",
 ];
 
 let activeExitPosition = null;
@@ -377,6 +378,9 @@ function renderPositionsPage() {
         : `${filtered.length} / ${positions.length}`;
   }
 
+  // Render Active Multi Auto-Trades Banner
+  renderActiveAutoTradesBanner(data);
+
   // Render Table & Cards
   renderPositionsTable(filtered);
   renderPositionsCards(filtered);
@@ -657,12 +661,14 @@ function updateSelectedBatchButton() {
   const floatingMv = $("pos-batch-mv");
   const floatingPnl = $("pos-batch-pnl");
   const floatingBtnText = $("btn-batch-liquidate-text");
+  const floatingAutoTradeBtn = $("btn-batch-autotrade");
+  const floatingAutoTradeText = $("btn-batch-autotrade-text");
 
   const count = posSelectedSymbols.size;
-  const isVisible = count > 0 && !loopRunning;
+  const isVisible = count > 0;
 
   if (btn) {
-    btn.hidden = !isVisible;
+    btn.hidden = !isVisible || loopRunning;
     if (isVisible && text) {
       text.textContent = `${tx("liquidate_selected", "Close Selected")} (${count})`;
     }
@@ -683,6 +689,14 @@ function updateSelectedBatchButton() {
       }
       if (floatingBtnText) {
         floatingBtnText.textContent = `${tx("liquidate_selected", "Close Selected")} (${count})`;
+      }
+      if (floatingAutoTradeText) {
+        floatingAutoTradeText.textContent = `${tx("autotrade_selected", "Auto Trade Selected")} (${count})`;
+      }
+      const batchLiquidateBtn = $("btn-batch-liquidate");
+      if (batchLiquidateBtn) {
+        batchLiquidateBtn.disabled = loopRunning;
+        batchLiquidateBtn.title = loopRunning ? tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually") : "";
       }
     }
   }
@@ -767,6 +781,8 @@ function renderPositionsTable(positions) {
     .map((pos) => {
       const sym = pos.symbol;
       const isSelected = posSelectedSymbols.has(sym);
+      const isAutoTrading = !!pos.is_auto_trading;
+      const autoStratName = pos.auto_trade ? (pos.auto_trade.engine_name || pos.auto_trade.strategy_mode?.toUpperCase() || "AUTO") : "AUTO";
       const side = String(pos.side || "long").toLowerCase();
       const upl = Number(pos.unrealized_pl || 0);
       const ipl = Number(pos.unrealized_intraday_pl || 0);
@@ -782,12 +798,13 @@ function renderPositionsTable(positions) {
       return `
       <tr class="pos-table-row ${isSelected ? "is-selected" : ""} ${flashClass}" data-symbol="${escapeHtml(sym)}" data-side="${escapeHtml(side)}">
         <td class="pos-cell-check">
-          <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} ${loopRunning ? "disabled" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
+          <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
         </td>
         <td class="pos-cell-sym">
           <div class="pos-sym-group">
             ${symbolManualOrderLink(sym, "", pos.option_label || "")}
             ${pos.is_option ? `<small class="pos-option-tag">${escapeHtml(tx("option_contract", "Option"))}</small>` : ""}
+            ${isAutoTrading ? `<span class="pos-row-autotrade-badge" title="${escapeHtml(tx("autotrade_badge_hint", "Auto-trade running for this ticker"))}"><span class="badge-dot"></span>${escapeHtml(autoStratName)}</span>` : ""}
           </div>
         </td>
         <td>
@@ -819,6 +836,9 @@ function renderPositionsTable(positions) {
         <td class="pos-cell-prot"><div class="pos-prot-stack">${protectionMarkup(pos)}</div></td>
         <td class="pos-cell-actions">
           <div class="pos-action-row">
+            <button type="button" class="pos-act pos-act-autotrade btn-pos-autotrade ${isAutoTrading ? "is-running" : ""}" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(isAutoTrading ? tx("autotrade_running_hint", "Auto-Trade running. Click to configure or stop.") : tx("autotrade_btn_hint", "Launch automated trading strategy for this ticker"))}">
+              ${escapeHtml(isAutoTrading ? tx("autotrade_btn_manage", "Auto: On") : tx("autotrade_btn_launch", "Auto Trade"))}
+            </button>
             <button type="button" class="pos-act pos-act-exit btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
               ${escapeHtml(tx("nav_exit", "Exit"))}
             </button>
@@ -841,7 +861,7 @@ function renderPositionsTable(positions) {
 function updateSelectAllHeaderState(visiblePositions) {
   const selectAll = $("pos-select-all");
   if (!selectAll) return;
-  if (!visiblePositions || visiblePositions.length === 0 || loopRunning) {
+  if (!visiblePositions || visiblePositions.length === 0) {
     selectAll.checked = false;
     selectAll.indeterminate = false;
     selectAll.disabled = true;
@@ -863,6 +883,8 @@ function renderPositionsCards(positions) {
     .map((pos) => {
       const sym = pos.symbol;
       const isSelected = posSelectedSymbols.has(sym);
+      const isAutoTrading = !!pos.is_auto_trading;
+      const autoStratName = pos.auto_trade ? (pos.auto_trade.engine_name || pos.auto_trade.strategy_mode?.toUpperCase() || "AUTO") : "AUTO";
       const actionsOpen = posExpandedCardActions.has(sym);
       const side = String(pos.side || "long").toLowerCase();
       const upl = Number(pos.unrealized_pl || 0);
@@ -873,9 +895,10 @@ function renderPositionsCards(positions) {
       <div class="pos-card ${isSelected ? "is-selected" : ""}" role="listitem" data-symbol="${escapeHtml(sym)}">
         <div class="pos-card-head">
           <div class="pos-card-sym-wrap">
-            <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} ${loopRunning ? "disabled" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
+            <input type="checkbox" class="pos-check-input pos-row-check" data-symbol="${escapeHtml(sym)}" ${isSelected ? "checked" : ""} aria-label="${escapeHtml(tx("pos_select_symbol", "Select {symbol}", { symbol: sym }))}" />
             ${symbolManualOrderLink(sym, "pos-card-sym", pos.option_label || "")}
             ${pos.is_option ? `<small class="pos-option-tag">${escapeHtml(tx("option_contract", "Option"))}</small>` : ""}
+            ${isAutoTrading ? `<span class="pos-row-autotrade-badge" title="${escapeHtml(tx("autotrade_badge_hint", "Auto-trade running for this ticker"))}"><span class="badge-dot"></span>${escapeHtml(autoStratName)}</span>` : ""}
             <span class="side-badge ${side}">${escapeHtml(positionSideLabel(side))}</span>
           </div>
           <div class="pos-card-mv mono">
@@ -921,6 +944,9 @@ function renderPositionsCards(positions) {
           </svg>
         </button>
         <div class="pos-card-actions" ${actionsOpen ? "" : "hidden"}>
+          <button type="button" class="ghost btn-pos-autotrade ${isAutoTrading ? "is-running" : ""}" data-symbol="${escapeHtml(sym)}">
+            ${escapeHtml(isAutoTrading ? tx("autotrade_btn_manage", "Auto: On") : tx("autotrade_btn_launch", "Auto Trade"))}
+          </button>
           <button type="button" class="ghost btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
             ${escapeHtml(tx("exit_strategy_btn", "Exit Strategy"))}
           </button>
@@ -2342,6 +2368,425 @@ async function submitLiquidateAll() {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Multi Auto-Trade Management (Banner, Modal & Runners API)
+   --------------------------------------------------------------------------- */
+
+let activeAutoTradeSymbols = [];
+let activeAutoTradeTab = "standard"; // "standard" | "custom"
+let customEnginesCache = null;
+
+function renderActiveAutoTradesBanner(data) {
+  const banner = $("pos-autotrades-section");
+  const list = $("pos-autotrades-list");
+  const countEl = $("pos-autotrades-count");
+  if (!banner) return;
+
+  const runners = Array.isArray(data?.active_auto_trades) ? data.active_auto_trades : [];
+  if (runners.length === 0) {
+    banner.hidden = true;
+    if (list) list.innerHTML = "";
+    if (countEl) countEl.textContent = "0";
+    return;
+  }
+
+  banner.hidden = false;
+  if (countEl) countEl.textContent = String(runners.length);
+  if (!list) return;
+
+  list.innerHTML = runners
+    .map((r) => {
+      const sym = r.symbol;
+      const engine = r.engine_name || r.strategy_mode?.toUpperCase() || "Standard";
+      const sig = String(r.last_signal || "hold").toLowerCase();
+      const px = r.last_price != null ? `$${Number(r.last_price).toFixed(2)}` : "—";
+
+      return `
+      <div class="pos-autotrade-chip" data-symbol="${escapeHtml(sym)}">
+        <span class="pos-autotrade-chip-sym">${escapeHtml(sym)}</span>
+        <span class="pos-autotrade-chip-engine">${escapeHtml(engine)}</span>
+        <span class="pos-autotrade-chip-sig ${sig}">${escapeHtml(sig.toUpperCase())}</span>
+        <span class="pos-autotrade-chip-price">${px}</span>
+        <button type="button" class="pos-autotrade-chip-stop btn-stop-chip-runner" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("stop_autotrade", "Stop Auto-Trade"))}">
+          ${escapeHtml(tx("stop", "Stop"))}
+        </button>
+      </div>`;
+    })
+    .join("");
+}
+
+async function fetchCustomEnginesList() {
+  if (customEnginesCache) return customEnginesCache;
+  try {
+    const res = await fetch("/api/custom-engines");
+    if (!res.ok) return [];
+    const data = await res.json();
+    customEnginesCache = Array.isArray(data.engines) ? data.engines : [];
+    return customEnginesCache;
+  } catch {
+    return [];
+  }
+}
+
+function syncSizingModeUI(mode) {
+  const select = $("pos-autotrade-sizing-mode");
+  const lbl = $("pos-autotrade-size-label");
+  if (select && mode) select.value = mode;
+  const currentMode = select ? select.value : mode;
+  if (currentMode === "notional") {
+    if (lbl) lbl.textContent = tx("trade_notional", "Trade Notional ($)");
+  } else {
+    if (lbl) lbl.textContent = tx("trade_qty", "Trade Quantity");
+  }
+}
+
+async function populateCustomEnginesSelect(selectedId = null) {
+  const select = $("pos-custom-engine-select");
+  const desc = $("pos-custom-engine-desc");
+  if (!select) return;
+
+  // Pair engines trade a long and a short leg together, which a single-ticker
+  // runner cannot express — keep them out of the picker.
+  const engines = (await fetchCustomEnginesList()).filter(
+    (e) => (e.base_engine || e.choices?.strategy_mode || "") !== "pair"
+  );
+  if (!engines || engines.length === 0) {
+    select.innerHTML = `<option value="">${escapeHtml(tx("no_custom_engines", "No custom engines found"))}</option>`;
+    if (desc) desc.textContent = "";
+    return;
+  }
+
+  select.innerHTML = engines
+    .map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name || e.id)}</option>`)
+    .join("");
+
+  if (selectedId && engines.some((e) => e.id === selectedId)) {
+    select.value = selectedId;
+  }
+
+  const chosen = engines.find((e) => e.id === select.value) || engines[0];
+  if (desc && chosen?.description) {
+    desc.textContent = chosen.description;
+  }
+}
+
+async function setAutoTradeTab(tab, selectedCustomId = null) {
+  activeAutoTradeTab = tab;
+  const tabStd = $("tab-strategy-standard");
+  const tabCust = $("tab-strategy-custom");
+  const paneStd = $("pane-strategy-standard");
+  const paneCust = $("pane-strategy-custom");
+
+  if (tab === "custom") {
+    tabStd?.classList.remove("is-active");
+    tabStd?.setAttribute("aria-selected", "false");
+    tabCust?.classList.add("is-active");
+    tabCust?.setAttribute("aria-selected", "true");
+    if (paneStd) paneStd.hidden = true;
+    if (paneCust) {
+      paneCust.hidden = false;
+      await populateCustomEnginesSelect(selectedCustomId);
+    }
+  } else {
+    tabCust?.classList.remove("is-active");
+    tabCust?.setAttribute("aria-selected", "false");
+    tabStd?.classList.add("is-active");
+    tabStd?.setAttribute("aria-selected", "true");
+    if (paneCust) paneCust.hidden = true;
+    if (paneStd) paneStd.hidden = false;
+  }
+}
+
+async function openAutoTradeModal(symbols) {
+  const list = Array.isArray(symbols) ? symbols : [symbols];
+  activeAutoTradeSymbols = list.filter(Boolean);
+  if (activeAutoTradeSymbols.length === 0) return;
+
+  const titleEl = $("pos-autotrade-modal-title");
+  const symBadge = $("pos-autotrade-symbol-badge");
+  const statusBadge = $("pos-autotrade-status-badge");
+  const chipsEl = $("pos-autotrade-targets-chips");
+  const errEl = $("pos-autotrade-modal-error");
+  const activeCard = $("pos-autotrade-active-card");
+  const submitBtn = $("btn-autotrade-modal-submit");
+
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+
+  if (chipsEl) {
+    chipsEl.innerHTML = activeAutoTradeSymbols
+      .map((s) => `<span class="pos-autotrade-target-pill">${escapeHtml(s)}</span>`)
+      .join("");
+  }
+
+  const isSingle = activeAutoTradeSymbols.length === 1;
+  const firstSym = activeAutoTradeSymbols[0];
+
+  if (symBadge) {
+    symBadge.textContent = isSingle ? firstSym : `${activeAutoTradeSymbols.length} Holdings`;
+  }
+
+  // Check if runner is currently active for this symbol
+  const activeRunners = (positionsData?.active_auto_trades || []).filter((r) =>
+    activeAutoTradeSymbols.includes(r.symbol)
+  );
+  const isRunning = activeRunners.length > 0;
+
+  if (statusBadge) {
+    statusBadge.hidden = !isRunning;
+    statusBadge.textContent = isRunning ? tx("autotrade_running_badge", "Running") : "";
+  }
+
+  if (activeCard) {
+    if (isRunning) {
+      activeCard.hidden = false;
+      const runner = activeRunners[0];
+      const engineEl = $("pos-autotrade-active-engine");
+      const sigEl = $("pos-autotrade-active-signal");
+      const pxEl = $("pos-autotrade-active-price");
+      const cyclesEl = $("pos-autotrade-active-cycles");
+      const uptimeEl = $("pos-autotrade-active-uptime");
+      const reasonEl = $("pos-autotrade-active-reason");
+
+      if (engineEl) engineEl.textContent = runner.engine_name || runner.strategy_mode?.toUpperCase() || "Standard";
+      if (sigEl) {
+        const s = String(runner.last_signal || "hold").toLowerCase();
+        sigEl.className = `pos-signal-badge ${s}`;
+        sigEl.textContent = s.toUpperCase();
+      }
+      if (pxEl) pxEl.textContent = runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "—";
+      if (cyclesEl) cyclesEl.textContent = String(runner.cycles_count || 0);
+      if (uptimeEl) {
+        const sec = runner.uptime_seconds || 0;
+        const mins = Math.floor(sec / 60);
+        uptimeEl.textContent = mins > 0 ? `${mins}m ${sec % 60}s` : `${sec}s`;
+      }
+      if (reasonEl) reasonEl.textContent = runner.last_reason || runner.error || "—";
+    } else {
+      activeCard.hidden = true;
+    }
+  }
+
+  // Pre-populate form fields from running configuration or position defaults
+  if (isRunning) {
+    const runner = activeRunners[0];
+    if (runner.custom_engine_id) {
+      await setAutoTradeTab("custom", runner.custom_engine_id);
+    } else {
+      await setAutoTradeTab("standard");
+      const stdSelect = $("pos-standard-strategy-select");
+      if (stdSelect && runner.strategy_mode) {
+        stdSelect.value = runner.strategy_mode;
+      }
+    }
+
+    const tfSelect = $("pos-autotrade-timeframe");
+    if (tfSelect && runner.timeframe) {
+      tfSelect.value = runner.timeframe;
+    }
+
+    const pollSelect = $("pos-autotrade-poll");
+    if (pollSelect && runner.poll_seconds) {
+      pollSelect.value = String(runner.poll_seconds);
+    }
+
+    const sizeMode = runner.settings?.size_mode || (runner.settings?.trade_notional != null ? "notional" : "qty");
+    syncSizingModeUI(sizeMode);
+    const sizeInp = $("pos-autotrade-size-input");
+    if (sizeInp) {
+      if (sizeMode === "notional" && runner.settings?.trade_notional != null) {
+        sizeInp.value = runner.settings.trade_notional;
+      } else if (runner.settings?.trade_qty != null) {
+        sizeInp.value = runner.settings.trade_qty;
+      }
+    }
+  } else {
+    await setAutoTradeTab("standard");
+    const stdSelect = $("pos-standard-strategy-select");
+    if (stdSelect) stdSelect.value = "sma";
+
+    const tfSelect = $("pos-autotrade-timeframe");
+    if (tfSelect) tfSelect.value = "15Min";
+
+    const pollSelect = $("pos-autotrade-poll");
+    if (pollSelect) pollSelect.value = "30";
+
+    syncSizingModeUI("qty");
+
+    const pos = (positionsData?.positions || []).find((p) => p.symbol === firstSym);
+    const defQty = pos && pos.qty && Math.abs(parseFloat(pos.qty)) > 0
+      ? Math.abs(parseFloat(pos.qty))
+      : 1;
+    const sizeInp = $("pos-autotrade-size-input");
+    if (sizeInp) sizeInp.value = defQty;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = isRunning
+      ? tx("update_autotrade", "Update Auto-Trade")
+      : tx("start_autotrade", "Start Auto-Trade");
+  }
+
+  openPosModal("pos-autotrade-modal");
+}
+
+function closeAutoTradeModal() {
+  closePosModal("pos-autotrade-modal");
+  activeAutoTradeSymbols = [];
+}
+
+async function submitAutoTradeModal() {
+  if (activeAutoTradeSymbols.length === 0) return;
+
+  const errEl = $("pos-autotrade-modal-error");
+  const submitBtn = $("btn-autotrade-modal-submit");
+
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+
+  const isCustom = activeAutoTradeTab === "custom";
+  const customEngineId = isCustom ? $("pos-custom-engine-select")?.value : null;
+  const strategyMode = isCustom ? "" : ($("pos-standard-strategy-select")?.value || "sma");
+
+  if (isCustom && !customEngineId) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = tx("select_custom_engine_error", "Please select a custom engine.");
+    }
+    return;
+  }
+
+  const timeframe = $("pos-autotrade-timeframe")?.value || "15Min";
+  const pollSeconds = parseInt($("pos-autotrade-poll")?.value || "30", 10);
+  const sizeMode = $("pos-autotrade-sizing-mode")?.value || "qty";
+  const sizeVal = parseFloat($("pos-autotrade-size-input")?.value || "1");
+
+  if (!Number.isFinite(sizeVal) || sizeVal <= 0) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = tx("invalid_size_value", "Please enter a valid positive trade size.");
+    }
+    return;
+  }
+
+  const payload = {
+    // A custom engine brings its own base strategy, so leave the mode empty
+    // and let the backend resolve it from the engine.
+    symbols: activeAutoTradeSymbols,
+    strategy_mode: isCustom ? "" : strategyMode || "sma",
+    custom_engine_id: customEngineId || null,
+    bar_timeframe: timeframe,
+    poll_seconds: pollSeconds,
+    size_mode: sizeMode,
+    trade_qty: sizeMode === "qty" ? sizeVal : null,
+    trade_notional: sizeMode === "notional" ? sizeVal : null,
+  };
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = tx("starting_autotrade", "Starting…");
+  }
+
+  try {
+    const res = await fetch("/api/auto-trade/multi/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    closeAutoTradeModal();
+    showToast(tx("autotrade_started_toast", "Auto-Trade started successfully"), "ok");
+    await refreshPositions({ quiet: false });
+  } catch (err) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = formatPosApiError(err, tx("error_start_autotrade", "Failed to start auto-trade"));
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = tx("start_autotrade", "Start Auto-Trade");
+    }
+  }
+}
+
+async function stopAutoTradeForCurrentModal() {
+  if (activeAutoTradeSymbols.length === 0) return;
+  const stopBtn = $("btn-autotrade-modal-stop");
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.textContent = tx("stopping_autotrade", "Stopping…");
+  }
+
+  try {
+    await Promise.all(
+      activeAutoTradeSymbols.map((sym) =>
+        fetch("/api/auto-trade/multi/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: sym }),
+        })
+      )
+    );
+    closeAutoTradeModal();
+    showToast(tx("autotrade_stopped_toast", "Auto-Trade stopped"), "ok");
+    await refreshPositions({ quiet: false });
+  } catch (err) {
+    showToast(formatPosApiError(err, tx("error_stop_autotrade", "Failed to stop auto-trade")), "error");
+  } finally {
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.textContent = tx("stop_autotrade", "Stop Auto-Trade");
+    }
+  }
+}
+
+async function stopSingleAutoTrade(symbol) {
+  try {
+    const res = await fetch("/api/auto-trade/multi/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    showToast(tx("autotrade_stopped_toast", "Auto-Trade stopped"), "ok");
+    await refreshPositions({ quiet: false });
+  } catch (err) {
+    showToast(formatPosApiError(err, tx("error_stop_autotrade", "Failed to stop auto-trade")), "error");
+  }
+}
+
+async function stopAllAutoTrades() {
+  try {
+    const res = await fetch("/api/auto-trade/multi/stop-all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    showToast(tx("all_autotrades_stopped_toast", "All active auto-trades stopped"), "ok");
+    await refreshPositions({ quiet: false });
+  } catch (err) {
+    showToast(formatPosApiError(err, tx("error_stop_autotrade", "Failed to stop auto-trades")), "error");
+  }
+}
+
 function toggleSymbolSelection(symbol, checked) {
   if (checked) posSelectedSymbols.add(symbol);
   else posSelectedSymbols.delete(symbol);
@@ -2402,6 +2847,12 @@ function bindRowDelegation(container) {
       openLotsModal(lotsBtn.dataset.symbol).catch(() => {});
       return;
     }
+    const autoTradeBtn = e.target.closest(".btn-pos-autotrade");
+    if (autoTradeBtn) {
+      const sym = autoTradeBtn.dataset.symbol || autoTradeBtn.closest(".pos-table-row, .pos-card")?.dataset.symbol;
+      if (sym) openAutoTradeModal(sym);
+      return;
+    }
     const btn = e.target.closest(".btn-pos-close");
     if (!btn || btn.disabled) return;
     openClosePositionModal(findPositionBySymbol(btn.dataset.symbol));
@@ -2414,6 +2865,7 @@ function dismissPosModal(id) {
   if (id === "pos-close-modal") closeClosePositionModal();
   else if (id === "pos-lots-modal") closeLotsModal();
   else if (id === "pos-exit-modal") closeExitStrategyModal();
+  else if (id === "pos-autotrade-modal") closeAutoTradeModal();
   else closePosModal(id);
 }
 
@@ -2529,6 +2981,10 @@ function initPositionsUi() {
   $("btn-batch-deselect")?.addEventListener("click", () => {
     posSelectedSymbols.clear();
     renderPositionsPage();
+  });
+  $("btn-batch-autotrade")?.addEventListener("click", () => {
+    if (posSelectedSymbols.size === 0) return;
+    openAutoTradeModal(Array.from(posSelectedSymbols));
   });
   $("btn-batch-liquidate")?.addEventListener("click", openLiquidateSelectedModal);
 
@@ -2671,6 +3127,41 @@ function initPositionsUi() {
   $("btn-liquidate-all-x")?.addEventListener("click", closeLiquidateAllModal);
   $("btn-liquidate-all-cancel")?.addEventListener("click", closeLiquidateAllModal);
   $("btn-liquidate-all-confirm")?.addEventListener("click", submitLiquidateAll);
+
+  // Multi Auto-Trade Modal & Banner Actions
+  $("btn-autotrade-modal-x")?.addEventListener("click", closeAutoTradeModal);
+  $("btn-autotrade-modal-cancel")?.addEventListener("click", closeAutoTradeModal);
+  $("btn-autotrade-modal-submit")?.addEventListener("click", submitAutoTradeModal);
+  $("btn-autotrade-modal-stop")?.addEventListener("click", stopAutoTradeForCurrentModal);
+  $("tab-strategy-standard")?.addEventListener("click", () => setAutoTradeTab("standard"));
+  $("tab-strategy-custom")?.addEventListener("click", () => setAutoTradeTab("custom"));
+  $("pos-custom-engine-select")?.addEventListener("change", (e) => {
+    const desc = $("pos-custom-engine-desc");
+    if (!desc || !customEnginesCache) return;
+    const selected = customEnginesCache.find((eng) => eng.id === e.target.value);
+    desc.textContent = selected?.description || "";
+  });
+  $("pos-autotrade-sizing-mode")?.addEventListener("change", (e) => {
+    syncSizingModeUI(e.target.value);
+    const inp = $("pos-autotrade-size-input");
+    if (e.target.value === "notional") {
+      if (inp && Number(inp.value) === 1) inp.value = "500";
+    } else {
+      if (inp && Number(inp.value) === 500) inp.value = "1";
+    }
+  });
+  $("btn-stop-all-autotrades")?.addEventListener("click", stopAllAutoTrades);
+  $("pos-autotrades-list")?.addEventListener("click", (e) => {
+    const stopBtn = e.target.closest(".btn-stop-chip-runner");
+    if (stopBtn && stopBtn.dataset.symbol) {
+      stopSingleAutoTrade(stopBtn.dataset.symbol);
+      return;
+    }
+    const chip = e.target.closest(".pos-autotrade-chip");
+    if (chip && chip.dataset.symbol) {
+      openAutoTradeModal(chip.dataset.symbol);
+    }
+  });
 
   // Clicking the backdrop dismisses, matching every other dialog on the desk.
   POS_MODAL_IDS.forEach((id) => {

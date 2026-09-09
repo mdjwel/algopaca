@@ -55,9 +55,11 @@ from bot import (
     custom_engine_store,
     dip_hunt_store,
     followon_store,
+    multi_trader,
     reinvest_store,
     synthetic_order_store,
 )
+from bot.multi_trader import MultiTradeManager
 from bot.dip_hunt import (
     ACTIVE_STATUSES as _DIP_HUNT_ACTIVE,
     CANCELLABLE_STATUSES as _DIP_HUNT_CANCELLABLE,
@@ -225,6 +227,7 @@ class RunSettings:
     ai_max_spread_bps: float = 25.0
     # 0 = stop-market after trigger; >0 = stop-limit cushion % past the stop.
     stop_limit_offset_pct: float = 0.0
+    stop_loss_24h: bool = True
     # Desk language. Drives the UI strings and the language the AI writes
     # its thesis / risks in — see bot.config.LANGUAGES.
     lang: str = DEFAULT_LANG
@@ -359,6 +362,7 @@ class AppState:
         self._approvals_path_paper = approvals_path_for(self.workspace_dir, paper=True)
         self._approvals_path_live = approvals_path_for(self.workspace_dir, paper=False)
         self.lock = threading.Lock()
+        self.multi_trader = MultiTradeManager(self)
         self.settings = RunSettings()
         self.loop_running = False
         self._stop = threading.Event()
@@ -436,6 +440,9 @@ class AppState:
         self._synthetic_order_seq: int = 0
         self._synthetic_order_thread: threading.Thread | None = None
         self._synthetic_order_stop = threading.Event()
+        self._armed_event_protections: set[tuple[str, str, str]] = set()
+        # Synthetic stop ids that already fired a Reversal Buy — one flip per stop.
+        self._reversal_executed_orders: set[str] = set()
         self.ai_ready: dict[str, bool] = {
             "openai": False,
             "gemini": False,
@@ -534,6 +541,8 @@ class AppState:
                 "day_presets": list_day_presets(),
                 "custom_engines": custom_engine_store.list_custom_engines(self.user_id),
                 "ai_models": catalog_payload(),
+                "active_auto_trades": self.multi_trader.list_active() if hasattr(self, "multi_trader") else [],
+                "active_auto_trades_count": len(self.multi_trader.list_active()) if hasattr(self, "multi_trader") else 0,
             }
 
     def loop_state(self) -> dict[str, Any]:
@@ -1517,6 +1526,15 @@ class AppState:
                 else:
                     risk_engine_enabled = bool(raw_risk)
 
+            if data.get("stop_loss_24h") is None:
+                stop_loss_24h = bool(getattr(self.settings, "stop_loss_24h", True))
+            else:
+                raw_sl24 = data.get("stop_loss_24h")
+                if isinstance(raw_sl24, str):
+                    stop_loss_24h = raw_sl24.strip().lower() in {"1", "true", "yes", "on"}
+                else:
+                    stop_loss_24h = bool(raw_sl24)
+
             if data.get("options_enabled") is None:
                 options_enabled = bool(self.settings.options_enabled)
             else:
@@ -1697,6 +1715,7 @@ class AppState:
                 ai_cooldown_minutes=ai_cooldown_minutes,
                 ai_max_spread_bps=ai_max_spread_bps,
                 stop_limit_offset_pct=stop_limit_offset,
+                stop_loss_24h=stop_loss_24h,
                 lang=lang,
                 options_enabled=options_enabled,
                 options_style=options_style,
@@ -1872,6 +1891,7 @@ class AppState:
             ai_cooldown_minutes=s.ai_cooldown_minutes,
             ai_max_spread_bps=s.ai_max_spread_bps,
             stop_limit_offset_pct=s.stop_limit_offset_pct,
+            stop_loss_24h=getattr(s, "stop_loss_24h", True),
             openai_model=s.openai_model,
             gemini_model=s.gemini_model,
             anthropic_model=s.anthropic_model,
@@ -1897,23 +1917,35 @@ class AppState:
 
     def _build_algo_bot(self) -> TradingBot:
         """SMA or buy-the-dip bot (TradingBot branches on strategy_mode)."""
+        cfg = self._base_config()
         return TradingBot(
-            self._base_config(), approval_handler=self.create_pending_approval
+            cfg,
+            service=AlpacaService(cfg, synthetic_order_handler=self),
+            approval_handler=self.create_pending_approval,
         )
 
     def _build_pair_bot(self) -> PairTradingBot:
+        cfg = self._base_config()
         return PairTradingBot(
-            self._base_config(), approval_handler=self.create_pending_approval
+            cfg,
+            service=AlpacaService(cfg, synthetic_order_handler=self),
+            approval_handler=self.create_pending_approval,
         )
 
     def _build_ls_bot(self) -> LsTradingBot:
+        cfg = self._base_config()
         return LsTradingBot(
-            self._base_config(), approval_handler=self.create_pending_approval
+            cfg,
+            service=AlpacaService(cfg, synthetic_order_handler=self),
+            approval_handler=self.create_pending_approval,
         )
 
     def _build_day_bot(self) -> DayTradingBot:
+        cfg = self._base_config()
         return DayTradingBot(
-            self._base_config(), approval_handler=self.create_pending_approval
+            cfg,
+            service=AlpacaService(cfg, synthetic_order_handler=self),
+            approval_handler=self.create_pending_approval,
         )
 
     def _build_ai_bot(self) -> AiTradingBot:
@@ -1926,7 +1958,11 @@ class AppState:
             raise ValueError("Anthropic API key missing — paste it on API Keys")
         if config.ai_provider == "xai" and not config.xai_api_key:
             raise ValueError("xAI API key missing — paste it on API Keys")
-        return AiTradingBot(config, approval_handler=self.create_pending_approval)
+        return AiTradingBot(
+            config,
+            service=AlpacaService(config, synthetic_order_handler=self),
+            approval_handler=self.create_pending_approval,
+        )
 
     def _trim_backtest_bars(
         self, bars: pd.DataFrame, *, days_i: int, end: datetime
@@ -3642,14 +3678,20 @@ class AppState:
                 mode = self.settings.strategy_mode
             self._require_live_execution()
             if mode == "ai":
-                return self._run_ai_once()
-            if mode == "pair":
-                return self._run_pair_once()
-            if mode == "ls":
-                return self._run_ls_once()
-            if mode == "day":
-                return self._run_day_once()
-            return self._run_sma_once()
+                res = self._run_ai_once()
+            elif mode == "pair":
+                res = self._run_pair_once()
+            elif mode == "ls":
+                res = self._run_ls_once()
+            elif mode == "day":
+                res = self._run_day_once()
+            else:
+                res = self._run_sma_once()
+            try:
+                self.check_metals_event_protection()
+            except Exception as exc:
+                logger.debug("check_metals_event_protection in run_once failed: %s", exc)
+            return res
         finally:
             self._end_poll()
 
@@ -8946,6 +8988,237 @@ class AppState:
         )
         return dict(order_entry)
 
+    def sync_strategy_stop(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float,
+        stop_price: float,
+        limit_price: float | None = None,
+        source: str = "strategy",
+        reversal_buy: bool = False,
+        reversal_qty: float | None = None,
+        reversal_event_title: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Register or update a 24-hour synthetic stop-limit order for a strategy."""
+        cfg_24h = getattr(self.settings, "stop_loss_24h", True)
+        if not cfg_24h:
+            return None
+        sym = str(symbol or "").upper().strip()
+        side_clean = str(side or "sell").lower().strip()
+        qty_flt = float(qty or 0.0)
+        stop_px = float(stop_price or 0.0)
+        if not sym or qty_flt <= 0 or stop_px <= 0:
+            return None
+
+        is_short = side_clean == "buy"
+        if limit_price is None or float(limit_price) <= 0:
+            offset = float(getattr(self.settings, "stop_limit_offset_pct", 0) or 0)
+            lim = limit_price_for_stop(stop_px, offset, short=is_short)
+            limit_px = lim if lim is not None else round(stop_px * (1.005 if is_short else 0.995), 2)
+        else:
+            limit_px = float(limit_price)
+
+        updated_order = None
+        with self.lock:
+            existing_id = None
+            for oid, o in self.synthetic_orders.items():
+                if (
+                    o.get("symbol") == sym
+                    and o.get("side") == side_clean
+                    and o.get("status") in synthetic_order_store.ACTIVE_STATUSES
+                ):
+                    existing_id = oid
+                    break
+
+            if existing_id:
+                live = self.synthetic_orders[existing_id]
+                live["stop_price"] = stop_px
+                live["limit_price"] = limit_px
+                live["qty"] = qty_flt
+                live["order_type"] = "stop_limit"
+                live["message"] = f"24h protective stop updated ({source}) to ${stop_px:.2f}."
+                if reversal_buy:
+                    live["reversal_buy"] = True
+                    live["reversal_qty"] = float(reversal_qty or qty_flt)
+                    if reversal_event_title:
+                        live["reversal_event_title"] = str(reversal_event_title)
+                updated_order = dict(live)
+
+        if updated_order:
+            self._persist_synthetic_orders()
+            self._start_synthetic_order_watcher()
+            logger.info(
+                "Updated 24h synthetic stop %s for %s %s qty=%s @ $%.2f",
+                updated_order.get("id"),
+                side_clean,
+                sym,
+                qty_flt,
+                stop_px,
+            )
+            return updated_order
+
+        registered = self._register_synthetic_order(
+            symbol=sym,
+            side=side_clean,
+            qty=qty_flt,
+            order_type="stop_limit",
+            time_in_force="gtc",
+            stop_price=stop_px,
+            limit_price=limit_px,
+            client_order_id=f"strat_{sym}_{int(time.time())}",
+        )
+        with self.lock:
+            if registered["id"] in self.synthetic_orders:
+                self.synthetic_orders[registered["id"]]["message"] = (
+                    f"24h protective stop active ({source}) @ ${stop_px:.2f}."
+                )
+                if reversal_buy:
+                    self.synthetic_orders[registered["id"]]["reversal_buy"] = True
+                    self.synthetic_orders[registered["id"]]["reversal_qty"] = float(reversal_qty or qty_flt)
+                    if reversal_event_title:
+                        self.synthetic_orders[registered["id"]]["reversal_event_title"] = str(reversal_event_title)
+                    registered["reversal_buy"] = True
+                    registered["reversal_qty"] = float(reversal_qty or qty_flt)
+                    if reversal_event_title:
+                        registered["reversal_event_title"] = str(reversal_event_title)
+        self._persist_synthetic_orders()
+        logger.info(
+            "Registered new 24h synthetic stop %s for %s %s qty=%s @ $%.2f",
+            registered["id"],
+            side_clean,
+            sym,
+            qty_flt,
+            stop_px,
+        )
+        return registered
+
+    def sync_strategy_trailing_stop(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float,
+        trail_percent: float | None = None,
+        trail_price: float | None = None,
+        source: str = "strategy_trailing",
+    ) -> dict[str, Any] | None:
+        """Register or update a 24-hour synthetic trailing stop order for a strategy."""
+        if not getattr(self.settings, "stop_loss_24h", True):
+            return None
+        sym = str(symbol or "").upper().strip()
+        side_clean = str(side or "sell").lower().strip()
+        qty_flt = float(qty or 0.0)
+        if not sym or qty_flt <= 0:
+            return None
+        if (trail_percent is None or float(trail_percent) <= 0) and (
+            trail_price is None or float(trail_price) <= 0
+        ):
+            return None
+
+        # Disarm existing synthetic stops for symbol to prevent duplicate exits
+        self._cancel_synthetic_orders_for_symbol(sym)
+
+        registered = self._register_synthetic_order(
+            symbol=sym,
+            side=side_clean,
+            qty=qty_flt,
+            order_type="trailing_stop",
+            time_in_force="gtc",
+            trail_percent=float(trail_percent) if trail_percent else None,
+            trail_price=float(trail_price) if trail_price else None,
+            client_order_id=f"strat_trail_{sym}_{int(time.time())}",
+        )
+        with self.lock:
+            if registered["id"] in self.synthetic_orders:
+                self.synthetic_orders[registered["id"]]["message"] = (
+                    f"24h trailing stop active ({source})."
+                )
+        self._persist_synthetic_orders()
+        logger.info(
+            "Registered 24h synthetic trailing stop %s for %s %s qty=%s",
+            registered["id"],
+            side_clean,
+            sym,
+            qty_flt,
+        )
+        return registered
+
+    def cancel_synthetic_stop_for_symbol(self, symbol: str) -> int:
+        """Cancel all open synthetic stops for `symbol`."""
+        return self._cancel_synthetic_orders_for_symbol(symbol)
+
+    def check_metals_event_protection(self) -> list[dict[str, Any]]:
+        """Scan open positions for precious metals and arm Stop-Limit orders 5m before major economic events."""
+        from bot.metals_intel import (
+            check_imminent_economic_events,
+            is_precious_metal,
+            protect_metals_position_before_event,
+        )
+        config = self._base_config()
+        service = AlpacaService(config, synthetic_order_handler=self)
+        try:
+            positions = service.list_positions()
+        except Exception:
+            return []
+
+        if not positions:
+            return []
+
+        metal_positions = [
+            p
+            for p in positions
+            if is_precious_metal(str(p.get("symbol") or "")) and float(p.get("qty") or 0) != 0
+        ]
+        if not metal_positions:
+            return []
+
+        imminent = check_imminent_economic_events(window_minutes=5.0)
+        if not imminent:
+            return []
+
+        armed_results: list[dict[str, Any]] = []
+        for pos in metal_positions:
+            sym = str(pos.get("symbol")).upper().strip()
+            for ev in imminent:
+                ev_title = str(ev.get("title") or "Economic Event")
+                ev_when = str(ev.get("when_utc") or "")
+                key = (sym, ev_title, ev_when)
+                with self.lock:
+                    if key in self._armed_event_protections:
+                        continue
+
+                reversal_cfg = bool(getattr(config, "metals_reversal_buy_on_stop", True))
+                armed = protect_metals_position_before_event(
+                    service=service,
+                    symbol=sym,
+                    event=ev,
+                    synthetic_handler=self,
+                    reversal_buy=reversal_cfg,
+                )
+                if armed:
+                    with self.lock:
+                        self._armed_event_protections.add(key)
+                    armed_results.append(armed)
+                    hist_entry = {
+                        "symbol": sym,
+                        "signal": "STOP_LIMIT_PROTECTION",
+                        "price": armed.get("current_price"),
+                        "order_id": armed.get("alpaca_order_id") or armed.get("synthetic_order_id"),
+                        "order_qty": armed.get("qty"),
+                        "reason": (
+                            f"Event Protection: Armed Stop-Limit @ ${armed['stop_price']:.2f} "
+                            f"(Limit ${armed['limit_price']:.2f}) 5m before {ev_title}"
+                        ),
+                        "engine": "event_protection",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    self._record_trade_history([hist_entry])
+                    logger.info("Economic Event Protection recorded in history for %s (%s)", sym, ev_title)
+
+        return armed_results
+
     def _start_synthetic_order_watcher(self) -> None:
         with self.lock:
             alive = (
@@ -9003,11 +9276,19 @@ class AppState:
                 alp_order = service.get_order_snapshot(alpaca_id)
                 alp_status = alp_order.get("status")
                 if alp_status == "filled":
+                    fill_px = float(alp_order.get("filled_avg_price") or 0.0)
                     self._settle_synthetic_order(
                         order_id,
                         status="filled",
-                        message=f"Limit order filled in extended hours at ${alp_order.get('filled_avg_price') or 'market'}.",
+                        message=f"Limit order filled in extended hours at ${fill_px or 'market'}.",
                     )
+                    if side == "buy" and snapshot.get("reversal_buy"):
+                        self._execute_reversal_buy(
+                            order_id=order_id,
+                            snapshot=snapshot,
+                            service=service,
+                            fill_price=fill_px,
+                        )
                     return
                 elif alp_status in {"canceled", "cancelled", "expired", "rejected"}:
                     self._settle_synthetic_order(
@@ -9030,6 +9311,52 @@ class AppState:
                     message="Day order expired at the end of the extended-hours trading session (8:00 PM ET).",
                 )
                 return
+
+        # Check if underlying position is already closed or partially scaled out
+        try:
+            raw_qty = service.get_position_qty(symbol)
+            if isinstance(raw_qty, (int, float)):
+                pos_qty = float(raw_qty)
+            else:
+                pos_qty = None
+        except Exception:
+            pos_qty = None
+
+        if pos_qty is not None:
+            if side == "sell" and pos_qty <= 0:
+                self._settle_synthetic_order(
+                    order_id,
+                    status="cancelled",
+                    message=f"Position for {symbol} is closed; 24h protective stop settled.",
+                )
+                return
+            elif side == "buy" and pos_qty >= 0:
+                self._settle_synthetic_order(
+                    order_id,
+                    status="cancelled",
+                    message=f"Short position for {symbol} is closed; 24h protective stop settled.",
+                )
+                if snapshot.get("reversal_buy"):
+                    try:
+                        mk = service.get_mark_price(symbol)
+                        cur_px = float(mk.get("price") or 0.0)
+                    except Exception:
+                        cur_px = 0.0
+                    stop_px = float(snapshot.get("stop_price") or 0.0)
+                    if cur_px >= stop_px * 0.995:
+                        self._execute_reversal_buy(
+                            order_id=order_id,
+                            snapshot=snapshot,
+                            service=service,
+                            fill_price=cur_px or stop_px,
+                        )
+                return
+            elif 0 < abs(pos_qty) < snapshot["qty"]:
+                with self.lock:
+                    live = self.synthetic_orders.get(order_id)
+                    if live:
+                        live["qty"] = abs(pos_qty)
+                snapshot["qty"] = abs(pos_qty)
 
         try:
             mark = service.get_mark_price(symbol)
@@ -9131,12 +9458,28 @@ class AppState:
         )
 
         try:
+            # Free shares held for orders: cancel resting native stop orders at Alpaca first
+            try:
+                service.cancel_open_stop_orders(symbol)
+            except Exception as exc:
+                logger.debug("Could not cancel resting stops before synthetic trigger: %s", exc)
+
+            # Cap qty at actual position size if position shrank
+            try:
+                raw_pos = service.get_position_qty(symbol)
+                if isinstance(raw_pos, (int, float)):
+                    cur_pos = abs(float(raw_pos))
+                    if 0 < cur_pos < qty:
+                        qty = cur_pos
+            except Exception:
+                pass
+
             order_req = LimitOrderRequest(
                 symbol=symbol,
                 qty=qty,
                 side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
                 limit_price=normalize_stock_order_price(limit_price, field="limit_price"),
-                time_in_force=time_in_force,
+                time_in_force=TimeInForce.DAY,
                 extended_hours=True,
             )
             submitted = service.trading.submit_order(order_req)
@@ -9180,6 +9523,129 @@ class AppState:
             order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
             order.update(extra)
         self._persist_synthetic_orders()
+
+    def _execute_reversal_buy(
+        self,
+        *,
+        order_id: str,
+        snapshot: dict[str, Any],
+        service: Any,
+        fill_price: float = 0.0,
+    ) -> dict[str, Any] | None:
+        """Immediately open a Long position following a Short stop-loss hit."""
+        symbol = str(snapshot.get("symbol") or "").upper().strip()
+        if not symbol:
+            return None
+
+        # Check if already reversed for this order to prevent duplicate tickets
+        with self.lock:
+            if order_id in self._reversal_executed_orders:
+                return None
+            self._reversal_executed_orders.add(order_id)
+
+        qty = float(snapshot.get("reversal_qty") or snapshot.get("qty") or 0.0)
+        if qty <= 0:
+            return None
+
+        event_title = str(snapshot.get("reversal_event_title") or "Economic Event")
+
+        # Double check position is not already long
+        try:
+            cur_pos = float(service.get_position_qty(symbol) or 0.0)
+            if cur_pos > 0:
+                logger.info("Reversal Buy skipped for %s: position already long (%g)", symbol, cur_pos)
+                return None
+        except Exception:
+            pass
+
+        try:
+            mark = service.get_mark_price(symbol)
+            cur_price = float(mark.get("price") or fill_price or 0.0)
+        except Exception:
+            cur_price = float(fill_price or 0.0)
+
+        if cur_price <= 0:
+            return None
+
+        # Protective stop for the new Long position. The desk's own configured
+        # stop is preferred; 0.8% is the event-protection default when unset.
+        try:
+            cfg_stop = float(getattr(self.settings, "stop_loss_pct", 0) or 0.0)
+        except (TypeError, ValueError):
+            cfg_stop = 0.0
+        try:
+            cfg_offset = float(getattr(self.settings, "stop_limit_offset_pct", 0) or 0.0)
+        except (TypeError, ValueError):
+            cfg_offset = 0.0
+
+        stop_buffer_pct = cfg_stop if cfg_stop > 0 else 0.8
+        limit_offset_pct = cfg_offset if cfg_offset > 0 else 0.5
+        new_stop = round(cur_price * (1.0 - stop_buffer_pct / 100.0), 2)
+        new_limit = round(new_stop * (1.0 - limit_offset_pct / 100.0), 2)
+
+        logger.info(
+            "Executing Reversal Buy for %s: qty=%g after stop-loss hit on %s (entry mark ~$%.2f)",
+            symbol,
+            qty,
+            event_title,
+            cur_price,
+        )
+
+        try:
+            try:
+                service.cancel_open_stop_orders(symbol)
+            except Exception:
+                pass
+
+            order = service.submit_order(
+                symbol=symbol,
+                qty=qty,
+                side=OrderSide.BUY,
+                protect=True,
+                stop_price=new_stop,
+            )
+            order_id_str = str(getattr(order, "id", "") or "")
+
+            self.sync_strategy_stop(
+                symbol=symbol,
+                side="sell",
+                qty=qty,
+                stop_price=new_stop,
+                limit_price=new_limit,
+                source=f"reversal_long_{event_title[:15]}",
+            )
+
+            hist_entry = {
+                "symbol": symbol,
+                "signal": "BUY",
+                "price": cur_price,
+                "order_id": order_id_str,
+                "order_qty": qty,
+                "reason": (
+                    f"Event Stop Loss Reversal: Automatically flipped to Long (qty {qty:g}) "
+                    f"after short stop-loss filled on {event_title}. Protective stop @ ${new_stop:.2f}"
+                ),
+                "engine": "event_protection",
+                "intent": "reversal_buy",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            self._record_trade_history([hist_entry])
+            logger.info(
+                "Reversal Buy order submitted successfully for %s: order_id=%s, stop @ $%.2f",
+                symbol,
+                order_id_str,
+                new_stop,
+            )
+            return {
+                "symbol": symbol,
+                "order_id": order_id_str,
+                "qty": qty,
+                "price": cur_price,
+                "stop_price": new_stop,
+            }
+        except Exception as exc:
+            logger.error("Failed executing Reversal Buy for %s: %s", symbol, exc)
+            return None
 
     def cancel_synthetic_order(self, order_id: str) -> bool:
         alpaca_id = None
@@ -9341,9 +9807,19 @@ class AppState:
                         failed_poll = self._poll_seq or None
                         self._append_session_error_locked(str(exc), failed_poll)
                     wait = 30
-                # Interruptible wait — Stop wakes this immediately.
-                if self._stop.wait(timeout=max(wait, 1)):
-                    break
+                # Interruptible wait sliced to check metals economic events every 30s
+                total_wait = max(int(wait or 30), 1)
+                elapsed = 0
+                while elapsed < total_wait and not self._stop.is_set():
+                    slice_wait = min(30, total_wait - elapsed)
+                    if self._stop.wait(timeout=max(slice_wait, 1)):
+                        break
+                    elapsed += slice_wait
+                    if elapsed < total_wait and not self._stop.is_set():
+                        try:
+                            self.check_metals_event_protection()
+                        except Exception as exc:
+                            logger.debug("Periodic metals event check failed: %s", exc)
         finally:
             with self.lock:
                 duration = None
@@ -9460,6 +9936,10 @@ class AppState:
                 # "distance to stop" positive for a healthy position either way.
                 p["stop_distance_pct"] = round(gap if pos_side == "long" else -gap, 2)
 
+            auto_summary = self.multi_trader.get_runner_summary(sym)
+            p["auto_trade"] = auto_summary
+            p["is_auto_trading"] = bool(auto_summary and auto_summary.get("is_running"))
+
         # Sort positions by market_value desc by default
         positions.sort(key=lambda x: abs(float(x.get("market_value") or 0.0)), reverse=True)
 
@@ -9485,6 +9965,8 @@ class AppState:
             "loop_running": loop_running,
             "paper": paper_mode_from_env(),
             "trading_mode": "paper" if paper_mode_from_env() else "live",
+            "active_auto_trades": self.multi_trader.list_active(),
+            "all_auto_trades": self.multi_trader.list_runners(),
             "live_authorized": bool(self._live_session_authorized)
             and not paper_mode_from_env(),
         }
@@ -10100,6 +10582,40 @@ class AppState:
         except (TypeError, ValueError):
             return False
 
+    def start_multi_auto_trade(
+        self,
+        symbols: list[str] | str,
+        strategy_mode: str = "",
+        custom_engine_id: str | None = None,
+        engine_name: str | None = None,
+        settings: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Start isolated auto-trade runners for one or more symbols."""
+        if isinstance(symbols, str):
+            syms = [s.strip().upper() for s in symbols.replace(";", ",").split(",") if s.strip()]
+        else:
+            syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
+        runners = self.multi_trader.start_batch(
+            symbols=syms,
+            strategy_mode=strategy_mode,
+            custom_engine_id=custom_engine_id,
+            engine_name=engine_name,
+            settings=settings,
+        )
+        return [r.snapshot() for r in runners]
+
+    def stop_multi_auto_trade(self, symbol_or_id: str) -> bool:
+        """Stop an isolated auto-trade runner by symbol or ID."""
+        return self.multi_trader.stop_runner(symbol_or_id)
+
+    def stop_all_multi_auto_trades(self) -> int:
+        """Stop all isolated auto-trade runners."""
+        return self.multi_trader.stop_all()
+
+    def list_multi_auto_trades(self, active_only: bool = False) -> list[dict[str, Any]]:
+        """List snapshots of multi auto-trade runners."""
+        return self.multi_trader.list_runners(active_only=active_only)
+
 
 STATE = AppState()
 
@@ -10118,8 +10634,11 @@ class UserStateRegistry:
     def remove(self, user_id: int) -> None:
         with self._lock:
             state = self._states.pop(user_id, None)
-            if state and state.loop_running:
-                state.stop_loop()
+            if state:
+                if state.loop_running:
+                    state.stop_loop()
+                if hasattr(state, "multi_trader"):
+                    state.multi_trader.stop_all()
 
 
 USER_STATE_REGISTRY = UserStateRegistry()
