@@ -299,6 +299,46 @@ class TestMultiAutoTrade(unittest.TestCase):
                 self.assertEqual(pos_map["AAPL"]["auto_trade"]["strategy_mode"], "sma")
                 self.assertFalse(pos_map["MSFT"]["is_auto_trading"])
 
+    def test_positions_overview_and_orders_reflect_trading_mode(self):
+        with patch("bot.web_state.AlpacaService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service_cls.return_value = mock_service
+            mock_service.get_all_positions.return_value = []
+            mock_service.account_summary.return_value = {"equity": 10000.0, "cash": 5000.0, "buying_power": 10000.0}
+            mock_service.get_open_orders_summary.return_value = {}
+            mock_service.list_orders.return_value = []
+
+            # 1. Default: paper mode
+            overview = self.state.positions_overview()
+            self.assertEqual(overview["trading_mode"], "paper")
+            self.assertTrue(overview["paper"])
+            self.assertEqual(overview["account"]["trading_mode"], "paper")
+            self.assertTrue(overview["account"]["paper"])
+
+            orders_data = self.state.list_orders()
+            self.assertEqual(orders_data["trading_mode"], "paper")
+            self.assertTrue(orders_data["paper"])
+
+            # 2. Switch to live mode in auth credentials
+            self.auth_store.save_user_credentials(
+                self.user_id,
+                {
+                    "trading_mode": "live",
+                    "allow_live": True,
+                    "alpaca_live_api_key": "live-key",
+                    "alpaca_live_secret_key": "live-secret",
+                },
+            )
+            overview_live = self.state.positions_overview()
+            self.assertEqual(overview_live["trading_mode"], "live")
+            self.assertFalse(overview_live["paper"])
+            self.assertEqual(overview_live["account"]["trading_mode"], "live")
+            self.assertFalse(overview_live["account"]["paper"])
+
+            orders_live = self.state.list_orders()
+            self.assertEqual(orders_live["trading_mode"], "live")
+            self.assertFalse(orders_live["paper"])
+
 
 class TestMultiAutoTradeApi(unittest.TestCase):
     def setUp(self):

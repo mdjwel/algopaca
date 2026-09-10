@@ -1151,6 +1151,14 @@ function applyAlpacaKeys(status) {
   syncConfigConnectionSafe();
 }
 
+function isLiveEnv() {
+  return Boolean(
+    document.body?.classList?.contains("is-live-env") ||
+    document.body?.dataset?.tradingMode === "live"
+  );
+}
+window.isLiveEnv = isLiveEnv;
+
 /** Persistent Paper/Live environment cue across every desk page.
  *
  *  `trading_mode` arrives as a status object from /api/status and as a bare
@@ -1176,6 +1184,24 @@ function applyTradingEnv(info) {
       el.classList.toggle("is-live", isLive);
     }
   });
+
+  const posBadge = $("pos-mode-badge");
+  if (posBadge) {
+    posBadge.className = isLive ? "mode-badge env-live" : "mode-badge armed";
+    posBadge.dataset.i18n = isLive ? "live_armed" : "paper_trading";
+    posBadge.textContent = isLive
+      ? tx("live_armed", "Live · Orders on")
+      : tx("paper_trading", "Paper trading");
+  }
+
+  const ordBadge = $("ord-mode-badge");
+  if (ordBadge) {
+    ordBadge.className = isLive ? "mode-badge env-live" : "mode-badge armed";
+    ordBadge.dataset.i18n = isLive ? "live_armed" : "paper_trading";
+    ordBadge.textContent = isLive
+      ? tx("live_armed", "Live · Orders on")
+      : tx("paper_trading", "Paper trading");
+  }
 
   let banner = $("env-banner");
   if (!banner) {

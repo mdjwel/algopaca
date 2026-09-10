@@ -90,7 +90,6 @@ from bot.config import (
     alpaca_slot_status,
     live_allowed_from_env,
     normalize_lang,
-    paper_mode_from_env,
     resolve_alpaca_credentials,
     resolve_day_timeframe,
     resolve_size_mode,
@@ -5936,6 +5935,7 @@ class AppState:
         committed = self._open_order_value(open_rows)
         with self.lock:
             loop_running = bool(self.loop_running)
+            mode_status = self._trading_mode_status_locked()
         return {
             "orders": orders,
             "count": len(orders),
@@ -5946,7 +5946,9 @@ class AppState:
             "after": after_dt.date().isoformat() if after_dt else "",
             "until": until_dt.date().isoformat() if until_dt else "",
             "loop_running": loop_running,
-            "trading_mode": "paper" if paper_mode_from_env() else "live",
+            "trading_mode": mode_status["mode"],
+            "paper": mode_status["paper"],
+            "live_authorized": mode_status["live_authorized"],
             "open_count": len(open_rows),
             "open_count_limited": len(open_rows) >= open_limit,
             "working_count": len(working),
@@ -10122,6 +10124,7 @@ class AppState:
         with self.lock:
             cached_account = dict(self.account or {}) if self.account else {}
             loop_running = self.loop_running
+            mode_status = self._trading_mode_status_locked()
 
         # Merge live summary if available, fallback to cached
         acc_equity = float((account or {}).get("equity") or cached_account.get("equity") or 0.0)
@@ -10235,14 +10238,15 @@ class AppState:
                 "buying_power": acc_bp,
                 "status": (account or {}).get("status") or cached_account.get("status") or "ACTIVE",
                 "currency": (account or {}).get("currency") or "USD",
+                "paper": mode_status["paper"],
+                "trading_mode": mode_status["mode"],
             },
             "loop_running": loop_running,
-            "paper": paper_mode_from_env(),
-            "trading_mode": "paper" if paper_mode_from_env() else "live",
+            "paper": mode_status["paper"],
+            "trading_mode": mode_status["mode"],
             "active_auto_trades": self.multi_trader.list_active(),
             "all_auto_trades": self.multi_trader.list_runners(),
-            "live_authorized": bool(self._live_session_authorized)
-            and not paper_mode_from_env(),
+            "live_authorized": mode_status["live_authorized"],
         }
 
     def position_lots(self, symbol: str, *, lookback_days: int = 365) -> dict[str, Any]:

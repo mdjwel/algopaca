@@ -273,12 +273,24 @@ function renderPositionsPage() {
   const modeBadge = $("pos-mode-badge");
 
   if (modeBadge) {
-    const env = data.trading_mode || (data.paper === false ? "live" : "paper");
-    if (env === "live") {
+    const isLive =
+      data.trading_mode != null
+        ? data.trading_mode === "live"
+        : data.paper != null
+          ? data.paper === false
+          : (typeof isLiveEnv === "function"
+              ? isLiveEnv()
+              : Boolean(
+                  document.body?.classList?.contains("is-live-env") ||
+                  document.body?.dataset?.tradingMode === "live"
+                ));
+    if (isLive) {
       modeBadge.className = "mode-badge env-live";
+      modeBadge.dataset.i18n = "live_armed";
       modeBadge.textContent = tx("live_armed", "Live · Orders on");
     } else {
       modeBadge.className = "mode-badge armed";
+      modeBadge.dataset.i18n = "paper_trading";
       modeBadge.textContent = tx("paper_trading", "Paper trading");
     }
   }

@@ -93,7 +93,10 @@ if (!ORD_SORT_KEYS.has(ordSortKey)) ordSortKey = "submitted";
 if (ordSortDir !== "asc" && ordSortDir !== "desc") ordSortDir = "desc";
 
 function isLiveEnv() {
-  return document.body?.classList.contains("is-live-env");
+  return (
+    document.body?.classList.contains("is-live-env") ||
+    document.body?.dataset.tradingMode === "live"
+  );
 }
 
 function isAnyOrdModalOpen() {
@@ -1079,8 +1082,13 @@ function renderKpis() {
   }
   const badge = $("ord-mode-badge");
   if (badge) {
-    const env = data.trading_mode || (isLiveEnv() ? "live" : "paper");
-    if (env === "live") {
+    const isLive =
+      data.trading_mode != null
+        ? data.trading_mode === "live"
+        : data.paper != null
+          ? data.paper === false
+          : isLiveEnv();
+    if (isLive) {
       badge.className = "mode-badge env-live";
       badge.dataset.i18n = "live_armed";
       badge.textContent = tx("live_armed", "Live · Orders on");

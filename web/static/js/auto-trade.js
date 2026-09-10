@@ -2449,7 +2449,11 @@ function deskEnvLabel() {
   const mode =
     lastAlpacaStatus?.trading_mode ||
     lastAccount?.trading_mode ||
-    (lastAccount?.paper === false ? "live" : "paper");
+    (lastAccount?.paper === false
+      ? "live"
+      : typeof isLiveEnv === "function" && isLiveEnv()
+        ? "live"
+        : "paper");
   return mode === "live" ? "live" : "paper";
 }
 

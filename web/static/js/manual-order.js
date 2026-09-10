@@ -1720,7 +1720,11 @@ function syncManualBusyHint() {
   const env =
     lastAlpacaStatus?.trading_mode ||
     lastAccount?.trading_mode ||
-    (lastAccount?.paper === false ? "live" : "paper");
+    (lastAccount?.paper === false
+      ? "live"
+      : typeof isLiveEnv === "function" && isLiveEnv()
+        ? "live"
+        : "paper");
   hint.textContent =
     env === "live"
       ? tx("live_real", "Live account")
@@ -3962,6 +3966,12 @@ function applyEstimateGridMode(mode, calc) {
 
   const costLabel = $("est-cost-label");
   if (costLabel) {
+    const costKey = isShort
+      ? "est_credit"
+      : isExit
+        ? "est_proceeds"
+        : "est_cost";
+    costLabel.dataset.i18n = costKey;
     costLabel.textContent = isShort
       ? tx("est_credit", "Est. credit")
       : isExit
@@ -3970,6 +3980,8 @@ function applyEstimateGridMode(mode, calc) {
   }
   const bpLabel = $("est-bp-label");
   if (bpLabel) {
+    const bpKey = isExit ? "remaining_position" : "pct_buying_power";
+    bpLabel.dataset.i18n = bpKey;
     bpLabel.textContent = isExit
       ? tx("remaining_position", "Remaining")
       : tx("pct_buying_power", "% of buying power");
@@ -3990,6 +4002,7 @@ function announceEstimate(value, noteText) {
 }
 
 function formatBreachMessage(breach) {
+  if (!breach) return "";
   const params = { ...(breach?.params || {}) };
   if (breach?.code === "spread") {
     if (params.actual_pct == null && params.actual != null) {
@@ -4028,7 +4041,13 @@ function formatBreachMessage(breach) {
     ],
   };
   const [key, fallback] = messages[String(breach?.code || "")] || [];
-  return key ? tx(key, fallback, params) : String(breach?.message || "");
+  if (key && Object.keys(params).length > 0) {
+    const rendered = tx(key, fallback, params);
+    if (!/\{[a-zA-Z0-9_]+\}/.test(rendered)) {
+      return rendered;
+    }
+  }
+  return String(breach?.message || fallback || "");
 }
 
 /** Desk limits this ticket would cross, listed above the submit button. */
@@ -6860,7 +6879,11 @@ function manualIsLiveAccount() {
   const env =
     lastAlpacaStatus?.trading_mode ||
     lastAccount?.trading_mode ||
-    (lastAccount?.paper === false ? "live" : "paper");
+    (lastAccount?.paper === false
+      ? "live"
+      : typeof isLiveEnv === "function" && isLiveEnv()
+        ? "live"
+        : "paper");
   return env === "live";
 }
 
