@@ -4493,9 +4493,12 @@ class AppState:
         time_in_force: str = "day",
         extended_hours: bool = False,
         stop_loss_pct: float | None = None,
+        stop_loss_price: float | None = None,
         ai_risk_pct: float | None = None,
         ai_atr_stop_mult: float | None = None,
         take_profit_r: float | None = None,
+        take_profit_price: float | None = None,
+        take_profit_pct: float | None = None,
         stop_limit_offset_pct: float | None = None,
         stop_limit_price: float | None = None,
         preview: bool = False,
@@ -4625,13 +4628,25 @@ class AppState:
 
         atr = None
         stop_distance = 0.0
-        if atr_mult > 0 or risk_pct > 0:
+        if stop_loss_price is not None and float(stop_loss_price) > 0:
+            sl_price = float(stop_loss_price)
+            if is_short_side:
+                if sl_price > price:
+                    stop_distance = sl_price - price
+            else:
+                if sl_price < price:
+                    stop_distance = price - sl_price
+            if stop_distance > 0 and price > 0:
+                stop_pct = (stop_distance / price) * 100.0
+        elif atr_mult > 0 or risk_pct > 0:
             # Same ATR the preview was sized from, so the ticket the user
             # confirmed is the ticket that goes out.
             atr = self._manual_atr(service, symbol)
             stop_distance = stop_distance_for(config, price, atr)
+        elif stop_pct > 0 and price > 0:
+            stop_distance = price * (stop_pct / 100.0)
 
-        # ATR path owns the stop when a distance is available. Derived percents
+        # ATR / direct path owns the stop when a distance is available. Derived percents
         # can exceed the 50% user-facing cap on flat stop_loss_pct (volatile /
         # cheap names). ``Config.override`` would clamp that and recreate the
         # broker client; keep the exact distance on the existing service.
@@ -4835,6 +4850,15 @@ class AppState:
                     "Stop price is required for stop and stop-limit orders"
                 )
             trigger = normalize_stock_order_price(stop_price, field="stop_price")
+            if price > 0:
+                if order_side == OrderSide.BUY and trigger <= price:
+                    raise ValueError(
+                        f"Trigger price (${trigger:.2f}) must be above current market price (${price:.2f}) for buy stop orders"
+                    )
+                elif order_side == OrderSide.SELL and trigger >= price:
+                    raise ValueError(
+                        f"Trigger price (${trigger:.2f}) must be below current market price (${price:.2f}) for sell stop orders"
+                    )
 
         trail_pct_val = float(trail_percent or 0) or None
         trail_amt_val = float(trail_price or 0) or None
@@ -4854,14 +4878,22 @@ class AppState:
 
         stop_preview = None
         stop_limit_preview = None
-        take_profit_price = None
+        tp_price = (
+            float(take_profit_price)
+            if take_profit_price is not None and float(take_profit_price) > 0
+            else None
+        )
+        target_preview: float | None = None
         if is_entry and stop_pct > 0:
             # The entry reference is whichever price this ticket actually gets
             # filled at: the limit, or the stop trigger on a conditional entry.
             entry_ref = limit if limit is not None else (trigger or price)
-            stop_preview = service.stop_price_for_entry(
-                entry_ref, pct=stop_pct, short=is_short_side
-            )
+            if stop_loss_price is not None and float(stop_loss_price) > 0:
+                stop_preview = normalize_stock_order_price(stop_loss_price, field="stop_price")
+            else:
+                stop_preview = service.stop_price_for_entry(
+                    entry_ref, pct=stop_pct, short=is_short_side
+                )
             if stop_preview is not None:
                 if exit_limit is not None:
                     stop_limit_preview = normalize_stop_exit_limit(
@@ -4874,14 +4906,41 @@ class AppState:
                     stop_limit_preview = limit_price_for_stop(
                         stop_preview, stop_limit_offset, short=is_short_side
                     )
-            # The target is priced in R — the same stop distance the size was
-            # derived from — so reward and risk stay tied to one number.
-            if tp_r > 0 and stop_preview is not None:
+            # The target is priced in R, or direct price / percent.
+            if tp_price is not None and tp_price > 0:
+                target_preview = normalize_stock_order_price(
+                    tp_price, field="take_profit_price"
+                )
+                if stop_preview is not None:
+                    risk_per_share = (
+                        stop_preview - entry_ref if is_short_side else entry_ref - stop_preview
+                    )
+                    if risk_per_share > 0:
+                        tp_dist = (
+                            entry_ref - target_preview if is_short_side else target_preview - entry_ref
+                        )
+                        tp_r = round(max(0.0, tp_dist) / risk_per_share, 2)
+            elif take_profit_pct is not None and float(take_profit_pct) > 0:
+                tp_pct = float(take_profit_pct)
+                target_preview = normalize_stock_order_price(
+                    entry_ref * (1.0 - tp_pct / 100.0) if is_short_side else entry_ref * (1.0 + tp_pct / 100.0),
+                    field="take_profit_price",
+                )
+                if stop_preview is not None:
+                    risk_per_share = (
+                        stop_preview - entry_ref if is_short_side else entry_ref - stop_preview
+                    )
+                    if risk_per_share > 0:
+                        tp_dist = (
+                            entry_ref - target_preview if is_short_side else target_preview - entry_ref
+                        )
+                        tp_r = round(max(0.0, tp_dist) / risk_per_share, 2)
+            elif tp_r > 0 and stop_preview is not None:
                 risk_per_share = (
                     stop_preview - entry_ref if is_short_side else entry_ref - stop_preview
                 )
                 if risk_per_share > 0:
-                    take_profit_price = normalize_stock_order_price(
+                    target_preview = normalize_stock_order_price(
                         entry_ref - risk_per_share * tp_r
                         if is_short_side
                         else entry_ref + risk_per_share * tp_r,
@@ -4973,7 +5032,7 @@ class AppState:
             "stop_limit_preview": stop_limit_preview,
             "stop_limit_offset_pct": stop_limit_offset,
             "stop_limit_price": exit_limit,
-            "take_profit_price": take_profit_price,
+            "take_profit_price": target_preview,
             "take_profit_r": tp_r,
             "position": position,
             "engine": "manual",
@@ -5142,9 +5201,10 @@ class AppState:
                 time_in_force=tif,
                 extended_hours=extended,
                 stop_loss_pct=stop_pct if is_entry else 0.0,
+                stop_loss_price=stop_preview if (is_entry and stop_loss_price is not None) else None,
                 stop_limit_offset_pct=stop_limit_offset if is_entry else 0.0,
                 stop_limit_price=exit_limit if is_entry else None,
-                take_profit_price=take_profit_price,
+                take_profit_price=target_preview,
                 short_entry=side_raw == "short",
                 client_order_id=ticket_id,
             )
@@ -5427,6 +5487,7 @@ class AppState:
         take_profit_pct: float | None = None,
         take_profit_r: float | None = None,
         use_trailing: bool | None = False,
+        qty: float | None = None,
     ) -> dict[str, Any]:
         """Configure or move exit strategy orders on an open position.
 
@@ -5491,6 +5552,14 @@ class AppState:
         position = float(service.get_position_qty(symbol))
         if position == 0:
             raise ValueError(f"No open position in {symbol} to configure exit strategy for")
+        if qty is not None:
+            q = float(qty)
+            if q <= 0:
+                raise ValueError("Quantity must be greater than 0")
+            if q > abs(position):
+                raise ValueError(
+                    f"Quantity ({q:g}) cannot exceed held position size ({abs(position):g})"
+                )
         is_short = position < 0
         mark_price = float(service.get_mark_price(symbol)["price"])
         entry_price = service.get_avg_entry_price(symbol) or mark_price
@@ -5558,6 +5627,8 @@ class AppState:
                 )
             return t
 
+        qty_kw = {"qty": qty} if qty is not None else {}
+
         if action in {"trail", "trailing_stop"}:
             pct = float(trail_percent or 0)
             amt = float(trail_price or 0)
@@ -5567,6 +5638,7 @@ class AppState:
                 symbol,
                 trail_percent=pct if pct > 0 else None,
                 trail_price=amt if amt > 0 else None,
+                **qty_kw,
             )
             if not armed:
                 raise ValueError("Could not arm the trailing stop")
@@ -5591,7 +5663,7 @@ class AppState:
                 raise ValueError(
                     f"Breakeven stop (${target:.2f}) is at or below the current market price (${mark_price:.2f}). Short position is currently underwater."
                 )
-            armed = service.replace_stop_loss(symbol, target)
+            armed = service.replace_stop_loss(symbol, target, **qty_kw)
             if not armed:
                 raise ValueError("Could not move the stop to breakeven")
             self._invalidate_manual_heat()
@@ -5599,7 +5671,7 @@ class AppState:
 
         if action in {"price", "stop_loss"}:
             target_stop = _resolve_stop_target(stop_price, stop_pct)
-            armed = service.replace_stop_loss(symbol, target_stop)
+            armed = service.replace_stop_loss(symbol, target_stop, **qty_kw)
             if not armed:
                 raise ValueError("Could not move the stop")
             self._invalidate_manual_heat()
@@ -5607,7 +5679,7 @@ class AppState:
 
         if action == "take_profit":
             target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
-            armed_tp = service.arm_take_profit(symbol, target_tp)
+            armed_tp = service.arm_take_profit(symbol, target_tp, **qty_kw)
             if not armed_tp:
                 raise ValueError("Could not set the take profit limit order")
             self._invalidate_manual_heat()
@@ -5618,10 +5690,10 @@ class AppState:
             armed_stop = None
             if use_trailing or (trail_percent and float(trail_percent) > 0):
                 pct = float(trail_percent or 3.0)
-                armed_stop = service.arm_trailing_stop(symbol, trail_percent=pct)
+                armed_stop = service.arm_trailing_stop(symbol, trail_percent=pct, **qty_kw)
             elif (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
                 target_stop = _resolve_stop_target(stop_price, stop_pct)
-                armed_stop = service.replace_stop_loss(symbol, target_stop)
+                armed_stop = service.replace_stop_loss(symbol, target_stop, **qty_kw)
 
             # 2. Arm Take Profit
             armed_tp = None
@@ -5631,7 +5703,7 @@ class AppState:
                 or (take_profit_r and float(take_profit_r) > 0)
             ):
                 target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
-                armed_tp = service.arm_take_profit(symbol, target_tp)
+                armed_tp = service.arm_take_profit(symbol, target_tp, **qty_kw)
 
             if not armed_stop and not armed_tp:
                 raise ValueError("Specify at least a stop loss or take profit level for the bracket")
@@ -5975,10 +6047,10 @@ class AppState:
         if not wanted:
             return
         try:
-            # Snapshot only. The scrape fallback costs one web request per
-            # symbol whenever the market is shut, which is most of the time a
-            # blotter is being read, and the column reports its own age anyway.
-            marks = service.get_mark_prices(wanted, scrape_fallback=False)
+            # Enable scrape fallback for active/working orders or bounded watchlists so
+            # live market marks update during pre-market, after-hours, and IEX delays.
+            scrape = len(wanted) <= 25 or any(o.get("is_cancelable") for o in rows)
+            marks = service.get_mark_prices(wanted, scrape_fallback=scrape)
         except Exception:
             # A blotter that lists tickets is more useful than one that 500s
             # because the quote feed hiccuped.

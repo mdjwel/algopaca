@@ -16,10 +16,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/common.css?v=2.5" />
   <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
   <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
-  <link rel="stylesheet" href="/static/css/positions.css" />
+  <link rel="stylesheet" href="/static/css/positions.css?v=2.5" />
   <script>
     (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
   </script>
@@ -861,7 +861,10 @@
               </div>
             </div>
             <div class="pos-exit-chips-wrap">
-              <span class="pos-chips-label" data-i18n="quick_distance">Risk Distance:</span>
+              <div class="pos-exit-chips-head">
+                <span class="pos-chips-label" data-i18n="quick_distance">Risk Distance:</span>
+                <span id="pos-exit-sl-dist-badge" class="pos-dist-badge">3.0%</span>
+              </div>
               <div class="pos-pct-chips">
                 <button type="button" class="chip" data-sl-pct="1">1%</button>
                 <button type="button" class="chip" data-sl-pct="2">2%</button>
@@ -869,6 +872,14 @@
                 <button type="button" class="chip" data-sl-pct="5">5%</button>
                 <button type="button" class="chip" data-sl-pct="8">8%</button>
                 <button type="button" class="chip" data-sl-pct="10">10%</button>
+                <button type="button" class="chip chip-custom" id="btn-sl-pct-custom" data-sl-custom="true" data-i18n="custom_distance">Custom</button>
+              </div>
+              <div id="pos-exit-sl-custom-wrap" class="pos-exit-custom-dist-wrap" hidden>
+                <div class="pos-input-box compact">
+                  <input type="number" id="pos-exit-sl-custom-input" step="0.1" min="0.1" max="99.9" class="pos-field-input" placeholder="e.g. 4.5" />
+                  <span class="pos-input-suffix">%</span>
+                </div>
+                <span class="pos-custom-hint" data-i18n="custom_risk_dist_hint">Enter custom percentage below market</span>
               </div>
             </div>
             <p class="field-help" id="pos-exit-sl-hint" data-i18n="stop_loss_desc">Replaces existing protective stops with a GTC Stop order at this price level.</p>
@@ -992,6 +1003,29 @@
                 <span><strong data-i18n="cancel_take_profit_orders">Cancel Take Profit Limit Orders</strong></span>
               </label>
             </div>
+          </div>
+
+          <!-- Strategy Order Sizing Controls (Shares / Qty) -->
+          <div id="pos-exit-sizing-card" class="pos-exit-sizing-card">
+            <div class="pos-exit-sizing-head">
+              <label class="pos-modal-label" for="pos-exit-qty-input">
+                <span id="pos-exit-qty-label" data-i18n="shares_to_protect">Shares to Protect</span>
+              </label>
+              <span id="pos-exit-qty-pct-badge" class="pos-pct-tag">100%</span>
+            </div>
+
+            <div class="pos-pct-chips pos-exit-qty-chips" role="group" aria-label="Quick quantity percentage selection">
+              <button type="button" class="chip" data-exit-qty-pct="25">25%</button>
+              <button type="button" class="chip" data-exit-qty-pct="50">50%</button>
+              <button type="button" class="chip" data-exit-qty-pct="75">75%</button>
+              <button type="button" class="chip is-active" data-exit-qty-pct="100">100% (All)</button>
+            </div>
+
+            <div class="pos-input-box pos-exit-qty-input-box">
+              <input type="number" id="pos-exit-qty-input" min="1" step="any" class="pos-field-input" placeholder="0" />
+              <span class="pos-input-suffix" id="pos-exit-qty-unit" data-i18n="shares_unit">shares</span>
+            </div>
+            <p id="pos-exit-qty-hint" class="field-help"></p>
           </div>
 
           <!-- Risk / Reward Live Preview Matrix -->
@@ -1140,7 +1174,7 @@
 
   <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
   <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js"></script>
-  <script src="/static/js/positions.js"></script>
+  <script src="/static/js/common.js?v=2.5"></script>
+  <script src="/static/js/positions.js?v=2.5"></script>
 </body>
 </html>

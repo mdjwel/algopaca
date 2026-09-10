@@ -152,6 +152,52 @@ class TestExitStrategy(unittest.TestCase):
         self.assertEqual(r3["stops_cancelled"], 1)
         self.assertEqual(r3["take_profits_cancelled"], 1)
 
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_with_custom_qty(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 240.0
+        mock_service.get_mark_price.return_value = {"price": 150.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_1", "stop_price": 145.0, "qty": 120.0}
+
+        # Sizing partial 120 shares of 240 held
+        res = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=145.0,
+            qty=120.0,
+        )
+        self.assertTrue(res["stop"])
+        mock_service.replace_stop_loss.assert_called_once_with("AAPL", 145.0, qty=120.0)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_invalid_qty(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 50.0
+        mock_service.get_mark_price.return_value = {"price": 150.0}
+
+        # Quantity exceeds position
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=145.0,
+                qty=100.0,
+            )
+        self.assertIn("cannot exceed", str(ctx.exception).lower())
+
+        # Quantity is zero or negative
+        with self.assertRaises(ValueError) as ctx2:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=145.0,
+                qty=0.0,
+            )
+        self.assertIn("greater than 0", str(ctx2.exception).lower())
+
 
 if __name__ == "__main__":
     unittest.main()
+

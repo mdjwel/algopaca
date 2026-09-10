@@ -16,11 +16,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/common.css?v=2.5" />
   <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
   <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
-  <link rel="stylesheet" href="/static/css/positions.css" />
-  <link rel="stylesheet" href="/static/css/orders.css?v=2.4" />
+  <link rel="stylesheet" href="/static/css/positions.css?v=2.5" />
+  <link rel="stylesheet" href="/static/css/orders.css?v=2.5" />
   <script>
     (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
   </script>
@@ -603,7 +603,7 @@
       </div>
       <div class="pos-modal-body">
         <p id="ord-replace-live" class="confirm-live-banner" hidden data-i18n="confirm_live_banner">REAL MONEY — this order goes to your live brokerage account.</p>
-        <p id="ord-replace-summary" class="field-help"></p>
+        <div id="ord-replace-summary" class="ord-replace-summary"></div>
         <p id="ord-replace-plan-note" class="field-help info" hidden></p>
         <p id="replace-order-help" class="field-help" data-i18n="replace_order_help">Notional tickets and fractional quantities cannot be changed — cancel and submit a new ticket instead.</p>
         <form id="ord-replace-form" class="form ord-replace-form" novalidate>
@@ -641,7 +641,7 @@
 
   <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
   <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js?v=2.4"></script>
-  <script src="/static/js/orders.js?v=2.4"></script>
+  <script src="/static/js/common.js?v=2.5"></script>
+  <script src="/static/js/orders.js?v=2.5"></script>
 </body>
 </html>

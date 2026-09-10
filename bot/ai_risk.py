@@ -182,6 +182,12 @@ def reversal_gate(config: Any, context: dict[str, Any], confidence: float) -> Ga
     Stops churn: a fresh position may not be reversed on a marginal signal, and
     a reversal needs more conviction than an open did.
     """
+    intel = context.get("precious_metals_intel") or {}
+    pos = context.get("position") or {}
+    pos_qty = float(pos.get("qty") or 0.0)
+    # Allow prompt reversal of short on precious metals when dollar index / macro data is mixed
+    if intel.get("dollar_mixed") and pos_qty < 0:
+        return ALLOW
     activity = context.get("activity") or {}
     min_hold = int(getattr(config, "ai_min_hold_minutes", 0) or 0)
     age = activity.get("last_fill_age_min")

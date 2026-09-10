@@ -266,6 +266,148 @@ function manualBuySizeMode() {
   return ["risk", "notional", "qty"].includes(raw) ? raw : "risk";
 }
 
+function manualBracketUnitMode() {
+  const form = $("manual-order");
+  const val = form?.elements?.bracket_unit_mode?.value;
+  return val === "price" ? "price" : "pct";
+}
+
+function manualStopLossUnitMode() {
+  const form = $("manual-order");
+  const val = form?.elements?.stop_loss_unit_mode?.value;
+  if (val === "price" || val === "pct") return val;
+  return manualBracketUnitMode();
+}
+
+function manualTakeProfitUnitMode() {
+  const form = $("manual-order");
+  const val = form?.elements?.take_profit_unit_mode?.value;
+  if (val === "price" || val === "pct") return val;
+  return manualBracketUnitMode();
+}
+
+function manualStopLossVal() {
+  const raw = Number(manualFormValue("stop_loss_val", 0));
+  return Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+function manualTakeProfitVal() {
+  const raw = Number(manualFormValue("take_profit_val", 0));
+  return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+}
+
+function manualEntryRefPrice() {
+  let mark = Number(manualContext?.quote?.price ?? manualContext?.price ?? manualContext?.mark ?? 0);
+  if (!(mark > 0)) {
+    const markText = $("manual-ctx-mark")?.textContent?.replace(/[^0-9.]/g, "");
+    const parsed = Number(markText);
+    if (parsed > 0) mark = parsed;
+  }
+  const limit = Number(manualFormValue("limit_price", 0) || 0);
+  const trigger = Number(manualFormValue("stop_price", 0) || 0);
+  if (manualNeedsLimit() && limit > 0) return limit;
+  if (manualNeedsTrigger() && trigger > 0) return trigger;
+  return mark > 0 ? mark : 0;
+}
+
+/** Convert stop loss input when toggling % ↔ $ */
+function convertStopLossOnUnitToggle(nextMode, preserveValue = false) {
+  const mark = manualEntryRefPrice();
+  const slInput = $("manual-stop-loss-val");
+  const adornmentSl = $("adornment-stop-loss");
+  const helpSl = $("help-stop-loss");
+  const labelSl = $("label-stop-loss");
+
+  if (nextMode === "price") {
+    if (labelSl) labelSl.textContent = tx("label_stop_trigger_price", "Stop trigger price");
+    if (adornmentSl) adornmentSl.textContent = "$";
+    if (helpSl) helpSl.textContent = tx("help_stop_trigger_price", "Exit triggers when market price drops to this exact dollar level.");
+    if (slInput) {
+      slInput.step = "0.01";
+      slInput.max = "100000";
+      if (!preserveValue && mark > 0) {
+        const currentPct = Number(slInput.value || 3);
+        if (currentPct > 0 && currentPct <= 50) {
+          slInput.value = normalizeStockPrice(mark * (1 - currentPct / 100));
+        } else {
+          slInput.value = normalizeStockPrice(mark * 0.97);
+        }
+      }
+    }
+  } else {
+    // nextMode === "pct"
+    if (labelSl) labelSl.textContent = tx("label_stop_loss", "Stop loss");
+    if (adornmentSl) adornmentSl.textContent = "%";
+    if (helpSl) helpSl.textContent = tx("help_stop_loss_pct", "Percent below entry to exit and cut losses.");
+    if (slInput) {
+      slInput.step = "0.1";
+      slInput.max = "50";
+      if (!preserveValue && mark > 0) {
+        const currentPx = Number(slInput.value || 0);
+        if (currentPx > 0 && currentPx < mark) {
+          slInput.value = ((mark - currentPx) / mark * 100).toFixed(1);
+        } else {
+          slInput.value = "3.0";
+        }
+      }
+    }
+  }
+  syncManualBracketUi();
+}
+
+/** Convert take profit input when toggling % ↔ $ */
+function convertTakeProfitOnUnitToggle(nextMode, preserveValue = false) {
+  const mark = manualEntryRefPrice();
+  const tpInput = $("manual-take-profit-val");
+  const adornmentTp = $("adornment-take-profit");
+  const helpTp = $("help-take-profit");
+  const labelTp = $("label-take-profit");
+
+  if (nextMode === "price") {
+    if (labelTp) labelTp.textContent = tx("label_take_profit_price", "Take profit price");
+    if (adornmentTp) adornmentTp.textContent = "$";
+    if (helpTp) helpTp.textContent = tx("help_take_profit_price", "Exit with profit when price reaches this level. 0 sends stop only.");
+    if (tpInput) {
+      tpInput.step = "0.01";
+      tpInput.max = "100000";
+      if (!preserveValue && mark > 0) {
+        const currentPct = Number(tpInput.value || 6);
+        if (currentPct > 0) {
+          tpInput.value = normalizeStockPrice(mark * (1 + currentPct / 100));
+        } else {
+          tpInput.value = normalizeStockPrice(mark * 1.06);
+        }
+      }
+    }
+  } else {
+    // nextMode === "pct"
+    if (labelTp) labelTp.textContent = tx("label_take_profit", "Take profit");
+    if (adornmentTp) adornmentTp.textContent = "%";
+    if (helpTp) helpTp.textContent = tx("help_take_profit_pct", "Percent above entry to exit with profit. 0 sends stop only.");
+    if (tpInput) {
+      tpInput.step = "0.1";
+      tpInput.max = "500";
+      if (!preserveValue && mark > 0) {
+        const currentPx = Number(tpInput.value || 0);
+        if (currentPx > mark) {
+          tpInput.value = ((currentPx - mark) / mark * 100).toFixed(1);
+        } else {
+          tpInput.value = "6.0";
+        }
+      }
+    }
+  }
+  syncManualBracketUi();
+}
+
+/** Convert bracket inputs when toggling % ↔ $ */
+function convertBracketOnUnitToggle(nextMode) {
+  setManualFormValue("stop_loss_unit_mode", nextMode);
+  setManualFormValue("take_profit_unit_mode", nextMode);
+  convertStopLossOnUnitToggle(nextMode);
+  convertTakeProfitOnUnitToggle(nextMode);
+}
+
 function manualTakeProfitR() {
   const raw = Number(manualFormValue("take_profit_r", 0));
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
@@ -860,7 +1002,36 @@ function manualPayload() {
     const bracketOn = manualBracketEnabled();
     if (bracketOn) {
       payload.ai_risk_pct = Number(manualFormValue("ai_risk_pct", 0.5) || 0);
-      payload.ai_atr_stop_mult = Number(manualFormValue("ai_atr_stop_mult", 1.8) || 0);
+      const slUnitMode = manualStopLossUnitMode();
+      const tpUnitMode = manualTakeProfitUnitMode();
+      const slVal = Number(manualFormValue("stop_loss_val", 3) || 0);
+      const tpVal = Number(manualFormValue("take_profit_val", 6) || 0);
+      const mark = manualEntryRefPrice();
+
+      if (slUnitMode === "price") {
+        payload.stop_loss_price = slVal > 0 ? slVal : null;
+        if (mark > 0 && slVal > 0 && slVal < mark) {
+          payload.stop_loss_pct = Number(((mark - slVal) / mark * 100).toFixed(2));
+        } else {
+          payload.stop_loss_pct = null;
+        }
+      } else {
+        payload.stop_loss_pct = slVal > 0 ? slVal : null;
+        payload.stop_loss_price = null;
+      }
+
+      if (tpUnitMode === "price") {
+        payload.take_profit_price = tpVal > 0 ? tpVal : null;
+        if (mark > 0 && tpVal > mark) {
+          payload.take_profit_pct = Number(((tpVal - mark) / mark * 100).toFixed(2));
+        } else {
+          payload.take_profit_pct = null;
+        }
+      } else {
+        payload.take_profit_pct = tpVal > 0 ? tpVal : null;
+        payload.take_profit_price = null;
+      }
+      payload.ai_atr_stop_mult = Number(manualFormValue("ai_atr_stop_mult", 0) || 0);
       payload.take_profit_r = manualTakeProfitR();
       payload.stop_limit_offset_pct = manualStopLimitOffsetPct();
       const stopLimitPx = manualStopLimitPrice();
@@ -871,7 +1042,10 @@ function manualPayload() {
       payload.ai_risk_pct = null;
       payload.ai_atr_stop_mult = 0;
       payload.stop_loss_pct = 0;
+      payload.stop_loss_price = null;
       payload.take_profit_r = 0;
+      payload.take_profit_price = null;
+      payload.take_profit_pct = null;
       payload.stop_limit_offset_pct = 0;
       payload.stop_limit_price = null;
     }
@@ -921,7 +1095,11 @@ function manualPreviewKey() {
     p.trail_percent ?? null,
     p.ai_risk_pct ?? null,
     p.ai_atr_stop_mult ?? null,
+    p.stop_loss_pct ?? null,
+    p.stop_loss_price ?? null,
     p.take_profit_r ?? null,
+    p.take_profit_pct ?? null,
+    p.take_profit_price ?? null,
     p.stop_limit_offset_pct ?? null,
     p.stop_limit_price ?? null,
     p.reinvest ?? null,
@@ -956,8 +1134,28 @@ function validateManualLocal() {
   if (manualNeedsLimit() && !(p.limit_price > 0)) {
     return tx("err_limit_price", "Limit price must be greater than $0.00.");
   }
-  if (manualNeedsTrigger() && !(p.stop_price > 0)) {
-    return tx("err_trigger_price", "Trigger price must be greater than $0.00.");
+  if (manualNeedsTrigger()) {
+    const mark = Number(manualContext?.quote?.price);
+    const isBuy = p.side === "buy";
+    if (!(p.stop_price > 0)) {
+      return tx("err_trigger_price", "Trigger price must be greater than $0.00.");
+    }
+    if (mark > 0) {
+      if (isBuy && p.stop_price <= mark) {
+        return tx(
+          "err_buy_trigger_below_mark",
+          "Buy stop trigger price must be above the current market price ({mark}).",
+          { mark: stockPrice(mark) }
+        );
+      }
+      if (!isBuy && p.stop_price >= mark) {
+        return tx(
+          "err_sell_trigger_above_mark",
+          "Sell stop trigger price must be below the current market price ({mark}).",
+          { mark: stockPrice(mark) }
+        );
+      }
+    }
   }
   if (manualNeedsTrail() && !(p.trail_percent > 0)) {
     return tx("err_trail_percent", "Enter a trail percentage greater than 0.");
@@ -1136,13 +1334,47 @@ function validateManualLocal() {
     return tx("err_buy_qty", "Enter how many shares to buy.");
   }
   if (bracketOn) {
-    if (
-      !(p.ai_atr_stop_mult >= MIN_ATR_STOP_MULT) ||
-      p.ai_atr_stop_mult > MAX_ATR_STOP_MULT
-    ) {
-      return tx("err_atr_mult", "Stop = ATR × must be between 0.1 and 10.");
+    if (p.stop_loss_price != null) {
+      if (!(p.stop_loss_price > 0)) {
+        return tx("err_stop_loss_val", "Enter a valid stop-loss value.");
+      }
+      const entry = manualEntryRefPrice();
+      const isShort = p.side === "short";
+      if (entry > 0) {
+        if (isShort && p.stop_loss_price <= entry) {
+          return tx("err_stop_loss_above_entry", "Stop loss price must be above entry price.");
+        } else if (!isShort && p.stop_loss_price >= entry) {
+          return tx("err_stop_loss_below_entry", "Stop loss price must be below entry price.");
+        }
+      }
+    } else if (p.stop_loss_pct != null) {
+      if (!(p.stop_loss_pct > 0) || p.stop_loss_pct > 50) {
+        return tx("err_stop_loss_val", "Stop loss % must be between 0.1% and 50%.");
+      }
+    } else if (p.ai_atr_stop_mult != null && p.ai_atr_stop_mult > 0) {
+      if (
+        !(p.ai_atr_stop_mult >= MIN_ATR_STOP_MULT) ||
+        p.ai_atr_stop_mult > MAX_ATR_STOP_MULT
+      ) {
+        return tx("err_atr_mult", "Stop = ATR × must be between 0.1 and 10.");
+      }
     }
-    if (p.take_profit_r > 20) {
+
+    if (p.take_profit_price != null) {
+      const entry = manualEntryRefPrice();
+      const isShort = p.side === "short";
+      if (entry > 0) {
+        if (isShort && p.take_profit_price >= entry) {
+          return tx("err_take_profit_below_entry", "Take profit price must be below entry price.");
+        } else if (!isShort && p.take_profit_price <= entry) {
+          return tx("err_take_profit_above_entry", "Take profit price must be above entry price.");
+        }
+      }
+    } else if (p.take_profit_pct != null) {
+      if (p.take_profit_pct < 0 || p.take_profit_pct > 500) {
+        return tx("err_take_profit_val", "Take profit % must be between 0% and 500%.");
+      }
+    } else if (p.take_profit_r != null && p.take_profit_r > 20) {
       return tx("err_take_profit_r", "Take profit = R × must be 20 or less.");
     }
     if (p.stop_limit_offset_pct != null && (p.stop_limit_offset_pct < 0 || p.stop_limit_offset_pct > 50)) {
@@ -1433,13 +1665,16 @@ function applyStockPriceDefaults(data) {
   const limitInput = $("manual-limit");
   if (limitInput) limitInput.placeholder = String(normalizeStockPrice(mark));
 
-  // 5. Trigger / Stop price: Default to sensible stop below mark if empty
+  // 5. Trigger / Stop price: Default to sensible stop above mark for buy, below mark for sell
   const currentStop = Number(manualFormValue("stop_price", 0) || 0);
+  const isBuySide = manualSide() === "buy";
+  const defaultStop = isBuySide
+    ? mark + (stopDistance > 0 ? stopDistance : mark * 0.05)
+    : (mark > stopDistance ? mark - stopDistance : mark * 0.95);
+  const stopInput = $("manual-stop-price");
+  if (stopInput) stopInput.placeholder = String(normalizeStockPrice(defaultStop));
   if (!(currentStop > 0)) {
-    const defaultStop = mark > stopDistance ? mark - stopDistance : mark * 0.95;
     setManualFormValue("stop_price", normalizeStockPrice(defaultStop));
-    const stopInput = $("manual-stop-price");
-    if (stopInput) stopInput.placeholder = String(normalizeStockPrice(defaultStop));
   }
 
   // 6. Trailing stop percent: Default based on volatility or 3%
@@ -1464,25 +1699,48 @@ function applyStockPriceDefaults(data) {
   }
 
   // 8. Protective Bracket options defaults based on stock price & ATR
-  const currentAtrMult = Number(manualFormValue("ai_atr_stop_mult", 0) || 0);
-  if (!(currentAtrMult >= MIN_ATR_STOP_MULT && currentAtrMult <= MAX_ATR_STOP_MULT)) {
-    setManualFormValue("ai_atr_stop_mult", atrMult);
-  }
-  const atrMultInput = $("manual-ai-atr-mult");
-  if (atrMultInput) atrMultInput.placeholder = String(atrMult);
+  const slUnitMode = manualStopLossUnitMode();
+  const tpUnitMode = manualTakeProfitUnitMode();
+  const currentSl = Number(manualFormValue("stop_loss_val", 0) || 0);
+  const currentTp = Number(manualFormValue("take_profit_val", 0) || 0);
+  const slInput = $("manual-stop-loss-val");
+  const tpInput = $("manual-take-profit-val");
 
-  const currentTpR = Number(manualFormValue("take_profit_r", 0) || 0);
-  if (!(currentTpR > 0)) {
-    setManualFormValue("take_profit_r", 2);
+  if (slUnitMode === "price") {
+    if (!(currentSl > 0) || currentSl >= mark) {
+      const defStop = normalizeStockPrice(mark * 0.97);
+      setManualFormValue("stop_loss_val", defStop);
+    }
+    if (slInput) slInput.placeholder = String(normalizeStockPrice(mark * 0.97));
+  } else {
+    if (!(currentSl > 0 && currentSl <= 50)) {
+      setManualFormValue("stop_loss_val", 3.0);
+    }
+    if (slInput) slInput.placeholder = "3.0";
   }
-  const tpRInput = $("manual-take-profit-r");
-  if (tpRInput) tpRInput.placeholder = "2";
+
+  if (tpUnitMode === "price") {
+    if (!(currentTp > 0) || currentTp <= mark) {
+      const defTp = normalizeStockPrice(mark * 1.06);
+      setManualFormValue("take_profit_val", defTp);
+    }
+    if (tpInput) tpInput.placeholder = String(normalizeStockPrice(mark * 1.06));
+  } else {
+    if (!(currentTp > 0)) {
+      setManualFormValue("take_profit_val", 6.0);
+    }
+    if (tpInput) tpInput.placeholder = "6.0";
+  }
 
   const calculatedStopPx = mark > stopDistance ? mark - stopDistance : mark * 0.95;
   const currentStopLimitPx = Number(manualFormValue("stop_limit_price", 0) || 0);
   const stopLimitInput = $("manual-stop-limit-price");
   if (stopLimitInput) {
     stopLimitInput.placeholder = String(normalizeStockPrice(calculatedStopPx));
+    // Clear sell limit if it was for a previous stock and sits above current mark!
+    if (currentStopLimitPx > mark) {
+      setManualFormValue("stop_limit_price", "");
+    }
   }
 
   const currentStopLimitOffset = Number(manualFormValue("stop_limit_offset_pct", -1));
@@ -1506,7 +1764,18 @@ function applyManualContext(data, errorMsg = null) {
   const atrEl = $("manual-ctx-atr");
   const bpEl = $("manual-ctx-bp");
   const metaEl = $("manual-ctx-meta");
+  const symBadge = $("manual-ctx-symbol");
   if (!data) {
+    if (symBadge) {
+      const sym = manualSymbol();
+      if (sym && errorMsg) {
+        symBadge.textContent = sym;
+        symBadge.hidden = false;
+      } else {
+        symBadge.textContent = "";
+        symBadge.hidden = true;
+      }
+    }
     [markEl, spreadEl, sessionEl, posEl, atrEl, bpEl].forEach((el) => {
       if (el) el.textContent = "—";
     });
@@ -1545,6 +1814,16 @@ function applyManualContext(data, errorMsg = null) {
     announceContext(null);
     syncManualUi();
     return;
+  }
+  if (symBadge) {
+    const sym = (data.symbol || manualSymbol() || "").trim().toUpperCase();
+    if (sym) {
+      symBadge.textContent = sym;
+      symBadge.hidden = false;
+    } else {
+      symBadge.textContent = "";
+      symBadge.hidden = true;
+    }
   }
   const quote = data.quote || {};
   const mark = Number(quote.price);
@@ -1894,13 +2173,13 @@ function renderManagePanel(data) {
   }
   const beBtn = $("btn-stop-breakeven");
   if (beBtn) {
-    beBtn.disabled = !Number.isFinite(entry) || busy || loopRunning;
+    beBtn.disabled = !Number.isFinite(entry) || busy;
     beBtn.title = Number.isFinite(entry)
       ? tx("stop_to_breakeven_hint", "Move the stop to your average entry so the trade cannot lose")
       : tx("breakeven_needs_entry", "Alpaca has no average entry price for this position");
   }
   const closeBtn = $("btn-manage-close");
-  if (closeBtn) closeBtn.disabled = busy || loopRunning;
+  if (closeBtn) closeBtn.disabled = busy;
 }
 
 /**
@@ -1911,7 +2190,7 @@ function renderManagePanel(data) {
  * close out what the panel is already showing — this is the one-click path.
  */
 async function closeManagedPosition() {
-  if (busy || loopRunning) return;
+  if (busy) return;
   const symbol = String(manualContext?.symbol || manualSymbol() || "").trim().toUpperCase();
   const qty = Math.abs(Number(manualContext?.position) || 0);
   if (!symbol || !(qty > 0)) return;
@@ -2029,7 +2308,12 @@ async function refreshManualPositions() {
 
 async function refreshManualContext() {
   const symbol = manualSymbol();
+  const symBadge = $("manual-ctx-symbol");
   if (!symbol) {
+    if (symBadge) {
+      symBadge.textContent = "";
+      symBadge.hidden = true;
+    }
     manualContextRequestId += 1;
     manualContextError = null;
     applyManualContext(null);
@@ -2040,6 +2324,10 @@ async function refreshManualContext() {
   const metaEl = $("manual-ctx-meta");
   const refreshBtn = $("btn-manual-refresh");
   if (refreshBtn) refreshBtn.classList.add("is-loading");
+  if (symBadge) {
+    symBadge.textContent = symbol;
+    symBadge.hidden = false;
+  }
   if (metaEl && (!manualContext || manualContext.symbol !== symbol)) {
     metaEl.className = "manual-ctx-meta";
     metaEl.textContent = tx("loading_symbol", "Loading {symbol}…", { symbol });
@@ -2258,6 +2546,9 @@ function orderTypeActivationHint(otype) {
   if (otype === "limit") {
     return tx("session_all", "All sessions");
   }
+  if (["stop_limit", "trailing_stop"].includes(otype)) {
+    return tx("session_all_synth", "All sessions (Synth)");
+  }
   return tx("session_regular", "Regular hours");
 }
 
@@ -2474,7 +2765,30 @@ function syncTriggerOffset() {
     el.classList.remove("warn");
     return;
   }
-  priceOffsetText(el, manualTriggerPrice(), {
+  const trigger = manualTriggerPrice();
+  const mark = Number(manualContext?.quote?.price);
+  const isBuy = manualSide() === "buy";
+  if (trigger > 0 && mark > 0) {
+    if (isBuy && trigger <= mark) {
+      el.textContent = tx(
+        "err_buy_trigger_below_mark",
+        "Buy stop trigger price must be above the current market price ({mark}).",
+        { mark: stockPrice(mark) }
+      );
+      el.classList.add("warn");
+      return;
+    }
+    if (!isBuy && trigger >= mark) {
+      el.textContent = tx(
+        "err_sell_trigger_above_mark",
+        "Sell stop trigger price must be below the current market price ({mark}).",
+        { mark: stockPrice(mark) }
+      );
+      el.classList.add("warn");
+      return;
+    }
+  }
+  priceOffsetText(el, trigger, {
     hintKey: "trigger_offset_hint",
     hint: "The order stays dormant until price reaches this trigger.",
   });
@@ -2655,21 +2969,46 @@ function calculateSizeEstimate() {
     };
   }
 
-  if (!(atrMult > 0)) return null;
+  const slUnitMode = manualStopLossUnitMode();
+  const tpUnitMode = manualTakeProfitUnitMode();
+  const slVal = Number(manualFormValue("stop_loss_val", 3) || 0);
+  const tpVal = Number(manualFormValue("take_profit_val", 6) || 0);
+
+  const refPrice = entry > 0 ? entry : mark;
+  let stopDistance = 0;
+  let usesAtr = false;
+  if (slUnitMode === "price") {
+    if (slVal > 0 && slVal < refPrice) {
+      stopDistance = refPrice - slVal;
+      usesAtr = true;
+    }
+  } else {
+    if (slVal > 0) {
+      stopDistance = refPrice * (slVal / 100);
+      usesAtr = true;
+    }
+  }
+
+  // Fallback to ATR multiple if no direct stop distance
+  if (!(stopDistance > 0)) {
+    if (atrMult > 0 && atr > 0) {
+      stopDistance = atr * atrMult;
+      usesAtr = true;
+    } else if (fallbackStopPct > 0) {
+      stopDistance = mark * (fallbackStopPct / 100);
+      usesAtr = false;
+    }
+  }
+
   if (manualBuySizeMode() === "risk" && !(riskPct > 0)) return null;
 
-  // Server: ATR × multiple when both are usable, else the flat stop-loss %.
-  // Both branches size off the *mark*, not the limit — `place_manual_order`
-  // passes `price` (the quote) into ai_stop_distance and ai_qty_for_risk.
-  const usesAtr = atr > 0;
-  const stopDistance = usesAtr ? atr * atrMult : mark * (fallbackStopPct / 100);
   if (!(stopDistance > 0)) {
     return {
       side,
       blocked: true,
       blockedMessage: tx(
         "err_no_stop_distance",
-        "No ATR for this symbol and no flat stop % set on Auto Trade — the risk engine cannot size this ticket."
+        "Set a valid Stop loss to size and protect this ticket."
       ),
     };
   }
@@ -2703,7 +3042,7 @@ function calculateSizeEstimate() {
       blockedMessage: wholeOnly
         ? tx(
             "err_size_zero",
-            "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop = ATR ×."
+            "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop loss distance."
           )
         : tx(
             "err_size_zero_fractional",
@@ -2715,15 +3054,31 @@ function calculateSizeEstimate() {
   // The desk converts the distance to a percent off the mark, then applies it
   // to the entry reference (the limit price on a limit ticket).
   const stopPct = stopDistance / mark;
-  const stopPrice = normalizeStockPrice(entry * (1 - stopPct));
+  const stopPrice = (slUnitMode === "price" && slVal > 0 && slVal < entry)
+    ? normalizeStockPrice(slVal)
+    : normalizeStockPrice(entry * (1 - stopPct));
   const cost = shares * entry;
   const riskPerShare = entry - stopPrice;
-  // Server: target = entry + R × risk-per-share, the bracket's other leg.
-  const takeProfitR = manualTakeProfitR();
-  const targetPrice =
-    takeProfitR > 0 && riskPerShare > 0
-      ? normalizeStockPrice(entry + riskPerShare * takeProfitR)
-      : null;
+
+  let targetPrice = null;
+  let takeProfitR = 0;
+  if (tpUnitMode === "price") {
+    if (tpVal > 0 && tpVal > entry) {
+      targetPrice = normalizeStockPrice(tpVal);
+      takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+    }
+  } else {
+    if (tpVal > 0) {
+      targetPrice = normalizeStockPrice(entry * (1 + tpVal / 100));
+      takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+    }
+  }
+
+  // Sync hidden inputs for server / legacy expectations
+  const hiddenTpR = $("manual-take-profit-r");
+  if (hiddenTpR) hiddenTpR.value = takeProfitR > 0 ? takeProfitR.toFixed(2) : "0";
+  const hiddenAtrMult = $("manual-ai-atr-mult");
+  if (hiddenAtrMult && atrMult === 0) hiddenAtrMult.value = "0";
   const stopLimitOffset = manualStopLimitOffsetPct();
   const stopLimitPrice = stopLimitFromStop(
     stopPrice,
@@ -2953,6 +3308,7 @@ function updateSizeEstimate() {
 
   const calc = currentEstimate();
   manualLastEstimate = calc;
+  syncManualBracketUi();
   // A pinned sell limit rides the stop wherever the latest sizing put it. Only
   // a real move re-prices, so this settles after one round rather than looping.
   if (syncStopLimitPin(calc)) {
@@ -3413,7 +3769,31 @@ function validateManualField(fieldName) {
   const raw = String(field.value ?? "").trim();
   const val = Number(field.value);
 
-  if (fieldName === "ai_risk_pct") {
+  if (fieldName === "stop_loss_val") {
+    const unitMode = manualStopLossUnitMode();
+    if (unitMode === "price") {
+      const entry = manualEntryRefPrice();
+      const isShort = manualOpensShort();
+      if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
+      else if (entry > 0 && isShort && val <= entry) error = tx("err_stop_loss_above_entry", "Must be above entry price");
+      else if (entry > 0 && !isShort && val >= entry) error = tx("err_stop_loss_below_entry", "Must be below entry price");
+    } else {
+      if (!(val > 0)) error = tx("err_field_gt_zero_pct", "Must be greater than 0%");
+      else if (val > 50) error = tx("err_field_max_50", "Max 50%");
+    }
+  } else if (fieldName === "take_profit_val") {
+    const unitMode = manualTakeProfitUnitMode();
+    if (unitMode === "price") {
+      const entry = manualEntryRefPrice();
+      const isShort = manualOpensShort();
+      if (val > 0 && entry > 0 && isShort && val >= entry) error = tx("err_take_profit_below_entry", "Must be below entry price");
+      else if (val > 0 && entry > 0 && !isShort && val <= entry) error = tx("err_take_profit_above_entry", "Must be above entry price");
+      else if (val < 0) error = tx("err_field_gte_zero", "Cannot be negative");
+    } else {
+      if (val < 0) error = tx("err_field_gte_zero", "Cannot be negative");
+      else if (val > 500) error = tx("err_field_max_500", "Max 500%");
+    }
+  } else if (fieldName === "ai_risk_pct") {
     if (!(val > 0)) error = tx("err_field_gt_zero_pct", "Must be greater than 0%");
     else if (val > 10) error = tx("err_field_max_10_pct", "Max 10%");
   } else if (fieldName === "ai_atr_stop_mult") {
@@ -3519,8 +3899,22 @@ function validateManualField(fieldName) {
       else if (val > 50) error = tx("err_field_max_50", "Max 50%");
     }
   } else if (fieldName === "stop_price") {
-    if (manualNeedsTrigger() && !(val > 0)) {
-      error = tx("err_field_gt_zero", "Must be greater than 0");
+    if (manualNeedsTrigger()) {
+      const mark = Number(manualContext?.quote?.price);
+      const isBuy = manualSide() === "buy";
+      if (!(val > 0)) {
+        error = tx("err_field_gt_zero", "Must be greater than 0");
+      } else if (mark > 0) {
+        if (isBuy && val <= mark) {
+          error = tx("err_buy_trigger_above_mark_field", "Must be above {mark}", {
+            mark: stockPrice(mark),
+          });
+        } else if (!isBuy && val >= mark) {
+          error = tx("err_sell_trigger_below_mark_field", "Must be below {mark}", {
+            mark: stockPrice(mark),
+          });
+        }
+      }
     }
   } else if (fieldName === "limit_price") {
     if (manualNeedsLimit() && !(val > 0)) {
@@ -3535,8 +3929,10 @@ function validateManualField(fieldName) {
   // hand back the neighbour's error line.)
   const errorEl =
     field.parentElement?.querySelector(".field-error") ||
+    field.closest(".manual-bracket-col")?.querySelector(".field-error") ||
     field.closest(".manual-limit-row")?.querySelector(".field-error") ||
-    field.closest(".qty-field-input")?.querySelector(".field-error");
+    field.closest(".qty-field-input")?.querySelector(".field-error") ||
+    field.closest("label")?.querySelector(".field-error");
   if (errorEl) {
     if (!errorEl.id) errorEl.id = `manual-field-error-${fieldName.replaceAll("_", "-")}`;
     const describedBy = new Set(
@@ -3695,17 +4091,28 @@ function syncManualSideUi() {
   });
   const modeHelp = $("manual-size-mode-help");
   if (modeHelp && !isExit) {
+    const attachesStop = manualAttachesStop();
     modeHelp.textContent =
       buyMode === "notional"
-        ? tx(
-            "size_help_dollars",
-            "Shares = your dollar amount ÷ mark, rounded down. The ATR stop still sets where the trade is wrong."
-          )
+        ? (attachesStop
+            ? tx(
+                "size_help_dollars",
+                "Shares = your dollar amount ÷ mark, rounded down. The ATR stop still sets where the trade is wrong."
+              )
+            : tx(
+                "size_help_dollars_unbracketed",
+                "Shares = your dollar amount ÷ mark, rounded down. No protective stop is attached to this order."
+              ))
         : buyMode === "qty"
-          ? tx(
-              "size_help_shares",
-              "You choose the share count; the ATR stop still sets where the trade is wrong, so watch Max risk."
-            )
+          ? (attachesStop
+              ? tx(
+                  "size_help_shares",
+                  "You choose the share count; the ATR stop still sets where the trade is wrong, so watch Max risk."
+                )
+              : tx(
+                  "size_help_shares_unbracketed",
+                  "You choose the share count. No protective stop is attached to this order."
+                ))
           : tx(
               "manual_risk_help_short",
               "Shares are set so a stop-out costs your risk budget: equity × risk % ÷ (ATR × multiplier). More volatility means fewer shares for the same dollar risk."
@@ -4077,10 +4484,39 @@ function syncManualBracketUi() {
   if (fields) fields.hidden = !enabled;
   if (toggle) toggle.disabled = !shouldShow || busy;
 
+  const slInput = $("manual-stop-loss-val");
+  if (slInput) slInput.disabled = !enabled || busy;
+  const tpInput = $("manual-take-profit-val");
+  if (tpInput) tpInput.disabled = !enabled || busy;
+  const slUnitInputs = form?.elements?.stop_loss_unit_mode;
+  if (slUnitInputs) {
+    if (slUnitInputs instanceof RadioNodeList) {
+      [...slUnitInputs].forEach((inp) => (inp.disabled = !enabled || busy));
+    } else {
+      slUnitInputs.disabled = !enabled || busy;
+    }
+  }
+  const tpUnitInputs = form?.elements?.take_profit_unit_mode;
+  if (tpUnitInputs) {
+    if (tpUnitInputs instanceof RadioNodeList) {
+      [...tpUnitInputs].forEach((inp) => (inp.disabled = !enabled || busy));
+    } else {
+      tpUnitInputs.disabled = !enabled || busy;
+    }
+  }
+  const unitInputs = form?.elements?.bracket_unit_mode;
+  if (unitInputs) {
+    if (unitInputs instanceof RadioNodeList) {
+      [...unitInputs].forEach((inp) => (inp.disabled = !enabled || busy));
+    } else {
+      unitInputs.disabled = !enabled || busy;
+    }
+  }
+
   const atrInput = $("manual-ai-atr-mult");
   if (atrInput) atrInput.disabled = !enabled || busy;
-  const tpInput = $("manual-take-profit-r");
-  if (tpInput) tpInput.disabled = !enabled || busy;
+  const tpRInput = $("manual-take-profit-r");
+  if (tpRInput) tpRInput.disabled = !enabled || busy;
   const explicitStopLimit = Number(manualFormValue("stop_limit_price", "")) > 0;
   const stopLimitOffset = $("manual-stop-limit-offset");
   if (stopLimitOffset) {
@@ -4100,16 +4536,114 @@ function syncManualBracketUi() {
     btnStopLimitAtStop.setAttribute("aria-pressed", stopLimitPinnedToStop && hasStop ? "true" : "false");
   }
 
+  const slUnitMode = manualStopLossUnitMode();
+  const tpUnitMode = manualTakeProfitUnitMode();
+
+  // Keep labels and adornments in sync with active mode
+  const labelSl = $("label-stop-loss");
+  const adornmentSl = $("adornment-stop-loss");
+  if (labelSl) {
+    labelSl.textContent = slUnitMode === "price"
+      ? tx("label_stop_trigger_price", "Stop trigger price")
+      : tx("label_stop_loss", "Stop loss");
+  }
+  if (adornmentSl) {
+    adornmentSl.textContent = slUnitMode === "price" ? "$" : "%";
+  }
+
+  const labelTp = $("label-take-profit");
+  const adornmentTp = $("adornment-take-profit");
+  if (labelTp) {
+    labelTp.textContent = tpUnitMode === "price"
+      ? tx("label_take_profit_price", "Take profit price")
+      : tx("label_take_profit", "Take profit");
+  }
+  if (adornmentTp) {
+    adornmentTp.textContent = tpUnitMode === "price" ? "$" : "%";
+  }
+
   const badge = $("manual-bracket-summary-badge");
   if (badge) {
     if (!enabled) {
       badge.textContent = tx("bracket_off", "off");
     } else {
-      const atrMult = Number(manualFormValue("ai_atr_stop_mult", 1.8) || 0);
-      const tpR = Number(manualFormValue("take_profit_r", 2) || 0);
-      const tpText = tpR > 0 ? `${tpR}R` : tx("stop_only_bracket", "Stop only");
-      badge.textContent = `${atrMult > 0 ? `${atrMult}× ATR` : "Stop"} · ${tpText}`;
+      const slVal = Number(slInput ? slInput.value : manualFormValue("stop_loss_val", 3)) || 0;
+      const tpVal = Number(tpInput ? tpInput.value : manualFormValue("take_profit_val", 6)) || 0;
+      const slBadge = slUnitMode === "price" ? `SL: $${slVal.toFixed(2)}` : `SL: -${slVal.toFixed(1)}%`;
+      let tpBadge;
+      if (tpVal > 0) {
+        tpBadge = tpUnitMode === "price" ? `TP: $${tpVal.toFixed(2)}` : `TP: +${tpVal.toFixed(1)}%`;
+      } else {
+        tpBadge = tx("stop_only_bracket", "Stop only");
+      }
+      badge.textContent = `${slBadge} · ${tpBadge}`;
     }
+  }
+
+  // Update live hints under Stop Loss and Take Profit
+  const hintSl = $("hint-stop-loss");
+  const hintTp = $("hint-take-profit");
+  if (!enabled) {
+    if (hintSl) { hintSl.textContent = ""; hintSl.hidden = true; }
+    if (hintTp) { hintTp.textContent = ""; hintTp.hidden = true; }
+    syncBuyUnitToggle(enabled);
+    return;
+  }
+
+  const calc = currentEstimate();
+  const entry = (calc && calc.entry > 0) ? calc.entry : manualEntryRefPrice();
+  const slVal = Number(slInput ? slInput.value : manualFormValue("stop_loss_val", 0)) || 0;
+  const tpVal = Number(tpInput ? tpInput.value : manualFormValue("take_profit_val", 0)) || 0;
+
+  let slText = "";
+  let slStop = 0;
+  if (entry > 0 && slVal > 0) {
+    if (slUnitMode === "price") {
+      slStop = slVal;
+      const slDist = entry - slVal;
+      const slPct = (slDist / entry) * 100;
+      if (slDist > 0) {
+        slText = `≈ -${slPct.toFixed(1)}% (-$${slDist.toFixed(2)}/sh)`;
+      }
+    } else {
+      slStop = entry * (1 - slVal / 100);
+      const slDist = entry - slStop;
+      if (slDist > 0) {
+        slText = `≈ $${slStop.toFixed(2)} (-$${slDist.toFixed(2)}/sh)`;
+      }
+    }
+  }
+
+  if (hintSl) {
+    hintSl.textContent = slText;
+    hintSl.hidden = !slText;
+  }
+
+  let tpText = "";
+  if (entry > 0 && tpVal > 0) {
+    const riskPerShare = (entry > 0 && slStop > 0 && slStop < entry) ? entry - slStop : 0;
+    if (tpUnitMode === "price") {
+      const tpDist = tpVal - entry;
+      const tpPct = (tpDist / entry) * 100;
+      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+      const rText = rMultiple ? ` · ${rMultiple}R` : "";
+      if (tpDist > 0) {
+        tpText = `≈ +${tpPct.toFixed(1)}%${rText}`;
+      }
+    } else {
+      const tpTarget = entry * (1 + tpVal / 100);
+      const tpDist = tpTarget - entry;
+      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+      const rText = rMultiple ? ` · ${rMultiple}R` : "";
+      if (tpTarget > entry) {
+        tpText = `≈ $${tpTarget.toFixed(2)}${rText}`;
+      }
+    }
+  }
+
+  if (hintTp) {
+    hintTp.textContent = tpText;
+    hintTp.hidden = !tpText;
   }
 
   syncBuyUnitToggle(enabled);
@@ -4195,10 +4729,21 @@ function syncManualDipHuntUi() {
 function selectManualSide(side) {
   const next = visibleTicketSide(side);
   if (!next || busy) return false;
-  if (manualSide() === next) return false;
+  const prev = manualSide();
+  if (prev === next) return false;
   setManualFormValue("side", next);
   formDirtyManual = true;
-  if (manualContext) applyStockPriceDefaults(manualContext);
+  if (manualContext) {
+    const mark = Number(manualContext?.quote?.price);
+    const stopVal = Number(manualFormValue("stop_price", 0) || 0);
+    // If stop price was set for the previous side's direction, reset so it recalculates
+    if (mark > 0 && stopVal > 0) {
+      if ((next === "buy" && stopVal <= mark) || (next === "sell" && stopVal >= mark)) {
+        setManualFormValue("stop_price", "");
+      }
+    }
+    applyStockPriceDefaults(manualContext);
+  }
   saveManualFormDraft();
   syncManualUi();
   scheduleServerPreview();
@@ -4340,6 +4885,9 @@ const MANUAL_SAVED_FIELDS = {
   trading_session: ["24h", "regular"],
   sell_mode: ["custom", "dollars"],
   buy_size_mode: ["risk", "notional", "qty"],
+  bracket_unit_mode: ["pct", "price"],
+  stop_loss_unit_mode: ["pct", "price"],
+  take_profit_unit_mode: ["pct", "price"],
   reinvest_qty_mode: ["match", "custom"],
   followon_kind: ["reverse", "rotate"],
   followon_qty_mode: ["match", "custom"],
@@ -4357,6 +4905,8 @@ const MANUAL_SAVED_NUMBERS = [
   "take_profit_r",
   "ai_risk_pct",
   "ai_atr_stop_mult",
+  "stop_loss_val",
+  "take_profit_val",
   "stop_limit_offset_pct",
   "stop_limit_price",
   "reinvest_qty",
@@ -4381,6 +4931,11 @@ function collectManualForm() {
     extended_hours: manualExtendedHours(),
     sell_mode: manualSellMode(),
     buy_size_mode: manualBuySizeMode(),
+    stop_loss_unit_mode: manualStopLossUnitMode(),
+    take_profit_unit_mode: manualTakeProfitUnitMode(),
+    bracket_unit_mode: manualBracketUnitMode(),
+    stop_loss_val: manualFormValue("stop_loss_val", "3"),
+    take_profit_val: manualFormValue("take_profit_val", "6"),
     bracket_enabled: form.elements.bracket_enabled?.checked !== false,
     reinvest_enabled: form.elements.reinvest_enabled?.checked === true,
     reinvest_qty_mode: manualReinvestQtyMode(),
@@ -4446,6 +5001,18 @@ function applyManualForm(saved) {
   setManualFormValue("reinvest_enabled", false);
   setManualFormValue("followon_enabled", false);
   setManualFormValue("dip_hunt_enabled", false);
+  const slMode = saved.stop_loss_unit_mode || (saved.bracket_unit_mode === "price" ? "price" : "pct");
+  const tpMode = saved.take_profit_unit_mode || (saved.bracket_unit_mode === "price" ? "price" : "pct");
+  setManualFormValue("stop_loss_unit_mode", slMode);
+  setManualFormValue("take_profit_unit_mode", tpMode);
+  convertStopLossOnUnitToggle(slMode, true);
+  convertTakeProfitOnUnitToggle(tpMode, true);
+  if (saved.stop_loss_val != null && saved.stop_loss_val !== "") {
+    setManualFormValue("stop_loss_val", saved.stop_loss_val);
+  }
+  if (saved.take_profit_val != null && saved.take_profit_val !== "") {
+    setManualFormValue("take_profit_val", saved.take_profit_val);
+  }
   if (droppedAutomation.length) {
     showToast(
       tx(
@@ -4697,6 +5264,18 @@ function syncManualUi() {
 
   syncManualHelp();
   updateSizeEstimate();
+
+  const symBadge = $("manual-ctx-symbol");
+  if (symBadge) {
+    const sym = manualSymbol();
+    if (sym) {
+      symBadge.textContent = (manualContext && manualContext.symbol === sym) ? manualContext.symbol : sym;
+      symBadge.hidden = false;
+    } else {
+      symBadge.textContent = "";
+      symBadge.hidden = true;
+    }
+  }
 
   const preview = $("btn-manual-preview");
   if (preview) preview.disabled = locked;
@@ -6555,7 +7134,7 @@ function reuseRecentTicket(orderId) {
 /* ------------------------------------------------------ position stop mgmt */
 
 async function sendStopAction(body, busyKey, busyFallback) {
-  if (busy || loopRunning) return;
+  if (busy) return;
   const note = $("manual-manage-note");
   try {
     setBusy(true, tx(busyKey, busyFallback));
@@ -6922,6 +7501,11 @@ const MANUAL_SIZING_FIELDS = [
   "notional",
   "buy_qty",
   "take_profit_r",
+  "bracket_unit_mode",
+  "stop_loss_unit_mode",
+  "take_profit_unit_mode",
+  "stop_loss_val",
+  "take_profit_val",
   "stop_limit_offset_pct",
   "stop_limit_price",
   "limit_price",
@@ -6986,6 +7570,15 @@ manualForm?.addEventListener("change", (ev) => {
   if (name === "sell_mode") {
     convertSellQtyOnUnitToggle(ev.target?.value);
   }
+  if (name === "bracket_unit_mode") {
+    convertBracketOnUnitToggle(ev.target?.value);
+  }
+  if (name === "stop_loss_unit_mode") {
+    convertStopLossOnUnitToggle(ev.target?.value);
+  }
+  if (name === "take_profit_unit_mode") {
+    convertTakeProfitOnUnitToggle(ev.target?.value);
+  }
   if (name === "buy_size_mode" && manualContext) {
     applyStockPriceDefaults(manualContext);
   }
@@ -6993,6 +7586,13 @@ manualForm?.addEventListener("change", (ev) => {
   saveManualFormDraft();
   if (name === "symbol") scheduleManualContextRefresh();
   else scheduleServerPreview();
+});
+
+$("manual-stop-loss-val")?.addEventListener("input", () => {
+  syncManualBracketUi();
+});
+$("manual-take-profit-val")?.addEventListener("input", () => {
+  syncManualBracketUi();
 });
 
 // A wheel over a focused number input silently re-prices the ticket while the

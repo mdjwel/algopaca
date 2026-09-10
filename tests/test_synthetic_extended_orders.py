@@ -635,6 +635,71 @@ class SyntheticExtendedOrdersTestCase(unittest.TestCase):
             self.assertEqual(res["order_id"], "mock_order_123")
             self.assertEqual(res["symbol"], "AAPL")
 
+    def test_place_stop_order_trigger_direction_validation(self):
+        """Buy stop trigger must be above mark price, sell stop trigger must be below mark price."""
+        with patch.object(self.state, "_base_config", return_value=Config.default()), \
+             patch("bot.web_state.AlpacaService") as MockService:
+            service_instance = MockService.return_value
+            service_instance.has_position.return_value = True
+            service_instance.get_position_qty.return_value = 10.0
+            service_instance.get_mark_price.return_value = {"price": 150.0}
+
+            # 1. Buy stop with trigger below mark price should fail
+            with self.assertRaises(ValueError) as ctx:
+                self.state.place_manual_order(
+                    symbol="AAPL",
+                    side="buy",
+                    order_type="stop_limit",
+                    qty=5.0,
+                    stop_price=145.0,
+                    limit_price=146.0,
+                    time_in_force="day",
+                    extended_hours=True,
+                )
+            self.assertIn("must be above current market price", str(ctx.exception))
+
+            # 2. Sell stop with trigger above mark price should fail
+            with self.assertRaises(ValueError) as ctx:
+                self.state.place_manual_order(
+                    symbol="AAPL",
+                    side="sell",
+                    order_type="stop_limit",
+                    qty=5.0,
+                    stop_price=155.0,
+                    limit_price=154.0,
+                    time_in_force="day",
+                    extended_hours=True,
+                )
+            self.assertIn("must be below current market price", str(ctx.exception))
+
+            # 3. Valid Buy stop with trigger above mark price should succeed
+            buy_res = self.state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="stop_limit",
+                qty=5.0,
+                stop_price=155.0,
+                limit_price=156.0,
+                time_in_force="day",
+                extended_hours=True,
+            )
+            self.assertTrue(buy_res["order_id"].startswith("synth_"))
+            self.assertEqual(buy_res["submitted_type"], "synthetic_stop_limit")
+
+            # 4. Valid Sell stop with trigger below mark price should succeed
+            sell_res = self.state.place_manual_order(
+                symbol="AAPL",
+                side="sell",
+                order_type="stop_limit",
+                qty=5.0,
+                stop_price=145.0,
+                limit_price=144.0,
+                time_in_force="day",
+                extended_hours=True,
+            )
+            self.assertTrue(sell_res["order_id"].startswith("synth_"))
+            self.assertEqual(sell_res["submitted_type"], "synthetic_stop_limit")
+
 
 if __name__ == "__main__":
     unittest.main()

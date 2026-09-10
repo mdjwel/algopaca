@@ -365,6 +365,8 @@ def fetch_metals_macro_context(
     else:
         dollar_trend = "neutral"
 
+    dollar_mixed = bool(dollar_trend == "neutral" or (dollar_score is not None and abs(dollar_score) <= 0.25))
+
     if rates_score is None:
         yield_trend = "unknown"
     elif rates_score > 0.25:
@@ -460,6 +462,14 @@ def fetch_metals_macro_context(
         "relative_valuation": relative_valuation,
         "valuation_note": valuation_note,
         "dollar_trend": dollar_trend,
+        "dollar_mixed": dollar_mixed,
+        "dollar_economic_data_status": "mixed" if dollar_mixed else dollar_trend,
+        "short_reversal_to_long": bool(dollar_mixed),
+        "short_reversal_reason": (
+            "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
+            if dollar_mixed
+            else None
+        ),
         "yield_trend": yield_trend,
         "trend_regime": trend_regime,
         "miners_signal": miners_signal,

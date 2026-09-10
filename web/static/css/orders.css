@@ -539,24 +539,114 @@ button.ord-kpi-split-btn[aria-pressed="true"] .ord-kpi-split-val {
   color: var(--text);
 }
 
+/* Replace order modal refinements */
+#ord-replace-modal .pos-modal-card {
+  max-width: 490px;
+}
+
+#ord-replace-modal .pos-modal-body {
+  padding: 1.25rem 1.45rem 1.35rem;
+  gap: 0.95rem;
+  overflow-y: auto;
+}
+
+#ord-replace-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 75%, rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text);
+  margin: 0;
+  width: fit-content;
+}
+
+#ord-replace-summary .side-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+#ord-replace-summary .ord-summary-type {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+#ord-replace-summary .ord-summary-qty {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+#ord-replace-summary .ord-summary-sep {
+  color: var(--muted);
+  opacity: 0.5;
+  user-select: none;
+}
+
+#ord-replace-summary .ord-summary-filled {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+#replace-order-help {
+  font-family: var(--ui);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0;
+}
+
+#ord-replace-plan-note {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
 .ord-replace-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem 0.9rem;
-  margin-top: 0.85rem;
+  gap: 0.85rem 1rem;
+  margin-top: 0.15rem;
 }
 
 .ord-replace-form label {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.78rem;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+.ord-replace-form label[for="ord-replace-tif"] {
+  grid-column: 1 / -1;
+}
+
+.ord-replace-form.has-stop-limit label[for="ord-replace-tif"],
+.ord-replace-form:has(#ord-replace-limit-label:not([hidden])):has(#ord-replace-stop-label:not([hidden])) label[for="ord-replace-tif"] {
+  grid-column: auto;
 }
 
 .ord-replace-form input,
 .ord-replace-form select {
-  min-height: 36px;
+  min-height: 42px;
+  font-size: 0.95rem;
+}
+
+.ord-replace-form .nice-select {
+  min-height: 42px;
+  height: 42px;
+  line-height: 40px;
 }
 
 .confirm-live-banner {

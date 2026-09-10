@@ -76,6 +76,18 @@ let ordDetailTarget = null;
 // note in refreshOrders for why this cannot simply track the search box.
 let ordSymbolScope = "";
 let ordSymbolScopeTimer = null;
+let ordPreviousMarks = new Map();
+
+function getOrdTickFlashClass(orderId, price) {
+  const prev = ordPreviousMarks.get(orderId);
+  let flash = "";
+  if (prev != null && Number.isFinite(price) && Number.isFinite(prev)) {
+    if (price > prev + 0.001) flash = " pos-flash-pos";
+    else if (price < prev - 0.001) flash = " pos-flash-neg";
+  }
+  if (Number.isFinite(price)) ordPreviousMarks.set(orderId, price);
+  return flash;
+}
 
 if (!ORD_SORT_KEYS.has(ordSortKey)) ordSortKey = "submitted";
 if (ordSortDir !== "asc" && ordSortDir !== "desc") ordSortDir = "desc";
@@ -848,9 +860,10 @@ function renderOrderRow(order, isLatest = false) {
   const klass = orderClassBadge(order);
   const canceling = orderIsCanceling(order);
   const selected = ordSelectedIds.has(String(order.id || ""));
+  const flashClass = getOrdTickFlashClass(String(order.id || ""), Number(order.mark_price));
   return `<tr class="pos-table-row${canceling ? " is-canceling" : ""}${
     selected ? " is-selected" : ""
-  }${isLatest ? " is-latest" : ""}" data-order-id="${escapeHtml(order.id || "")}" data-side="${escapeHtml(side)}">
+  }${isLatest ? " is-latest" : ""}${flashClass}" data-order-id="${escapeHtml(order.id || "")}" data-side="${escapeHtml(side)}">
     <td class="pos-cell-check">${orderCheckboxMarkup(order)}</td>
     <td>
       <div class="ord-sym-cell">
@@ -908,10 +921,11 @@ function renderOrderCard(order, isLatest = false) {
   const selected = ordSelectedIds.has(String(order.id || ""));
   const actionsOpen = ordExpandedCardActions.has(String(order.id || ""));
   const eventTime = orderEventTime(order);
+  const flashClass = getOrdTickFlashClass(String(order.id || ""), Number(order.mark_price));
 
   return `<div class="pos-card${canceling ? " is-canceling" : ""}${
     selected ? " is-selected" : ""
-  }${isLatest ? " is-latest" : ""}" role="listitem" data-order-id="${escapeHtml(order.id || "")}">
+  }${isLatest ? " is-latest" : ""}${flashClass}" role="listitem" data-order-id="${escapeHtml(order.id || "")}">
     <div class="pos-card-head">
       <div class="pos-card-sym-wrap">
         ${orderCheckboxMarkup(order)}
@@ -2187,8 +2201,10 @@ function openOrdModal(id) {
     banner.hidden = !live;
   });
   document.querySelector(".app")?.setAttribute("inert", "");
+  const body = el.querySelector(".pos-modal-body");
+  if (body) body.scrollTop = 0;
   const focusable = el.querySelector("button, input, select, a[href]");
-  focusable?.focus();
+  focusable?.focus({ preventScroll: true });
 }
 
 function closeOrdModal(id) {
@@ -2439,18 +2455,21 @@ function openReplaceModal(order) {
   const summary = $("ord-replace-summary");
   if (summary) {
     const side = String(order.side || "").toLowerCase();
-    const parts = [
-      side === "sell" ? tx("sell", "Sell") : tx("buy", "Buy"),
-      orderTypeLabel(order.type),
-      orderQty(order.qty),
-    ];
-    // A replace has to leave at least what already filled, so the filled slice
-    // belongs in front of the operator before they retype the quantity.
+    const isSell = side === "sell";
+    const sideLabel = isSell ? tx("sell", "Sell") : tx("buy", "Buy");
+    const sideClass = isSell ? "sell" : "buy";
     const filled = Number(order.filled_qty || 0);
+    const parts = [
+      `<span class="side-badge ${sideClass}">${escapeHtml(sideLabel)}</span>`,
+      `<span class="ord-summary-type">${escapeHtml(orderTypeLabel(order.type))}</span>`,
+      `<span class="ord-summary-qty mono">${escapeHtml(orderQty(order.qty))}</span>`,
+    ];
     if (filled > 0) {
-      parts.push(tx("ord_filled_of", "{filled} filled", { filled: orderQty(filled) }));
+      parts.push(
+        `<span class="ord-summary-filled mono">(${escapeHtml(tx("ord_filled_of", "{filled} filled", { filled: orderQty(filled) }))})</span>`
+      );
     }
-    summary.textContent = parts.join(" · ");
+    summary.innerHTML = parts.join('<span class="ord-summary-sep">·</span>');
   }
   const note = $("ord-replace-plan-note");
   if (note) {
@@ -2460,6 +2479,10 @@ function openReplaceModal(order) {
   }
   const title = $("ord-replace-title");
   if (title) title.textContent = tx("edit_order_title", "Edit order");
+  const form = $("ord-replace-form");
+  if (form) {
+    form.classList.toggle("has-stop-limit", order.type === "stop_limit");
+  }
   const qty = $("ord-replace-qty");
   const limit = $("ord-replace-limit");
   const stop = $("ord-replace-stop");
@@ -2503,6 +2526,8 @@ function openReplaceModal(order) {
     refreshNiceSelect(tif);
   }
   openOrdModal("ord-replace-modal");
+  const modalBody = $("ord-replace-modal")?.querySelector(".pos-modal-body");
+  if (modalBody) modalBody.scrollTop = 0;
 }
 
 function numOrNull(el) {
@@ -2862,13 +2887,21 @@ refreshStatus({ forceSettings: true })
   .catch((err) => showToast(err.message, "error"))
   .finally(() => refreshOrders().catch(() => {}));
 
+function blotterRefreshInterval() {
+  const armed = armedDeskCount();
+  if (armed > 0) return ORD_ARMED_REFRESH_MS;
+  const prefSec = Number(lastDeskSettings?.chart_refresh_interval || 0);
+  if (prefSec >= 5 && prefSec <= 120) return prefSec * 1000;
+  return ORD_REFRESH_MS;
+}
+
 function onDeskStatusInterval() {
   if (ordersBusy) return;
   if (document.visibilityState !== "visible") return;
   if (isAnyOrdModalOpen()) return;
   const armed = armedDeskCount();
   if (ordFilterStatus !== "open" && armed < 1) return;
-  const interval = armed > 0 ? ORD_ARMED_REFRESH_MS : ORD_REFRESH_MS;
+  const interval = blotterRefreshInterval();
   if (Date.now() - ordLastFetchStartedAt < interval) return;
   refreshOrders({ quiet: true }).catch(() => {});
 }

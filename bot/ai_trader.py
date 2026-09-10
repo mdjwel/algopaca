@@ -403,6 +403,40 @@ class AiTradingBot:
                     payload["signal"] = Signal.BUY.value
                     payload["intent"] = "cover"
                     self._open_positions = max(0, self._open_positions - 1)
+
+                    # If this cover was part of a reversal to long (e.g. mixed dollar index data on metals or explicit reversal),
+                    # immediately enter the Long position so the desk is not left flat.
+                    metals_intel = context.get("precious_metals_intel") or {}
+                    is_dollar_mixed = bool(metals_intel.get("dollar_mixed"))
+                    thesis_text = (str(decision.thesis or "") + " " + str(decision.thesis_en or "")).lower()
+                    wants_long_reversal = (
+                        is_dollar_mixed
+                        or bool(decision.raw.get("reverse_to_long"))
+                        or "long" in thesis_text
+                        or "revers" in thesis_text
+                    )
+                    if wants_long_reversal:
+                        long_sized = self._qty_for_session(qty if qty > 0 else abs(position_qty))
+                        if long_sized and long_sized > 0:
+                            try:
+                                long_order = self.service.submit_order(
+                                    symbol, long_sized, OrderSide.BUY, stop_price=entry_stop_long
+                                )
+                                stop_repr = entry_stop_long if entry_stop_long else f"{getattr(self.config, 'stop_loss_pct', 0) or 0}%"
+                                logger.info(
+                                    "AI REVERSAL TO LONG submitted: id=%s qty=%s stop=%s",
+                                    long_order.id,
+                                    long_sized,
+                                    stop_repr,
+                                )
+                                payload["reversal_to_long"] = True
+                                payload["long_order_id"] = str(long_order.id)
+                                payload["long_order_qty"] = long_sized
+                                payload["intent"] = "reverse_to_long"
+                                self._open_positions += 1
+                                self._arm_stop(symbol, payload, stop_distance)
+                            except Exception as rev_err:
+                                logger.warning("Failed to submit long order on reversal for %s: %s", symbol, rev_err)
             elif decision.action == Signal.BUY.value and position_qty == 0:
                 sized = self._qty_for_session(qty)
                 if sized is None:

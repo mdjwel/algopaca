@@ -1811,7 +1811,8 @@ a.ghost.bt-link-btn {
   transform: scale(0.98) translateY(-4px);
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.18s ease;
 }
 
 .nice-select.open .nice-select-dropdown,
@@ -1823,6 +1824,12 @@ a.ghost.bt-link-btn {
   transform: scale(1) translateY(0);
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
+}
+
+.nice-select:not(.open) .nice-select-dropdown {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .nice-select .list,

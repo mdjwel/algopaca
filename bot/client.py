@@ -2192,21 +2192,27 @@ class AlpacaService:
                 prices.append(price)
         return max(prices) if prices else None
 
-    def replace_stop_loss(self, symbol: str, stop_price: float) -> dict[str, Any] | None:
+    def replace_stop_loss(
+        self, symbol: str, stop_price: float, *, qty: float | None = None
+    ) -> dict[str, Any] | None:
         """Cancel resting protective stops and re-arm at `stop_price`.
 
         Used by the trailing manager — ``ensure_stop_loss`` deliberately refuses
         to touch an existing stop, so moving one needs this explicit path.
         """
-        qty = self.get_position_qty(symbol)
-        if qty == 0:
+        pos_qty = self.get_position_qty(symbol)
+        if pos_qty == 0:
             return None
         try:
             stop_price = normalize_stock_order_price(stop_price, field="stop_price")
         except ValueError:
             return None
-        is_short = qty < 0
-        abs_qty = abs(qty)
+        is_short = pos_qty < 0
+        abs_qty = abs(pos_qty)
+        if qty is not None:
+            requested = abs(float(qty))
+            if requested > 0:
+                abs_qty = min(abs_qty, requested)
         stop_qty = float(int(abs_qty)) if (is_short or abs_qty >= 1) else float(abs_qty)
         if stop_qty <= 0:
             return None
@@ -2387,6 +2393,7 @@ class AlpacaService:
         time_in_force: str = "day",
         extended_hours: bool = False,
         stop_loss_pct: float | None = None,
+        stop_loss_price: float | None = None,
         stop_limit_offset_pct: float | None = None,
         stop_limit_price: float | None = None,
         take_profit_price: float | None = None,
@@ -2515,9 +2522,14 @@ class AlpacaService:
                     entry_ref = float(limit_price)
                 else:
                     entry_ref = float(self.get_mark_price(symbol)["price"])
-                attached_stop_price = self.stop_price_for_entry(
-                    entry_ref, pct=stop_pct, short=short_entry
-                )
+                if stop_loss_price is not None and float(stop_loss_price) > 0:
+                    attached_stop_price = normalize_stock_order_price(
+                        stop_loss_price, field="stop_price"
+                    )
+                else:
+                    attached_stop_price = self.stop_price_for_entry(
+                        entry_ref, pct=stop_pct, short=short_entry
+                    )
                 if attached_stop_price is not None:
                     if exit_limit is not None:
                         # Absolute sell/cover limit — may sit at the stop, never
@@ -2667,6 +2679,7 @@ class AlpacaService:
         *,
         trail_percent: float | None = None,
         trail_price: float | None = None,
+        qty: float | None = None,
     ) -> dict[str, Any] | None:
         """Replace resting protection with a trailing stop over the whole position.
 
@@ -2674,12 +2687,17 @@ class AlpacaService:
         there: a fixed stop left beside a trailing one would double the exit
         size and leave a stray order behind after the first fill.
         """
-        qty = self.get_position_qty(symbol)
-        if qty == 0:
+        pos_qty = self.get_position_qty(symbol)
+        if pos_qty == 0:
             return None
         trail = self._trailing_kwargs(trail_percent, trail_price)
-        is_short = qty < 0
-        stop_qty = float(int(abs(qty)))
+        is_short = pos_qty < 0
+        abs_qty = abs(pos_qty)
+        if qty is not None:
+            requested = abs(float(qty))
+            if requested > 0:
+                abs_qty = min(abs_qty, requested)
+        stop_qty = float(int(abs_qty))
         if stop_qty < 1:
             raise ValueError(
                 "A trailing stop needs at least one whole share — Alpaca does "
@@ -2768,18 +2786,19 @@ class AlpacaService:
         take_profit_price: float | None = None,
         trail_percent: float | None = None,
         stop_pct: float | None = None,
+        qty: float | None = None,
     ) -> dict[str, Any]:
         """Arm both protective stop (fixed or trailing) and take profit for a position."""
         out: dict[str, Any] = {"symbol": symbol}
         if trail_percent and float(trail_percent) > 0:
-            out["stop"] = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent))
+            out["stop"] = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent), qty=qty)
         elif stop_price and float(stop_price) > 0:
-            out["stop"] = self.replace_stop_loss(symbol, float(stop_price))
+            out["stop"] = self.replace_stop_loss(symbol, float(stop_price), qty=qty)
         elif stop_pct and float(stop_pct) > 0:
-            out["stop"] = self.ensure_stop_loss(symbol, pct=float(stop_pct))
+            out["stop"] = self.ensure_stop_loss(symbol, pct=float(stop_pct), qty=qty)
 
         if take_profit_price and float(take_profit_price) > 0:
-            out["take_profit"] = self.arm_take_profit(symbol, float(take_profit_price))
+            out["take_profit"] = self.arm_take_profit(symbol, float(take_profit_price), qty=qty)
         return out
 
     def get_asset_info(self, symbol: str) -> dict[str, Any]:
@@ -3211,10 +3230,14 @@ class AlpacaService:
             )
 
         bar_close = None
-        if alpaca:
+        if chosen["source"].startswith("alpaca") and alpaca:
+            bar_close = alpaca.get("bar_close")
+        elif live:
+            bar_close = live.get("previous_close") or live.get("regular_price")
+        if bar_close is None and alpaca:
             bar_close = alpaca.get("bar_close")
         if bar_close is None and live:
-            bar_close = live.get("regular_price") or live.get("previous_close")
+            bar_close = live.get("previous_close") or live.get("regular_price")
 
         bid = None
         ask = None
@@ -3359,7 +3382,12 @@ class AlpacaService:
         asof, price, source = max(candidates, key=_ts_key)
 
         daily = snap.daily_bar
-        bar_close = float(daily.close) if daily is not None and daily.close else None
+        prev_daily = getattr(snap, "previous_daily_bar", None)
+        bar_close = (
+            float(prev_daily.close)
+            if prev_daily is not None and getattr(prev_daily, "close", None)
+            else (float(daily.close) if daily is not None and getattr(daily, "close", None) else None)
+        )
         return {
             "price": price,
             "source": source,

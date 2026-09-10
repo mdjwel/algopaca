@@ -285,6 +285,39 @@ class ManualOrderValidationTestCase(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self._ticket(ai_atr_stop_mult=10.1)
 
+    def test_bracket_price_fields_accepted(self):
+        ticket = self._ticket(
+            stop_loss_price=150.0,
+            take_profit_price=180.0,
+            take_profit_pct=10.0,
+        )
+        self.assertEqual(ticket.stop_loss_price, 150.0)
+        self.assertEqual(ticket.take_profit_price, 180.0)
+        self.assertEqual(ticket.take_profit_pct, 10.0)
+
+    def test_place_manual_order_take_profit_price_preview(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.stop_price_for_entry.return_value = 95.0
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                qty=10.0,
+                stop_loss_pct=5.0,
+                take_profit_price=110.0,
+                preview=True,
+            )
+            self.assertEqual(res["take_profit_price"], 110.0)
+            self.assertEqual(res["stop_preview"], 95.0)
+            self.assertEqual(res["take_profit_r"], 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

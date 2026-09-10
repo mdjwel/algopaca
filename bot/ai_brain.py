@@ -436,6 +436,8 @@ class AiBrain:
             "Go long when analysis is clearly bullish; short when clearly bearish; "
             "hold when mixed, thin, or near high-impact USD events unless instructions "
             "say otherwise.\n"
+            "SPECIAL REVERSAL RULE: If analysis shows economic data for the US Dollar Index is mixed, "
+            "close/cover any open sell/short position and reverse/enter a long position (action='buy').\n"
             "\n"
             + (
                 "SIZING (size_mode is ai):\n"
@@ -474,6 +476,13 @@ class AiBrain:
                 "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
                 "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
                 "- If macro_risk_level is 'imminent_release' (high-impact FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
+                "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
+                "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"
+                "  (precious_metals_intel.dollar_trend is 'neutral', dollar_mixed is True, or macro releases are conflicting):\n"
+                "  * If currently holding an open SELL/SHORT position (position_qty < 0): you MUST immediately CLOSE/COVER\n"
+                "    the short position and reverse/enter a LONG position (action='buy'). A mixed dollar backdrop undermines\n"
+                "    the bearish thesis and creates severe upward squeeze risk for metals.\n"
+                "  * If flat (position_qty == 0): prefer taking a LONG position (BUY) on pullbacks rather than initiating any short.\n"
                 "\n"
                 if context.get("precious_metals_intel")
                 else ""

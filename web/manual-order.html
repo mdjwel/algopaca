@@ -16,10 +16,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css" />
+  <link rel="stylesheet" href="/static/css/common.css?v=2.5" />
   <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
   <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
-  <link rel="stylesheet" href="/static/css/manual-order.css" />
+  <link rel="stylesheet" href="/static/css/manual-order.css?v=2.5" />
   <script>
     (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
   </script>
@@ -389,20 +389,69 @@
                 <p class="field-help" id="manual-bracket-help" data-i18n="bracket_help">Attach automated stop-loss and take-profit exit orders when this buy order fills.</p>
 
                 <div id="manual-bracket-fields">
-                  <!-- Bracket order legs: Stop distance and Target distance paired together -->
-                  <div class="field-pair-row manual-bracket-row">
-                    <label for="manual-ai-atr-mult"><span data-i18n="label_stop_atr">Stop = ATR ×</span>
-                      <input id="manual-ai-atr-mult" name="ai_atr_stop_mult" type="number" value="1.8" min="0.1" max="10" step="0.1" inputmode="decimal" aria-describedby="help-atr-mult" />
-                      <p id="help-atr-mult" class="field-help" data-i18n="help_atr_mult">Stop distance multiplier. Wider multiples survive noise but buy fewer shares. Range: 0.1–10.</p>
-                      <p class="field-error" role="alert" hidden></p>
-                    </label>
+                  <!-- Hidden backward-compatibility input for bracket unit mode -->
+                  <input type="hidden" name="bracket_unit_mode" value="pct" />
 
-                    <label for="manual-take-profit-r" id="manual-take-profit-label"><span data-i18n="label_take_profit_r">Take profit = R ×</span>
-                      <input id="manual-take-profit-r" name="take_profit_r" type="number" value="2" min="0" max="20" step="0.1" inputmode="decimal" aria-describedby="help-take-profit-r" />
-                      <p id="help-take-profit-r" class="field-help" data-i18n="help_take_profit_r">Target distance in multiples of the stop, sent as the other leg of a bracket order. 0 sends a stop only.</p>
+                  <!-- Bracket order legs: Stop Loss and Take Profit paired together -->
+                  <div class="field-pair-row manual-bracket-row">
+                    <div class="manual-bracket-col" id="manual-stop-loss-col">
+                      <div class="bracket-col-head">
+                        <label for="manual-stop-loss-val" class="bracket-col-label">
+                          <span id="label-stop-loss" data-i18n="label_stop_loss">Stop loss</span>
+                        </label>
+                        <div class="qty-unit-toggle bracket-unit-toggle" role="radiogroup" aria-label="Stop loss unit" data-i18n-aria-label="label_stop_loss">
+                          <label class="qty-unit" data-tooltip="Percent" data-i18n-tooltip="bracket_unit_pct">
+                            <input type="radio" name="stop_loss_unit_mode" value="pct" checked />
+                            <span aria-hidden="true">%</span>
+                            <span class="sr-only" data-i18n="bracket_unit_pct">Percent</span>
+                          </label>
+                          <label class="qty-unit" data-tooltip="Stop trigger price ($)" data-i18n-tooltip="label_stop_trigger_price">
+                            <input type="radio" name="stop_loss_unit_mode" value="price" />
+                            <span aria-hidden="true">$</span>
+                            <span class="sr-only" data-i18n="label_stop_trigger_price">Stop trigger price</span>
+                          </label>
+                        </div>
+                      </div>
+                      <div class="price-input-shell">
+                        <input id="manual-stop-loss-val" name="stop_loss_val" type="number" value="3" min="0.01" max="100000" step="0.1" inputmode="decimal" aria-describedby="help-stop-loss" />
+                        <span class="bracket-input-adornment" id="adornment-stop-loss">%</span>
+                      </div>
+                      <p id="hint-stop-loss" class="bracket-live-hint" aria-live="polite" hidden></p>
+                      <p id="help-stop-loss" class="field-help" data-i18n="help_stop_loss_pct">Percent below entry to exit and cut losses.</p>
                       <p class="field-error" role="alert" hidden></p>
-                    </label>
+                    </div>
+
+                    <div class="manual-bracket-col" id="manual-take-profit-col">
+                      <div class="bracket-col-head">
+                        <label for="manual-take-profit-val" class="bracket-col-label">
+                          <span id="label-take-profit" data-i18n="label_take_profit">Take profit</span>
+                        </label>
+                        <div class="qty-unit-toggle bracket-unit-toggle" role="radiogroup" aria-label="Take profit unit" data-i18n-aria-label="label_take_profit">
+                          <label class="qty-unit" data-tooltip="Percent" data-i18n-tooltip="bracket_unit_pct">
+                            <input type="radio" name="take_profit_unit_mode" value="pct" checked />
+                            <span aria-hidden="true">%</span>
+                            <span class="sr-only" data-i18n="bracket_unit_pct">Percent</span>
+                          </label>
+                          <label class="qty-unit" data-tooltip="Take profit price ($)" data-i18n-tooltip="label_take_profit_price">
+                            <input type="radio" name="take_profit_unit_mode" value="price" />
+                            <span aria-hidden="true">$</span>
+                            <span class="sr-only" data-i18n="label_take_profit_price">Take profit price</span>
+                          </label>
+                        </div>
+                      </div>
+                      <div class="price-input-shell">
+                        <input id="manual-take-profit-val" name="take_profit_val" type="number" value="6" min="0" max="100000" step="0.1" inputmode="decimal" aria-describedby="help-take-profit" />
+                        <span class="bracket-input-adornment" id="adornment-take-profit">%</span>
+                      </div>
+                      <p id="hint-take-profit" class="bracket-live-hint" aria-live="polite" hidden></p>
+                      <p id="help-take-profit" class="field-help" data-i18n="help_take_profit_pct">Percent above entry to exit with profit. 0 sends stop only.</p>
+                      <p class="field-error" role="alert" hidden></p>
+                    </div>
                   </div>
+
+                  <!-- Hidden backward-compatibility inputs for legacy ATR / R multiple syncing -->
+                  <input type="hidden" id="manual-ai-atr-mult" name="ai_atr_stop_mult" value="0" />
+                  <input type="hidden" id="manual-take-profit-r" name="take_profit_r" value="2" />
 
                   <details class="manual-advanced" id="manual-exit-advanced">
                     <summary class="manual-advanced-head">
@@ -638,7 +687,10 @@
         <aside class="manual-rail" aria-label="Ticket context" data-i18n-aria-label="ticket_context">
           <section class="panel manual-context-block" aria-labelledby="manual-context-heading">
             <div class="manual-context-head">
-              <h3 id="manual-context-heading" data-i18n="market_context">Market Context</h3>
+              <div class="manual-context-title-wrap">
+                <h3 id="manual-context-heading" data-i18n="market_context">Market Context</h3>
+                <span id="manual-ctx-symbol" class="pos-symbol-badge manual-context-symbol" hidden></span>
+              </div>
               <button type="button" id="btn-manual-refresh" class="ghost small" data-i18n="refresh_quote" data-i18n-title="refresh_quote_hint" title="Re-fetch mark, position, and account">Refresh</button>
             </div>
             <p id="manual-context-live" class="sr-only" role="status" aria-live="polite"></p>
@@ -884,7 +936,7 @@
   </div>
   <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
   <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js"></script>
-  <script src="/static/js/manual-order.js"></script>
+  <script src="/static/js/common.js?v=2.5"></script>
+  <script src="/static/js/manual-order.js?v=2.5"></script>
 </body>
 </html>

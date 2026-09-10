@@ -569,5 +569,149 @@ class TestMetalsTranslations(unittest.TestCase):
                 self.assertIn(key, data, f"{path.name} is missing translation key: {key}")
 
 
+class TestMixedDollarIndexReversalRule(unittest.TestCase):
+    def test_dollar_mixed_flag_in_context(self):
+        service = MagicMock()
+        service.get_mark_price.return_value = {"price": 240.0}
+        dates = pd.date_range(end=datetime.now(timezone.utc), periods=80, freq="D")
+        gld_series = [240.0 for _ in range(80)]
+        # Alternating series ending with mean value 28.0 so std > 0 and z-score == 0.0
+        uup_series = ([27.9, 28.1] * 39) + [28.0, 28.0]
+
+        service.get_bars.side_effect = lambda sym, **kw: pd.DataFrame(
+            {"close": uup_series if sym == "UUP" else gld_series}, index=dates
+        )
+
+        ctx = fetch_metals_macro_context(service, "GLD", calendar=[])
+        # With neutral UUP series, dollar trend is neutral -> dollar_mixed is True
+        self.assertTrue(ctx["dollar_mixed"])
+        self.assertEqual(ctx["dollar_economic_data_status"], "mixed")
+        self.assertTrue(ctx["short_reversal_to_long"])
+        self.assertIsNotNone(ctx["short_reversal_reason"])
+
+    def test_reversal_gate_bypasses_min_hold_on_dollar_mixed(self):
+        from bot.ai_risk import reversal_gate
+        config = MagicMock()
+        config.ai_min_hold_minutes = 45
+        config.ai_reversal_conf_bump = 0.20
+        config.ai_min_confidence = 0.60
+
+        # Position is short (-5 shares) and was opened just 2 minutes ago
+        context = {
+            "position": {"qty": -5.0},
+            "activity": {"last_fill_age_min": 2.0},
+            "precious_metals_intel": {"dollar_mixed": True},
+        }
+        gate = reversal_gate(config, context, confidence=0.50)
+        # Should allow reversal to protect from short squeeze on mixed dollar data
+        self.assertTrue(gate.allowed)
+
+    def test_gold_silver_macro_instructions_contain_mixed_dollar_reversal(self):
+        preset = get_ai_preset("gold_silver_macro")
+        self.assertIn("REVERSAL RULE", preset.instructions)
+        self.assertIn("Dollar Index is mixed", preset.instructions)
+
+    def test_ai_brain_prompt_contains_mandatory_dollar_mixed_reversal(self):
+        from bot.ai_brain import AiBrain
+
+        config = MagicMock()
+        config.strategy_mode = "ai"
+        config.ai_preset = "gold_silver_macro"
+        config.stop_loss_pct = 2.0
+        config.symbol = "GLD"
+        config.symbols = "GLD, SLV"
+        config.lang = "en"
+        config.size_mode = "qty"
+        config.trade_qty = 2.0
+        config.trade_notional = 200.0
+        config.ai_risk_pct = 0.5
+        config.account_buying_power = 10000.0
+        config.ai_qty_for_risk = None
+        config.order_qty_for_price = None
+        config.ai_stop_distance = None
+
+        service = MagicMock()
+        service.get_position_qty.return_value = -2.0
+        service.get_mark_price.return_value = {"price": 240.0}
+        service.market_session.return_value = {"session": "open"}
+        service.recent_activity.return_value = {}
+
+        dates = pd.date_range(end=datetime.now(timezone.utc), periods=30, freq="D")
+        service.get_bars.return_value = pd.DataFrame({"close": [240.0] * 30}, index=dates)
+
+        brain = AiBrain(config, service, MagicMock())
+        ctx = brain.build_context("GLD")
+        prompt = brain._format_prompt("GLD", ctx)
+        self.assertIn("MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE", prompt)
+
+    def test_ai_trader_reversal_to_long_on_dollar_mixed(self):
+        from bot.ai_trader import AiTradingBot
+        from bot.ai_providers import AiDecision
+
+        config = MagicMock()
+        config.require_approval = False
+        config.symbol = "GLD"
+        config.symbols = "GLD"
+        config.stop_loss_pct = 2.0
+        config.ai_daily_loss_limit_pct = 0
+        config.ai_max_positions = 0
+        config.ai_max_spread_bps = 0
+        config.ai_cooldown_minutes = 0
+
+        service = MagicMock()
+        service.get_position_qty.return_value = -3.0
+        service.has_open_orders.return_value = False
+        service.market_session.return_value = {"session": "open", "is_open": True}
+        service.get_mark_price.return_value = {"price": 240.0}
+        service.ensure_stop_loss.return_value = None
+
+        order_cover = MagicMock(id="order_cover_123")
+        order_long = MagicMock(id="order_long_456")
+        service.submit_order.side_effect = [order_cover, order_long]
+
+        brain = MagicMock()
+        context = {
+            "position": {"qty": -3.0},
+            "position_qty": -3.0,
+            "mark": {"price": 240.0},
+            "risk": {"stop_distance": 2.5},
+            "precious_metals_intel": {"dollar_mixed": True},
+        }
+        brain.build_context.return_value = context
+        brain.hold_decision.side_effect = lambda d, r: d
+        decision = AiDecision(
+            action="buy",
+            confidence=0.85,
+            qty=3.0,
+            thesis="Dollar index economic data is mixed, closing short and entering long.",
+            risks="Yield spikes.",
+            thesis_en="Dollar index economic data is mixed, closing short and entering long.",
+            risks_en="Yield spikes.",
+            news_bias="neutral",
+            ta_bias="bullish",
+            raw={"action": "buy", "reverse_to_long": True},
+            provider="openai",
+            model="gpt-5.6-luna",
+        )
+        brain.decide.return_value = (decision, context)
+
+        import threading
+        bot = AiTradingBot.__new__(AiTradingBot)
+        bot.config = config
+        bot.service = service
+        bot.approval_handler = None
+        bot.brain = brain
+        bot._execution_lock = threading.Lock()
+        bot._open_positions = 1
+        payload = bot._run_symbol("GLD")
+
+        self.assertTrue(payload.get("reversal_to_long"))
+        self.assertEqual(payload.get("long_order_id"), "order_long_456")
+        self.assertEqual(payload.get("intent"), "reverse_to_long")
+        # Assert two orders were submitted: 1st to COVER, 2nd to open LONG
+        self.assertEqual(service.submit_order.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
+

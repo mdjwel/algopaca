@@ -1345,12 +1345,84 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
     }
   }
 
+  // Reset and sync Stop Loss distance chips, badge & custom input
+  const distBadge = $("pos-exit-sl-dist-badge");
+  const customWrap = $("pos-exit-sl-custom-wrap");
+  const customInput = $("pos-exit-sl-custom-input");
+  const customBtn = $("btn-sl-pct-custom");
+  if (customWrap) customWrap.hidden = true;
+  if (customBtn) customBtn.classList.remove("is-active");
+
+  const actualSlPx = pos.stop_loss_price != null ? Number(pos.stop_loss_price) : null;
+  if (actualSlPx != null && currPx > 0) {
+    const calculatedPct = isShort ? ((actualSlPx - currPx) / currPx) * 100 : ((currPx - actualSlPx) / currPx) * 100;
+    if (distBadge) distBadge.textContent = calculatedPct > 0 ? `${calculatedPct.toFixed(1)}%` : "—";
+    let matchedChip = null;
+    document.querySelectorAll("[data-sl-pct]").forEach((c) => {
+      const p = Number(c.dataset.slPct);
+      if (Math.abs(p - calculatedPct) < 0.05) matchedChip = c;
+    });
+    if (matchedChip) {
+      document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedChip));
+    } else if (calculatedPct > 0) {
+      document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+      if (customBtn) customBtn.classList.add("is-active");
+      if (customWrap) customWrap.hidden = false;
+      if (customInput) customInput.value = calculatedPct.toFixed(1);
+    }
+  } else {
+    document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.slPct === "3"));
+    if (distBadge) distBadge.textContent = "3.0%";
+    if (customInput) customInput.value = "3.0";
+  }
+
+  // Initialize Strategy Sizing (Shares / Qty)
+  const heldQty = Math.abs(Number(pos.qty || 0));
+  const exitQtyInput = $("pos-exit-qty-input");
+  if (exitQtyInput) {
+    exitQtyInput.value = heldQty;
+    exitQtyInput.max = String(heldQty);
+    exitQtyInput.min = heldQty < 1 ? "0.0001" : "1";
+    exitQtyInput.step = Number.isInteger(heldQty) ? "1" : "any";
+  }
+  document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
+    c.classList.toggle("is-active", c.dataset.exitQtyPct === "100");
+  });
+  syncExitQtyUi(heldQty, heldQty);
+
   setExitMode(initialMode || "stop_loss");
   openPosModal("pos-exit-modal");
 
   if (slInput && (initialMode === "stop_loss" || !initialMode)) {
     slInput.focus();
     slInput.select();
+  }
+}
+
+function syncExitQtyUi(qty, heldQty) {
+  const pctBadge = $("pos-exit-qty-pct-badge");
+  const hintEl = $("pos-exit-qty-hint");
+  const pct = heldQty > 0 ? Math.round((qty / heldQty) * 100) : 0;
+  if (pctBadge) {
+    pctBadge.textContent = `${pct}%`;
+  }
+  if (hintEl) {
+    if (qty >= heldQty) {
+      hintEl.textContent = tx("protecting_all_shares", "Protecting all {total} shares (100%)", {
+        total: formatPositionQty(heldQty),
+      });
+      hintEl.classList.remove("warn");
+    } else if (qty > 0) {
+      hintEl.textContent = tx("protecting_shares_hint", "Protecting {qty} of {total} shares ({pct}%)", {
+        qty: formatPositionQty(qty),
+        total: formatPositionQty(heldQty),
+        pct: String(pct),
+      });
+      hintEl.classList.remove("warn");
+    } else {
+      hintEl.textContent = tx("err_invalid_exit_qty", "Enter a valid share quantity greater than 0");
+      hintEl.classList.add("warn");
+    }
   }
 }
 
@@ -1382,6 +1454,22 @@ function setExitMode(mode) {
   Object.entries(panes).forEach(([key, el]) => {
     if (el) el.hidden = key !== mode;
   });
+
+  // Toggle sizing card visibility & update label based on exit mode
+  const sizingCard = $("pos-exit-sizing-card");
+  const sizingLabel = $("pos-exit-qty-label");
+  if (sizingCard) {
+    sizingCard.hidden = mode === "clear";
+  }
+  if (sizingLabel) {
+    if (mode === "take_profit") {
+      sizingLabel.textContent = tx("shares_to_exit", "Shares to Exit");
+    } else if (mode === "bracket") {
+      sizingLabel.textContent = tx("shares_to_bracket", "Shares to Protect & Exit");
+    } else {
+      sizingLabel.textContent = tx("shares_to_protect", "Shares to Protect");
+    }
+  }
 
   // Update submit button text
   const submitBtn = $("btn-exit-modal-submit");
@@ -1416,7 +1504,10 @@ function updateExitCalculations() {
   const currPx = Number(pos.current_price || 0);
   const entryPx = Number(pos.avg_entry_price || 0);
   const isShort = String(pos.side || "").toLowerCase() === "short";
-  const qty = Number(pos.qty || 0);
+  const heldQty = Math.abs(Number(pos.qty || 0));
+  const exitQtyInput = $("pos-exit-qty-input");
+  const parsedQty = parseFloat(exitQtyInput?.value);
+  const qty = (Number.isFinite(parsedQty) && parsedQty > 0 && parsedQty <= heldQty) ? parsedQty : heldQty;
 
   const riskRow = $("pos-exit-risk-row");
   const rewardRow = $("pos-exit-reward-row");
@@ -1509,8 +1600,25 @@ async function submitExitStrategy() {
   try {
     const isShort = String(pos.side || "").toLowerCase() === "short";
     const currPx = Number(pos.current_price || 0);
+    const heldQty = Math.abs(Number(pos.qty || 0));
 
     const payload = { symbol: pos.symbol };
+
+    if (activeExitMode !== "clear") {
+      const exitQtyInput = $("pos-exit-qty-input");
+      const chosenQty = Number(exitQtyInput?.value || 0);
+      if (chosenQty <= 0) {
+        throw new Error(tx("err_invalid_exit_qty", "Enter a valid share quantity greater than 0"));
+      }
+      if (chosenQty > heldQty) {
+        throw new Error(
+          tx("err_exit_qty_exceeds", "Quantity cannot exceed held position ({total} shares)", {
+            total: formatPositionQty(heldQty),
+          })
+        );
+      }
+      payload.qty = chosenQty;
+    }
 
     if (activeExitMode === "stop_loss") {
       const slPx = Number($("pos-exit-sl-price")?.value || 0);
@@ -3029,7 +3137,50 @@ function initPositionsUi() {
   });
 
   // Exit Strategy Modal: Inputs live calculations
-  $("pos-exit-sl-price")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-sl-price")?.addEventListener("input", () => {
+    if (activeExitPosition) {
+      const currPx = Number(activeExitPosition.current_price || 0);
+      const slPx = Number($("pos-exit-sl-price")?.value || 0);
+      const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+      const distBadge = $("pos-exit-sl-dist-badge");
+      if (slPx > 0 && currPx > 0) {
+        const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
+        if (distBadge) distBadge.textContent = diffPct > 0 ? `${diffPct.toFixed(1)}%` : "—";
+        let matchedChip = null;
+        document.querySelectorAll("[data-sl-pct]").forEach((c) => {
+          const p = Number(c.dataset.slPct);
+          if (Math.abs(p - diffPct) < 0.05) matchedChip = c;
+        });
+        if (matchedChip) {
+          document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedChip));
+          $("btn-sl-pct-custom")?.classList.remove("is-active");
+          const customWrap = $("pos-exit-sl-custom-wrap");
+          if (customWrap) customWrap.hidden = true;
+        } else if (diffPct > 0) {
+          document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+          $("btn-sl-pct-custom")?.classList.add("is-active");
+          const customWrap = $("pos-exit-sl-custom-wrap");
+          if (customWrap) customWrap.hidden = false;
+          const customInput = $("pos-exit-sl-custom-input");
+          if (customInput && document.activeElement !== customInput) {
+            customInput.value = diffPct.toFixed(1);
+          }
+        } else {
+          document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+          $("btn-sl-pct-custom")?.classList.remove("is-active");
+          const customWrap = $("pos-exit-sl-custom-wrap");
+          if (customWrap) customWrap.hidden = true;
+        }
+      } else {
+        if (distBadge) distBadge.textContent = "—";
+        document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+        $("btn-sl-pct-custom")?.classList.remove("is-active");
+        const customWrap = $("pos-exit-sl-custom-wrap");
+        if (customWrap) customWrap.hidden = true;
+      }
+    }
+    updateExitCalculations();
+  });
   $("pos-exit-trail-pct")?.addEventListener("input", updateExitCalculations);
   $("pos-exit-tp-price")?.addEventListener("input", updateExitCalculations);
   $("pos-exit-bracket-sl")?.addEventListener("input", updateExitCalculations);
@@ -3046,8 +3197,98 @@ function initPositionsUi() {
       const slInput = $("pos-exit-sl-price");
       if (slInput) slInput.value = target.toFixed(2);
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      $("btn-sl-pct-custom")?.classList.remove("is-active");
+      const customWrap = $("pos-exit-sl-custom-wrap");
+      if (customWrap) customWrap.hidden = true;
+      const distBadge = $("pos-exit-sl-dist-badge");
+      if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
       updateExitCalculations();
     });
+  });
+
+  // Custom Risk Distance Chip & Input
+  $("btn-sl-pct-custom")?.addEventListener("click", () => {
+    if (!activeExitPosition) return;
+    document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+    $("btn-sl-pct-custom")?.classList.add("is-active");
+    const customWrap = $("pos-exit-sl-custom-wrap");
+    if (customWrap) customWrap.hidden = false;
+    const customInput = $("pos-exit-sl-custom-input");
+    const currPx = Number(activeExitPosition.current_price || 0);
+    const slInput = $("pos-exit-sl-price");
+    const slPx = Number(slInput?.value || 0);
+    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    if (customInput) {
+      if (!customInput.value || Number(customInput.value) <= 0) {
+        if (slPx > 0 && currPx > 0) {
+          const calculatedPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
+          customInput.value = Math.max(0.1, calculatedPct).toFixed(1);
+        } else {
+          customInput.value = "3.0";
+        }
+      }
+      customInput.focus();
+      customInput.select();
+      const pct = Number(customInput.value);
+      if (pct > 0 && currPx > 0) {
+        const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+        if (slInput) slInput.value = target.toFixed(2);
+        const distBadge = $("pos-exit-sl-dist-badge");
+        if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
+      }
+      updateExitCalculations();
+    }
+  });
+
+  $("pos-exit-sl-custom-input")?.addEventListener("input", (e) => {
+    if (!activeExitPosition) return;
+    const pct = Number(e.target.value);
+    const currPx = Number(activeExitPosition.current_price || 0);
+    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    const distBadge = $("pos-exit-sl-dist-badge");
+    if (pct > 0 && currPx > 0) {
+      const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+      const slInput = $("pos-exit-sl-price");
+      if (slInput) slInput.value = target.toFixed(2);
+      if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
+      updateExitCalculations();
+    } else if (distBadge) {
+      distBadge.textContent = "—";
+    }
+  });
+
+  // Exit Strategy Modal: Quantity percentage chips
+  document.querySelectorAll("[data-exit-qty-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!activeExitPosition) return;
+      const pct = Number(chip.dataset.exitQtyPct || 100);
+      const heldQty = Math.abs(Number(activeExitPosition.qty || 0));
+      let q = heldQty;
+      if (pct < 100) {
+        q = Number.isInteger(heldQty)
+          ? Math.max(1, Math.round((heldQty * pct) / 100))
+          : Number(((heldQty * pct) / 100).toFixed(4));
+      }
+      const qtyInput = $("pos-exit-qty-input");
+      if (qtyInput) qtyInput.value = q;
+      document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      syncExitQtyUi(q, heldQty);
+      updateExitCalculations();
+    });
+  });
+
+  // Exit Strategy Modal: Quantity input live sync
+  $("pos-exit-qty-input")?.addEventListener("input", (e) => {
+    if (!activeExitPosition) return;
+    const heldQty = Math.abs(Number(activeExitPosition.qty || 0));
+    const val = parseFloat(e.target.value) || 0;
+    const pct = heldQty > 0 ? (val / heldQty) * 100 : 0;
+    document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
+      const chipPct = Number(c.dataset.exitQtyPct);
+      c.classList.toggle("is-active", Math.abs(chipPct - pct) < 0.1);
+    });
+    syncExitQtyUi(val, heldQty);
+    updateExitCalculations();
   });
 
   document.querySelectorAll("[data-trail-pct]").forEach((chip) => {

@@ -302,7 +302,8 @@ _PRESETS: tuple[AiPreset, ...] = (
             "2. Confirmation: rising yields (yield_trend 'rising_yields') is the factor that matters most.\n"
             "3. Shorting gold fights a positive long-run drift. Require a clearly bearish macro score and "
             "size smaller than an equivalent long. Inverse ETFs (GLL, DUST) express the view without margin "
-            "borrow, but their daily reset makes them poor multi-week holds — keep them short-dated.\n"
+            "borrow, but their daily reset makes them poor multi-week holds — keep them short-dated. "
+            "Do NOT initiate or maintain shorts when US Dollar Index economic data is mixed or dollar_trend is 'neutral'.\n"
             "RISK & VOLATILITY GATES:\n"
             "- If macro_risk_level is 'imminent_release' (high-impact FOMC / CPI within 45 minutes), HOLD to avoid spread whipsaws.\n"
             "- HARD SKIP when spread_bps > 25.\n"
@@ -314,6 +315,10 @@ _PRESETS: tuple[AiPreset, ...] = (
             "- Exit early ONLY on a confirmed regime flip (loss of trend_regime), a macro score that has "
             "crossed below -0.5, or a major contradicting catalyst. Do not exit on short-term weakness alone "
             "— shallow pullbacks inside an uptrend are entries, not exits.\n"
+            "- REVERSAL RULE: If analysis shows economic data for the US Dollar Index is mixed or neutral "
+            "(dollar_trend 'neutral' or dollar_mixed is True), immediately CLOSE/COVER any open sell/short "
+            "position and reverse into a LONG position (action='buy'). Shorting into mixed dollar data carries "
+            "severe squeeze risk; flip to long exposure instead.\n"
             + _SHARED_EXIT
         ),
     ),

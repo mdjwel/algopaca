@@ -365,11 +365,14 @@ class ManualOrderIn(BaseModel):
     trail_price: Optional[float] = Field(None, gt=0)
     # None = use desk stop_loss_pct setting.
     stop_loss_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
+    stop_loss_price: Optional[float] = Field(None, gt=0)
     # Risk engine — None keeps desk settings (same knobs as Auto Trade).
     ai_risk_pct: Optional[float] = Field(None, ge=0.0, le=10.0)
     ai_atr_stop_mult: Optional[float] = Field(None, ge=0.0, le=10.0)
-    # Take-profit leg, priced in R (stop distances). 0 = stop only, no target.
+    # Take-profit leg, priced in R (stop distances) or direct price/percent. 0 = stop only, no target.
     take_profit_r: Optional[float] = Field(None, ge=0.0, le=20.0)
+    take_profit_price: Optional[float] = Field(None, gt=0)
+    take_profit_pct: Optional[float] = Field(None, ge=0.0, le=500.0)
     # 0 = sell/cover at market after the stop; >0 = stop-limit cushion %.
     stop_limit_offset_pct: Optional[float] = Field(None, ge=0.0, le=50.0)
     # Absolute sell/cover limit after the stop. Long: at or below stop; short: at or above.
@@ -431,6 +434,7 @@ class ManageStopIn(BaseModel):
     take_profit_pct: Optional[float] = Field(None, gt=0, le=500)
     take_profit_r: Optional[float] = Field(None, gt=0, le=20)
     use_trailing: Optional[bool] = False
+    qty: Optional[float] = Field(None, gt=0)
 
 
 class CancelOrderIn(BaseModel):
@@ -2062,9 +2066,12 @@ def place_order(
             time_in_force=body.time_in_force,
             extended_hours=body.extended_hours,
             stop_loss_pct=body.stop_loss_pct,
+            stop_loss_price=body.stop_loss_price,
             ai_risk_pct=body.ai_risk_pct,
             ai_atr_stop_mult=body.ai_atr_stop_mult,
             take_profit_r=body.take_profit_r,
+            take_profit_price=body.take_profit_price,
+            take_profit_pct=body.take_profit_pct,
             stop_limit_offset_pct=body.stop_limit_offset_pct,
             stop_limit_price=body.stop_limit_price,
             preview=body.preview,
@@ -2104,6 +2111,7 @@ def manage_position_stop(
             take_profit_pct=body.take_profit_pct,
             take_profit_r=body.take_profit_r,
             use_trailing=body.use_trailing,
+            qty=body.qty,
         )
         return {"ok": True, **result}
     except ValueError as exc:
