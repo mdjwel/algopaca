@@ -318,6 +318,155 @@ class ManualOrderValidationTestCase(unittest.TestCase):
             self.assertEqual(res["stop_preview"], 95.0)
             self.assertEqual(res["take_profit_r"], 2.0)
 
+    def test_place_manual_order_cover_preview(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 150.0, "source": "test"}
+            srv.get_position_qty.return_value = -20.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="cover",
+                order_type="market",
+                qty=12.0,
+                preview=True,
+            )
+            self.assertEqual(res["side"], "cover")
+            self.assertEqual(res["broker_side"], "buy")
+            self.assertEqual(res["order_qty"], 12.0)
+            self.assertEqual(res["position"], -20.0)
+            self.assertEqual(res["price"], 150.0)
+
+    def test_place_manual_order_cover_validation(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.account_summary.return_value = {"equity": 100000.0}
+
+            # 1. Covering when flat should fail
+            srv.get_position_qty.return_value = 0.0
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="cover",
+                    order_type="market",
+                    qty=5.0,
+                    preview=True,
+                )
+            self.assertIn("No short position", str(ctx.exception))
+
+            # 2. Covering when long should fail
+            srv.get_position_qty.return_value = 10.0
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="cover",
+                    order_type="market",
+                    qty=5.0,
+                    preview=True,
+                )
+            self.assertIn("use Sell to close a long", str(ctx.exception))
+
+            # 3. Buying when short should fail and suggest Cover
+            srv.get_position_qty.return_value = -10.0
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="buy",
+                    order_type="market",
+                    qty=5.0,
+                    preview=True,
+                )
+            self.assertIn("use Cover to buy those back", str(ctx.exception))
+
+    def test_place_manual_order_cover_with_followon_reverse(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 150.0, "source": "test"}
+            srv.get_position_qty.return_value = -20.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+
+            # 1. Full cover with reverse: should succeed and next_side should be "buy"
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="cover",
+                order_type="market",
+                qty=20.0,
+                followon={
+                    "enabled": True,
+                    "kind": "reverse",
+                    "qty_mode": "match",
+                    "order_type": "limit",
+                    "limit_price": 145.0,
+                },
+                preview=True,
+            )
+            self.assertEqual(res["side"], "cover")
+            self.assertIn("followon", res)
+            self.assertEqual(res["followon"]["kind"], "reverse")
+            self.assertEqual(res["followon"]["next_side"], "buy")
+            self.assertEqual(res["followon"]["target_symbol"], "AAPL")
+            self.assertEqual(res["followon"]["limit_price"], 145.0)
+
+            # 2. Partial cover with reverse: should raise error requiring full close
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="cover",
+                    order_type="market",
+                    qty=10.0,
+                    followon={
+                        "enabled": True,
+                        "kind": "reverse",
+                        "qty_mode": "match",
+                        "order_type": "limit",
+                        "limit_price": 145.0,
+                    },
+                    preview=True,
+                )
+            self.assertIn("needs the whole position closed", str(ctx.exception))
+
+    def test_place_manual_order_cover_with_followon_rotate(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 150.0, "source": "test"}
+            srv.get_position_qty.return_value = -20.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="cover",
+                order_type="market",
+                qty=10.0,
+                followon={
+                    "enabled": True,
+                    "kind": "rotate",
+                    "target_symbol": "MSFT",
+                    "qty_mode": "custom",
+                    "qty": 5.0,
+                    "order_type": "market",
+                },
+                preview=True,
+            )
+            self.assertEqual(res["side"], "cover")
+            self.assertIn("followon", res)
+            self.assertEqual(res["followon"]["kind"], "rotate")
+            self.assertEqual(res["followon"]["target_symbol"], "MSFT")
+            self.assertEqual(res["followon"]["next_side"], "buy")
+            self.assertEqual(res["followon"]["qty"], 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()

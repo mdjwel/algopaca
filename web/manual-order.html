@@ -170,13 +170,13 @@
               <fieldset id="manual-side-field" class="segmented-field" aria-label="Order action" data-i18n-aria-label="action">
                 <legend data-i18n="action">Action</legend>
                 <div class="segmented segmented-actions" role="radiogroup" data-i18n-aria-label="action" aria-label="Action">
-                  <label class="segment segment-buy">
+                  <label class="segment segment-buy" id="manual-segment-buy">
                     <input type="radio" name="side" value="buy" checked />
-                    <span data-i18n="buy">Buy</span>
+                    <span id="manual-side-buy-label" data-i18n="buy">Buy</span>
                   </label>
-                  <label class="segment segment-sell">
+                  <label class="segment segment-sell" id="manual-segment-sell">
                     <input type="radio" name="side" value="sell" />
-                    <span data-i18n="sell">Sell</span>
+                    <span id="manual-side-sell-label" data-i18n="sell">Sell</span>
                   </label>
                 </div>
               </fieldset>
@@ -590,7 +590,7 @@
                   <div class="segmented segmented-quiet" role="radiogroup" data-i18n-aria-label="followon_kind" aria-label="Next ticket">
                     <label class="segment">
                       <input type="radio" name="followon_kind" value="reverse" checked />
-                      <span data-i18n="followon_kind_reverse">Reverse this stock</span>
+                      <span id="manual-followon-reverse-label" data-i18n="followon_kind_reverse">Reverse this stock</span>
                     </label>
                     <label class="segment">
                       <input type="radio" name="followon_kind" value="rotate" />

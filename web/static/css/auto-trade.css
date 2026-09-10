@@ -269,7 +269,7 @@ details.desk-accordion .exec-notification-section > .check:has(input:checked) {
 /* Start / Stop loop - Radiant Primary CTA */
 .run-zone #btn-loop {
   background: linear-gradient(135deg, var(--copper) 0%, var(--copper-deep) 100%);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   border: 1px solid color-mix(in srgb, var(--copper) 85%, white 15%);
   font-weight: 700;
   box-shadow: 0 3px 12px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);

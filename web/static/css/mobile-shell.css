@@ -528,7 +528,7 @@ html {
   height: 44px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--copper), var(--copper-deep));
-  color: #fff;
+  color: var(--copper-text, #0c1219);
   font-family: var(--mono);
   font-weight: 700;
   font-size: 1.05rem;
@@ -834,7 +834,7 @@ html {
 
 .mobile-sheet-btn.is-primary {
   background: linear-gradient(135deg, var(--copper), var(--copper-deep));
-  color: #fff;
+  color: var(--copper-text, #0c1219);
   box-shadow: 0 4px 14px color-mix(in srgb, var(--copper) 30%, transparent);
 }
 

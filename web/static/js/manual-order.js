@@ -150,25 +150,27 @@ function manualSide() {
 /**
  * The action the desk is actually asked to perform.
  *
- * `place_manual_order` takes four actions, not two broker sides, because
- * "sell" is ambiguous the moment shorting exists: with shares in hand it
- * closes a long, and flat it opens a short. The form shows two buttons, so
- * the live position is what resolves them — and the confirm dialog names the
- * result before anything leaves the page.
- *
- * Buy always stays `buy`. Covering a short would have to be sized against the
- * borrow rather than by the risk engine that owns the Buy sizing block, so
- * that action is left to Positions and a Buy over a short is still refused —
- * see `err_buy_on_short`.
+ * `place_manual_order` takes four actions, not two broker sides:
+ * - "buy": open or add to a long
+ * - "sell": close a long
+ * - "short": open or add to a short
+ * - "cover": close or buy back a short
  */
 function manualDeskAction() {
-  if (manualSide() !== "sell") return "buy";
+  if (manualSide() !== "sell") {
+    return manualSignedPosition() < 0 ? "cover" : "buy";
+  }
   return manualSignedPosition() > 0 ? "sell" : "short";
 }
 
-/** Is this Sell opening a short rather than closing a long? */
+/** Is this ticket opening a short rather than closing a long? */
 function manualOpensShort() {
   return manualDeskAction() === "short";
+}
+
+/** Is this ticket covering a short rather than opening a long? */
+function manualOpensCover() {
+  return manualDeskAction() === "cover";
 }
 
 function manualSymbol() {
@@ -176,23 +178,22 @@ function manualSymbol() {
 }
 
 /**
- * Which half of the form is on screen — the Buy block or the Sell block.
- *
- * Deliberately the *button*, not the desk action: a short entry stands on the
- * Sell button and sizes from the Sell quantity box, so the layout follows the
- * button while the ticket that goes out follows `manualDeskAction`.
+ * Which half of the form is active — entry (Buy sizing block) or exit (Sell/Cover quantity block).
  */
 function manualIsEntry() {
-  return manualSide() === "buy";
+  const act = manualDeskAction();
+  return act === "buy" || act === "short";
 }
 
 function manualIsExit() {
-  return manualSide() === "sell";
+  const act = manualDeskAction();
+  return act === "sell" || act === "cover";
 }
 
-/** Does this ticket open risk (buy, short) or close it (sell)? */
+/** Does this ticket open risk (buy, short) or close it (sell, cover)? */
 function manualOpensRisk() {
-  return manualDeskAction() !== "sell";
+  const act = manualDeskAction();
+  return act === "buy" || act === "short";
 }
 
 function manualOrderType() {
@@ -503,9 +504,10 @@ function manualSignedPosition() {
   return Number.isFinite(qty) ? qty : 0;
 }
 
-/** Shares a Sell has to work with — a short position has none to sell here. */
+/** Shares an exit (Sell or Cover) has to work with. */
 function manualPositionQty() {
   const qty = manualSignedPosition();
+  if (manualDeskAction() === "cover") return qty < 0 ? Math.abs(qty) : 0;
   return qty > 0 ? qty : 0;
 }
 
@@ -988,7 +990,7 @@ function manualPayload() {
     payload.take_profit_r = 0;
     payload.stop_limit_offset_pct = 0;
     payload.stop_limit_price = null;
-  } else if (action === "sell") {
+  } else if (action === "sell" || action === "cover") {
     // An exit closes what is already there: the user picks how much. Risk
     // sizing has no meaning here — it would only get clamped anyway.
     payload.size_mode = "qty";
@@ -1136,7 +1138,7 @@ function validateManualLocal() {
   }
   if (manualNeedsTrigger()) {
     const mark = Number(manualContext?.quote?.price);
-    const isBuy = p.side === "buy";
+    const isBuy = p.side === "buy" || p.side === "cover";
     if (!(p.stop_price > 0)) {
       return tx("err_trigger_price", "Trigger price must be greater than $0.00.");
     }
@@ -1215,13 +1217,71 @@ function validateManualLocal() {
     );
   }
   const signed = manualSignedPosition();
-  // The desk action is never `cover`, so a Buy over a short still has to be
-  // refused here rather than quietly buying the borrow back at risk-engine size.
-  if (manualSide() === "buy" && signed < 0) {
+  if (p.side === "buy" && signed < 0) {
     return tx(
       "err_buy_on_short",
       "This symbol is held short — close it from Positions before buying."
     );
+  }
+  if (p.side === "cover") {
+    const held = manualPositionQty();
+    if (held <= 0) {
+      return tx("err_cover_flat", "No short position to cover in this symbol.");
+    }
+    if (!(p.qty > 0)) {
+      return manualSellMode() === "dollars"
+        ? tx("err_sell_notional", "Enter a dollar amount greater than $0.00.")
+        : tx("err_cover_qty", "Enter how many shares to cover.");
+    }
+    if (p.qty > held + 1e-9) {
+      if (manualSellMode() === "dollars") {
+        const px = manualExitFillPrice();
+        return tx(
+          "err_sell_notional_too_much",
+          "That is more than this position is worth ({value}).",
+          { value: money(held * px) }
+        );
+      }
+      return tx(
+        "err_cover_too_many",
+        "Cannot cover more shares than you hold short ({qty}).",
+        { qty: formatQty(held) }
+      );
+    }
+    if (p.followon) {
+      if (!followonIsMarket(p.followon) && !(p.followon.limit_price > 0)) {
+        return tx(
+          "err_followon_limit",
+          "Enter the price the next ticket should rest at — it must be greater than $0.00."
+        );
+      }
+      if (p.followon.qty_mode === "custom" && !(p.followon.qty > 0)) {
+        return tx("err_followon_qty", "Enter how many shares the next ticket should send.");
+      }
+      if (p.followon.kind === "rotate") {
+        const target = String(p.followon.target_symbol || "").trim().toUpperCase();
+        if (!/^[A-Z.\-]{1,12}$/.test(target)) {
+          return tx("err_followon_symbol", "Enter the symbol the next ticket should buy.");
+        }
+        if (target === p.symbol) {
+          return tx(
+            "err_followon_same_symbol",
+            "Buy another stock needs a different symbol than the one you are closing."
+          );
+        }
+      } else {
+        const held = manualPositionQty();
+        if (held > 0 && p.qty + 1e-9 < held) {
+          return tx(
+            "followon_partial_warn",
+            "Reverse needs the whole position closed. Enter the full available quantity, or the next ticket cannot fire."
+          );
+        }
+      }
+    }
+    const calc = currentEstimate();
+    if (calc?.blocked) return calc.blockedMessage;
+    return null;
   }
   if (p.side === "short") {
     if (!(manualSellQty() > 0)) {
@@ -1241,7 +1301,7 @@ function validateManualLocal() {
     if (calc?.blocked) return calc.blockedMessage;
     return null;
   }
-  if (manualIsExit()) {
+  if (p.side === "sell") {
     const held = manualPositionQty();
     if (held <= 0) {
       return tx("err_sell_flat", "No long position to sell in this symbol.");
@@ -3168,7 +3228,7 @@ function estimateFromServer(result) {
       exceedsBp: bp > 0 && proceeds > bp,
     };
   }
-  if (side === "sell") {
+  if (side === "sell" || side === "cover") {
     const held = Math.abs(Number(result.position) || 0);
     return {
       side,
@@ -3177,6 +3237,7 @@ function estimateFromServer(result) {
       shares,
       entry,
       proceeds: shares * entry,
+      cost: side === "cover" ? shares * entry : undefined,
       held,
       remaining: Math.max(0, held - shares),
       rearms: held - shares > 1e-9,
@@ -3403,35 +3464,59 @@ function updateSizeEstimate() {
   }
 
   if (calc.isExit) {
-    valueEl.textContent = tx("estimate_sell_value", "Sell {shares} shares ≈ {proceeds}", {
-      shares: formatQty(calc.shares),
-      proceeds: money(calc.proceeds),
-    });
+    const isCover = calc.side === "cover" || manualDeskAction() === "cover";
+    valueEl.textContent = isCover
+      ? tx("estimate_cover_value", "Cover {shares} shares ≈ {cost}", {
+          shares: formatQty(calc.shares),
+          cost: money(calc.proceeds || calc.cost),
+        })
+      : tx("estimate_sell_value", "Sell {shares} shares ≈ {proceeds}", {
+          shares: formatQty(calc.shares),
+          proceeds: money(calc.proceeds),
+        });
     // An exit has no stop, target or risk of its own; the four cells that used
     // to read "—" are hidden, and the two that remain say what they mean —
     // this grid used to label proceeds "Est. cost" and a share count
     // "% of buying power".
-    setCell("est-cost", money(calc.proceeds));
+    setCell("est-cost", money(calc.proceeds || calc.cost));
     setCell("est-bp", `${formatQty(calc.remaining)} ${tx("shares", "shares")}`);
     const bracketVisualizer = $("manual-bracket-visualizer");
     if (bracketVisualizer) bracketVisualizer.hidden = true;
     const inlineBadge = $("manual-inline-sizing-badge");
     if (inlineBadge) inlineBadge.hidden = true;
-    note.textContent = calc.rearms
-      ? tx(
-          "estimate_exit_partial",
-          "Closes {qty} of {held} shares. The resting stop is cancelled first, then re-armed over the {left} you keep.",
-          {
-            qty: formatQty(calc.shares),
-            held: formatQty(calc.held),
-            left: formatQty(calc.remaining),
-          }
-        )
-      : tx(
-          "estimate_exit_full",
-          "Closes the whole {held}-share position and cancels the resting stop with it.",
-          { held: formatQty(calc.held) }
-        );
+    if (isCover) {
+      note.textContent = calc.rearms
+        ? tx(
+            "estimate_cover_partial",
+            "Covers {qty} of {held} short shares. The resting stop is cancelled first, then re-armed over the {left} you keep.",
+            {
+              qty: formatQty(calc.shares),
+              held: formatQty(calc.held),
+              left: formatQty(calc.remaining),
+            }
+          )
+        : tx(
+            "estimate_cover_full",
+            "Covers the whole {held}-share short position and cancels the resting stop with it.",
+            { held: formatQty(calc.held) }
+          );
+    } else {
+      note.textContent = calc.rearms
+        ? tx(
+            "estimate_exit_partial",
+            "Closes {qty} of {held} shares. The resting stop is cancelled first, then re-armed over the {left} you keep.",
+            {
+              qty: formatQty(calc.shares),
+              held: formatQty(calc.held),
+              left: formatQty(calc.remaining),
+            }
+          )
+        : tx(
+            "estimate_exit_full",
+            "Closes the whole {held}-share position and cancels the resting stop with it.",
+            { held: formatQty(calc.held) }
+          );
+    }
     announceEstimate(valueEl.textContent, note.textContent);
     syncManualPlaceButtons();
     return;
@@ -3950,18 +4035,38 @@ function validateManualField(fieldName) {
 
 function syncManualSideUi() {
   const side = manualSide();
+  const action = manualDeskAction();
   const isExit = manualIsExit();
+  const isCover = action === "cover";
+  const signed = manualSignedPosition();
+  const isShortPos = signed < 0;
+
+  const buyLabelEl = $("manual-side-buy-label");
+  const buySegment = $("manual-segment-buy");
+  if (buyLabelEl) {
+    if (isShortPos) {
+      buyLabelEl.textContent = tx("action_cover", "Cover");
+      buyLabelEl.setAttribute("data-i18n", "action_cover");
+    } else {
+      buyLabelEl.textContent = tx("buy", "Buy");
+      buyLabelEl.setAttribute("data-i18n", "buy");
+    }
+  }
+  if (buySegment) {
+    buySegment.classList.toggle("is-cover", isShortPos);
+  }
+
   const form = $("manual-order");
-  if (form) form.dataset.side = side;
+  if (form) form.dataset.side = isCover ? "cover" : side;
   // The preview lives in the rail, outside the form, so the side has to be
   // published on the layout for the buy/sell colouring to reach it.
   const layout = $("page-manual-order");
-  if (layout) layout.dataset.side = side;
+  if (layout) layout.dataset.side = isCover ? "cover" : side;
   const sellGroup = $("manual-sell-group");
   const buySizingBlock = $("manual-buy-sizing-block");
   const riskGroup = $("manual-risk-group");
   const dipHuntGroup = $("manual-dip-hunt-group");
-  const isBuy = side === "buy";
+  const isBuy = side === "buy" && !isCover;
   const typeAllowed = ["market", "limit"].includes(manualOrderType());
   if (sellGroup) sellGroup.hidden = !isExit;
   if (buySizingBlock) buySizingBlock.hidden = isExit;
@@ -3985,6 +4090,9 @@ function syncManualSideUi() {
   const sharesMode = sellMode !== "dollars";
   const sellLegend = $("manual-sell-legend");
   if (sellLegend) {
+    sellLegend.textContent = isCover
+      ? tx("cover_quantity", "Cover quantity")
+      : tx("quantity", "Quantity");
     sellLegend.setAttribute("for", sharesMode ? "manual-sell-qty" : "manual-sell-notional");
   }
   const qtyLabel = $("manual-sell-qty-label");
@@ -4015,6 +4123,15 @@ function syncManualSideUi() {
         ? tx("qty_not_shortable", "not shortable")
         : tx("qty_opens_short", "opens a short");
     sellAvail.classList.toggle("is-empty", shortable === false);
+  } else if (sellAvail && isExit && isCover) {
+    const held = manualPositionQty();
+    const px = manualExitFillPrice();
+    const shown =
+      sellMode === "dollars" && held > 0 && px > 0
+        ? money(held * px)
+        : formatQty(held);
+    sellAvail.textContent = tx("qty_available_cover", "{qty} short to cover", { qty: shown });
+    sellAvail.classList.toggle("is-empty", !(held > 0));
   } else if (sellAvail && isExit) {
     const held = manualPositionQty();
     const px = manualExitFillPrice();
@@ -4135,6 +4252,10 @@ function syncManualSideUi() {
         "manual_side_help_short",
         "With no long to close, Sell opens a short — borrowed shares sold now and bought back later."
       ),
+      cover: tx(
+        "manual_side_help_cover",
+        "Cover buys back borrowed shares to close part or all of your short position."
+      ),
     };
     sideHelp.textContent = helps[manualDeskAction()] || helps.buy;
   }
@@ -4147,7 +4268,27 @@ function syncManualSideUi() {
   const sellHelp = $("manual-sell-help");
   if (sellHelp && isExit) {
     const held = manualPositionQty();
-    if (opensShort) {
+    const isCover = manualDeskAction() === "cover";
+    if (isCover) {
+      let text = tx(
+        "manual_cover_hint",
+        "Cover buys back borrowed shares to close part or all of your short position. Any resting protective stop is cancelled first."
+      );
+      if (sellMode === "dollars") {
+        const sizedQty = manualSellQty();
+        const px = manualExitFillPrice();
+        const dollars = Number(manualFormValue("sell_notional", ""));
+        if (sizedQty > 0 && px > 0 && dollars > 0) {
+          text +=
+            " " +
+            tx("help_sell_dollars_preview_short", "≈ {shares} shares at {price}.", {
+              shares: formatQty(sizedQty),
+              price: stockPrice(px),
+            });
+        }
+      }
+      sellHelp.textContent = text;
+    } else if (opensShort) {
       // Flat, Sell is not a refusal — it is the short entry. Say which one it
       // is, and whether the borrow is actually available.
       let text =
@@ -4299,11 +4440,23 @@ function syncManualFollowOnUi() {
   const isExit = manualIsExit() && !manualOpensShort();
   if (group) group.hidden = !isExit;
 
+  const isCover = manualOpensCover();
   const enabled = manualFollowOnEnabled();
   const fields = $("manual-followon-fields");
   if (fields) fields.hidden = !enabled;
   const toggle = $("manual-followon-enabled");
   if (toggle) toggle.disabled = !isExit || busy;
+
+  const reverseLabel = $("manual-followon-reverse-label");
+  if (reverseLabel) {
+    const reverseKey = isCover
+      ? "followon_kind_reverse_cover"
+      : "followon_kind_reverse";
+    reverseLabel.setAttribute("data-i18n", reverseKey);
+    reverseLabel.textContent = isCover
+      ? tx("followon_kind_reverse_cover", "Reverse to Long")
+      : tx("followon_kind_reverse", "Reverse this stock");
+  }
 
   const kind = manualFollowOnKind();
   const rotate = kind === "rotate";
@@ -4332,30 +4485,42 @@ function syncManualFollowOnUi() {
 
   const helpEl = $("manual-followon-help");
   if (helpEl && isExit) {
-    helpEl.textContent = !enabled
-      ? tx(
-          "followon_help",
-          "When the close fills, the desk sends the next order at your price. Nothing is sent if the close never fills."
-        )
-      : rotate
-        ? market
-          ? tx(
-              "followon_help_rotate_market",
-              "When the close fills, the desk sends a market buy in a different symbol."
-            )
-          : tx(
-              "followon_help_rotate",
-              "When the close fills, the desk sends a limit buy in a different symbol."
-            )
-        : market
-          ? tx(
-              "followon_help_reverse_sell_market",
-              "When the sell fills, the desk shorts this stock at the then-current price. The whole long must close first — Alpaca will not short while you are still long."
-            )
-          : tx(
-              "followon_help_reverse_sell",
-              "When the sell fills, the desk shorts this stock at your price. The whole long must close first — Alpaca will not short while you are still long."
-            );
+    if (!enabled) {
+      helpEl.textContent = tx(
+        "followon_help",
+        "When the close fills, the desk sends the next order at your price. Nothing is sent if the close never fills."
+      );
+    } else if (rotate) {
+      helpEl.textContent = market
+        ? tx(
+            "followon_help_rotate_market",
+            "When the close fills, the desk sends a market buy in a different symbol."
+          )
+        : tx(
+            "followon_help_rotate",
+            "When the close fills, the desk sends a limit buy in a different symbol."
+          );
+    } else if (isCover) {
+      helpEl.textContent = market
+        ? tx(
+            "followon_help_reverse_cover_market",
+            "When the cover fills, the desk buys this stock at the then-current price. The whole short must close first — Alpaca will not buy while you are still short."
+          )
+        : tx(
+            "followon_help_reverse_cover",
+            "When the cover fills, the desk buys this stock at your price. The whole short must close first — Alpaca will not buy while you are still short."
+          );
+    } else {
+      helpEl.textContent = market
+        ? tx(
+            "followon_help_reverse_sell_market",
+            "When the sell fills, the desk shorts this stock at the then-current price. The whole long must close first — Alpaca will not short while you are still long."
+          )
+        : tx(
+            "followon_help_reverse_sell",
+            "When the sell fills, the desk shorts this stock at your price. The whole long must close first — Alpaca will not short while you are still long."
+          );
+    }
   }
 
   const held = manualPositionQty();
@@ -4416,8 +4581,8 @@ function syncManualFollowOnUi() {
     const target = manualFollowOnTargetSymbol() || closeSymbol;
     const priced = market || nextPrice > 0;
     if (qty > 0 && priced && (!rotate || target)) {
-      summaryEl.textContent = rotate
-        ? market
+      if (rotate) {
+        summaryEl.textContent = market
           ? tx(
               "followon_summary_rotate_market",
               "Close {closeQty} {symbol} → then buy {nextQty} {target} at market.",
@@ -4439,8 +4604,31 @@ function syncManualFollowOnUi() {
                 price: stockPrice(nextPrice),
                 cost: money(qty * nextPrice),
               }
+            );
+      } else if (isCover) {
+        summaryEl.textContent = market
+          ? tx(
+              "followon_summary_reverse_cover_market",
+              "Cover {closeQty} {symbol} → then buy {nextQty} at market.",
+              {
+                closeQty: formatQty(closeQty),
+                symbol: closeSymbol || "—",
+                nextQty: formatQty(qty),
+              }
             )
-        : market
+          : tx(
+              "followon_summary_reverse_cover",
+              "Cover {closeQty} {symbol} → then buy {nextQty} at {price} (≈ {cost}).",
+              {
+                closeQty: formatQty(closeQty),
+                symbol: closeSymbol || "—",
+                nextQty: formatQty(qty),
+                price: stockPrice(nextPrice),
+                cost: money(qty * nextPrice),
+              }
+            );
+      } else {
+        summaryEl.textContent = market
           ? tx(
               "followon_summary_reverse_sell_market",
               "Sell {closeQty} {symbol} → then short {nextQty} at market.",
@@ -4460,6 +4648,7 @@ function syncManualFollowOnUi() {
                 price: stockPrice(nextPrice),
               }
             );
+      }
       summaryEl.classList.remove("warn");
     } else {
       summaryEl.textContent = "";
@@ -4470,7 +4659,7 @@ function syncManualFollowOnUi() {
 
 function syncManualBracketUi() {
   const group = $("manual-risk-group");
-  const isBuy = manualSide() === "buy";
+  const isBuy = manualSide() === "buy" && !manualOpensCover();
   const typeAllowed = ["market", "limit"].includes(manualOrderType());
   const shouldShow = isBuy && typeAllowed;
   if (group) group.hidden = !shouldShow;
@@ -4759,10 +4948,12 @@ function syncManualPlaceButtons() {
   const calc = currentEstimate();
 
   if (submitBtn) {
+    const action = manualDeskAction();
     submitBtn.disabled = locked;
-    submitBtn.dataset.side = side;
-    submitBtn.classList.toggle("is-buy", side === "buy");
-    submitBtn.classList.toggle("is-sell", side === "sell");
+    submitBtn.dataset.side = action;
+    submitBtn.classList.toggle("is-buy", action === "buy");
+    submitBtn.classList.toggle("is-sell", action === "sell" || action === "short");
+    submitBtn.classList.toggle("is-cover", action === "cover");
 
     if (busy && manualBusyLabel) {
       if (submitText) submitText.textContent = manualBusyLabel;
@@ -4777,7 +4968,8 @@ function syncManualPlaceButtons() {
             buy: tx("place_buy", "Place Buy Order"),
             sell: tx("place_sell", "Place Sell Order"),
             short: tx("place_short", "Place Short Order"),
-          }[manualDeskAction()] || tx("place_buy", "Place Buy Order");
+            cover: tx("place_cover", "Place Cover Order"),
+          }[action] || tx("place_buy", "Place Buy Order");
       }
       if (submitPill) {
         submitPill.textContent = "";
@@ -6293,7 +6485,8 @@ function renderConfirmationModal(payload) {
   const noteEl = $("manual-confirm-note");
   if (!modal || !summary) return;
 
-  const isExit = payload.side === "sell";
+  const isExit = payload.side === "sell" || payload.side === "cover";
+  const isCover = payload.side === "cover";
   const isShortEntry = payload.side === "short";
   const calc = currentEstimate();
   const session = manualContext?.session || manualContext?.quote?.session;
@@ -6304,9 +6497,8 @@ function renderConfirmationModal(payload) {
   const SIDE_LABELS = {
     buy: tx("buy", "Buy"),
     sell: tx("sell", "Sell"),
-    // Not the existing `short` key — that one is the lowercase noun the
-    // position rail uses ("held short"), not an action label.
     short: tx("action_short", "Short"),
+    cover: tx("action_cover", "Cover"),
   };
   const TYPE_LABELS = {
     market: manualOrderTypeLabel("market"),
@@ -6322,7 +6514,7 @@ function renderConfirmationModal(payload) {
     [
       tx("action", "Action"),
       SIDE_LABELS[payload.side] || payload.side,
-      isExit ? "sell" : "buy",
+      isCover ? "buy" : isExit ? "sell" : "buy",
     ],
     [
       tx("order_type", "Order type"),
@@ -6379,8 +6571,14 @@ function renderConfirmationModal(payload) {
     } else if (isExit) {
       rows.push(
         [tx("shares", "Shares"), formatQty(calc.shares)],
-        [tx("est_proceeds", "Est. proceeds"), money(calc.proceeds)],
-        [tx("remaining_position", "Remaining"), formatQty(calc.remaining)]
+        [
+          isCover ? tx("est_cost", "Est. cost") : tx("est_proceeds", "Est. proceeds"),
+          money(calc.proceeds || calc.cost),
+        ],
+        [
+          isCover ? tx("remaining_short", "Remaining short") : tx("remaining_position", "Remaining"),
+          formatQty(calc.remaining),
+        ]
       );
       if (calc.rearms) {
         rows.push([
@@ -6495,11 +6693,17 @@ function renderConfirmationModal(payload) {
             "Buy {qty} {symbol} at market after the close fills",
             { qty: qtyLabel, symbol: target || "—" }
           )
-        : tx(
-            "followon_confirm_reverse_sell_market",
-            "Short {qty} at market after the sell fills",
-            { qty: qtyLabel }
-          )
+        : payload.side === "cover"
+          ? tx(
+              "followon_confirm_reverse_cover_market",
+              "Buy {qty} at market after the cover fills",
+              { qty: qtyLabel }
+            )
+          : tx(
+              "followon_confirm_reverse_sell_market",
+              "Short {qty} at market after the sell fills",
+              { qty: qtyLabel }
+            )
       : payload.followon.kind === "rotate"
         ? tx(
             "followon_confirm_rotate",
@@ -6510,14 +6714,23 @@ function renderConfirmationModal(payload) {
               price: stockPrice(payload.followon.limit_price),
             }
           )
-        : tx(
-            "followon_confirm_reverse_sell",
-            "Short {qty} @ {price} after the sell fills",
-            {
-              qty: qtyLabel,
-              price: stockPrice(payload.followon.limit_price),
-            }
-          );
+        : payload.side === "cover"
+          ? tx(
+              "followon_confirm_reverse_cover",
+              "Buy {qty} @ {price} after the cover fills",
+              {
+                qty: qtyLabel,
+                price: stockPrice(payload.followon.limit_price),
+              }
+            )
+          : tx(
+              "followon_confirm_reverse_sell",
+              "Short {qty} @ {price} after the sell fills",
+              {
+                qty: qtyLabel,
+                price: stockPrice(payload.followon.limit_price),
+              }
+            );
     rows.push([tx("followon_confirm_row", "Next ticket"), confirmValue]);
     if (!market) {
       rows.push([
@@ -6716,6 +6929,7 @@ const SUBMIT_BUSY_LABELS = {
   buy: ["submitting_buy", "Submitting buy…"],
   sell: ["submitting_sell", "Submitting sell…"],
   short: ["submitting_short", "Submitting short…"],
+  cover: ["submitting_cover", "Submitting cover…"],
 };
 
 async function submitConfirmedOrder() {

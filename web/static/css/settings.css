@@ -174,7 +174,7 @@
   justify-content: center;
   box-shadow: 0 0 24px var(--glow), inset 0 0 10px rgba(255, 255, 255, 0.3);
   border: 2px solid var(--line-soft);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
 }
 
 .profile-avatar-img {
@@ -707,7 +707,7 @@
   height: 20px;
   border-radius: 50%;
   background: var(--copper);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   display: flex;
   align-items: center;
   justify-content: center;

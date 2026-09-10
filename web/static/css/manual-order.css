@@ -1107,6 +1107,28 @@ a.ghost.small {
     inset 0 0 0 1px color-mix(in srgb, var(--sell) 40%, transparent);
 }
 
+/* Cover state when holding short */
+.segmented-actions .segment-buy.is-cover {
+  border-color: color-mix(in srgb, #38bdf8 35%, var(--line));
+  color: color-mix(in srgb, #38bdf8 80%, var(--muted));
+}
+
+.segmented-actions .segment-buy.is-cover:hover {
+  border-color: color-mix(in srgb, #38bdf8 65%, var(--line));
+  background: color-mix(in srgb, #38bdf8 12%, var(--panel));
+  color: #38bdf8;
+}
+
+.segmented-actions .segment-buy.is-cover:has(input:checked) {
+  border-color: #38bdf8;
+  background: color-mix(in srgb, #38bdf8 22%, var(--panel));
+  color: #38bdf8;
+  font-weight: 700;
+  box-shadow:
+    0 0 16px color-mix(in srgb, #38bdf8 25%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, #38bdf8 40%, transparent);
+}
+
 .segment.is-disabled,
 .segment:has(input:disabled) {
   cursor: not-allowed;
@@ -1683,6 +1705,19 @@ a.ghost.small {
 .btn-manual-submit.is-sell:hover:not(:disabled) {
   background: color-mix(in srgb, var(--sell) 85%, #fff);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--sell) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.btn-manual-submit.is-cover {
+  border-color: #38bdf8;
+  background: #38bdf8;
+  color: #03141f;
+  box-shadow: 0 4px 14px color-mix(in srgb, #38bdf8 25%, transparent);
+}
+
+.btn-manual-submit.is-cover:hover:not(:disabled) {
+  background: color-mix(in srgb, #38bdf8 85%, #fff);
+  box-shadow: 0 6px 20px color-mix(in srgb, #38bdf8 40%, transparent);
   transform: translateY(-1px);
 }
 

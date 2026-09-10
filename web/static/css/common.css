@@ -21,7 +21,7 @@
   --muted: #8f949b;
   --copper: #d4894c;
   --copper-deep: #b56a32;
-  --copper-text: #ffffff;
+  --copper-text: #0c1219;
   --buy: #3fbf8f;
   --sell: #e35d5d;
   --hold: #8b9aab;
@@ -1026,7 +1026,7 @@ select.lang-select.hidden-select {
   height: 100%;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--copper) 0%, var(--copper-deep) 100%);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   font-size: 0.74rem;
   font-weight: 700;
   display: flex;
@@ -3078,19 +3078,21 @@ button.primary,
 a.button.primary,
 .btn-primary {
   background: linear-gradient(180deg, var(--copper) 0%, var(--copper-deep) 100%);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   border: 1px solid var(--copper);
   font-weight: 700;
   box-shadow: 0 2px 8px var(--glow);
 }
 
 button.primary:hover:not(:disabled),
+button.primary:focus-visible,
 a.button.primary:hover,
 a.button.primary:focus-visible,
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled),
+.btn-primary:focus-visible {
   background: linear-gradient(180deg, color-mix(in srgb, var(--copper) 85%, white 15%) 0%, var(--copper) 100%);
   border-color: color-mix(in srgb, var(--copper) 85%, white 15%);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   box-shadow: 0 4px 14px var(--glow);
 }
 
@@ -3111,7 +3113,7 @@ button.secondary:hover:not(:disabled),
 
 button.copper {
   background: var(--copper);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
 }
 
 button.copper:hover:not(:disabled) {

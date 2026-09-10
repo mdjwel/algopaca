@@ -52,7 +52,7 @@
   }
 
   .desk-nav-link.is-active {
-    color: var(--copper-text, #ffffff);
+    color: var(--copper-text, #0c1219);
     font-weight: 600;
     background: linear-gradient(180deg, var(--copper), var(--copper-deep));
     box-shadow:
@@ -61,7 +61,7 @@
   }
 
   .desk-nav-link.is-active:hover {
-    color: var(--copper-text, #ffffff);
+    color: var(--copper-text, #0c1219);
   }
 
   /* ── Desk nav dropdowns ────────────────────────────────────────── */
@@ -105,7 +105,7 @@
   }
 
   .desk-nav-trigger.is-active[aria-expanded="true"] {
-    color: var(--copper-text, #ffffff);
+    color: var(--copper-text, #0c1219);
     background: linear-gradient(180deg, var(--copper), var(--copper-deep));
   }
 
@@ -343,7 +343,7 @@ button.date-picker-day:hover:not(:disabled) {
 .date-picker-day.is-range-start.is-range-end {
   border-radius: 999px;
   background: var(--copper);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
   font-weight: 600;
 }
 
@@ -358,7 +358,7 @@ button.date-picker-day:hover:not(:disabled) {
 .date-picker-day.is-selected:hover,
 .date-picker-day.is-selected:focus-visible {
   background: var(--copper-deep);
-  color: var(--copper-text, #ffffff);
+  color: var(--copper-text, #0c1219);
 }
 
 .date-picker-day.is-today:not(.is-selected)::after {

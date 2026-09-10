@@ -1350,7 +1350,10 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
   const customWrap = $("pos-exit-sl-custom-wrap");
   const customInput = $("pos-exit-sl-custom-input");
   const customBtn = $("btn-sl-pct-custom");
-  if (customWrap) customWrap.hidden = true;
+  if (customWrap) {
+    customWrap.hidden = false;
+    customWrap.classList.remove("is-active");
+  }
   if (customBtn) customBtn.classList.remove("is-active");
 
   const actualSlPx = pos.stop_loss_price != null ? Number(pos.stop_loss_price) : null;
@@ -1364,16 +1367,18 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
     });
     if (matchedChip) {
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedChip));
+      if (customWrap) customWrap.classList.remove("is-active");
+      if (customInput) customInput.value = "";
     } else if (calculatedPct > 0) {
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
-      if (customBtn) customBtn.classList.add("is-active");
-      if (customWrap) customWrap.hidden = false;
+      if (customWrap) customWrap.classList.add("is-active");
       if (customInput) customInput.value = calculatedPct.toFixed(1);
     }
   } else {
     document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.slPct === "3"));
     if (distBadge) distBadge.textContent = "3.0%";
-    if (customInput) customInput.value = "3.0";
+    if (customWrap) customWrap.classList.remove("is-active");
+    if (customInput) customInput.value = "";
   }
 
   // Initialize Strategy Sizing (Shares / Qty)
@@ -3143,6 +3148,8 @@ function initPositionsUi() {
       const slPx = Number($("pos-exit-sl-price")?.value || 0);
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const distBadge = $("pos-exit-sl-dist-badge");
+      const customWrap = $("pos-exit-sl-custom-wrap");
+      const customInput = $("pos-exit-sl-custom-input");
       if (slPx > 0 && currPx > 0) {
         const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
         if (distBadge) distBadge.textContent = diffPct > 0 ? `${diffPct.toFixed(1)}%` : "—";
@@ -3153,30 +3160,22 @@ function initPositionsUi() {
         });
         if (matchedChip) {
           document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedChip));
-          $("btn-sl-pct-custom")?.classList.remove("is-active");
-          const customWrap = $("pos-exit-sl-custom-wrap");
-          if (customWrap) customWrap.hidden = true;
+          if (customWrap) customWrap.classList.remove("is-active");
+          if (customInput && document.activeElement !== customInput) customInput.value = "";
         } else if (diffPct > 0) {
           document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
-          $("btn-sl-pct-custom")?.classList.add("is-active");
-          const customWrap = $("pos-exit-sl-custom-wrap");
-          if (customWrap) customWrap.hidden = false;
-          const customInput = $("pos-exit-sl-custom-input");
+          if (customWrap) customWrap.classList.add("is-active");
           if (customInput && document.activeElement !== customInput) {
             customInput.value = diffPct.toFixed(1);
           }
         } else {
           document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
-          $("btn-sl-pct-custom")?.classList.remove("is-active");
-          const customWrap = $("pos-exit-sl-custom-wrap");
-          if (customWrap) customWrap.hidden = true;
+          if (customWrap) customWrap.classList.remove("is-active");
         }
       } else {
         if (distBadge) distBadge.textContent = "—";
         document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
-        $("btn-sl-pct-custom")?.classList.remove("is-active");
-        const customWrap = $("pos-exit-sl-custom-wrap");
-        if (customWrap) customWrap.hidden = true;
+        if (customWrap) customWrap.classList.remove("is-active");
       }
     }
     updateExitCalculations();
@@ -3197,51 +3196,26 @@ function initPositionsUi() {
       const slInput = $("pos-exit-sl-price");
       if (slInput) slInput.value = target.toFixed(2);
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
-      $("btn-sl-pct-custom")?.classList.remove("is-active");
       const customWrap = $("pos-exit-sl-custom-wrap");
-      if (customWrap) customWrap.hidden = true;
+      if (customWrap) customWrap.classList.remove("is-active");
+      const customInput = $("pos-exit-sl-custom-input");
+      if (customInput) customInput.value = "";
       const distBadge = $("pos-exit-sl-dist-badge");
       if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
       updateExitCalculations();
     });
   });
 
-  // Custom Risk Distance Chip & Input
-  $("btn-sl-pct-custom")?.addEventListener("click", () => {
-    if (!activeExitPosition) return;
+  // Custom Risk Distance Inline Input
+  $("pos-exit-sl-custom-input")?.addEventListener("focus", () => {
     document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
-    $("btn-sl-pct-custom")?.classList.add("is-active");
-    const customWrap = $("pos-exit-sl-custom-wrap");
-    if (customWrap) customWrap.hidden = false;
-    const customInput = $("pos-exit-sl-custom-input");
-    const currPx = Number(activeExitPosition.current_price || 0);
-    const slInput = $("pos-exit-sl-price");
-    const slPx = Number(slInput?.value || 0);
-    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
-    if (customInput) {
-      if (!customInput.value || Number(customInput.value) <= 0) {
-        if (slPx > 0 && currPx > 0) {
-          const calculatedPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
-          customInput.value = Math.max(0.1, calculatedPct).toFixed(1);
-        } else {
-          customInput.value = "3.0";
-        }
-      }
-      customInput.focus();
-      customInput.select();
-      const pct = Number(customInput.value);
-      if (pct > 0 && currPx > 0) {
-        const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
-        if (slInput) slInput.value = target.toFixed(2);
-        const distBadge = $("pos-exit-sl-dist-badge");
-        if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
-      }
-      updateExitCalculations();
-    }
+    $("pos-exit-sl-custom-wrap")?.classList.add("is-active");
   });
 
   $("pos-exit-sl-custom-input")?.addEventListener("input", (e) => {
     if (!activeExitPosition) return;
+    document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+    $("pos-exit-sl-custom-wrap")?.classList.add("is-active");
     const pct = Number(e.target.value);
     const currPx = Number(activeExitPosition.current_price || 0);
     const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
