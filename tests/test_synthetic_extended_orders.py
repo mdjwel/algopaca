@@ -604,6 +604,37 @@ class SyntheticExtendedOrdersTestCase(unittest.TestCase):
         self.assertIsNone(second)
         service_instance.submit_order.assert_called_once()
 
+    def test_place_manual_order_while_loop_running(self):
+        """Placing an advanced order should not be blocked even when auto trade is running."""
+        self.state.loop_running = True
+        with patch.object(self.state, "_base_config", return_value=Config.default()), \
+             patch("bot.web_state.AlpacaService") as MockService:
+            service_instance = MockService.return_value
+            service_instance.has_position.return_value = False
+            service_instance.get_mark_price.return_value = {"price": 100.0}
+            mock_order = MagicMock()
+            mock_order.id = "mock_order_123"
+            mock_order.status = "new"
+            mock_order.symbol = "AAPL"
+            mock_order.side = MagicMock()
+            mock_order.side.value = "buy"
+            mock_order.qty = 10.0
+            mock_order.type = "limit"
+            mock_order.limit_price = 99.0
+            service_instance.submit_manual_order.return_value = (mock_order, None)
+
+            res = self.state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="limit",
+                limit_price=99.0,
+                qty=10.0,
+                time_in_force="day",
+                stop_loss_pct=0,
+            )
+            self.assertEqual(res["order_id"], "mock_order_123")
+            self.assertEqual(res["symbol"], "AAPL")
+
 
 if __name__ == "__main__":
     unittest.main()

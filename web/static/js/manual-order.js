@@ -502,7 +502,7 @@ function syncSellFillButtons() {
     if (near(qty, held)) isAll = true;
     else if (near(qty, held / 2) || near(qty, Math.floor(held / 2))) isHalf = true;
   }
-  const locked = loopRunning || busy || !(held > 0);
+  const locked = busy || !(held > 0);
   const halfShares = sellFillShares("half");
 
   const fillGroups = $("manual-sell-group")?.querySelectorAll(".qty-fill-group");
@@ -522,7 +522,7 @@ function syncSellUnitToggle() {
   const form = $("manual-order");
   const dollarRadio = form?.querySelector('input[name="sell_mode"][value="dollars"]');
   const shareRadio = form?.querySelector('input[name="sell_mode"][value="custom"]');
-  const locked = loopRunning || busy;
+  const locked = busy;
   const canDollars = manualExitFillPrice() > 0;
   if (shareRadio) shareRadio.disabled = locked;
   if (!dollarRadio) return;
@@ -548,7 +548,7 @@ function syncQuoteFillButtons() {
   const hasPrice = Number(quote.price) > 0;
   const hasMark = hasPrice || hasBid || hasAsk;
   const hasMid = (hasBid && hasAsk) || hasMark;
-  const locked = loopRunning || busy;
+  const locked = busy;
 
   const setBtn = (id, available) => {
     const btn = $(id);
@@ -1231,20 +1231,15 @@ function syncManualBusyHint() {
     hint.dataset.state = "saving";
     return;
   }
-  if (loopRunning) {
-    hint.textContent = tx("locked", "Locked");
-    hint.dataset.state = "locked";
-  } else {
-    const env =
-      lastAlpacaStatus?.trading_mode ||
-      lastAccount?.trading_mode ||
-      (lastAccount?.paper === false ? "live" : "paper");
-    hint.textContent =
-      env === "live"
-        ? tx("live_real", "Live account")
-        : tx("live_paper", "Paper account");
-    hint.dataset.state = env === "live" ? "live" : "ready";
-  }
+  const env =
+    lastAlpacaStatus?.trading_mode ||
+    lastAccount?.trading_mode ||
+    (lastAccount?.paper === false ? "live" : "paper");
+  hint.textContent =
+    env === "live"
+      ? tx("live_real", "Live account")
+      : tx("live_paper", "Paper account");
+  hint.dataset.state = env === "live" ? "live" : "ready";
 }
 
 /** Resting orders for the symbol, each cancellable in place. */
@@ -2100,7 +2095,7 @@ function syncManualTypeUi() {
     [...typeSelect.options].forEach((opt) => {
       opt.disabled = !allowedTypes.includes(opt.value);
     });
-    typeSelect.disabled = loopRunning || busy;
+    typeSelect.disabled = busy;
     ensureNiceSelect(typeSelect);
     decorateOrderTypeSelect(typeSelect);
   }
@@ -2140,7 +2135,7 @@ function syncManualTypeUi() {
       "tif-day-gtc-only",
       manualExtendedHours() || isMarket
     );
-    tifSelect.disabled = isMarket || loopRunning || busy;
+    tifSelect.disabled = isMarket || busy;
     ensureNiceSelect(tifSelect);
     decorateTifSelect(tifSelect);
   }
@@ -2165,7 +2160,7 @@ function syncManualTypeUi() {
     const row = $(id);
     if (row) row.hidden = !visible;
     row?.querySelectorAll("input").forEach((input) => {
-      input.disabled = !visible || loopRunning || busy;
+      input.disabled = !visible || busy;
     });
   });
 
@@ -2325,7 +2320,7 @@ function syncTradingSessionUi() {
 
   const overnight = form?.querySelector('input[name="trading_session"][value="24h"]');
   const regular = form?.querySelector('input[name="trading_session"][value="regular"]');
-  const locked = loopRunning || busy;
+  const locked = busy;
   const rthOnlyType = manualOrderTypeIsRthOnly();
   const lock24h = rthOnlyType;
   if (overnight) {
@@ -2488,7 +2483,7 @@ function syncTriggerOffset() {
 function syncManualLoopBanner() {
   const banner = $("manual-loop-banner");
   if (!banner) return;
-  banner.hidden = !loopRunning;
+  banner.hidden = true;
 }
 
 /**
@@ -2917,7 +2912,7 @@ function scheduleServerPreview() {
 }
 
 async function refreshServerPreview() {
-  if (loopRunning || !manualContext) return;
+  if (!manualContext) return;
   if (manualPreviewInFlight) {
     manualPreviewPendingRerun = true;
     return;
@@ -3580,7 +3575,7 @@ function syncManualSideUi() {
   const sideInputs = form?.elements?.side;
   if (sideInputs instanceof RadioNodeList) {
     [...sideInputs].forEach((input) => {
-      input.disabled = loopRunning || busy;
+      input.disabled = busy;
       const segment = input.closest(".segment");
       segment?.classList.remove("is-disabled");
       segment?.removeAttribute("tabindex");
@@ -3603,14 +3598,14 @@ function syncManualSideUi() {
   const opensShort = manualOpensShort();
   const qtyInput = $("manual-sell-qty");
   if (qtyInput) {
-    qtyInput.disabled = !sharesMode || loopRunning || busy;
+    qtyInput.disabled = !sharesMode || busy;
     qtyInput.max = opensShort ? "" : String(manualPositionQty() || 0);
   }
   const dollarLabel = $("manual-sell-notional-label");
   if (dollarLabel) dollarLabel.hidden = sharesMode;
   const dollarInput = $("manual-sell-notional");
   if (dollarInput) {
-    dollarInput.disabled = sharesMode || loopRunning || busy;
+    dollarInput.disabled = sharesMode || busy;
     const held = manualPositionQty();
     const px = manualExitFillPrice();
     dollarInput.max = !opensShort && held > 0 && px > 0 ? String(held * px) : "";
@@ -3680,7 +3675,7 @@ function syncManualSideUi() {
   const buyModeInputs = form?.elements?.buy_size_mode;
   if (buyModeInputs instanceof RadioNodeList) {
     [...buyModeInputs].forEach((input) => {
-      input.disabled = isExit || loopRunning || busy;
+      input.disabled = isExit || busy;
     });
   }
 
@@ -3693,9 +3688,9 @@ function syncManualSideUi() {
     if (!label) return;
     label.hidden = isExit || mode !== buyMode;
     const input = label.querySelector("input");
-    if (input) input.disabled = label.hidden || loopRunning || busy;
+    if (input) input.disabled = label.hidden || busy;
     label.querySelectorAll("[data-notional-fill]").forEach((btn) => {
-      btn.disabled = label.hidden || loopRunning || busy || !(Number(manualContext?.buying_power) > 0);
+      btn.disabled = label.hidden || busy || !(Number(manualContext?.buying_power) > 0);
     });
   });
   const modeHelp = $("manual-size-mode-help");
@@ -3818,17 +3813,17 @@ function syncManualReinvestUi() {
   const fields = $("manual-reinvest-fields");
   if (fields) fields.hidden = !enabled;
   const toggle = $("manual-reinvest-enabled");
-  if (toggle) toggle.disabled = !isSell || loopRunning || busy;
+  if (toggle) toggle.disabled = !isSell || busy;
 
   const qtyLabel = $("manual-reinvest-qty-label");
   const custom = manualReinvestQtyMode() === "custom";
   if (qtyLabel) qtyLabel.hidden = !enabled || !custom;
   const qtyInput = $("manual-reinvest-qty");
-  if (qtyInput) qtyInput.disabled = !enabled || !custom || loopRunning || busy;
+  if (qtyInput) qtyInput.disabled = !enabled || !custom || busy;
   const limitInput = $("manual-reinvest-limit");
-  if (limitInput) limitInput.disabled = !enabled || loopRunning || busy;
+  if (limitInput) limitInput.disabled = !enabled || busy;
   const expireInput = $("manual-reinvest-expire");
-  if (expireInput) expireInput.disabled = !enabled || loopRunning || busy;
+  if (expireInput) expireInput.disabled = !enabled || busy;
 
   const offsetEl = $("manual-reinvest-offset");
   const summaryEl = $("manual-reinvest-summary");
@@ -3901,20 +3896,20 @@ function syncManualFollowOnUi() {
   const fields = $("manual-followon-fields");
   if (fields) fields.hidden = !enabled;
   const toggle = $("manual-followon-enabled");
-  if (toggle) toggle.disabled = !isExit || loopRunning || busy;
+  if (toggle) toggle.disabled = !isExit || busy;
 
   const kind = manualFollowOnKind();
   const rotate = kind === "rotate";
   const symbolLabel = $("manual-followon-symbol-label");
   if (symbolLabel) symbolLabel.hidden = !enabled || !rotate;
   const symbolInput = $("manual-followon-symbol");
-  if (symbolInput) symbolInput.disabled = !enabled || !rotate || loopRunning || busy;
+  if (symbolInput) symbolInput.disabled = !enabled || !rotate || busy;
 
   const custom = manualFollowOnQtyMode() === "custom";
   const qtyLabel = $("manual-followon-qty-label");
   if (qtyLabel) qtyLabel.hidden = !enabled || !custom;
   const qtyInput = $("manual-followon-qty");
-  if (qtyInput) qtyInput.disabled = !enabled || !custom || loopRunning || busy;
+  if (qtyInput) qtyInput.disabled = !enabled || !custom || busy;
   const market = manualFollowOnOrderType() === "market";
   const limitLabel = $("manual-followon-limit-label");
   if (limitLabel) limitLabel.hidden = !enabled || market;
@@ -3924,7 +3919,7 @@ function syncManualFollowOnUi() {
     priceRow.classList.toggle("is-market", market);
   }
   const limitInput = $("manual-followon-limit");
-  if (limitInput) limitInput.disabled = !enabled || market || loopRunning || busy;
+  if (limitInput) limitInput.disabled = !enabled || market || busy;
   const marketHint = $("manual-followon-market-hint");
   if (marketHint) marketHint.hidden = !enabled || !market;
 
@@ -4080,27 +4075,27 @@ function syncManualBracketUi() {
 
   const fields = $("manual-bracket-fields");
   if (fields) fields.hidden = !enabled;
-  if (toggle) toggle.disabled = !shouldShow || loopRunning || busy;
+  if (toggle) toggle.disabled = !shouldShow || busy;
 
   const atrInput = $("manual-ai-atr-mult");
-  if (atrInput) atrInput.disabled = !enabled || loopRunning || busy;
+  if (atrInput) atrInput.disabled = !enabled || busy;
   const tpInput = $("manual-take-profit-r");
-  if (tpInput) tpInput.disabled = !enabled || loopRunning || busy;
+  if (tpInput) tpInput.disabled = !enabled || busy;
   const explicitStopLimit = Number(manualFormValue("stop_limit_price", "")) > 0;
   const stopLimitOffset = $("manual-stop-limit-offset");
   if (stopLimitOffset) {
-    stopLimitOffset.disabled = !enabled || explicitStopLimit || loopRunning || busy;
+    stopLimitOffset.disabled = !enabled || explicitStopLimit || busy;
     const offsetLabel = $("manual-stop-limit-label");
     if (offsetLabel) {
       offsetLabel.classList.toggle("is-disabled", explicitStopLimit);
     }
   }
   const stopLimitPrice = $("manual-stop-limit-price");
-  if (stopLimitPrice) stopLimitPrice.disabled = !enabled || loopRunning || busy;
+  if (stopLimitPrice) stopLimitPrice.disabled = !enabled || busy;
   const btnStopLimitAtStop = $("btn-stop-limit-at-stop");
   if (btnStopLimitAtStop) {
     const hasStop = Number(currentEstimate()?.stopPrice) > 0;
-    btnStopLimitAtStop.disabled = !enabled || !hasStop || loopRunning || busy;
+    btnStopLimitAtStop.disabled = !enabled || !hasStop || busy;
     btnStopLimitAtStop.classList.toggle("is-active", stopLimitPinnedToStop && hasStop);
     btnStopLimitAtStop.setAttribute("aria-pressed", stopLimitPinnedToStop && hasStop ? "true" : "false");
   }
@@ -4126,7 +4121,7 @@ function syncBuyUnitToggle(bracketActive) {
   const riskInput = form?.querySelector('input[name="buy_size_mode"][value="risk"]');
   if (riskUnit && riskInput) {
     riskUnit.hidden = !bracketActive;
-    riskInput.disabled = !bracketActive || loopRunning || busy;
+    riskInput.disabled = !bracketActive || busy;
   }
   if (!bracketActive && manualBuySizeMode() === "risk") {
     setManualFormValue("buy_size_mode", "notional");
@@ -4153,12 +4148,12 @@ function syncManualDipHuntUi() {
 
   const fields = $("manual-dip-hunt-fields");
   if (fields) fields.hidden = !enabled;
-  if (toggle) toggle.disabled = !shouldShow || loopRunning || busy;
+  if (toggle) toggle.disabled = !shouldShow || busy;
 
   const waitInput = $("manual-dip-hunt-wait");
-  if (waitInput) waitInput.disabled = !enabled || loopRunning || busy;
+  if (waitInput) waitInput.disabled = !enabled || busy;
   const pctInput = $("manual-dip-hunt-pct");
-  if (pctInput) pctInput.disabled = !enabled || loopRunning || busy;
+  if (pctInput) pctInput.disabled = !enabled || busy;
 
   const badge = $("manual-dip-hunt-summary-badge");
   if (badge) {
@@ -4199,7 +4194,7 @@ function syncManualDipHuntUi() {
 
 function selectManualSide(side) {
   const next = visibleTicketSide(side);
-  if (!next || loopRunning || busy) return false;
+  if (!next || busy) return false;
   if (manualSide() === next) return false;
   setManualFormValue("side", next);
   formDirtyManual = true;
@@ -4212,7 +4207,7 @@ function selectManualSide(side) {
 
 function syncManualPlaceButtons() {
   const side = manualSide();
-  const locked = loopRunning || busy;
+  const locked = busy;
   const submitBtn = $("btn-manual-submit");
   const submitText = $("btn-submit-text");
   const submitPill = $("btn-submit-pill");
@@ -4576,7 +4571,7 @@ function syncPresetDeleteButton() {
   const select = $("manual-preset");
   if (!btn) return;
   btn.hidden = !select?.value;
-  btn.disabled = loopRunning || busy;
+  btn.disabled = busy;
 }
 
 /** Twelve presets with no way to remove one is a list you get stuck in. */
@@ -4664,7 +4659,7 @@ function syncSymbolSuggestions() {
 function syncManualUi() {
   syncManualLoopBanner();
   syncSymbolSuggestions();
-  const locked = loopRunning || busy;
+  const locked = busy;
   const form = $("manual-order");
 
   if (form) {
@@ -6091,7 +6086,7 @@ function renderConfirmationModal(payload) {
 
 function onManualSubmit(ev) {
   ev?.preventDefault?.();
-  if (busy || loopRunning) return;
+  if (busy) return;
   const err = validateManualLocal();
   if (err) {
     setManualError(err);
@@ -6107,7 +6102,7 @@ function onManualSubmit(ev) {
 
 /** Ask the desk to size the ticket without sending it. */
 async function onManualPreview() {
-  if (busy || loopRunning) return;
+  if (busy) return;
   const err = validateManualLocal();
   if (err) {
     setManualError(err);
@@ -6532,7 +6527,7 @@ function renderRecentTickets() {
 function reuseRecentTicket(orderId) {
   const row = readRecentTickets().find((r) => String(r.order_id) === String(orderId));
   if (!row) return;
-  if (loopRunning || busy) return;
+  if (busy) return;
   const symbol = String(row.symbol || "").trim().toUpperCase();
   if (/^[A-Z.\-]{1,12}$/.test(symbol)) setManualFormValue("symbol", symbol);
   const reusedSide = visibleTicketSide(row.side);
@@ -7100,7 +7095,7 @@ function onDeskStatusUpdate(state) {
 
 /** Keep the mark honest — a stale quote makes every number on the page a lie. */
 function onDeskStatusInterval() {
-  if (busy || loopRunning || document.hidden) return;
+  if (busy || document.hidden) return;
   const modal = $("manual-confirm-modal");
   if (modal && !modal.hidden) return;
   if (Date.now() - manualContextFetchedAt < MANUAL_CONTEXT_REFRESH_MS) return;

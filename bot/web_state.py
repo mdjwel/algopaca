@@ -4517,9 +4517,6 @@ class AppState:
         ``buy``   open or add to a long        ``sell``  close part of a long
         ``short`` open or add to a short       ``cover`` close part of a short
         """
-        if self.loop_running:
-            raise ValueError("Stop the strategy loop before placing a manual order.")
-
         symbol = str(symbol or "").upper().strip()
         if not symbol:
             raise ValueError("Symbol is required")

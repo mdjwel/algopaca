@@ -2868,6 +2868,52 @@ a.pos-prot-badge.orders:focus-visible {
   font-size: 0.78rem;
 }
 
+/* Auto Trade Batch Action Button — Electric Indigo / AI Violet styling */
+.btn-batch-autotrade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--violet-deep) 90%, #4338ca) 0%, color-mix(in srgb, var(--violet) 45%, #3730a3) 100%);
+  color: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--violet) 65%, transparent);
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--violet-deep) 80%, #6366f1) 0%, color-mix(in srgb, var(--violet) 65%, #4f46e5) 100%);
+    border-color: color-mix(in srgb, var(--violet) 90%, #ffffff);
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.52), 0 0 12px rgba(192, 132, 252, 0.35);
+    transform: translateY(-1px);
+    color: #ffffff;
+
+    .pos-batch-autotrade-icon {
+      transform: scale(1.15);
+      color: #ffffff;
+    }
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--violet);
+    outline-offset: 2px;
+  }
+
+  .pos-batch-autotrade-icon {
+    flex-shrink: 0;
+    display: inline-block;
+    color: color-mix(in srgb, var(--violet) 85%, #ffffff);
+    filter: drop-shadow(0 0 4px rgba(192, 132, 252, 0.65));
+    transition: transform 0.18s ease, color 0.18s ease;
+  }
+}
+
 @media (max-width: 480px) {
   .pos-batch-floating-bar {
     bottom: calc(var(--mobile-nav-height, 0px) + env(safe-area-inset-bottom, 0px) + 0.65rem);

@@ -409,7 +409,10 @@
             </div>
             <div class="pos-batch-floating-actions">
               <button type="button" id="btn-batch-deselect" class="ghost btn-sm" data-i18n="pos_lots_deselect">Deselect</button>
-              <button type="button" id="btn-batch-autotrade" class="button copper btn-sm">
+              <button type="button" id="btn-batch-autotrade" class="button btn-batch-autotrade btn-sm">
+                <svg class="pos-batch-autotrade-icon" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="currentColor" stroke-width="0.5" aria-hidden="true" focusable="false">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
                 <span id="btn-batch-autotrade-text" data-i18n="autotrade_selected">Auto Trade Selected</span>
               </button>
               <button type="button" id="btn-batch-liquidate" class="primary primary-danger btn-sm">
@@ -418,7 +421,6 @@
             </div>
           </div>
         </div>
-
       </div>
     </main>
 
