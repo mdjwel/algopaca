@@ -5634,6 +5634,7 @@ class AppState:
             amt = float(trail_price or 0)
             if pct <= 0 and amt <= 0:
                 raise ValueError("Trailing stop needs a trail percent or trail amount greater than 0")
+            service.cancel_open_exit_orders(symbol)
             armed = service.arm_trailing_stop(
                 symbol,
                 trail_percent=pct if pct > 0 else None,
@@ -5663,6 +5664,7 @@ class AppState:
                 raise ValueError(
                     f"Breakeven stop (${target:.2f}) is at or below the current market price (${mark_price:.2f}). Short position is currently underwater."
                 )
+            service.cancel_open_exit_orders(symbol)
             armed = service.replace_stop_loss(symbol, target, **qty_kw)
             if not armed:
                 raise ValueError("Could not move the stop to breakeven")
@@ -5671,6 +5673,7 @@ class AppState:
 
         if action in {"price", "stop_loss"}:
             target_stop = _resolve_stop_target(stop_price, stop_pct)
+            service.cancel_open_exit_orders(symbol)
             armed = service.replace_stop_loss(symbol, target_stop, **qty_kw)
             if not armed:
                 raise ValueError("Could not move the stop")
@@ -5679,6 +5682,7 @@ class AppState:
 
         if action == "take_profit":
             target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
+            service.cancel_open_exit_orders(symbol)
             armed_tp = service.arm_take_profit(symbol, target_tp, **qty_kw)
             if not armed_tp:
                 raise ValueError("Could not set the take profit limit order")
@@ -5686,34 +5690,41 @@ class AppState:
             return {"symbol": symbol, "action": action, "take_profit": armed_tp, "mark": mark_price}
 
         if action == "bracket":
-            # 1. Arm Stop (trailing or fixed)
-            armed_stop = None
-            if use_trailing or (trail_percent and float(trail_percent) > 0):
-                pct = float(trail_percent or 3.0)
-                armed_stop = service.arm_trailing_stop(symbol, trail_percent=pct, **qty_kw)
-            elif (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
+            target_stop = None
+            if (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
                 target_stop = _resolve_stop_target(stop_price, stop_pct)
-                armed_stop = service.replace_stop_loss(symbol, target_stop, **qty_kw)
 
-            # 2. Arm Take Profit
-            armed_tp = None
+            target_tp = None
             if (
                 (take_profit_price and float(take_profit_price) > 0)
                 or (take_profit_pct and float(take_profit_pct) > 0)
                 or (take_profit_r and float(take_profit_r) > 0)
             ):
                 target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
-                armed_tp = service.arm_take_profit(symbol, target_tp, **qty_kw)
 
-            if not armed_stop and not armed_tp:
+            trail = (
+                float(trail_percent or 3.0)
+                if (use_trailing or (trail_percent and float(trail_percent) > 0))
+                else None
+            )
+            if not target_stop and not target_tp and not trail:
                 raise ValueError("Specify at least a stop loss or take profit level for the bracket")
 
+            result = service.arm_bracket_exit(
+                symbol,
+                stop_price=target_stop,
+                take_profit_price=target_tp,
+                trail_percent=trail,
+                qty=qty,
+            )
             self._invalidate_manual_heat()
             return {
                 "symbol": symbol,
                 "action": action,
-                "stop": armed_stop,
-                "take_profit": armed_tp,
+                "stop": result.get("stop"),
+                "take_profit": result.get("take_profit"),
+                "order_id": result.get("order_id"),
+                "order_class": result.get("order_class"),
                 "mark": mark_price,
             }
 
@@ -6247,7 +6258,7 @@ class AppState:
             except ValueError:
                 raise
             except Exception as exc:
-                raise ValueError(f"Could not replace order: {exc}") from exc
+                raise ValueError(humanize_alpaca_error(exc)) from exc
             # Alpaca cancel-and-recreates on replace (and on accepted rewrite).
             # Keep any desk plan watching the successor.
             self._retarget_desk_plans_after_replace(
@@ -6495,6 +6506,129 @@ class AppState:
                 "Re-investment orders in the 24-hour market must use Day or GTC time in force."
             )
 
+        bracket_enabled = bool(raw.get("bracket_enabled"))
+        stop_loss_pct: float | None = None
+        stop_loss_price: float | None = None
+        take_profit_pct: float | None = None
+        take_profit_price: float | None = None
+        stop_limit_offset_pct: float | None = None
+        stop_limit_price: float | None = None
+
+        if bracket_enabled:
+            if extended:
+                raise ValueError(
+                    "Protective brackets cannot attach to 24-hour market orders. Choose regular hours or disable the bracket."
+                )
+            if tif not in {"day", "gtc"}:
+                raise ValueError(
+                    "Buy-back protective bracket requires Day or GTC time in force."
+                )
+            sl_price_raw = raw.get("stop_loss_price")
+            sl_pct_raw = raw.get("stop_loss_pct")
+            if sl_price_raw not in (None, ""):
+                try:
+                    stop_loss_price = float(sl_price_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Buy-back stop loss price must be a number") from exc
+                if stop_loss_price <= 0:
+                    raise ValueError("Buy-back stop loss price must be greater than $0.00")
+                if stop_loss_price >= limit_price:
+                    raise ValueError(
+                        "Buy-back stop loss price must be below the buy-back limit price"
+                    )
+                stop_loss_price = normalize_stock_order_price(
+                    stop_loss_price, field="reinvest stop_loss_price"
+                )
+                stop_loss_pct = round(
+                    ((limit_price - stop_loss_price) / limit_price) * 100, 2
+                )
+                if stop_loss_pct > 50:
+                    raise ValueError(
+                        "Buy-back stop loss must not exceed 50% below the buy-back limit price"
+                    )
+            elif sl_pct_raw not in (None, ""):
+                try:
+                    stop_loss_pct = float(sl_pct_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Buy-back stop loss percent must be a number") from exc
+                if stop_loss_pct <= 0 or stop_loss_pct > 50:
+                    raise ValueError(
+                        "Buy-back stop loss percent must be between 0.1% and 50%"
+                    )
+                stop_loss_price = normalize_stock_order_price(
+                    limit_price * (1.0 - stop_loss_pct / 100.0),
+                    field="reinvest stop_loss_price",
+                )
+            else:
+                raise ValueError(
+                    "Protective bracket requires a stop loss percent or price"
+                )
+
+            tp_price_raw = raw.get("take_profit_price")
+            tp_pct_raw = raw.get("take_profit_pct")
+            if tp_price_raw not in (None, ""):
+                try:
+                    take_profit_price = float(tp_price_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Buy-back take profit price must be a number") from exc
+                if take_profit_price <= limit_price:
+                    raise ValueError(
+                        "Buy-back take profit price must be above the buy-back limit price"
+                    )
+                take_profit_price = normalize_stock_order_price(
+                    take_profit_price, field="reinvest take_profit_price"
+                )
+                take_profit_pct = round(
+                    ((take_profit_price - limit_price) / limit_price) * 100, 2
+                )
+            elif tp_pct_raw not in (None, ""):
+                try:
+                    take_profit_pct = float(tp_pct_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Buy-back take profit percent must be a number") from exc
+                if take_profit_pct < 0:
+                    raise ValueError(
+                        "Buy-back take profit percent must be greater than or equal to 0%"
+                    )
+                if take_profit_pct > 500:
+                    raise ValueError(
+                        "Buy-back take profit percent must be at most 500%"
+                    )
+                if take_profit_pct > 0:
+                    take_profit_price = normalize_stock_order_price(
+                        limit_price * (1.0 + take_profit_pct / 100.0),
+                        field="reinvest take_profit_price",
+                    )
+
+            offset_raw = raw.get("stop_limit_offset_pct")
+            if offset_raw not in (None, ""):
+                try:
+                    stop_limit_offset_pct = float(offset_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Buy-back stop-limit cushion must be a number"
+                    ) from exc
+                if stop_limit_offset_pct < 0 or stop_limit_offset_pct > 50:
+                    raise ValueError(
+                        "Buy-back stop-limit cushion must be between 0% and 50%"
+                    )
+
+            stop_limit_px_raw = raw.get("stop_limit_price")
+            if stop_limit_px_raw not in (None, ""):
+                try:
+                    stop_limit_price = float(stop_limit_px_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Buy-back stop-limit price must be a number"
+                    ) from exc
+                if stop_limit_price <= 0:
+                    raise ValueError(
+                        "Buy-back stop-limit price must be greater than $0.00"
+                    )
+                stop_limit_price = normalize_stock_order_price(
+                    stop_limit_price, field="reinvest stop_limit_price"
+                )
+
         return {
             "enabled": True,
             "qty_mode": qty_mode,
@@ -6503,6 +6637,13 @@ class AppState:
             "expire_minutes": minutes,
             "time_in_force": tif,
             "extended_hours": extended,
+            "bracket_enabled": bracket_enabled,
+            "stop_loss_pct": stop_loss_pct,
+            "stop_loss_price": stop_loss_price,
+            "take_profit_pct": take_profit_pct,
+            "take_profit_price": take_profit_price,
+            "stop_limit_offset_pct": stop_limit_offset_pct,
+            "stop_limit_price": stop_limit_price,
         }
 
     def _persist_reinvest_plans(self) -> None:
@@ -6581,6 +6722,14 @@ class AppState:
                 "expire_minutes": plan["expire_minutes"],
                 "time_in_force": plan.get("time_in_force", "day"),
                 "extended_hours": bool(plan.get("extended_hours")),
+                "bracket_enabled": bool(plan.get("bracket_enabled")),
+                "stop_loss_pct": plan.get("stop_loss_pct"),
+                "stop_loss_price": plan.get("stop_loss_price"),
+                "take_profit_pct": plan.get("take_profit_pct"),
+                "take_profit_price": plan.get("take_profit_price"),
+                "stop_limit_offset_pct": plan.get("stop_limit_offset_pct"),
+                "stop_limit_price": plan.get("stop_limit_price"),
+                "oto_stop": None,
                 "created_at": now,
                 "created_at_iso": datetime.fromtimestamp(now).isoformat(
                     timespec="seconds"
@@ -6838,6 +6987,54 @@ class AppState:
             notes.append(f"whole shares outside regular hours ({buy_qty:g} → {truncated:g})")
             buy_qty = truncated
 
+        bracket_enabled = bool(plan.get("bracket_enabled"))
+        stop_loss_pct = (
+            float(plan.get("stop_loss_pct") or 0.0) if bracket_enabled else 0.0
+        )
+        stop_loss_price = (
+            float(plan["stop_loss_price"])
+            if (bracket_enabled and plan.get("stop_loss_price") is not None)
+            else None
+        )
+        take_profit_price = (
+            float(plan["take_profit_price"])
+            if (bracket_enabled and plan.get("take_profit_price") is not None)
+            else None
+        )
+        take_profit_pct = (
+            float(plan.get("take_profit_pct") or 0.0)
+            if bracket_enabled
+            else 0.0
+        )
+        if bracket_enabled and take_profit_price is None and take_profit_pct > 0:
+            take_profit_price = normalize_stock_order_price(
+                limit_price * (1.0 + take_profit_pct / 100.0),
+                field="take_profit_price",
+            )
+        stop_limit_offset_pct = (
+            float(plan["stop_limit_offset_pct"])
+            if (bracket_enabled and plan.get("stop_limit_offset_pct") is not None)
+            else None
+        )
+        stop_limit_price = (
+            float(plan["stop_limit_price"])
+            if (bracket_enabled and plan.get("stop_limit_price") is not None)
+            else None
+        )
+
+        has_bracket = bracket_enabled and (
+            stop_loss_price is not None or stop_loss_pct > 0 or take_profit_price is not None
+        )
+        can_attach = True
+        if has_bracket:
+            whole_qty, can_attach = whole_qty_for_attached_stop(buy_qty)
+            if can_attach:
+                if buy_qty != whole_qty:
+                    notes.append(
+                        f"whole shares for attached bracket ({buy_qty:g} → {whole_qty:g})"
+                    )
+                buy_qty = whole_qty
+
         if buy_qty <= 0:
             self._settle_reinvest_plan(
                 plan_id,
@@ -6878,15 +7075,17 @@ class AppState:
         tif = str(plan.get("time_in_force") or "day").strip().lower()
         extended = bool(plan.get("extended_hours"))
         try:
-            submitted, _ = service.submit_manual_order(
+            submitted, oto_stop = service.submit_manual_order(
                 symbol,
                 buy_qty,
                 OrderSide.BUY,
                 order_type="limit",
                 limit_price=limit_price,
-                # A plain limit buy: an attached stop would force whole shares
-                # and a second price the user never chose.
-                stop_loss_pct=0.0,
+                stop_loss_pct=(stop_loss_pct if can_attach else 0.0) if stop_loss_price is None else None,
+                stop_loss_price=stop_loss_price if can_attach else None,
+                take_profit_price=take_profit_price if can_attach else None,
+                stop_limit_offset_pct=stop_limit_offset_pct if can_attach else None,
+                stop_limit_price=stop_limit_price if can_attach else None,
                 time_in_force=tif,
                 extended_hours=extended,
                 client_order_id=client_order_id,
@@ -6919,6 +7118,8 @@ class AppState:
             live["buy_order_id"] = order_id
             live["buy_qty"] = buy_qty
             live["sell_filled_qty"] = filled_qty
+            if oto_stop:
+                live["oto_stop"] = oto_stop
             live["message"] = (
                 f"Buy-back resting @ ${limit_price:.2f} — waiting for a fill."
             )
@@ -7034,10 +7235,14 @@ class AppState:
             symbol = str(snapshot.get("symbol") or "")
             limit_price = float(snapshot.get("limit_price") or 0)
             qty = filled or float(snapshot.get("buy_qty") or 0)
+            attached = (snapshot.get("oto_stop") or {}).get("attached") or (
+                "bracket" if snapshot.get("bracket_enabled") else ""
+            )
+            bracket_msg = f" with {attached}" if attached else ""
             self._settle_reinvest_plan(
                 plan_id,
                 "placed",
-                f"Bought back {qty:g} {symbol} @ ${limit_price:.2f} (limit)",
+                f"Bought back {qty:g} {symbol} @ ${limit_price:.2f} (limit){bracket_msg}",
                 buy_qty=qty,
                 sell_filled_qty=snapshot.get("sell_filled_qty"),
             )

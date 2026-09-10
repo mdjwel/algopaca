@@ -1775,11 +1775,19 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-pct-chips .chip.is-active,
 .pos-pct-chips .chip[aria-pressed="true"] {
-  background: linear-gradient(135deg, rgba(212, 137, 76, 0.25) 0%, rgba(181, 106, 50, 0.35) 100%);
-  border-color: var(--copper, #d4894c);
-  color: #ffffff;
-  box-shadow: 0 0 12px rgba(212, 137, 76, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--copper) 14%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
+  color: var(--copper);
+  box-shadow: none;
   font-weight: 700;
+}
+
+.pos-pct-chips .chip.is-active:hover,
+.pos-pct-chips .chip[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--copper) 22%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 65%, transparent);
+  color: var(--copper);
+  transform: none;
 }
 
 .pos-modal-inputs {
@@ -3026,37 +3034,54 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-exit-meta-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 0.85fr 1fr 1fr 1.35fr;
   gap: 0.5rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
-  padding: 0.55rem 0.8rem;
+  padding: 0.6rem 0.85rem;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .pos-exit-meta-grid .pos-modal-meta-item {
   min-width: 0;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.pos-exit-meta-grid .pos-modal-meta-item strong {
-  font-size: 0.92rem;
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pos-exit-meta-grid .pos-modal-meta-item span {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
   white-space: nowrap;
 }
 
+.pos-exit-meta-grid .pos-modal-meta-item strong {
+  font-family: var(--mono);
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pos-exit-meta-grid .pos-modal-meta-item #pos-exit-unrealized-pnl {
+  font-size: 0.92rem;
+  overflow: visible;
+}
+
 .pos-exit-status-card {
-  background: rgba(13, 19, 34, 0.75);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 0.55rem 0.8rem;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -3072,8 +3097,8 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-status-label-wrap {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.76rem;
+  gap: 0.4rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -3083,51 +3108,54 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-exit-status-icon {
   color: var(--copper);
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
 .pos-exit-status-indicator {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 0.18rem 0.55rem;
+  padding: 0.12rem 0.5rem;
   border-radius: 999px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
+  line-height: 1.3;
   flex-shrink: 0;
 }
 
 .pos-exit-status-indicator.pos {
-  background: rgba(63, 191, 143, 0.15);
+  background: rgba(63, 191, 143, 0.14);
   color: var(--buy);
-  border: 1px solid rgba(63, 191, 143, 0.35);
+  border: 1px solid rgba(63, 191, 143, 0.32);
 }
 
 .pos-exit-status-indicator.neg {
-  background: rgba(227, 93, 93, 0.15);
+  background: rgba(227, 93, 93, 0.12);
   color: var(--sell);
-  border: 1px solid rgba(227, 93, 93, 0.35);
+  border: 1px solid rgba(227, 93, 93, 0.3);
 }
 
 .pos-exit-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
-  padding-top: 0.45rem;
-  border-top: 1px solid var(--line-soft);
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
 
 .pos-exit-stat-sub {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.12rem;
   min-width: 0;
   overflow: hidden;
 }
 
 .pos-exit-stat-sub span {
-  font-size: 0.66rem;
+  font-size: 0.63rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -3138,8 +3166,9 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-exit-stat-sub strong {
   font-family: var(--mono);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3149,11 +3178,11 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-tabs {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.25rem;
-  background: var(--input-bg, #0d1322);
-  border: 1px solid var(--line);
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
-  padding: 0.25rem;
+  padding: 3px;
   overflow: hidden;
   max-width: 100%;
   box-sizing: border-box;
@@ -3163,12 +3192,12 @@ a.pos-prot-badge.orders:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.42rem 0.2rem;
+  padding: 0.45rem 0.22rem;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: calc(var(--radius-md) - 3px);
   background: transparent;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -3187,7 +3216,7 @@ a.pos-prot-badge.orders:focus-visible {
   color: var(--copper-text, #0c1219);
   background: linear-gradient(180deg, var(--copper) 0%, var(--copper-deep) 100%);
   border: none;
-  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.4);
+  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.35);
   font-weight: 700;
 }
 
@@ -3380,9 +3409,9 @@ a.pos-prot-badge.orders:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  padding: 0.55rem 0.75rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: var(--radius-md);
   box-sizing: border-box;
 }
@@ -3393,12 +3422,25 @@ a.pos-prot-badge.orders:focus-visible {
   justify-content: space-between;
 }
 
+.pos-exit-sizing-head .pos-modal-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0;
+}
+
+#pos-exit-qty-pct-badge {
+  display: none;
+}
+
 .pos-exit-qty-input-box {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  height: 38px;
-  background: var(--surface-card);
+  height: 40px;
+  background: rgba(0, 0, 0, 0.32);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0 0.45rem 0 0.75rem;
@@ -3414,7 +3456,8 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-qty-input-box .pos-field-input {
   flex: 1;
   min-width: 45px;
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .pos-inline-qty-chips {
@@ -3432,7 +3475,7 @@ a.pos-prot-badge.orders:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
   font-family: var(--mono);
@@ -3446,6 +3489,7 @@ a.pos-prot-badge.orders:focus-visible {
   user-select: none;
   line-height: 1;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .pos-portion-chip:hover {
@@ -3455,10 +3499,18 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-portion-chip.is-active,
 .pos-portion-chip[aria-pressed="true"] {
-  background: linear-gradient(180deg, var(--copper) 0%, var(--copper-deep) 100%);
-  color: var(--copper-text, #0c1219);
+  background: color-mix(in srgb, var(--copper) 16%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
+  color: var(--copper);
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(212, 137, 76, 0.4);
+  box-shadow: none;
+}
+
+.pos-portion-chip.is-active:hover,
+.pos-portion-chip[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--copper) 24%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 65%, transparent);
+  color: var(--copper);
 }
 
 .pos-exit-qty-input-box .pos-input-suffix {
@@ -3505,11 +3557,18 @@ a.pos-prot-badge.orders:focus-visible {
 
 #pos-exit-modal .pos-pct-chips .chip.is-active,
 #pos-exit-modal .pos-pct-chips .chip[aria-pressed="true"] {
-  background: linear-gradient(180deg, var(--copper) 0%, var(--copper-deep) 100%);
-  color: var(--copper-text, #0c1219);
-  border-color: var(--copper);
+  background: color-mix(in srgb, var(--copper) 14%, transparent);
+  color: var(--copper);
+  border-color: color-mix(in srgb, var(--copper) 45%, transparent);
   font-weight: 700;
-  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.35);
+  box-shadow: none;
+}
+
+#pos-exit-modal .pos-pct-chips .chip.is-active:hover,
+#pos-exit-modal .pos-pct-chips .chip[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--copper) 22%, transparent);
+  border-color: color-mix(in srgb, var(--copper) 65%, transparent);
+  color: var(--copper);
 }
 
 .pos-exit-be-banner {
@@ -3557,14 +3616,156 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-subcard {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
   padding: 0.85rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pos-exit-subcard-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pos-subcard-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.pos-subcard-tag.tag-sl {
+  background: rgba(227, 93, 93, 0.18);
+  color: var(--sell);
+  border: 1px solid rgba(227, 93, 93, 0.35);
+}
+
+.pos-subcard-tag.tag-tp {
+  background: rgba(63, 191, 143, 0.18);
+  color: var(--buy);
+  border: 1px solid rgba(63, 191, 143, 0.35);
+}
+
+/* Stop Loss Subcard: Protection & Risk Floor */
+.pos-exit-subcard-sl,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child {
+  background: linear-gradient(180deg, rgba(227, 93, 93, 0.055) 0%, rgba(227, 93, 93, 0.015) 100%);
+  border: 1px solid rgba(227, 93, 93, 0.22);
+}
+
+.pos-exit-subcard-sl:focus-within,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child:focus-within {
+  border-color: rgba(227, 93, 93, 0.45);
+  box-shadow: 0 0 16px rgba(227, 93, 93, 0.12);
+}
+
+.pos-exit-subcard-sl .pos-modal-label,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child .pos-modal-label {
+  color: color-mix(in srgb, var(--sell) 85%, var(--text));
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0;
+}
+
+.pos-exit-subcard-sl .pos-input-box,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child .pos-input-box {
+  border-color: rgba(227, 93, 93, 0.28);
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.pos-exit-subcard-sl .pos-input-box:focus-within,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child .pos-input-box:focus-within {
+  border-color: var(--sell);
+  box-shadow: 0 0 0 1px var(--sell), 0 0 12px rgba(227, 93, 93, 0.25);
+}
+
+.pos-exit-subcard-sl .chip.is-active,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child .chip.is-active,
+#pos-exit-pane-stop-loss .chip.is-active {
+  background: color-mix(in srgb, var(--sell) 14%, transparent);
+  color: var(--sell);
+  border-color: color-mix(in srgb, var(--sell) 45%, transparent);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.pos-exit-subcard-sl .chip.is-active:hover,
+.pos-exit-bracket-grid > .pos-exit-subcard:first-child .chip.is-active:hover,
+#pos-exit-pane-stop-loss .chip.is-active:hover {
+  background: color-mix(in srgb, var(--sell) 22%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 65%, transparent);
+  color: var(--sell);
+}
+
+/* Take Profit Subcard: Profit & Reward Ceiling */
+.pos-exit-subcard-tp,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child {
+  background: linear-gradient(180deg, rgba(63, 191, 143, 0.055) 0%, rgba(63, 191, 143, 0.015) 100%);
+  border: 1px solid rgba(63, 191, 143, 0.22);
+}
+
+.pos-exit-subcard-tp:focus-within,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child:focus-within {
+  border-color: rgba(63, 191, 143, 0.45);
+  box-shadow: 0 0 16px rgba(63, 191, 143, 0.12);
+}
+
+.pos-exit-subcard-tp .pos-modal-label,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child .pos-modal-label {
+  color: color-mix(in srgb, var(--buy) 85%, var(--text));
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0;
+}
+
+.pos-exit-subcard-tp .pos-input-box,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child .pos-input-box {
+  border-color: rgba(63, 191, 143, 0.28);
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.pos-exit-subcard-tp .pos-input-box:focus-within,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child .pos-input-box:focus-within {
+  border-color: var(--buy);
+  box-shadow: 0 0 0 1px var(--buy), 0 0 12px rgba(63, 191, 143, 0.25);
+}
+
+.pos-exit-subcard-tp .chip.is-active,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child .chip.is-active,
+#pos-exit-pane-take-profit .chip.is-active {
+  background: color-mix(in srgb, var(--buy) 14%, transparent);
+  color: var(--buy);
+  border-color: color-mix(in srgb, var(--buy) 45%, transparent);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.pos-exit-subcard-tp .chip.is-active:hover,
+.pos-exit-bracket-grid > .pos-exit-subcard:last-child .chip.is-active:hover,
+#pos-exit-pane-take-profit .chip.is-active:hover {
+  background: color-mix(in srgb, var(--buy) 22%, transparent);
+  border-color: color-mix(in srgb, var(--buy) 65%, transparent);
+  color: var(--buy);
+}
+
+#pos-exit-pane-take-profit .pos-input-box:focus-within {
+  border-color: var(--buy);
+  box-shadow: 0 0 0 1px var(--buy);
 }
 
 .pos-pct-chips.compact .chip {
@@ -3582,23 +3783,22 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-modal-preview,
 .pos-exit-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: var(--radius-md);
-  padding: 0.9rem 1.15rem;
+  padding: 0.65rem 0.85rem;
   box-sizing: border-box;
   overflow: hidden;
 }
 
 .pos-modal-preview .pos-preview-row,
 .pos-exit-preview .pos-preview-row {
-  flex: 1 1 140px;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.18rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -3610,10 +3810,10 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-modal-preview .pos-preview-row span,
 .pos-exit-preview .pos-preview-row span {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3622,8 +3822,8 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-modal-preview .pos-preview-row strong,
 .pos-exit-preview .pos-preview-row strong {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 0.94rem;
+  font-weight: 700;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -3639,6 +3839,10 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-modal-preview .pos-preview-row strong.pos,
 .pos-exit-preview .pos-preview-row strong.pos {
   color: var(--buy);
+}
+
+#pos-exit-preview-rr {
+  color: var(--text);
 }
 
 @media (max-width: 600px) {

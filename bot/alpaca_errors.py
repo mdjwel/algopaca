@@ -15,10 +15,6 @@ from typing import Any
 # Alpaca error code -> what the user should do about it.
 _HINTS: dict[int, str] = {
     40310000: "Lower the risk % or free up cash before retrying.",
-    42210000: (
-        "A protective stop cannot ride along with a fractional order — "
-        "size the ticket in whole shares."
-    ),
     42910000: "Too many requests — wait a moment and retry.",
 }
 
@@ -66,6 +62,23 @@ def humanize_alpaca_error(exc: Exception | str) -> str:
             hint = f"Resting orders hold {held} shares ({avail} available). Cancel resting open orders to free them."
         else:
             hint = "Resting open orders may be holding shares. Cancel resting open orders first."
+    elif (
+        "cannot replace expired order" in msg_lower
+        or ("expired" in msg_lower and "replace" in msg_lower)
+    ):
+        hint = "Day orders expire at market close and cannot be modified. Place a new order instead."
+    elif (
+        "fractional" in msg_lower
+        or "fractional orders must be simple orders" in msg_lower
+    ):
+        hint = (
+            "A protective stop cannot ride along with a fractional order — "
+            "size the ticket in whole shares."
+        )
+    elif "cannot replace" in msg_lower or "is not replaceable" in msg_lower:
+        hint = "This order is no longer working. Refresh the blotter to view its current status."
+    elif "cannot cancel" in msg_lower or "is not cancelable" in msg_lower:
+        hint = "This order is no longer open. Refresh the blotter to view its current status."
     elif code is not None:
         hint = _HINTS.get(code)
 

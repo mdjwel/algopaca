@@ -409,6 +409,96 @@ function convertBracketOnUnitToggle(nextMode) {
   convertTakeProfitOnUnitToggle(nextMode);
 }
 
+/** Convert buy-back stop loss input when toggling % ↔ $ */
+function convertReinvestStopLossOnUnitToggle(nextMode, preserveValue = false) {
+  const buyLimit = manualReinvestLimit();
+  const slInput = $("manual-reinvest-stop-loss-val");
+  const adornmentSl = $("adornment-reinvest-stop-loss");
+  const helpSl = $("help-reinvest-stop-loss");
+  const labelSl = $("label-reinvest-stop-loss");
+
+  if (nextMode === "price") {
+    if (labelSl) labelSl.textContent = tx("label_stop_trigger_price", "Stop trigger price");
+    if (adornmentSl) adornmentSl.textContent = "$";
+    if (helpSl) helpSl.textContent = tx("help_reinvest_stop_trigger_price", "Exit triggers when market price drops to this exact dollar level.");
+    if (slInput) {
+      slInput.step = "0.01";
+      slInput.max = "100000";
+      if (!preserveValue && buyLimit > 0) {
+        const currentPct = Number(slInput.value || 3);
+        if (currentPct > 0 && currentPct <= 50) {
+          slInput.value = normalizeStockPrice(buyLimit * (1 - currentPct / 100));
+        } else {
+          slInput.value = normalizeStockPrice(buyLimit * 0.97);
+        }
+      }
+    }
+  } else {
+    // nextMode === "pct"
+    if (labelSl) labelSl.textContent = tx("label_stop_loss", "Stop loss");
+    if (adornmentSl) adornmentSl.textContent = "%";
+    if (helpSl) helpSl.textContent = tx("help_reinvest_stop_loss_pct", "Percent below buy-back price to exit and cut losses.");
+    if (slInput) {
+      slInput.step = "0.1";
+      slInput.max = "50";
+      if (!preserveValue && buyLimit > 0) {
+        const currentPx = Number(slInput.value || 0);
+        if (currentPx > 0 && currentPx < buyLimit) {
+          slInput.value = ((buyLimit - currentPx) / buyLimit * 100).toFixed(1);
+        } else {
+          slInput.value = "3.0";
+        }
+      }
+    }
+  }
+  syncManualReinvestBracketUi();
+}
+
+/** Convert buy-back take profit input when toggling % ↔ $ */
+function convertReinvestTakeProfitOnUnitToggle(nextMode, preserveValue = false) {
+  const buyLimit = manualReinvestLimit();
+  const tpInput = $("manual-reinvest-take-profit-val");
+  const adornmentTp = $("adornment-reinvest-take-profit");
+  const helpTp = $("help-reinvest-take-profit");
+  const labelTp = $("label-reinvest-take-profit");
+
+  if (nextMode === "price") {
+    if (labelTp) labelTp.textContent = tx("label_take_profit_price", "Take profit price");
+    if (adornmentTp) adornmentTp.textContent = "$";
+    if (helpTp) helpTp.textContent = tx("help_reinvest_take_profit_price", "Exit with profit when market price reaches this exact dollar level.");
+    if (tpInput) {
+      tpInput.step = "0.01";
+      tpInput.max = "100000";
+      if (!preserveValue && buyLimit > 0) {
+        const currentPct = Number(tpInput.value || 6);
+        if (currentPct > 0) {
+          tpInput.value = normalizeStockPrice(buyLimit * (1 + currentPct / 100));
+        } else {
+          tpInput.value = normalizeStockPrice(buyLimit * 1.06);
+        }
+      }
+    }
+  } else {
+    // nextMode === "pct"
+    if (labelTp) labelTp.textContent = tx("label_take_profit", "Take profit");
+    if (adornmentTp) adornmentTp.textContent = "%";
+    if (helpTp) helpTp.textContent = tx("help_reinvest_take_profit_pct", "Percent above buy-back price to exit with profit.");
+    if (tpInput) {
+      tpInput.step = "0.1";
+      tpInput.max = "500";
+      if (!preserveValue && buyLimit > 0) {
+        const currentPx = Number(tpInput.value || 0);
+        if (currentPx > buyLimit) {
+          tpInput.value = ((currentPx - buyLimit) / buyLimit * 100).toFixed(1);
+        } else {
+          tpInput.value = "6.0";
+        }
+      }
+    }
+  }
+  syncManualReinvestBracketUi();
+}
+
 function manualTakeProfitR() {
   const raw = Number(manualFormValue("take_profit_r", 0));
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
@@ -806,6 +896,22 @@ function manualSellReference() {
   return mark > 0 ? mark : 0;
 }
 
+function manualReinvestBracketEnabled() {
+  return manualReinvestEnabled() && manualFormValue("reinvest_bracket_enabled", false) === true;
+}
+
+function manualReinvestStopLossUnitMode() {
+  const form = $("manual-order");
+  const mode = form?.elements?.reinvest_stop_loss_unit_mode?.value;
+  return mode === "price" ? "price" : "pct";
+}
+
+function manualReinvestTakeProfitUnitMode() {
+  const form = $("manual-order");
+  const mode = form?.elements?.reinvest_take_profit_unit_mode?.value;
+  return mode === "price" ? "price" : "pct";
+}
+
 function manualReinvestPayload() {
   if (!manualReinvestEnabled()) return null;
   const payload = {
@@ -819,6 +925,45 @@ function manualReinvestPayload() {
     extended_hours: manualExtendedHours(),
   };
   if (payload.qty_mode === "custom") payload.qty = manualReinvestQty();
+
+  const bracketOn = manualReinvestBracketEnabled();
+  payload.bracket_enabled = bracketOn;
+  if (bracketOn) {
+    const slUnitMode = manualReinvestStopLossUnitMode();
+    const tpUnitMode = manualReinvestTakeProfitUnitMode();
+    const slVal = Number(manualFormValue("reinvest_stop_loss_val", 3) || 0);
+    const tpVal = Number(manualFormValue("reinvest_take_profit_val", 6) || 0);
+    const buyLimit = manualReinvestLimit();
+
+    if (slUnitMode === "price") {
+      payload.stop_loss_price = slVal > 0 ? slVal : null;
+      if (buyLimit > 0 && slVal > 0 && slVal < buyLimit) {
+        payload.stop_loss_pct = Number(((buyLimit - slVal) / buyLimit * 100).toFixed(2));
+      } else {
+        payload.stop_loss_pct = null;
+      }
+    } else {
+      payload.stop_loss_pct = slVal > 0 ? slVal : null;
+      payload.stop_loss_price = null;
+    }
+
+    if (tpUnitMode === "price") {
+      payload.take_profit_price = tpVal > 0 ? tpVal : null;
+      if (buyLimit > 0 && tpVal > buyLimit) {
+        payload.take_profit_pct = Number(((tpVal - buyLimit) / buyLimit * 100).toFixed(2));
+      } else {
+        payload.take_profit_pct = null;
+      }
+    } else {
+      payload.take_profit_pct = tpVal > 0 ? tpVal : null;
+      payload.take_profit_price = null;
+    }
+  } else {
+    payload.stop_loss_pct = 0;
+    payload.stop_loss_price = null;
+    payload.take_profit_pct = null;
+    payload.take_profit_price = null;
+  }
   return payload;
 }
 
@@ -1337,6 +1482,55 @@ function validateManualLocal() {
           "err_reinvest_expire",
           "The buy-back wait must be between 1 and 1440 minutes."
         );
+      }
+      if (p.reinvest.bracket_enabled) {
+        if (p.extended_hours) {
+          return tx(
+            "err_reinvest_bracket_extended",
+            "Protective brackets cannot attach to 24-hour market orders. Choose regular hours or disable the bracket."
+          );
+        }
+        if (!["day", "gtc"].includes(p.time_in_force)) {
+          return tx(
+            "err_reinvest_bracket_tif",
+            "Buy-back protective bracket requires Day or GTC time in force."
+          );
+        }
+        const estBuyQty = p.reinvest.qty != null ? p.reinvest.qty : manualSellQty();
+        if (estBuyQty < 1) {
+          return tx(
+            "err_reinvest_bracket_min_share",
+            "A protective bracket requires at least 1 whole share."
+          );
+        }
+        if (p.reinvest.stop_loss_price != null) {
+          if (!(p.reinvest.stop_loss_price < p.reinvest.limit_price)) {
+            return tx(
+              "err_reinvest_stop_loss_above_limit",
+              "Buy-back stop loss price must be below the buy-back limit price."
+            );
+          }
+          if (p.reinvest.limit_price > 0 && ((p.reinvest.limit_price - p.reinvest.stop_loss_price) / p.reinvest.limit_price) > 0.5) {
+            return tx("err_stop_loss_max", "Max 50%");
+          }
+        } else if (!(p.reinvest.stop_loss_pct > 0)) {
+          return tx(
+            "err_reinvest_stop_loss",
+            "Enter a valid stop loss for the buy-back bracket."
+          );
+        } else if (p.reinvest.stop_loss_pct > 50) {
+          return tx("err_stop_loss_max", "Max 50%");
+        }
+        if (p.reinvest.take_profit_price != null) {
+          if (!(p.reinvest.take_profit_price > p.reinvest.limit_price)) {
+            return tx(
+              "err_reinvest_take_profit_below_limit",
+              "Buy-back take profit price must be above the buy-back limit price."
+            );
+          }
+        } else if (p.reinvest.take_profit_pct != null && p.reinvest.take_profit_pct > 500) {
+          return tx("err_take_profit_max", "Max 500%");
+        }
       }
     }
     if (p.followon) {
@@ -3796,7 +3990,21 @@ function announceEstimate(value, noteText) {
 }
 
 function formatBreachMessage(breach) {
-  const params = breach?.params || {};
+  const params = { ...(breach?.params || {}) };
+  if (breach?.code === "spread") {
+    if (params.actual_pct == null && params.actual != null) {
+      const actualVal = parseFloat(params.actual);
+      if (!Number.isNaN(actualVal)) {
+        params.actual_pct = (actualVal / 100).toFixed(2);
+      }
+    }
+    if (params.limit_pct == null && params.limit != null) {
+      const limitVal = parseFloat(params.limit);
+      if (!Number.isNaN(limitVal)) {
+        params.limit_pct = (limitVal / 100).toFixed(2);
+      }
+    }
+  }
   const messages = {
     daily_loss: [
       "breach_daily_loss",
@@ -3808,7 +4016,7 @@ function formatBreachMessage(breach) {
     ],
     spread: [
       "breach_spread",
-      "Spread {actual} bps is above the desk limit of {limit} bps.",
+      "Bid-ask spread is wide: {actual_pct}% ({actual} bps), higher than your limit of {limit_pct}% ({limit} bps).",
     ],
     cooldown: [
       "breach_cooldown",
@@ -3942,6 +4150,30 @@ function validateManualField(fieldName) {
     if (manualReinvestEnabled()) {
       if (!(val >= 1)) error = tx("err_field_min_1", "Minimum 1 minute");
       else if (val > 1440) error = tx("err_field_max_1440", "Max 1440 (24h)");
+    }
+  } else if (fieldName === "reinvest_stop_loss_val") {
+    if (manualReinvestEnabled() && manualReinvestBracketEnabled()) {
+      const mode = manualReinvestStopLossUnitMode();
+      const buyLimit = manualReinvestLimit();
+      if (!(val > 0)) {
+        error = tx("err_field_gt_zero", "Must be greater than 0");
+      } else if (mode === "price" && buyLimit > 0 && val >= buyLimit) {
+        error = tx("err_reinvest_stop_loss_above_limit", "Must be below buy-back limit price");
+      } else if (mode === "price" && buyLimit > 0 && ((buyLimit - val) / buyLimit) > 0.5) {
+        error = tx("err_stop_loss_max", "Max 50%");
+      } else if (mode === "pct" && val > 50) {
+        error = tx("err_stop_loss_max", "Max 50%");
+      }
+    }
+  } else if (fieldName === "reinvest_take_profit_val") {
+    if (manualReinvestEnabled() && manualReinvestBracketEnabled()) {
+      const mode = manualReinvestTakeProfitUnitMode();
+      const buyLimit = manualReinvestLimit();
+      if (mode === "price" && buyLimit > 0 && val > 0 && val <= buyLimit) {
+        error = tx("err_reinvest_take_profit_below_limit", "Must be above buy-back limit price");
+      } else if (mode === "pct" && val > 500) {
+        error = tx("err_take_profit_max", "Max 500%");
+      }
     }
   } else if (fieldName === "followon_qty") {
     if (manualFollowOnEnabled() && !(val > 0)) {
@@ -4372,6 +4604,23 @@ function syncManualReinvestUi() {
   if (limitInput) limitInput.disabled = !enabled || busy;
   const expireInput = $("manual-reinvest-expire");
   if (expireInput) expireInput.disabled = !enabled || busy;
+  const is24h = manualExtendedHours();
+  const bracketToggle = $("manual-reinvest-bracket-enabled");
+  if (bracketToggle) {
+    if (is24h && bracketToggle.checked) bracketToggle.checked = false;
+    bracketToggle.disabled = !enabled || is24h || busy;
+  }
+  const bracketHelp = document.querySelector(".manual-reinvest-bracket-section .field-help");
+  if (bracketHelp) {
+    if (is24h) {
+      bracketHelp.textContent = tx("reinvest_bracket_disabled_24h", "Protective brackets cannot attach to 24-hour market orders.");
+      bracketHelp.classList.add("warn");
+    } else {
+      bracketHelp.textContent = tx("reinvest_bracket_help", "Attach stop-loss and profit target exit orders once the buy-back fills.");
+      bracketHelp.classList.remove("warn");
+    }
+  }
+  syncManualReinvestBracketUi();
 
   const offsetEl = $("manual-reinvest-offset");
   const summaryEl = $("manual-reinvest-summary");
@@ -4430,6 +4679,113 @@ function syncManualReinvestUi() {
       summaryEl.textContent = "";
       summaryEl.classList.remove("warn");
     }
+  }
+}
+
+function syncManualReinvestBracketUi() {
+  const enabled = manualReinvestEnabled() && manualReinvestBracketEnabled();
+  const fields = $("manual-reinvest-bracket-fields");
+  if (fields) fields.hidden = !enabled;
+
+  const slInput = $("manual-reinvest-stop-loss-val");
+  const tpInput = $("manual-reinvest-take-profit-val");
+  const slUnitMode = manualReinvestStopLossUnitMode();
+  const tpUnitMode = manualReinvestTakeProfitUnitMode();
+
+  if (slInput) slInput.disabled = !enabled || busy;
+  if (tpInput) tpInput.disabled = !enabled || busy;
+
+  const form = $("manual-order");
+  const slUnits = form?.elements?.reinvest_stop_loss_unit_mode;
+  if (slUnits instanceof RadioNodeList) {
+    [...slUnits].forEach(input => { input.disabled = !enabled || busy; });
+  }
+  const tpUnits = form?.elements?.reinvest_take_profit_unit_mode;
+  if (tpUnits instanceof RadioNodeList) {
+    [...tpUnits].forEach(input => { input.disabled = !enabled || busy; });
+  }
+
+  const labelSl = $("label-reinvest-stop-loss");
+  const adornmentSl = $("adornment-reinvest-stop-loss");
+  if (labelSl) {
+    labelSl.textContent = slUnitMode === "price"
+      ? tx("label_stop_trigger_price", "Stop trigger price")
+      : tx("label_stop_loss", "Stop loss");
+  }
+  if (adornmentSl) {
+    adornmentSl.textContent = slUnitMode === "price" ? "$" : "%";
+  }
+
+  const labelTp = $("label-reinvest-take-profit");
+  const adornmentTp = $("adornment-reinvest-take-profit");
+  if (labelTp) {
+    labelTp.textContent = tpUnitMode === "price"
+      ? tx("label_take_profit_price", "Take profit price")
+      : tx("label_take_profit", "Take profit");
+  }
+  if (adornmentTp) {
+    adornmentTp.textContent = tpUnitMode === "price" ? "$" : "%";
+  }
+
+  const hintSl = $("hint-reinvest-stop-loss");
+  const hintTp = $("hint-reinvest-take-profit");
+  if (!enabled) {
+    if (hintSl) { hintSl.textContent = ""; hintSl.hidden = true; }
+    if (hintTp) { hintTp.textContent = ""; hintTp.hidden = true; }
+    return;
+  }
+
+  const buyLimit = manualReinvestLimit();
+  const slVal = Number(slInput ? slInput.value : manualFormValue("reinvest_stop_loss_val", 3)) || 0;
+  const tpVal = Number(tpInput ? tpInput.value : manualFormValue("reinvest_take_profit_val", 6)) || 0;
+
+  let slText = "";
+  let slStop = 0;
+  if (buyLimit > 0 && slVal > 0) {
+    if (slUnitMode === "price") {
+      slStop = slVal;
+      const slDist = buyLimit - slVal;
+      const slPct = (slDist / buyLimit) * 100;
+      if (slDist > 0) {
+        slText = `≈ -${slPct.toFixed(1)}% (-$${slDist.toFixed(2)}/sh)`;
+      }
+    } else {
+      slStop = buyLimit * (1 - slVal / 100);
+      const slDist = buyLimit - slStop;
+      if (slDist > 0) {
+        slText = `≈ $${slStop.toFixed(2)} (-$${slDist.toFixed(2)}/sh)`;
+      }
+    }
+  }
+
+  if (hintSl) {
+    hintSl.textContent = slText;
+    hintSl.hidden = !slText;
+  }
+
+  let tpText = "";
+  if (buyLimit > 0 && tpVal > 0) {
+    const riskPerShare = (buyLimit > 0 && slStop > 0 && slStop < buyLimit) ? buyLimit - slStop : 0;
+    if (tpUnitMode === "price") {
+      const tpDist = tpVal - buyLimit;
+      const tpPct = (tpDist / buyLimit) * 100;
+      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+      const rText = rMultiple ? ` · ${rMultiple}R` : "";
+      if (tpDist > 0) {
+        tpText = `≈ +${tpPct.toFixed(1)}%${rText}`;
+      }
+    } else {
+      const tpTarget = buyLimit * (1 + tpVal / 100);
+      const tpDist = tpTarget - buyLimit;
+      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+      const rText = rMultiple ? ` · ${rMultiple}R` : "";
+      tpText = `≈ $${tpTarget.toFixed(2)}${rText}`;
+    }
+  }
+
+  if (hintTp) {
+    hintTp.textContent = tpText;
+    hintTp.hidden = !tpText;
   }
 }
 
@@ -5081,6 +5437,8 @@ const MANUAL_SAVED_FIELDS = {
   stop_loss_unit_mode: ["pct", "price"],
   take_profit_unit_mode: ["pct", "price"],
   reinvest_qty_mode: ["match", "custom"],
+  reinvest_stop_loss_unit_mode: ["pct", "price"],
+  reinvest_take_profit_unit_mode: ["pct", "price"],
   followon_kind: ["reverse", "rotate"],
   followon_qty_mode: ["match", "custom"],
   followon_order_type: ["limit", "market"],
@@ -5104,6 +5462,8 @@ const MANUAL_SAVED_NUMBERS = [
   "reinvest_qty",
   "reinvest_limit_price",
   "reinvest_expire_minutes",
+  "reinvest_stop_loss_val",
+  "reinvest_take_profit_val",
   "followon_qty",
   "followon_limit_price",
   "followon_target_symbol",
@@ -5131,6 +5491,9 @@ function collectManualForm() {
     bracket_enabled: form.elements.bracket_enabled?.checked !== false,
     reinvest_enabled: form.elements.reinvest_enabled?.checked === true,
     reinvest_qty_mode: manualReinvestQtyMode(),
+    reinvest_bracket_enabled: form.elements.reinvest_bracket_enabled?.checked === true,
+    reinvest_stop_loss_unit_mode: manualReinvestStopLossUnitMode(),
+    reinvest_take_profit_unit_mode: manualReinvestTakeProfitUnitMode(),
     followon_enabled: form.elements.followon_enabled?.checked === true,
     followon_kind: manualFollowOnKind(),
     followon_qty_mode: manualFollowOnQtyMode(),
@@ -5193,6 +5556,19 @@ function applyManualForm(saved) {
   setManualFormValue("reinvest_enabled", false);
   setManualFormValue("followon_enabled", false);
   setManualFormValue("dip_hunt_enabled", false);
+  setManualFormValue("reinvest_bracket_enabled", saved.reinvest_bracket_enabled === true);
+  const reinvestSlMode = saved.reinvest_stop_loss_unit_mode || "pct";
+  const reinvestTpMode = saved.reinvest_take_profit_unit_mode || "pct";
+  setManualFormValue("reinvest_stop_loss_unit_mode", reinvestSlMode);
+  setManualFormValue("reinvest_take_profit_unit_mode", reinvestTpMode);
+  convertReinvestStopLossOnUnitToggle(reinvestSlMode, true);
+  convertReinvestTakeProfitOnUnitToggle(reinvestTpMode, true);
+  if (saved.reinvest_stop_loss_val != null && saved.reinvest_stop_loss_val !== "") {
+    setManualFormValue("reinvest_stop_loss_val", saved.reinvest_stop_loss_val);
+  }
+  if (saved.reinvest_take_profit_val != null && saved.reinvest_take_profit_val !== "") {
+    setManualFormValue("reinvest_take_profit_val", saved.reinvest_take_profit_val);
+  }
   const slMode = saved.stop_loss_unit_mode || (saved.bracket_unit_mode === "price" ? "price" : "pct");
   const tpMode = saved.take_profit_unit_mode || (saved.bracket_unit_mode === "price" ? "price" : "pct");
   setManualFormValue("stop_loss_unit_mode", slMode);
@@ -5538,7 +5914,16 @@ function formatReinvestPlan(plan) {
         ? formatQty(plan.qty)
         : formatQty(plan.sell_qty);
   const priceLabel = stockPrice(plan.limit_price);
-  const head = `${plan.symbol} · ${qty} @ ${priceLabel}`;
+  let bracketTag = "";
+  if (plan.bracket_enabled) {
+    const sl = plan.stop_loss_price != null ? `$${Number(plan.stop_loss_price).toFixed(2)}` : (plan.stop_loss_pct ? `-${plan.stop_loss_pct}%` : "");
+    const tp = plan.take_profit_price != null ? `$${Number(plan.take_profit_price).toFixed(2)}` : (plan.take_profit_pct ? `+${plan.take_profit_pct}%` : "");
+    if (sl && tp) bracketTag = ` · [SL: ${sl} / TP: ${tp}]`;
+    else if (sl) bracketTag = ` · [SL: ${sl}]`;
+    else if (tp) bracketTag = ` · [TP: ${tp}]`;
+    else bracketTag = " · [Bracket]";
+  }
+  const head = `${plan.symbol} · ${qty} @ ${priceLabel}${bracketTag}`;
   const base = {
     side: "buy",
     symbol: plan.symbol || "—",
@@ -6673,6 +7058,21 @@ function renderConfirmationModal(payload) {
         String(payload.reinvest.expire_minutes),
       ]
     );
+    if (payload.reinvest.bracket_enabled) {
+      const slStr = payload.reinvest.stop_loss_price != null
+        ? `$${payload.reinvest.stop_loss_price.toFixed(2)}`
+        : `-${payload.reinvest.stop_loss_pct}%`;
+      let tpStr = "—";
+      if (payload.reinvest.take_profit_price != null) {
+        tpStr = `$${payload.reinvest.take_profit_price.toFixed(2)}`;
+      } else if (payload.reinvest.take_profit_pct > 0) {
+        tpStr = `+${payload.reinvest.take_profit_pct}%`;
+      }
+      rows.push([
+        tx("reinvest_confirm_bracket", "Protective bracket"),
+        tx("reinvest_confirm_bracket_val", "SL: {sl} · TP: {tp}", { sl: slStr, tp: tpStr }),
+      ]);
+    }
   }
   if (payload.followon) {
     const nextQty = manualFollowOnQty();
@@ -6774,11 +7174,7 @@ function renderConfirmationModal(payload) {
     })
     .join("");
 
-  // Paper and live rendered identically here, which is exactly the moment the
-  // difference matters most.
-  const liveBanner = $("manual-confirm-live");
   const isLive = manualIsLiveAccount();
-  if (liveBanner) liveBanner.hidden = !isLive;
   const content = $("manual-confirm-content");
   if (content) content.dataset.env = isLive ? "live" : "paper";
 
@@ -7748,6 +8144,8 @@ manualForm?.addEventListener("input", (ev) => {
       "reinvest_qty",
       "reinvest_limit_price",
       "reinvest_expire_minutes",
+      "reinvest_stop_loss_val",
+      "reinvest_take_profit_val",
       "followon_qty",
       "followon_limit_price",
       "followon_target_symbol",
@@ -7756,6 +8154,10 @@ manualForm?.addEventListener("input", (ev) => {
     ].includes(name)
   ) {
     validateManualField(name);
+    if (name === "reinvest_limit_price" && manualReinvestBracketEnabled()) {
+      validateManualField("reinvest_stop_loss_val");
+      validateManualField("reinvest_take_profit_val");
+    }
   }
   syncManualUi();
   saveManualFormDraft();
@@ -7793,6 +8195,12 @@ manualForm?.addEventListener("change", (ev) => {
   if (name === "take_profit_unit_mode") {
     convertTakeProfitOnUnitToggle(ev.target?.value);
   }
+  if (name === "reinvest_stop_loss_unit_mode") {
+    convertReinvestStopLossOnUnitToggle(ev.target?.value);
+  }
+  if (name === "reinvest_take_profit_unit_mode") {
+    convertReinvestTakeProfitOnUnitToggle(ev.target?.value);
+  }
   if (name === "buy_size_mode" && manualContext) {
     applyStockPriceDefaults(manualContext);
   }
@@ -7807,6 +8215,12 @@ $("manual-stop-loss-val")?.addEventListener("input", () => {
 });
 $("manual-take-profit-val")?.addEventListener("input", () => {
   syncManualBracketUi();
+});
+$("manual-reinvest-stop-loss-val")?.addEventListener("input", () => {
+  syncManualReinvestBracketUi();
+});
+$("manual-reinvest-take-profit-val")?.addEventListener("input", () => {
+  syncManualReinvestBracketUi();
 });
 
 // A wheel over a focused number input silently re-prices the ticket while the

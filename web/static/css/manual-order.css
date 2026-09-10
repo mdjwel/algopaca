@@ -635,6 +635,29 @@ a.ghost.small {
   display: none;
 }
 
+.manual-reinvest-bracket-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed color-mix(in srgb, var(--buy) 25%, transparent);
+}
+
+.manual-reinvest-bracket-section > .check {
+  margin-bottom: 0;
+}
+
+#manual-reinvest-bracket-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+#manual-reinvest-bracket-fields[hidden] {
+  display: none;
+}
+
 /* Market next tickets send at the then-current price; the limit + wait row
    is only for a resting limit that can miss. */
 .manual-form #manual-followon-price-row.is-market,

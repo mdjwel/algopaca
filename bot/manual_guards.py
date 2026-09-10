@@ -206,16 +206,20 @@ def manual_entry_breaches(
     max_spread = _num("ai_max_spread_bps")
     spread = spread_bps(mark)
     if max_spread > 0 and spread is not None and spread > max_spread:
+        actual_pct = spread / 100.0
+        limit_pct = max_spread / 100.0
         breaches.append(
             {
                 "code": "spread",
                 "params": {
                     "actual": f"{spread:.1f}",
                     "limit": f"{max_spread:.0f}",
+                    "actual_pct": f"{actual_pct:.2f}",
+                    "limit_pct": f"{limit_pct:.2f}",
                 },
                 "message": (
-                    f"Spread {spread:.1f} bps is above the desk limit of "
-                    f"{max_spread:.0f} bps — the cost eats the edge."
+                    f"Bid-ask spread is wide: {actual_pct:.2f}% ({spread:.1f} bps), "
+                    f"higher than your limit of {limit_pct:.2f}% ({max_spread:.0f} bps)."
                 ),
             }
         )

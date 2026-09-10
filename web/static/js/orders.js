@@ -1208,7 +1208,16 @@ function formatReinvestPlan(plan) {
   const status = String(plan?.status || "").toLowerCase();
   const qty = formatPlanQty(plan, ["buy_qty", "qty", "sell_qty"]);
   const priceLabel = orderMoney(plan.limit_price);
-  const head = `${plan.symbol || "—"} · ${qty} @ ${priceLabel}`;
+  let bracketTag = "";
+  if (plan.bracket_enabled) {
+    const sl = plan.stop_loss_price != null ? `$${Number(plan.stop_loss_price).toFixed(2)}` : (plan.stop_loss_pct ? `-${plan.stop_loss_pct}%` : "");
+    const tp = plan.take_profit_price != null ? `$${Number(plan.take_profit_price).toFixed(2)}` : (plan.take_profit_pct ? `+${plan.take_profit_pct}%` : "");
+    if (sl && tp) bracketTag = ` · [SL: ${sl} / TP: ${tp}]`;
+    else if (sl) bracketTag = ` · [SL: ${sl}]`;
+    else if (tp) bracketTag = ` · [TP: ${tp}]`;
+    else bracketTag = " · [Bracket]";
+  }
+  const head = `${plan.symbol || "—"} · ${qty} @ ${priceLabel}${bracketTag}`;
   const base = {
     side: "buy",
     symbol: plan.symbol || "—",
@@ -2594,6 +2603,7 @@ async function confirmReplace() {
     } else {
       showToast(ex.message, "error");
     }
+    refreshOrders({ quiet: true }).catch(() => {});
   } finally {
     if (btn) btn.disabled = false;
   }

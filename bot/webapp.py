@@ -244,6 +244,13 @@ class ReinvestIn(BaseModel):
     limit_price: Optional[float] = Field(None, gt=0)
     # How long the plan waits for the sell before it gives up.
     expire_minutes: Optional[float] = Field(None, gt=0, le=1440)
+    bracket_enabled: Optional[bool] = False
+    stop_loss_pct: Optional[float] = Field(None, ge=0, le=50)
+    stop_loss_price: Optional[float] = Field(None, gt=0)
+    take_profit_pct: Optional[float] = Field(None, ge=0, le=500.0)
+    take_profit_price: Optional[float] = Field(None, gt=0)
+    stop_limit_offset_pct: Optional[float] = Field(None, ge=0, le=50)
+    stop_limit_price: Optional[float] = Field(None, gt=0)
 
 
 class DipHuntIn(BaseModel):
@@ -2179,7 +2186,7 @@ def cancel_order(
         )
         return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=humanize_alpaca_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=humanize_alpaca_error(exc)
@@ -2212,7 +2219,7 @@ def cancel_all_orders(user: dict = Depends(require_auth)) -> dict:
         result = state.cancel_all_open_orders()
         return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=humanize_alpaca_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=humanize_alpaca_error(exc)
@@ -2235,7 +2242,7 @@ def replace_order(
         )
         return {"ok": True, **result, "state": state.snapshot()}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=humanize_alpaca_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=humanize_alpaca_error(exc)

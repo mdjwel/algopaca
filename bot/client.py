@@ -1439,6 +1439,7 @@ class AlpacaService:
             req = GetOrdersRequest(
                 status=QueryOrderStatus.OPEN,
                 limit=200,
+                nested=True,
             )
             orders = list(self.trading.get_orders(req) or [])
         except Exception:
@@ -1461,6 +1462,19 @@ class AlpacaService:
                 "limit_price": limit_px,
                 "is_stop": self._is_protective_stop(o),
             })
+            for leg in getattr(o, "legs", None) or []:
+                leg_sym = str(getattr(leg, "symbol", "") or sym).upper()
+                leg_stop_px = float(getattr(leg, "stop_price", 0) or 0) if getattr(leg, "stop_price", None) else None
+                leg_limit_px = float(getattr(leg, "limit_price", 0) or 0) if getattr(leg, "limit_price", None) else None
+                by_symbol.setdefault(leg_sym, []).append({
+                    "id": str(getattr(leg, "id", "")),
+                    "type": str(getattr(leg, "type", "")).lower(),
+                    "side": str(getattr(leg, "side", "")).lower(),
+                    "qty": float(getattr(leg, "qty", 0) or 0) or None,
+                    "stop_price": leg_stop_px,
+                    "limit_price": leg_limit_px,
+                    "is_stop": self._is_protective_stop(leg),
+                })
         return by_symbol
 
     @staticmethod
@@ -1589,10 +1603,18 @@ class AlpacaService:
     def _is_protective_stop(order) -> bool:
         """Resting stop (sell below a long, or buy above a short) — ignore for entry blocks."""
         try:
-            otype = order.type
+            otype = getattr(order, "type", None)
         except Exception:
             return False
-        return otype in {OrderType.STOP, OrderType.STOP_LIMIT, OrderType.TRAILING_STOP}
+        if otype in {OrderType.STOP, OrderType.STOP_LIMIT, OrderType.TRAILING_STOP}:
+            return True
+        otype_str = str(otype or "").lower()
+        if otype_str in {"stop", "stop_limit", "trailing_stop", "stoporder", "stoplimitorder", "trailingstoporder"}:
+            return True
+        oclass = str(getattr(order, "order_class", "") or "").lower()
+        if oclass in {"oco", "bracket"}:
+            return True
+        return False
 
     def has_open_orders(self, symbol: str) -> bool:
         """True when non-stop open orders exist (entries / limit exits / etc.)."""
@@ -1762,7 +1784,7 @@ class AlpacaService:
         except TypeError:
             replaced = self.trading.replace_order_by_id(order_id, order_data=req)
         except Exception as exc:
-            raise ValueError(f"Could not replace order: {exc}") from exc
+            raise ValueError(humanize_alpaca_error(exc)) from exc
         return self.serialize_blotter_order(replaced)
 
     def _rewrite_resting_order(
@@ -2788,18 +2810,155 @@ class AlpacaService:
         stop_pct: float | None = None,
         qty: float | None = None,
     ) -> dict[str, Any]:
-        """Arm both protective stop (fixed or trailing) and take profit for a position."""
-        out: dict[str, Any] = {"symbol": symbol}
-        if trail_percent and float(trail_percent) > 0:
-            out["stop"] = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent), qty=qty)
-        elif stop_price and float(stop_price) > 0:
-            out["stop"] = self.replace_stop_loss(symbol, float(stop_price), qty=qty)
-        elif stop_pct and float(stop_pct) > 0:
-            out["stop"] = self.ensure_stop_loss(symbol, pct=float(stop_pct), qty=qty)
+        """Arm an exit strategy for an existing position.
 
+        When both a stop loss and take profit target are provided, submits a native
+        OCO (One-Cancels-Other) order linked together so both legs protect the same
+        shares without colliding or failing with insufficient quantity.
+        """
+        symbol = str(symbol or "").strip().upper()
+        pos_qty = self.get_position_qty(symbol)
+        if pos_qty == 0:
+            raise ValueError(f"No open position in {symbol} to configure exit strategy for")
+
+        is_short = pos_qty < 0
+        abs_qty = abs(pos_qty)
+        if qty is not None:
+            requested = abs(float(qty))
+            if requested <= 0:
+                raise ValueError("Quantity must be greater than 0")
+            if requested > abs_qty:
+                raise ValueError(
+                    f"Quantity ({requested:g}) cannot exceed held position size ({abs_qty:g})"
+                )
+            abs_qty = requested
+        order_qty = float(int(abs_qty)) if (is_short or abs_qty >= 1) else float(abs_qty)
+        if order_qty <= 0:
+            raise ValueError("Order quantity must be greater than 0")
+
+        # Resolve stop price if pct was passed
+        resolved_stop: float | None = None
+        if stop_price and float(stop_price) > 0:
+            resolved_stop = normalize_stock_order_price(float(stop_price), field="stop_price")
+        elif stop_pct and float(stop_pct) > 0:
+            mark_price = float(self.get_mark_price(symbol)["price"])
+            computed = self.stop_price_for_entry(mark_price, pct=float(stop_pct), short=is_short)
+            if computed is not None:
+                resolved_stop = normalize_stock_order_price(computed, field="stop_price")
+
+        resolved_tp: float | None = None
         if take_profit_price and float(take_profit_price) > 0:
-            out["take_profit"] = self.arm_take_profit(symbol, float(take_profit_price), qty=qty)
-        return out
+            resolved_tp = normalize_stock_order_price(float(take_profit_price), field="take_profit_price")
+
+        has_trail = bool(trail_percent and float(trail_percent) > 0)
+        if has_trail and resolved_tp:
+            raise ValueError(
+                "Trailing stop cannot be combined with take profit in an Alpaca OCO bracket. "
+                "Use a fixed stop loss price for bracket exits."
+            )
+
+        # Clear any resting exit orders first so shares are freed
+        self.cancel_open_exit_orders(symbol)
+
+        # Case 1: Trailing stop only
+        if has_trail:
+            armed = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent), qty=order_qty)
+            return {
+                "symbol": symbol,
+                "action": "bracket",
+                "stop": armed,
+                "take_profit": None,
+            }
+
+        # Case 2: Both Stop Loss and Take Profit -> Native OCO Order!
+        if resolved_stop is not None and resolved_tp is not None:
+            offset = float(getattr(self.config, "stop_limit_offset_pct", 0) or 0)
+            stop_loss_req = stop_loss_request_for(
+                resolved_stop,
+                offset,
+                short=is_short,
+            )
+
+            tp_req = TakeProfitRequest(limit_price=resolved_tp)
+
+            order = LimitOrderRequest(
+                symbol=symbol,
+                qty=order_qty,
+                side=OrderSide.BUY if is_short else OrderSide.SELL,
+                type=OrderType.LIMIT,
+                time_in_force=TimeInForce.GTC,
+                order_class=OrderClass.OCO,
+                take_profit=tp_req,
+                stop_loss=stop_loss_req,
+            )
+            submitted = self.trading.submit_order(order)
+            legs = self.exit_leg_ids(submitted)
+
+            stop_info: dict[str, Any] = {
+                "id": legs.get("stop_order_id") or str(submitted.id),
+                "stop_price": resolved_stop,
+                "qty": order_qty,
+                "side": "buy" if is_short else "sell",
+                "type": "stop_loss",
+            }
+            if stop_loss_req.limit_price is not None:
+                stop_info["limit_price"] = stop_loss_req.limit_price
+                stop_info["offset_pct"] = offset
+
+            tp_info: dict[str, Any] = {
+                "id": legs.get("take_profit_order_id") or str(submitted.id),
+                "limit_price": resolved_tp,
+                "qty": order_qty,
+                "side": "buy" if is_short else "sell",
+                "type": "take_profit",
+            }
+
+            if getattr(self.config, "stop_loss_24h", True):
+                handler = self._get_synthetic_handler()
+                if handler and hasattr(handler, "sync_strategy_stop"):
+                    try:
+                        synth = handler.sync_strategy_stop(
+                            symbol=symbol,
+                            side="buy" if is_short else "sell",
+                            qty=order_qty,
+                            stop_price=resolved_stop,
+                            source="strategy_stop",
+                        )
+                        if synth:
+                            stop_info["synthetic_order_id"] = synth.get("id")
+                    except Exception as exc:
+                        logger.debug("Could not sync synthetic stop for %s: %s", symbol, exc)
+
+            return {
+                "symbol": symbol,
+                "action": "bracket",
+                "order_id": str(submitted.id),
+                "order_class": "oco",
+                "stop": stop_info,
+                "take_profit": tp_info,
+            }
+
+        # Case 3: Stop Loss only
+        if resolved_stop is not None:
+            armed = self.replace_stop_loss(symbol, resolved_stop, qty=order_qty)
+            return {
+                "symbol": symbol,
+                "action": "bracket",
+                "stop": armed,
+                "take_profit": None,
+            }
+
+        # Case 4: Take Profit only
+        if resolved_tp is not None:
+            armed_tp = self.arm_take_profit(symbol, resolved_tp, qty=order_qty)
+            return {
+                "symbol": symbol,
+                "action": "bracket",
+                "stop": None,
+                "take_profit": armed_tp,
+            }
+
+        raise ValueError("Specify at least a stop loss or take profit level for the bracket")
 
     def get_asset_info(self, symbol: str) -> dict[str, Any]:
         """Broker-side facts that decide whether a ticket can exist at all.

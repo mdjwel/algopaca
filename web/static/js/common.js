@@ -710,6 +710,35 @@ function showToast(message, kind = "error", extraHtml = "") {
   el.classList.add("is-fresh");
 }
 
+/** Clean up technical or JSON-wrapped broker errors for user presentation. */
+function humanizeApiErrorMessage(raw) {
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const jsonStart = str.indexOf("{");
+  const jsonEnd = str.lastIndexOf("}");
+  if (jsonStart !== -1 && jsonEnd > jsonStart) {
+    try {
+      const parsed = JSON.parse(str.slice(jsonStart, jsonEnd + 1));
+      if (parsed && typeof parsed.message === "string" && parsed.message.trim()) {
+        let msg = parsed.message.trim();
+        msg = msg.charAt(0).toUpperCase() + msg.slice(1);
+        if (!/[.!?]$/.test(msg)) msg += ".";
+        const lower = msg.toLowerCase();
+        if (
+          lower.includes("cannot replace expired order") ||
+          (lower.includes("expired") && lower.includes("replace"))
+        ) {
+          msg += " Day orders expire at market close and cannot be modified. Place a new order instead.";
+        } else if (lower.includes("fractional") && !lower.includes("whole shares")) {
+          msg += " A protective stop cannot ride along with a fractional order — size the ticket in whole shares.";
+        }
+        return msg;
+      }
+    } catch (_) {}
+  }
+  return str;
+}
+
 /** Centralized API Client */
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -738,7 +767,7 @@ async function api(path, options = {}) {
     const message = Array.isArray(detail)
       ? detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
       : detail || res.statusText || "Request failed";
-    throw new Error(message);
+    throw new Error(humanizeApiErrorMessage(message));
   }
   return data;
 }

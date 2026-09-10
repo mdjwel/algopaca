@@ -111,9 +111,6 @@
     <div id="manual-confirm-modal" class="modal" hidden>
       <div class="modal-backdrop" data-modal-dismiss="true"></div>
       <div class="modal-content" id="manual-confirm-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="manual-confirm-summary">
-        <!-- Live and paper looked identical here, which is exactly the moment
-             the difference matters most. -->
-        <p id="manual-confirm-live" class="confirm-live-banner" hidden data-i18n="confirm_live_banner">REAL MONEY — this order goes to your live brokerage account.</p>
         <h3 id="confirm-title" data-i18n="confirm_order">Confirm Order</h3>
         <div id="manual-confirm-summary" class="confirm-summary">
           <!-- Summary rendered here -->
@@ -567,6 +564,73 @@
                     <p id="help-reinvest-expire" class="field-help" data-i18n="help_reinvest_expire">After the sell fills, how long the buy-back may rest at your price. If it does not fill, it is cancelled. Max 1440 (24h).</p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
+                </div>
+
+                <!-- Buy-back Protective Bracket -->
+                <div class="manual-reinvest-bracket-section">
+                  <label class="check" for="manual-reinvest-bracket-enabled">
+                    <input type="checkbox" id="manual-reinvest-bracket-enabled" name="reinvest_bracket_enabled" />
+                    <strong data-i18n="reinvest_bracket_enable">Attach protective bracket</strong>
+                  </label>
+                  <p class="field-help" data-i18n="reinvest_bracket_help">Attach stop-loss and profit target exit orders once the buy-back fills.</p>
+
+                  <div id="manual-reinvest-bracket-fields" hidden>
+                    <div class="field-pair-row manual-bracket-row">
+                      <div class="manual-bracket-col" id="manual-reinvest-stop-loss-col">
+                        <div class="bracket-col-head">
+                          <label for="manual-reinvest-stop-loss-val" class="bracket-col-label">
+                            <span id="label-reinvest-stop-loss" data-i18n="label_stop_loss">Stop loss</span>
+                          </label>
+                          <div class="qty-unit-toggle bracket-unit-toggle" role="radiogroup" aria-label="Buy-back stop loss unit" data-i18n-aria-label="label_stop_loss">
+                            <label class="qty-unit" data-tooltip="Percent" data-i18n-tooltip="bracket_unit_pct">
+                              <input type="radio" name="reinvest_stop_loss_unit_mode" value="pct" checked />
+                              <span aria-hidden="true">%</span>
+                              <span class="sr-only" data-i18n="bracket_unit_pct">Percent</span>
+                            </label>
+                            <label class="qty-unit" data-tooltip="Stop trigger price ($)" data-i18n-tooltip="label_stop_trigger_price">
+                              <input type="radio" name="reinvest_stop_loss_unit_mode" value="price" />
+                              <span aria-hidden="true">$</span>
+                              <span class="sr-only" data-i18n="label_stop_trigger_price">Stop trigger price</span>
+                            </label>
+                          </div>
+                        </div>
+                        <div class="price-input-shell">
+                          <input id="manual-reinvest-stop-loss-val" name="reinvest_stop_loss_val" type="number" value="3" min="0.01" max="100000" step="0.1" inputmode="decimal" aria-describedby="help-reinvest-stop-loss" />
+                          <span class="bracket-input-adornment" id="adornment-reinvest-stop-loss">%</span>
+                        </div>
+                        <p id="hint-reinvest-stop-loss" class="bracket-live-hint" aria-live="polite" hidden></p>
+                        <p id="help-reinvest-stop-loss" class="field-help" data-i18n="help_reinvest_stop_loss_pct">Percent below buy-back price to exit and cut losses.</p>
+                        <p class="field-error" role="alert" hidden></p>
+                      </div>
+
+                      <div class="manual-bracket-col" id="manual-reinvest-take-profit-col">
+                        <div class="bracket-col-head">
+                          <label for="manual-reinvest-take-profit-val" class="bracket-col-label">
+                            <span id="label-reinvest-take-profit" data-i18n="label_take_profit">Take profit</span>
+                          </label>
+                          <div class="qty-unit-toggle bracket-unit-toggle" role="radiogroup" aria-label="Buy-back take profit unit" data-i18n-aria-label="label_take_profit">
+                            <label class="qty-unit" data-tooltip="Percent" data-i18n-tooltip="bracket_unit_pct">
+                              <input type="radio" name="reinvest_take_profit_unit_mode" value="pct" checked />
+                              <span aria-hidden="true">%</span>
+                              <span class="sr-only" data-i18n="bracket_unit_pct">Percent</span>
+                            </label>
+                            <label class="qty-unit" data-tooltip="Take profit price ($)" data-i18n-tooltip="label_take_profit_price">
+                              <input type="radio" name="reinvest_take_profit_unit_mode" value="price" />
+                              <span aria-hidden="true">$</span>
+                              <span class="sr-only" data-i18n="label_take_profit_price">Take profit price</span>
+                            </label>
+                          </div>
+                        </div>
+                        <div class="price-input-shell">
+                          <input id="manual-reinvest-take-profit-val" name="reinvest_take_profit_val" type="number" value="6" min="0" max="100000" step="0.1" inputmode="decimal" aria-describedby="help-reinvest-take-profit" />
+                          <span class="bracket-input-adornment" id="adornment-reinvest-take-profit">%</span>
+                        </div>
+                        <p id="hint-reinvest-take-profit" class="bracket-live-hint" aria-live="polite" hidden></p>
+                        <p id="help-reinvest-take-profit" class="field-help" data-i18n="help_reinvest_take_profit_pct">Percent above buy-back price to exit with profit.</p>
+                        <p class="field-error" role="alert" hidden></p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <p id="manual-reinvest-summary" class="field-help info" aria-live="polite"></p>

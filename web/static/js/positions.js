@@ -1658,6 +1658,22 @@ async function submitExitStrategy() {
       const slPx = Number($("pos-exit-bracket-sl")?.value || 0);
       const tpPx = Number($("pos-exit-bracket-tp")?.value || 0);
       if (slPx <= 0 && tpPx <= 0) throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
+      if (slPx > 0) {
+        if (!isShort && slPx >= currPx) {
+          throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+        }
+        if (isShort && slPx <= currPx) {
+          throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+        }
+      }
+      if (tpPx > 0) {
+        if (!isShort && tpPx <= currPx) {
+          throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+        }
+        if (isShort && tpPx >= currPx) {
+          throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+        }
+      }
       payload.action = "bracket";
       if (slPx > 0) payload.stop_price = slPx;
       if (tpPx > 0) payload.take_profit_price = tpPx;
@@ -1690,7 +1706,7 @@ async function submitExitStrategy() {
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = err.message || tx("error_exit_strategy", "Failed to update exit strategy");
+      errEl.textContent = formatPosApiError(err, tx("error_exit_strategy", "Failed to update exit strategy"));
     }
   } finally {
     if (submitBtn) {

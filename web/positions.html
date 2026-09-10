@@ -952,8 +952,11 @@
           <!-- Tab Pane 5: Bracket (SL + TP) -->
           <div id="pos-exit-pane-bracket" class="pos-exit-pane" hidden>
             <div class="pos-exit-bracket-grid">
-              <div class="pos-exit-subcard">
-                <label class="pos-modal-label" for="pos-exit-bracket-sl" data-i18n="stop_loss">Stop Loss ($)</label>
+              <div class="pos-exit-subcard pos-exit-subcard-sl">
+                <div class="pos-exit-subcard-head">
+                  <span class="pos-subcard-tag tag-sl">SL</span>
+                  <label class="pos-modal-label" for="pos-exit-bracket-sl" data-i18n="stop_loss">Stop Loss ($)</label>
+                </div>
                 <div class="pos-input-box">
                   <span class="pos-input-prefix">$</span>
                   <input type="number" id="pos-exit-bracket-sl" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
@@ -964,8 +967,11 @@
                   <button type="button" class="chip" data-bracket-sl-pct="5">5%</button>
                 </div>
               </div>
-              <div class="pos-exit-subcard">
-                <label class="pos-modal-label" for="pos-exit-bracket-tp" data-i18n="take_profit">Take Profit ($)</label>
+              <div class="pos-exit-subcard pos-exit-subcard-tp">
+                <div class="pos-exit-subcard-head">
+                  <span class="pos-subcard-tag tag-tp">TP</span>
+                  <label class="pos-modal-label" for="pos-exit-bracket-tp" data-i18n="take_profit">Take Profit ($)</label>
+                </div>
                 <div class="pos-input-box">
                   <span class="pos-input-prefix">$</span>
                   <input type="number" id="pos-exit-bracket-tp" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />

@@ -31,6 +31,15 @@ class TestClosePosition(unittest.TestCase):
         self.assertIn("Fractional orders must be simple orders.", humanized)
         self.assertIn("whole shares", humanized)
 
+    def test_humanize_alpaca_error_expired_day_order(self):
+        raw_error = (
+            'Could not replace order: {"code":42210000,"message":"cannot replace expired order of time_in_force=day"}'
+        )
+        humanized = humanize_alpaca_error(raw_error)
+        self.assertIn("Cannot replace expired order", humanized)
+        self.assertIn("market close", humanized)
+        self.assertNotIn("whole shares", humanized)
+
     def test_humanize_alpaca_error_plain_text(self):
         self.assertEqual(humanize_alpaca_error("Simple error message"), "Simple error message")
 
