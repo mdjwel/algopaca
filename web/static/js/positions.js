@@ -860,9 +860,6 @@ function renderPositionsTable(positions) {
             <button type="button" class="pos-act btn-pos-lots" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("pos_lots_hint", "See the individual share lots behind this holding"))}">
               ${escapeHtml(tx("pos_lots_short", "Lots"))}
             </button>
-            <a href="${historyHref({ symbol: sym })}" class="pos-act btn-pos-trade" title="${escapeHtml(tx("pos_view_fills", "View fills for this symbol"))}">
-              ${escapeHtml(tx("nav_history", "History"))}
-            </a>
           </div>
         </td>
       </tr>`;
@@ -968,9 +965,6 @@ function renderPositionsCards(positions) {
           <button type="button" class="ghost btn-pos-lots" data-symbol="${escapeHtml(sym)}">
             ${escapeHtml(tx("pos_lots_short", "Lots"))}
           </button>
-          <a href="${historyHref({ symbol: sym })}" class="ghost btn-pos-trade" title="${escapeHtml(tx("pos_view_fills", "View fills for this symbol"))}">
-            ${escapeHtml(tx("nav_history", "History"))}
-          </a>
         </div>
       </div>`;
     })
@@ -1251,7 +1245,7 @@ async function submitClosePosition() {
 
 /** ── Exit Strategy & Protection Modal Controller ────────────────── */
 
-function openExitStrategyModal(pos, initialMode = "stop_loss") {
+function openExitStrategyModal(pos, initialMode = null) {
   if (!pos) return;
   activeExitPosition = pos;
 
@@ -1343,15 +1337,21 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
     currDist.textContent = pos.stop_distance_pct != null ? `${Math.abs(pos.stop_distance_pct).toFixed(1)}%` : "—";
   }
 
-  // Default stop loss price (3% default distance)
-  const defaultSlPx = pos.stop_loss_price != null
+  // Default stop loss price (3% default distance, ensuring valid level)
+  const hasValidSl = pos.stop_loss_price != null && (
+    isShort ? Number(pos.stop_loss_price) > currPx : Number(pos.stop_loss_price) < currPx
+  );
+  const defaultSlPx = hasValidSl
     ? Number(pos.stop_loss_price)
     : (isShort ? currPx * 1.03 : currPx * 0.97);
   const slInput = $("pos-exit-sl-price");
   if (slInput) slInput.value = defaultSlPx.toFixed(2);
 
-  // Default take profit price (5% default target)
-  const defaultTpPx = pos.take_profit_price != null
+  // Default take profit price (5% default target, ensuring valid level)
+  const hasValidTp = pos.take_profit_price != null && (
+    isShort ? Number(pos.take_profit_price) < currPx : Number(pos.take_profit_price) > currPx
+  );
+  const defaultTpPx = hasValidTp
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.95 : currPx * 1.05);
   const tpInput = $("pos-exit-tp-price");
@@ -1363,8 +1363,11 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
   const bracketSl = $("pos-exit-bracket-sl");
   if (bracketSl) bracketSl.value = defaultSlPx.toFixed(2);
 
+  const bracketDefaultTpPx = hasValidTp
+    ? Number(pos.take_profit_price)
+    : (isShort ? currPx * 0.90 : currPx * 1.10);
   const bracketTp = $("pos-exit-bracket-tp");
-  if (bracketTp) bracketTp.value = (isShort ? currPx * 0.90 : currPx * 1.10).toFixed(2);
+  if (bracketTp) bracketTp.value = bracketDefaultTpPx.toFixed(2);
 
   // Breakeven target level
   const beLevel = $("pos-exit-be-level");
@@ -1411,11 +1414,38 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
       if (customWrap) customWrap.classList.add("is-active");
       if (customInput) customInput.value = calculatedPct.toFixed(1);
     }
+
+    let matchedBracketSl = null;
+    document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => {
+      if (Math.abs(Number(c.dataset.bracketSlPct) - calculatedPct) < 0.05) matchedBracketSl = c;
+    });
+    document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedBracketSl));
   } else {
     document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.slPct === "3"));
+    document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.bracketSlPct === "3"));
     if (distBadge) distBadge.textContent = "3.0%";
     if (customWrap) customWrap.classList.remove("is-active");
     if (customInput) customInput.value = "";
+  }
+
+  // Sync Take Profit and Bracket TP chips
+  const actualTpPx = pos.take_profit_price != null ? Number(pos.take_profit_price) : null;
+  if (actualTpPx != null && currPx > 0) {
+    const tpPct = isShort ? ((currPx - actualTpPx) / currPx) * 100 : ((actualTpPx - currPx) / currPx) * 100;
+    let matchedTp = null;
+    document.querySelectorAll("[data-tp-pct]").forEach((c) => {
+      if (Math.abs(Number(c.dataset.tpPct) - tpPct) < 0.05) matchedTp = c;
+    });
+    document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedTp));
+
+    let matchedBracketTp = null;
+    document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => {
+      if (Math.abs(Number(c.dataset.bracketTpPct) - tpPct) < 0.05) matchedBracketTp = c;
+    });
+    document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedBracketTp));
+  } else {
+    document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.tpPct === "5"));
+    document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.bracketTpPct === "10"));
   }
 
   // Initialize Strategy Sizing (Shares / Qty)
@@ -1424,7 +1454,7 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
   if (exitQtyInput) {
     exitQtyInput.value = heldQty;
     exitQtyInput.max = String(heldQty);
-    exitQtyInput.min = heldQty < 1 ? "0.0001" : "1";
+    exitQtyInput.min = "1";
     exitQtyInput.step = Number.isInteger(heldQty) ? "1" : "any";
   }
   document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
@@ -1432,10 +1462,18 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
   });
   syncExitQtyUi(heldQty, heldQty);
 
-  setExitMode(initialMode || "stop_loss");
+  // Smart initial mode selection based on active exits
+  let modeToOpen = initialMode;
+  if (!modeToOpen) {
+    if (hasSl && hasTp) modeToOpen = "bracket";
+    else if (hasTp && !hasSl) modeToOpen = "take_profit";
+    else modeToOpen = "stop_loss";
+  }
+
+  setExitMode(modeToOpen);
   openPosModal("pos-exit-modal");
 
-  if (slInput && (initialMode === "stop_loss" || !initialMode)) {
+  if (slInput && (modeToOpen === "stop_loss")) {
     slInput.focus();
     slInput.select();
   }
@@ -1522,6 +1560,16 @@ function setExitMode(mode) {
     } else if (mode === "breakeven") {
       submitBtn.textContent = tx("apply_breakeven", "Move to Breakeven");
       submitBtn.className = "primary";
+      if (activeExitPosition) {
+        const curr = Number(activeExitPosition.current_price || 0);
+        const entry = Number(activeExitPosition.avg_entry_price || 0);
+        const short = String(activeExitPosition.side || "").toLowerCase() === "short";
+        const underwater = short ? curr >= entry : curr <= entry;
+        if (underwater) {
+          submitBtn.disabled = true;
+          submitBtn.title = tx("be_underwater_note", "Position currently underwater");
+        }
+      }
     } else if (mode === "trailing") {
       submitBtn.textContent = tx("apply_trailing_stop", "Arm Trailing Stop");
       submitBtn.className = "primary";
@@ -1547,7 +1595,8 @@ function updateExitCalculations() {
   if (!activeExitPosition) return;
   const pos = activeExitPosition;
   const currPx = Number(pos.current_price || 0);
-  const entryPx = Number(pos.avg_entry_price || 0);
+  let entryPx = Number(pos.avg_entry_price || 0);
+  if (entryPx <= 0) entryPx = currPx;
   const isShort = String(pos.side || "").toLowerCase() === "short";
   const heldQty = Math.abs(Number(pos.qty || 0));
   const exitQtyInput = $("pos-exit-qty-input");
@@ -1677,6 +1726,9 @@ async function submitExitStrategy() {
           })
         );
       }
+      if ((activeExitMode !== "take_profit" || isShort) && (chosenQty < 1 || !Number.isInteger(chosenQty))) {
+        throw new Error(tx("err_exit_whole_shares", "Protective stops and bracket exits require whole shares (minimum 1)"));
+      }
       payload.qty = chosenQty;
     }
 
@@ -1692,6 +1744,10 @@ async function submitExitStrategy() {
       payload.action = "price";
       payload.stop_price = slPx;
     } else if (activeExitMode === "breakeven") {
+      const isUnderwater = isShort ? currPx >= entryPx : currPx <= entryPx;
+      if (isUnderwater) {
+        throw new Error(tx("err_be_underwater", "Cannot move to breakeven: Position is currently underwater"));
+      }
       payload.action = "breakeven";
     } else if (activeExitMode === "trailing") {
       const trail = Number($("pos-exit-trail-pct")?.value || 0);
@@ -1727,6 +1783,14 @@ async function submitExitStrategy() {
         }
         if (isShort && tpPx >= currPx) {
           throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+        }
+      }
+      if (slPx > 0 && tpPx > 0) {
+        if (!isShort && slPx >= tpPx) {
+          throw new Error(tx("err_bracket_cross", "Stop loss must sit below take profit target"));
+        }
+        if (isShort && slPx <= tpPx) {
+          throw new Error(tx("err_bracket_cross_short", "Stop loss must sit above take profit target for a short position"));
         }
       }
       payload.action = "bracket";
@@ -1766,12 +1830,7 @@ async function submitExitStrategy() {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = !!(activeExitPosition && activeExitPosition.is_auto_trading);
-      const currentMode = activeExitMode || "stop_loss";
-      if (currentMode === "clear") {
-        submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");
-      } else {
-        submitBtn.textContent = tx("apply_exit_strategy", "Apply Exit Strategy");
-      }
+      setExitMode(activeExitMode || "stop_loss");
     }
   }
 }
@@ -3021,8 +3080,12 @@ function bindRowDelegation(container) {
       const rowOrCard = protClick.closest(".pos-table-row, .pos-card");
       const sym = rowOrCard?.dataset.symbol;
       if (sym) {
-        const initialMode = protClick.closest(".pos-prot-badge")?.classList.contains("tp") ? "take_profit" : "stop_loss";
-        openExitStrategyModal(findPositionBySymbol(sym), initialMode);
+        const pObj = findPositionBySymbol(sym);
+        const hasBoth = !!(pObj?.has_stop_loss && pObj?.has_take_profit);
+        const initialMode = hasBoth
+          ? "bracket"
+          : (protClick.closest(".pos-prot-badge")?.classList.contains("tp") ? "take_profit" : "stop_loss");
+        openExitStrategyModal(pObj, initialMode);
         return;
       }
     }
@@ -3251,10 +3314,69 @@ function initPositionsUi() {
     }
     updateExitCalculations();
   });
-  $("pos-exit-trail-pct")?.addEventListener("input", updateExitCalculations);
-  $("pos-exit-tp-price")?.addEventListener("input", updateExitCalculations);
-  $("pos-exit-bracket-sl")?.addEventListener("input", updateExitCalculations);
-  $("pos-exit-bracket-tp")?.addEventListener("input", updateExitCalculations);
+  $("pos-exit-trail-pct")?.addEventListener("input", (e) => {
+    const trailVal = Number(e.target.value || 0);
+    let matched = null;
+    document.querySelectorAll("[data-trail-pct]").forEach((c) => {
+      if (Math.abs(Number(c.dataset.trailPct) - trailVal) < 0.05) matched = c;
+    });
+    document.querySelectorAll("[data-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
+    updateExitCalculations();
+  });
+
+  $("pos-exit-tp-price")?.addEventListener("input", (e) => {
+    if (!activeExitPosition) return;
+    const tpPx = Number(e.target.value || 0);
+    const currPx = Number(activeExitPosition.current_price || 0);
+    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    if (tpPx > 0 && currPx > 0) {
+      const diffPct = isShort ? ((currPx - tpPx) / currPx) * 100 : ((tpPx - currPx) / currPx) * 100;
+      let matched = null;
+      document.querySelectorAll("[data-tp-pct]").forEach((c) => {
+        if (Math.abs(Number(c.dataset.tpPct) - diffPct) < 0.05) matched = c;
+      });
+      document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
+    } else {
+      document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.remove("is-active"));
+    }
+    updateExitCalculations();
+  });
+
+  $("pos-exit-bracket-sl")?.addEventListener("input", (e) => {
+    if (!activeExitPosition) return;
+    const slPx = Number(e.target.value || 0);
+    const currPx = Number(activeExitPosition.current_price || 0);
+    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    if (slPx > 0 && currPx > 0) {
+      const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
+      let matched = null;
+      document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => {
+        if (Math.abs(Number(c.dataset.bracketSlPct) - diffPct) < 0.05) matched = c;
+      });
+      document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
+    } else {
+      document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.remove("is-active"));
+    }
+    updateExitCalculations();
+  });
+
+  $("pos-exit-bracket-tp")?.addEventListener("input", (e) => {
+    if (!activeExitPosition) return;
+    const tpPx = Number(e.target.value || 0);
+    const currPx = Number(activeExitPosition.current_price || 0);
+    const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    if (tpPx > 0 && currPx > 0) {
+      const diffPct = isShort ? ((currPx - tpPx) / currPx) * 100 : ((tpPx - currPx) / currPx) * 100;
+      let matched = null;
+      document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => {
+        if (Math.abs(Number(c.dataset.bracketTpPct) - diffPct) < 0.05) matched = c;
+      });
+      document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
+    } else {
+      document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.remove("is-active"));
+    }
+    updateExitCalculations();
+  });
 
   // Exit Strategy Modal: Quick percentage chips
   document.querySelectorAll("[data-sl-pct]").forEach((chip) => {

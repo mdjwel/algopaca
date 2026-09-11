@@ -955,6 +955,15 @@ class AppState:
         if thread is not None and thread.is_alive():
             thread.join(timeout=2.0)
 
+        # Per-symbol auto-trade runners point at the same account as the
+        # legacy loop; leaving them running would keep trading against
+        # whichever account the desk switched away from.
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            try:
+                self.multi_trader.stop_all()
+            except Exception:
+                pass
+
         # An armed buy-back is a real order waiting on a fill. Left running it
         # would settle against whichever account the desk now points at, so the
         # watcher is stopped and every waiting plan is closed out first.
@@ -5550,7 +5559,8 @@ class AppState:
         if action == "cancel_all":
             res = service.cancel_open_exit_orders(symbol)
             synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
-            res["cancelled_stops"] = (res.get("cancelled_stops") or 0) + synth_cancelled
+            res["stops_cancelled"] = (res.get("stops_cancelled") or 0) + synth_cancelled
+            res["cancelled_stops"] = res["stops_cancelled"]
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, **res}
 
@@ -5565,6 +5575,17 @@ class AppState:
                 raise ValueError(
                     f"Quantity ({q:g}) cannot exceed held position size ({abs(position):g})"
                 )
+            if action in {"price", "stop_loss", "breakeven", "trail", "trailing_stop", "bracket"} and (
+                q < 1 or q != int(q)
+            ):
+                raise ValueError(
+                    f"Protective stops and bracket exits require whole shares (minimum 1, got {q:g})."
+                )
+        elif action in {"price", "stop_loss", "breakeven", "trail", "trailing_stop", "bracket"} and abs(position) < 1:
+            raise ValueError(
+                f"Position size ({abs(position):g}) is less than 1 whole share. "
+                "Alpaca does not support protective stops or bracket exits on fractional shares."
+            )
         is_short = position < 0
         mark_price = float(service.get_mark_price(symbol)["price"])
         entry_price = service.get_avg_entry_price(symbol) or mark_price
@@ -5596,7 +5617,10 @@ class AppState:
 
         # Helper to compute and validate take profit target
         def _resolve_take_profit_target(
-            p_tp: float | None, p_pct: float | None, p_r: float | None
+            p_tp: float | None,
+            p_pct: float | None,
+            p_r: float | None,
+            ref_stop: float | None = None,
         ) -> float:
             explicit = float(p_tp or 0)
             if explicit > 0:
@@ -5609,11 +5633,11 @@ class AppState:
                 r_mult = float(p_r)
                 # Sizing risk unit from current stop gap or default 2%
                 existing_stops = [
-                    o.get("stop_price")
+                    float(o.get("stop_price"))
                     for o in service.get_open_orders_summary().get(symbol, [])
-                    if o.get("stop_price")
+                    if o.get("stop_price") and float(o.get("stop_price") or 0) > 0
                 ]
-                existing_stop = float(existing_stops[0]) if existing_stops else None
+                existing_stop = float(ref_stop) if (ref_stop and float(ref_stop) > 0) else (existing_stops[0] if existing_stops else None)
                 risk_unit = abs(entry_price - existing_stop) if existing_stop and existing_stop > 0 else (entry_price * 0.02)
                 raw = entry_price - (risk_unit * r_mult) if is_short else entry_price + (risk_unit * r_mult)
                 t = normalize_stock_order_price(raw, field="take_profit_price")
@@ -5705,7 +5729,19 @@ class AppState:
                 or (take_profit_pct and float(take_profit_pct) > 0)
                 or (take_profit_r and float(take_profit_r) > 0)
             ):
-                target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
+                target_tp = _resolve_take_profit_target(
+                    take_profit_price, take_profit_pct, take_profit_r, ref_stop=target_stop
+                )
+
+            if target_stop and target_tp:
+                if not is_short and target_stop >= target_tp:
+                    raise ValueError(
+                        f"Stop loss (${target_stop:.2f}) must sit below take profit (${target_tp:.2f}) for a long position."
+                    )
+                if is_short and target_stop <= target_tp:
+                    raise ValueError(
+                        f"Stop loss (${target_stop:.2f}) must sit above take profit (${target_tp:.2f}) for a short position."
+                    )
 
             trail = (
                 float(trail_percent or 3.0)
@@ -10184,7 +10220,7 @@ class AppState:
 
             sym = p.get("symbol", "")
             sym_orders = open_orders_map.get(sym, [])
-            pos_side = str(p.get("side") or "long").lower()
+            pos_side = str(p.get("side") or "long").lower().replace("positionside.", "")
             exit_side = "sell" if pos_side == "long" else "buy"
             # Only a stop on the exit side protects this position — a resting
             # buy-stop beside a long is an entry, and badging it "SL" would
@@ -10193,20 +10229,51 @@ class AppState:
                 o
                 for o in sym_orders
                 if (o.get("is_stop") or o.get("stop_price"))
-                and str(o.get("side") or exit_side).lower() == exit_side
+                and str(o.get("side") or exit_side).lower().replace("orderside.", "") == exit_side
             ]
             limits = [
                 o
                 for o in sym_orders
                 if not o.get("is_stop")
                 and o.get("limit_price")
-                and str(o.get("side") or "").lower() == exit_side
+                and str(o.get("side") or "").lower().replace("orderside.", "") == exit_side
             ]
-            p["has_stop_loss"] = len(stops) > 0
-            p["stop_loss_price"] = stops[0].get("stop_price") if stops else None
-            p["has_take_profit"] = len(limits) > 0
-            p["take_profit_price"] = limits[0].get("limit_price") if limits else None
-            p["open_orders_count"] = len(sym_orders)
+
+            # Also check active synthetic stop orders
+            synth_stops = [
+                o
+                for o in self.synthetic_orders.values()
+                if str(o.get("symbol", "")).upper() == sym
+                and str(o.get("status", "")).lower() in {"active", "held", "pending"}
+                and str(o.get("side", "")).lower().replace("orderside.", "") == exit_side
+                and float(o.get("stop_price") or 0) > 0
+            ]
+
+            stop_candidates = [
+                float(o.get("stop_price"))
+                for o in stops
+                if o.get("stop_price") is not None and float(o.get("stop_price") or 0) > 0
+            ]
+            if not stop_candidates and synth_stops:
+                stop_candidates = [float(synth_stops[0].get("stop_price"))]
+
+            p["has_stop_loss"] = bool(stop_candidates or stops or synth_stops)
+            if stop_candidates:
+                p["stop_loss_price"] = min(stop_candidates) if pos_side == "short" else max(stop_candidates)
+            else:
+                p["stop_loss_price"] = None
+
+            limit_candidates = [
+                float(o.get("limit_price"))
+                for o in limits
+                if o.get("limit_price") is not None and float(o.get("limit_price") or 0) > 0
+            ]
+            p["has_take_profit"] = bool(limit_candidates or limits)
+            if limit_candidates:
+                p["take_profit_price"] = max(limit_candidates) if pos_side == "short" else min(limit_candidates)
+            else:
+                p["take_profit_price"] = None
+            p["open_orders_count"] = len(sym_orders) + len(synth_stops)
 
             # How much room is left before the stop fires — the number that
             # actually tells you whether a holding is protected or cornered.

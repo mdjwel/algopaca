@@ -1449,31 +1449,45 @@ class AlpacaService:
             sym = str(getattr(o, "symbol", "") or "").upper()
             if not sym:
                 continue
-            otype = getattr(o, "type", None)
-            side = str(getattr(o, "side", "") or "").lower()
+            otype = self._enum_name(getattr(o, "type", ""), "").lower()
+            side = self._enum_name(getattr(o, "side", ""), "").lower()
+            oclass = self._enum_name(getattr(o, "order_class", ""), "").lower()
             stop_px = float(getattr(o, "stop_price", 0) or 0) if getattr(o, "stop_price", None) else None
             limit_px = float(getattr(o, "limit_price", 0) or 0) if getattr(o, "limit_price", None) else None
+            is_stop = (
+                otype in {"stop", "stop_limit", "trailing_stop"}
+                or (stop_px is not None and stop_px > 0)
+            )
             by_symbol.setdefault(sym, []).append({
                 "id": str(getattr(o, "id", "")),
-                "type": str(otype).lower(),
+                "type": otype,
                 "side": side,
                 "qty": float(getattr(o, "qty", 0) or 0) or None,
                 "stop_price": stop_px,
                 "limit_price": limit_px,
-                "is_stop": self._is_protective_stop(o),
+                "is_stop": is_stop,
+                "order_class": oclass or None,
             })
             for leg in getattr(o, "legs", None) or []:
                 leg_sym = str(getattr(leg, "symbol", "") or sym).upper()
+                leg_otype = self._enum_name(getattr(leg, "type", ""), "").lower()
+                leg_side = self._enum_name(getattr(leg, "side", ""), "").lower()
+                leg_oclass = self._enum_name(getattr(leg, "order_class", "") or oclass, "").lower()
                 leg_stop_px = float(getattr(leg, "stop_price", 0) or 0) if getattr(leg, "stop_price", None) else None
                 leg_limit_px = float(getattr(leg, "limit_price", 0) or 0) if getattr(leg, "limit_price", None) else None
+                leg_is_stop = (
+                    leg_otype in {"stop", "stop_limit", "trailing_stop"}
+                    or (leg_stop_px is not None and leg_stop_px > 0)
+                )
                 by_symbol.setdefault(leg_sym, []).append({
                     "id": str(getattr(leg, "id", "")),
-                    "type": str(getattr(leg, "type", "")).lower(),
-                    "side": str(getattr(leg, "side", "")).lower(),
+                    "type": leg_otype,
+                    "side": leg_side,
                     "qty": float(getattr(leg, "qty", 0) or 0) or None,
                     "stop_price": leg_stop_px,
                     "limit_price": leg_limit_px,
-                    "is_stop": self._is_protective_stop(leg),
+                    "is_stop": leg_is_stop,
+                    "order_class": leg_oclass or None,
                 })
         return by_symbol
 
@@ -1599,34 +1613,60 @@ class AlpacaService:
         )
         return list(self.trading.get_orders(req) or [])
 
-    @staticmethod
-    def _is_protective_stop(order) -> bool:
+    @classmethod
+    def _is_protective_stop(cls, order, *, position_side: str | None = None) -> bool:
         """Resting stop (sell below a long, or buy above a short) — ignore for entry blocks."""
         try:
             otype = getattr(order, "type", None)
         except Exception:
             return False
-        if otype in {OrderType.STOP, OrderType.STOP_LIMIT, OrderType.TRAILING_STOP}:
+        otype_str = cls._enum_name(otype, "").lower()
+        side_str = cls._enum_name(getattr(order, "side", None), "").lower()
+        stop_px = getattr(order, "stop_price", None)
+        has_stop_px = False
+        if stop_px is not None:
+            try:
+                has_stop_px = float(stop_px) > 0
+            except (TypeError, ValueError):
+                has_stop_px = False
+
+        is_stop_type = (
+            otype in {OrderType.STOP, OrderType.STOP_LIMIT, OrderType.TRAILING_STOP}
+            or otype_str in {
+                "stop", "stop_limit", "trailing_stop", "stoporder", "stoplimitorder", "trailingstoporder"
+            }
+            or has_stop_px
+        )
+
+        if is_stop_type:
+            if position_side == "long" and side_str and side_str != "sell":
+                return False
+            if position_side == "short" and side_str and side_str != "buy":
+                return False
             return True
-        otype_str = str(otype or "").lower()
-        if otype_str in {"stop", "stop_limit", "trailing_stop", "stoporder", "stoplimitorder", "trailingstoporder"}:
-            return True
-        oclass = str(getattr(order, "order_class", "") or "").lower()
-        if oclass in {"oco", "bracket"}:
-            return True
+
+        for leg in getattr(order, "legs", None) or []:
+            if cls._is_protective_stop(leg, position_side=position_side):
+                return True
         return False
 
     def has_open_orders(self, symbol: str) -> bool:
         """True when non-stop open orders exist (entries / limit exits / etc.)."""
-        return any(not self._is_protective_stop(o) for o in self._open_orders(symbol))
+        pos_qty = self.get_position_qty(symbol)
+        pos_side = "short" if pos_qty < 0 else ("long" if pos_qty > 0 else None)
+        return any(not self._is_protective_stop(o, position_side=pos_side) for o in self._open_orders(symbol))
 
     def has_open_stop_sell(self, symbol: str) -> bool:
-        return any(self._is_protective_stop(o) for o in self._open_orders(symbol))
+        pos_qty = self.get_position_qty(symbol)
+        pos_side = "short" if pos_qty < 0 else "long"
+        return any(self._is_protective_stop(o, position_side=pos_side) for o in self._open_orders(symbol))
 
     def cancel_open_stop_orders(self, symbol: str) -> int:
+        pos_qty = self.get_position_qty(symbol)
+        pos_side = "short" if pos_qty < 0 else ("long" if pos_qty > 0 else None)
         cancelled = 0
         for order in self._open_orders(symbol):
-            if not self._is_protective_stop(order):
+            if not self._is_protective_stop(order, position_side=pos_side):
                 continue
             try:
                 self.trading.cancel_order_by_id(order.id)
@@ -1926,16 +1966,26 @@ class AlpacaService:
             oid = str(getattr(leg, "id", "") or "").strip()
             if not oid:
                 continue
-            if otype in {"stop", "stop_limit", "trailing_stop"}:
+            stop_px = getattr(leg, "stop_price", None)
+            limit_px = getattr(leg, "limit_price", None)
+            if otype in {"stop", "stop_limit", "trailing_stop"} or (stop_px is not None and float(stop_px or 0) > 0):
                 stop_id = oid
-            elif otype == "limit":
+            elif otype == "limit" or (limit_px is not None and float(limit_px or 0) > 0):
                 tp_id = oid
         return {"stop_order_id": stop_id, "take_profit_order_id": tp_id}
 
     def open_protective_stop_id(self, symbol: str) -> str | None:
         """Id of the resting protective stop on ``symbol``, if one is open."""
+        pos_qty = self.get_position_qty(symbol)
+        pos_side = "short" if pos_qty < 0 else ("long" if pos_qty > 0 else None)
         for order in self._open_orders(symbol):
-            if self._is_protective_stop(order):
+            # Check child legs first so bracket/OCO stops report the actual stop leg id
+            for leg in getattr(order, "legs", None) or []:
+                if self._is_protective_stop(leg, position_side=pos_side):
+                    lid = str(getattr(leg, "id", "") or "").strip()
+                    if lid:
+                        return lid
+            if self._is_protective_stop(order, position_side=pos_side):
                 oid = str(getattr(order, "id", "") or "").strip()
                 if oid:
                     return oid
@@ -2103,15 +2153,10 @@ class AlpacaService:
         stop_price = self.stop_price_for_entry(avg, pct=pct, short=is_short)
         if stop_price is None:
             return None
-        # Whole shares for stop orders; Alpaca does not short fractionals.
-        if is_short:
-            stop_qty = float(int(abs_qty))
-            if stop_qty < 1:
-                return None
-        else:
-            stop_qty = float(int(abs_qty)) if abs_qty >= 1 else float(abs_qty)
-            if stop_qty <= 0:
-                return None
+        # Whole shares for stop orders; Alpaca does not accept fractional stop orders.
+        stop_qty = float(int(abs_qty))
+        if stop_qty < 1:
+            return None
         offset = float(getattr(self.config, "stop_limit_offset_pct", 0) or 0)
         limit = limit_price_for_stop(stop_price, offset, short=is_short)
         common = {
@@ -2200,19 +2245,81 @@ class AlpacaService:
             "stop_out_age_min": round(stop_age, 1) if stop_age is not None else None,
         }
 
+    def _submit_exit_order_with_retry(
+        self, order_request: Any, symbol: str, max_attempts: int = 4
+    ) -> Any:
+        """Submit an exit order, retrying briefly if shares were held by just-cancelled orders."""
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            try:
+                return self.trading.submit_order(order_request)
+            except Exception as exc:
+                last_exc = exc
+                err_msg = str(exc).lower()
+                is_held_err = (
+                    "insufficient qty" in err_msg
+                    or "held_for_orders" in err_msg
+                    or "40310000" in err_msg
+                )
+                if is_held_err and attempt < max_attempts - 1:
+                    logger.info(
+                        "Alpaca held shares for %s; waiting for cancellation to clear (attempt %d/%d)...",
+                        symbol,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    _time.sleep(0.3 * (attempt + 1))
+                    continue
+                raise exc
+        if last_exc:
+            raise last_exc
+
     def current_stop_price(self, symbol: str) -> float | None:
         """Stop price of the resting protective order, if any."""
+        pos_qty = 0.0
+        try:
+            pos_qty = float(self.get_position_qty(symbol) or 0.0)
+        except Exception:
+            pos_qty = 0.0
+        is_short = pos_qty < 0
+        pos_side = "short" if is_short else ("long" if pos_qty > 0 else None)
         prices = []
         for order in self._open_orders(symbol):
-            if not self._is_protective_stop(order):
-                continue
-            try:
-                price = float(getattr(order, "stop_price", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            if price > 0:
-                prices.append(price)
-        return max(prices) if prices else None
+            if self._is_protective_stop(order, position_side=pos_side):
+                try:
+                    price = float(getattr(order, "stop_price", 0) or 0)
+                    if price > 0:
+                        prices.append(price)
+                except (TypeError, ValueError):
+                    pass
+            for leg in getattr(order, "legs", None) or []:
+                if self._is_protective_stop(leg, position_side=pos_side):
+                    try:
+                        price = float(getattr(leg, "stop_price", 0) or 0)
+                        if price > 0:
+                            prices.append(price)
+                    except (TypeError, ValueError):
+                        pass
+        if not prices:
+            for order in self._open_orders(symbol):
+                if self._is_protective_stop(order, position_side=None):
+                    try:
+                        price = float(getattr(order, "stop_price", 0) or 0)
+                        if price > 0:
+                            prices.append(price)
+                    except (TypeError, ValueError):
+                        pass
+                for leg in getattr(order, "legs", None) or []:
+                    if self._is_protective_stop(leg, position_side=None):
+                        try:
+                            price = float(getattr(leg, "stop_price", 0) or 0)
+                            if price > 0:
+                                prices.append(price)
+                        except (TypeError, ValueError):
+                            pass
+        if not prices:
+            return None
+        return min(prices) if is_short else max(prices)
 
     def replace_stop_loss(
         self, symbol: str, stop_price: float, *, qty: float | None = None
@@ -2235,9 +2342,12 @@ class AlpacaService:
             requested = abs(float(qty))
             if requested > 0:
                 abs_qty = min(abs_qty, requested)
-        stop_qty = float(int(abs_qty)) if (is_short or abs_qty >= 1) else float(abs_qty)
-        if stop_qty <= 0:
-            return None
+        stop_qty = float(int(abs_qty))
+        if stop_qty < 1:
+            raise ValueError(
+                "A protective stop needs at least 1 whole share — Alpaca does "
+                "not accept fractional stop orders."
+            )
         self.cancel_open_stop_orders(symbol)
         offset = float(getattr(self.config, "stop_limit_offset_pct", 0) or 0)
         limit = limit_price_for_stop(stop_price, offset, short=is_short)
@@ -2252,7 +2362,7 @@ class AlpacaService:
             order = StopLimitOrderRequest(**common, limit_price=limit)
         else:
             order = StopOrderRequest(**common)
-        submitted = self.trading.submit_order(order)
+        submitted = self._submit_exit_order_with_retry(order, symbol)
         info = {
             "id": str(submitted.id),
             "stop_price": stop_price,
@@ -2495,13 +2605,16 @@ class AlpacaService:
         # An attached exit turns the entry into an OTO/bracket, and Alpaca only
         # accepts those on a simple market or limit entry. A stop or trailing
         # entry cannot also carry the promised protective OTO/bracket.
+        has_stop_request = (stop_pct > 0) or (
+            stop_loss_price is not None and float(stop_loss_price) > 0
+        )
         attach_stop = (
             (side == OrderSide.BUY or short_entry)
-            and stop_pct > 0
+            and has_stop_request
             and otype in ATTACHABLE_ENTRY_TYPES
             and not extended_hours
         )
-        if (side == OrderSide.BUY or short_entry) and stop_pct > 0 and not attach_stop:
+        if (side == OrderSide.BUY or short_entry) and has_stop_request and not attach_stop:
             if otype not in ATTACHABLE_ENTRY_TYPES:
                 raise ValueError(
                     "Protected entries must use Market or Limit. Alpaca cannot attach "
@@ -2734,7 +2847,7 @@ class AlpacaService:
             time_in_force=TimeInForce.GTC,
             **trail,
         )
-        submitted = self.trading.submit_order(order)
+        submitted = self._submit_exit_order_with_retry(order, symbol)
         info = {
             "id": str(submitted.id),
             "qty": stop_qty,
@@ -2792,7 +2905,7 @@ class AlpacaService:
             time_in_force=TimeInForce.GTC,
             limit_price=limit_price,
         )
-        submitted = self.trading.submit_order(order)
+        submitted = self._submit_exit_order_with_retry(order, symbol)
         return {
             "id": str(submitted.id),
             "limit_price": limit_price,
@@ -2833,9 +2946,12 @@ class AlpacaService:
                     f"Quantity ({requested:g}) cannot exceed held position size ({abs_qty:g})"
                 )
             abs_qty = requested
-        order_qty = float(int(abs_qty)) if (is_short or abs_qty >= 1) else float(abs_qty)
-        if order_qty <= 0:
-            raise ValueError("Order quantity must be greater than 0")
+        order_qty = float(int(abs_qty))
+        if order_qty < 1:
+            raise ValueError(
+                "A bracket exit needs at least 1 whole share — Alpaca does "
+                "not accept fractional bracket/OCO orders."
+            )
 
         # Resolve stop price if pct was passed
         resolved_stop: float | None = None
@@ -2873,6 +2989,14 @@ class AlpacaService:
 
         # Case 2: Both Stop Loss and Take Profit -> Native OCO Order!
         if resolved_stop is not None and resolved_tp is not None:
+            if not is_short and resolved_stop >= resolved_tp:
+                raise ValueError(
+                    f"Stop loss (${resolved_stop:.2f}) must sit below take profit (${resolved_tp:.2f}) for a long position."
+                )
+            if is_short and resolved_stop <= resolved_tp:
+                raise ValueError(
+                    f"Stop loss (${resolved_stop:.2f}) must sit above take profit (${resolved_tp:.2f}) for a short position."
+                )
             offset = float(getattr(self.config, "stop_limit_offset_pct", 0) or 0)
             stop_loss_req = stop_loss_request_for(
                 resolved_stop,
@@ -2892,7 +3016,7 @@ class AlpacaService:
                 take_profit=tp_req,
                 stop_loss=stop_loss_req,
             )
-            submitted = self.trading.submit_order(order)
+            submitted = self._submit_exit_order_with_retry(order, symbol)
             legs = self.exit_leg_ids(submitted)
 
             stop_info: dict[str, Any] = {

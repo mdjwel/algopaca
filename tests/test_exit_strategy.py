@@ -293,6 +293,66 @@ class TestExitStrategy(unittest.TestCase):
                 )
             self.assertIn("Stop auto-trade for MSFT", str(ctx.exception))
 
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_fractional_qty_rejected(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 150.0}
+
+        # Fractional quantity requested
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=145.0,
+                qty=1.5,
+            )
+        self.assertIn("require whole shares", str(ctx.exception).lower())
+
+        # Total position is fractional (< 1)
+        mock_service.get_position_qty.return_value = 0.5
+        with self.assertRaises(ValueError) as ctx2:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=145.0,
+            )
+        self.assertIn("less than 1 whole share", str(ctx2.exception).lower())
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_bracket_r_multiple_with_ref_stop(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.get_avg_entry_price.return_value = 100.0
+        mock_service.get_open_orders_summary.return_value = {}
+        mock_service.arm_bracket_exit.return_value = {
+            "symbol": "AAPL",
+            "action": "bracket",
+            "order_id": "ord_oco_r",
+            "order_class": "oco",
+            "stop": {"id": "ord_sl", "stop_price": 90.0},
+            "take_profit": {"id": "ord_tp", "limit_price": 120.0},
+        }
+
+        # Entry = 100, Stop = 90 (risk unit = 10). R-multiple = 2.0 -> TP should be 120.0
+        res = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="bracket",
+            stop_price=90.0,
+            take_profit_r=2.0,
+        )
+        self.assertEqual(res["action"], "bracket")
+        mock_service.arm_bracket_exit.assert_called_once_with(
+            "AAPL",
+            stop_price=90.0,
+            take_profit_price=120.0,
+            trail_percent=None,
+            qty=None,
+        )
+
 
 class TestArmBracketExit(unittest.TestCase):
     def setUp(self):
@@ -368,6 +428,291 @@ class TestArmBracketExit(unittest.TestCase):
                 take_profit_price=160.0,
             )
         self.assertIn("trailing stop cannot be combined", str(ctx.exception).lower())
+
+    def test_positions_overview_bracket_oco_detection_short(self):
+        from alpaca.trading.enums import OrderSide, OrderType, OrderClass
+        mock_service = MagicMock()
+        mock_service.get_all_positions.return_value = [
+            {
+                "symbol": "SNDK",
+                "side": "short",
+                "qty": -2.0,
+                "avg_entry_price": 1705.0,
+                "current_price": 1726.0,
+                "market_value": -3452.0,
+                "unrealized_pl": -42.0,
+            }
+        ]
+        # Simulating get_open_orders_summary with normalized enums from Alpaca
+        mock_service.get_open_orders_summary.return_value = {
+            "SNDK": [
+                {
+                    "id": "ord_tp",
+                    "type": "limit",
+                    "side": "buy",
+                    "qty": 2.0,
+                    "stop_price": None,
+                    "limit_price": 1553.40,
+                    "is_stop": False,
+                    "order_class": "oco",
+                },
+                {
+                    "id": "ord_sl",
+                    "type": "stop",
+                    "side": "buy",
+                    "qty": 2.0,
+                    "stop_price": 1777.78,
+                    "limit_price": None,
+                    "is_stop": True,
+                    "order_class": "oco",
+                },
+            ]
+        }
+        mock_service.get_account.return_value = {"equity": 50000.0}
+        state = AppState(user_id="test_user")
+        state.multi_trader = MagicMock()
+        state.multi_trader.get_runner_summary.return_value = None
+        state.loop_running = False
+
+        with patch("bot.web_state.AlpacaService", return_value=mock_service):
+            overview = state.positions_overview()
+            pos = overview["positions"][0]
+            self.assertTrue(pos["has_stop_loss"])
+            self.assertEqual(pos["stop_loss_price"], 1777.78)
+            self.assertTrue(pos["has_take_profit"])
+            self.assertEqual(pos["take_profit_price"], 1553.40)
+            self.assertIsNotNone(pos["stop_distance_pct"])
+            # For short, gap = (1726 - 1777.78) / 1726 * 100 = -3.00%, distance = -gap = +3.00%
+            self.assertAlmostEqual(pos["stop_distance_pct"], 3.00, places=1)
+
+    def test_get_open_orders_summary_normalizes_enums_and_legs(self):
+        from alpaca.trading.enums import OrderSide, OrderType, OrderClass
+        parent = MagicMock()
+        parent.symbol = "SNDK"
+        parent.type = OrderType.LIMIT
+        parent.side = OrderSide.BUY
+        parent.order_class = OrderClass.OCO
+        parent.id = "parent_oco"
+        parent.qty = 2.0
+        parent.stop_price = None
+        parent.limit_price = 1553.40
+
+        leg = MagicMock()
+        leg.symbol = "SNDK"
+        leg.type = OrderType.STOP
+        leg.side = OrderSide.BUY
+        leg.order_class = OrderClass.OCO
+        leg.id = "leg_stop"
+        leg.qty = 2.0
+        leg.stop_price = 1777.78
+        leg.limit_price = None
+
+        parent.legs = [leg]
+        self.mock_trading.get_orders.return_value = [parent]
+
+        summary = self.service.get_open_orders_summary()
+        self.assertIn("SNDK", summary)
+        orders = summary["SNDK"]
+        self.assertEqual(len(orders), 2)
+        # Parent limit leg
+        self.assertEqual(orders[0]["side"], "buy")
+        self.assertEqual(orders[0]["type"], "limit")
+        self.assertFalse(orders[0]["is_stop"])
+        self.assertEqual(orders[0]["limit_price"], 1553.40)
+        # Child stop leg
+        self.assertEqual(orders[1]["side"], "buy")
+        self.assertEqual(orders[1]["type"], "stop")
+        self.assertTrue(orders[1]["is_stop"])
+        self.assertEqual(orders[1]["stop_price"], 1777.78)
+
+    def test_current_stop_price_inspects_child_legs(self):
+        from alpaca.trading.enums import OrderSide, OrderType, OrderClass
+        parent = MagicMock()
+        parent.symbol = "SNDK"
+        parent.type = OrderType.LIMIT
+        parent.side = OrderSide.BUY
+        parent.order_class = OrderClass.OCO
+        parent.stop_price = None
+
+        leg = MagicMock()
+        leg.symbol = "SNDK"
+        leg.type = OrderType.STOP
+        leg.side = OrderSide.BUY
+        leg.stop_price = 1777.78
+        parent.legs = [leg]
+
+        self.service._open_orders = MagicMock(return_value=[parent])
+        px = self.service.current_stop_price("SNDK")
+        self.assertEqual(px, 1777.78)
+
+    def test_submit_manual_order_attaches_stop_with_price_only(self):
+        from alpaca.trading.enums import OrderSide, OrderClass
+        self.service.market_session = MagicMock(return_value={"session": "regular"})
+        self.service.get_mark_price = MagicMock(return_value={"price": 100.0})
+        mock_submitted = MagicMock()
+        mock_submitted.id = "ord_market_oto"
+        self.mock_trading.submit_order.return_value = mock_submitted
+
+        # Pass stop_loss_price directly, with stop_loss_pct = 0.0
+        submitted, attached = self.service.submit_manual_order(
+            symbol="AAPL",
+            qty=5.0,
+            side="buy",
+            order_type="market",
+            stop_loss_pct=0.0,
+            stop_loss_price=95.0,
+        )
+        self.assertIsNotNone(attached)
+        self.assertEqual(attached["stop_price"], 95.0)
+        req = self.mock_trading.submit_order.call_args[0][0]
+        self.assertEqual(req.order_class, OrderClass.OTO)
+        self.assertEqual(req.stop_loss.stop_price, 95.0)
+
+    def test_arm_bracket_exit_fractional_qty_rejected(self):
+        self.service.get_position_qty = MagicMock(return_value=0.5)
+        with self.assertRaises(ValueError) as ctx:
+            self.service.arm_bracket_exit(
+                "AAPL",
+                stop_price=140.0,
+                take_profit_price=160.0,
+            )
+        self.assertIn("needs at least 1 whole share", str(ctx.exception))
+
+    def test_replace_stop_loss_fractional_qty_rejected(self):
+        self.service.get_position_qty = MagicMock(return_value=0.75)
+        with self.assertRaises(ValueError) as ctx:
+            self.service.replace_stop_loss(
+                "AAPL",
+                145.0,
+            )
+    def test_arm_bracket_exit_crossing_rejected(self):
+        # Long position: stop sitting at or above take profit
+        self.service.get_position_qty = MagicMock(return_value=10.0)
+        with self.assertRaises(ValueError) as ctx:
+            self.service.arm_bracket_exit(
+                "AAPL",
+                stop_price=160.0,
+                take_profit_price=150.0,
+            )
+        self.assertIn("must sit below take profit", str(ctx.exception))
+
+        # Short position: stop sitting at or below take profit
+        self.service.get_position_qty = MagicMock(return_value=-10.0)
+        with self.assertRaises(ValueError) as ctx2:
+            self.service.arm_bracket_exit(
+                "AAPL",
+                stop_price=140.0,
+                take_profit_price=150.0,
+            )
+    def test_exit_leg_ids_with_enums_and_prices(self):
+        from alpaca.trading.enums import OrderType
+        parent = MagicMock()
+        stop_leg = MagicMock()
+        stop_leg.id = "stop_leg_123"
+        stop_leg.type = OrderType.STOP
+        stop_leg.stop_price = 145.0
+        stop_leg.limit_price = None
+
+        tp_leg = MagicMock()
+        tp_leg.id = "tp_leg_456"
+        tp_leg.type = OrderType.LIMIT
+        tp_leg.stop_price = None
+        tp_leg.limit_price = 165.0
+
+        parent.legs = [stop_leg, tp_leg]
+        legs = self.service.exit_leg_ids(parent)
+        self.assertEqual(legs["stop_order_id"], "stop_leg_123")
+        self.assertEqual(legs["take_profit_order_id"], "tp_leg_456")
+
+    def test_open_protective_stop_id_returns_child_leg_id(self):
+        from alpaca.trading.enums import OrderType, OrderSide
+        self.service.get_position_qty = MagicMock(return_value=10.0)  # Long
+        parent = MagicMock()
+        parent.id = "parent_oco"
+        parent.type = OrderType.LIMIT
+        parent.side = OrderSide.SELL
+
+        stop_leg = MagicMock()
+        stop_leg.id = "child_stop_leg"
+        stop_leg.type = OrderType.STOP
+        stop_leg.side = OrderSide.SELL
+        stop_leg.stop_price = 140.0
+        stop_leg.legs = []
+
+        parent.legs = [stop_leg]
+        self.service._open_orders = MagicMock(return_value=[parent])
+
+        stop_id = self.service.open_protective_stop_id("AAPL")
+        self.assertEqual(stop_id, "child_stop_leg")
+
+    def test_is_protective_stop_side_awareness(self):
+        from alpaca.trading.enums import OrderType, OrderSide
+        buy_stop = MagicMock()
+        buy_stop.type = OrderType.STOP
+        buy_stop.side = OrderSide.BUY
+        buy_stop.stop_price = 200.0
+        buy_stop.legs = []
+
+        sell_stop = MagicMock()
+        sell_stop.type = OrderType.STOP
+        sell_stop.side = OrderSide.SELL
+        sell_stop.stop_price = 140.0
+        sell_stop.legs = []
+
+        # For a long position, a buy stop is an entry order, NOT a protective stop
+        self.assertFalse(self.service._is_protective_stop(buy_stop, position_side="long"))
+        self.assertTrue(self.service._is_protective_stop(sell_stop, position_side="long"))
+
+        # For a short position, a sell stop is an entry/breakdown order, NOT a protective stop
+        self.assertFalse(self.service._is_protective_stop(sell_stop, position_side="short"))
+        self.assertTrue(self.service._is_protective_stop(buy_stop, position_side="short"))
+
+    def test_current_stop_price_short_picks_nearest_min_stop(self):
+        from alpaca.trading.enums import OrderType, OrderSide
+        self.service.get_position_qty = MagicMock(return_value=-10.0)  # Short
+        order1 = MagicMock()
+        order1.type = OrderType.STOP
+        order1.side = OrderSide.BUY
+        order1.stop_price = 110.0
+        order1.legs = []
+
+        order2 = MagicMock()
+        order2.type = OrderType.STOP
+        order2.side = OrderSide.BUY
+        order2.stop_price = 105.0
+        order2.legs = []
+
+        self.service._open_orders = MagicMock(return_value=[order1, order2])
+        # For short, 105 is closer to market (tighter stop) than 110
+        px = self.service.current_stop_price("XYZ")
+        self.assertEqual(px, 105.0)
+
+    def test_ensure_stop_loss_rejects_fractional_long_shares(self):
+        self.service.get_position_qty = MagicMock(return_value=0.5)  # Fractional long
+        self.service.has_open_stop_sell = MagicMock(return_value=False)
+        self.service.get_avg_entry_price = MagicMock(return_value=100.0)
+        res = self.service.ensure_stop_loss("AAPL", pct=3.0)
+        self.assertIsNone(res)
+
+    def test_submit_exit_order_with_retry_on_insufficient_qty(self):
+        req = MagicMock()
+        success_order = MagicMock()
+        success_order.id = "ord_success"
+
+        # Simulate Alpaca raising 40310000 / insufficient qty on first attempt, then succeeding
+        attempts = 0
+        def side_effect(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise Exception('{"code":40310000,"message":"insufficient qty available for order"}')
+            return success_order
+
+        self.mock_trading.submit_order.side_effect = side_effect
+        with patch("time.sleep", return_value=None):
+            res = self.service._submit_exit_order_with_retry(req, "AAPL", max_attempts=3)
+            self.assertEqual(res.id, "ord_success")
+            self.assertEqual(attempts, 2)
 
 
 if __name__ == "__main__":
