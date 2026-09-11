@@ -318,6 +318,108 @@ class ManualOrderValidationTestCase(unittest.TestCase):
             self.assertEqual(res["stop_preview"], 95.0)
             self.assertEqual(res["take_profit_r"], 2.0)
 
+    def _stop_state(self, mark=100.0):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        service_patch = patch("bot.web_state.AlpacaService")
+        MockService = service_patch.start()
+        self.addCleanup(service_patch.stop)
+        srv = MockService.return_value
+        srv.get_mark_price.return_value = {"price": mark, "source": "test"}
+        srv.get_position_qty.return_value = 0.0
+        srv.account_summary.return_value = {"equity": 100000.0}
+        srv.market_session.return_value = {"session": "regular", "is_open": True}
+        return state, srv
+
+    def test_typed_stop_pct_beats_desk_atr(self):
+        """The page always sends the desk ATR multiple; the typed % must still win."""
+        from unittest.mock import patch
+        state, srv = self._stop_state()
+        srv.stop_price_for_entry.return_value = 97.0
+        with patch.object(state, "_manual_atr", return_value=2.0) as atr:
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                qty=10.0,
+                stop_loss_pct=3.0,
+                ai_atr_stop_mult=1.8,
+                ai_risk_pct=0.5,
+                preview=True,
+            )
+        atr.assert_not_called()
+        self.assertAlmostEqual(res["stop_distance"], 3.0)
+        self.assertAlmostEqual(res["stop_loss_pct"], 3.0)
+        self.assertEqual(res["stop_preview"], 97.0)
+        _, kwargs = srv.stop_price_for_entry.call_args
+        self.assertAlmostEqual(kwargs["pct"], 3.0)
+
+    def test_desk_atr_prices_stop_when_ticket_leaves_it(self):
+        from unittest.mock import patch
+        state, srv = self._stop_state()
+        srv.stop_price_for_entry.return_value = 96.4
+        with patch.object(state, "_manual_atr", return_value=2.0):
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                qty=10.0,
+                ai_atr_stop_mult=1.8,
+                ai_risk_pct=0.5,
+                preview=True,
+            )
+        self.assertAlmostEqual(res["stop_distance"], 3.6)
+
+    def test_stop_price_measured_from_marketable_limit(self):
+        """A stop between the mark and a marketable limit still attaches."""
+        state, srv = self._stop_state(mark=100.0)
+        res = state.place_manual_order(
+            symbol="AAPL",
+            side="buy",
+            order_type="limit",
+            limit_price=102.0,
+            qty=10.0,
+            stop_loss_price=101.0,
+            preview=True,
+        )
+        self.assertAlmostEqual(res["stop_distance"], 1.0)
+        self.assertEqual(res["stop_preview"], 101.0)
+        self.assertAlmostEqual(res["ticket_risk"], 10.0)
+
+    def test_typed_stop_pct_is_measured_from_limit(self):
+        """10% on a $90 limit is a $81 stop sized off $9 of risk, not the mark's $10."""
+        state, srv = self._stop_state(mark=100.0)
+        srv.stop_price_for_entry.return_value = 81.0
+        res = state.place_manual_order(
+            symbol="AAPL",
+            side="buy",
+            order_type="limit",
+            limit_price=90.0,
+            qty=10.0,
+            stop_loss_pct=10.0,
+            preview=True,
+        )
+        self.assertAlmostEqual(res["stop_distance"], 9.0)
+        self.assertAlmostEqual(res["stop_loss_pct"], 10.0)
+        args, kwargs = srv.stop_price_for_entry.call_args
+        self.assertEqual(args[0], 90.0)
+        self.assertAlmostEqual(kwargs["pct"], 10.0)
+        self.assertAlmostEqual(res["ticket_risk"], 90.0)
+
+    def test_stop_price_on_wrong_side_of_entry_is_refused(self):
+        state, _ = self._stop_state(mark=100.0)
+        with self.assertRaises(ValueError) as ctx:
+            state.place_manual_order(
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                qty=10.0,
+                stop_loss_price=100.5,
+                preview=True,
+            )
+        self.assertIn("below the entry price", str(ctx.exception))
+
     def test_place_manual_order_cover_preview(self):
         from unittest.mock import patch
         from bot.web_state import AppState

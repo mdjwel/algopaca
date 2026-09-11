@@ -1035,6 +1035,7 @@
   "of_equity": "of equity",
   "order_cancelled": "Order canceled",
   "order_cancelled_qty": "Order canceled — qty adjustment not confirmed.",
+  "order_not_sent_confirm": "The desk still needs a confirmation — nothing was sent. Review the ticket and submit again.",
   "order_failed": "Order submission failed",
   "order_id": "Order id",
   "order_preview": "Order preview",

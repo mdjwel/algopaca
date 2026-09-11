@@ -4636,30 +4636,54 @@ class AppState:
 
         atr = None
         stop_distance = 0.0
+        # Where the ticket fills — the limit on a limit entry. A stop typed on
+        # the ticket is measured from here, as the page measures it, and
+        # ``stop_price_for_entry`` prices the stop off the same reference.
+        basis = price
+        if otype == "limit" and limit_price is not None and float(limit_price) > 0:
+            basis = float(limit_price)
         if stop_loss_price is not None and float(stop_loss_price) > 0:
             sl_price = float(stop_loss_price)
+            # Measuring from the mark dropped the stop entirely when a
+            # marketable limit put it above the mark.
             if is_short_side:
-                if sl_price > price:
-                    stop_distance = sl_price - price
+                if sl_price > basis:
+                    stop_distance = sl_price - basis
             else:
-                if sl_price < price:
-                    stop_distance = price - sl_price
-            if stop_distance > 0 and price > 0:
-                stop_pct = (stop_distance / price) * 100.0
+                if sl_price < basis:
+                    stop_distance = basis - sl_price
+            if is_entry and stop_distance <= 0:
+                raise ValueError(
+                    f"Stop loss ${sl_price:.2f} must sit "
+                    f"{'above' if is_short_side else 'below'} the entry price "
+                    f"(${basis:.2f})."
+                )
+            if stop_distance > 0 and basis > 0:
+                stop_pct = (stop_distance / basis) * 100.0
+        elif stop_loss_pct is not None and stop_pct > 0 and basis > 0:
+            # A percent typed on the ticket is the stop the user asked for. The
+            # ATR multiple only prices the stop when the ticket leaves it to the
+            # desk — letting it win here silently swapped the Stop loss field
+            # for the desk's ATR stop. The percent stays as typed; re-deriving
+            # it off the mark moved a limit entry's stop.
+            stop_distance = basis * (stop_pct / 100.0)
         elif atr_mult > 0 or risk_pct > 0:
             # Same ATR the preview was sized from, so the ticket the user
             # confirmed is the ticket that goes out.
             atr = self._manual_atr(service, symbol)
             stop_distance = stop_distance_for(config, price, atr)
+            # The ATR distance is off the mark; as a percent it rides onto
+            # whatever price the entry fills at.
+            if stop_distance > 0 and price > 0:
+                stop_pct = (stop_distance / price) * 100.0
         elif stop_pct > 0 and price > 0:
             stop_distance = price * (stop_pct / 100.0)
 
-        # ATR / direct path owns the stop when a distance is available. Derived percents
-        # can exceed the 50% user-facing cap on flat stop_loss_pct (volatile /
-        # cheap names). ``Config.override`` would clamp that and recreate the
-        # broker client; keep the exact distance on the existing service.
-        if stop_distance > 0 and price > 0:
-            stop_pct = (stop_distance / price) * 100.0
+        # Derived percents can exceed the 50% user-facing cap on flat
+        # stop_loss_pct (volatile / cheap names). ``Config.override`` would
+        # clamp that and recreate the broker client; keep the exact percent on
+        # the existing service.
+        if stop_distance > 0:
             config = replace(config, stop_loss_pct=stop_pct)
             service.config = config
 
@@ -5588,13 +5612,19 @@ class AppState:
             )
         is_short = position < 0
         mark_price = float(service.get_mark_price(symbol)["price"])
-        entry_price = service.get_avg_entry_price(symbol) or mark_price
+        # Breakeven needs the real average entry; R-multiples can fall back to
+        # the mark. Folding the two together put a "breakeven" stop a cent
+        # under the mark whenever Alpaca had no entry price.
+        avg_entry = service.get_avg_entry_price(symbol)
+        entry_price = avg_entry or mark_price
 
         # Helper to compute and validate stop target
         def _resolve_stop_target(p_stop: float | None, p_pct: float | None) -> float:
             explicit = float(p_stop or 0)
             if explicit > 0:
-                t = round(explicit, 2)
+                # Tick precision, not 2 decimals: a $0.4567 stop rounded to
+                # $0.46 can land above a sub-dollar mark and be refused.
+                t = normalize_stock_order_price(explicit, field="stop_price")
             else:
                 pct = float(p_pct or 0)
                 if pct <= 0:
@@ -5624,7 +5654,7 @@ class AppState:
         ) -> float:
             explicit = float(p_tp or 0)
             if explicit > 0:
-                t = round(explicit, 2)
+                t = normalize_stock_order_price(explicit, field="take_profit_price")
             elif p_pct and float(p_pct) > 0:
                 pct = float(p_pct)
                 raw = mark_price * (1.0 - pct / 100.0) if is_short else mark_price * (1.0 + pct / 100.0)
@@ -5676,13 +5706,13 @@ class AppState:
             return {"symbol": symbol, "action": "trail", "stop": armed, "mark": mark_price}
 
         if action == "breakeven":
-            if entry_price is None or entry_price <= 0:
+            if avg_entry is None or avg_entry <= 0:
                 raise ValueError(
                     f"Alpaca has no average entry price for {symbol}, so the desk "
                     "cannot work out where breakeven is."
                 )
             target = normalize_stock_order_price(
-                entry_price + 0.01 if is_short else entry_price - 0.01,
+                avg_entry + 0.01 if is_short else avg_entry - 0.01,
                 field="stop_price",
             )
             if not is_short and target >= mark_price:

@@ -49,6 +49,10 @@ let manualOpenPositions = [];
 /** True while the sell limit is pinned to the stop, so it follows the stop as
  *  the ticket is re-sized instead of going stale at the price it was filled at. */
 let stopLimitPinnedToStop = false;
+/** Symbol the dollar prices on the form (limit, trigger, $ stop / target) were
+ *  typed for. A price for one symbol means nothing on another, so they are
+ *  cleared when the ticket moves on — see `claimPricesFor`. */
+let manualPriceSymbol = null;
 
 /** Auto-refresh cadence for the ticket context, in ms. */
 const MANUAL_CONTEXT_REFRESH_MS = 15000;
@@ -56,8 +60,8 @@ const MANUAL_CONTEXT_REFRESH_MS = 15000;
 const MANUAL_PREVIEW_DEBOUNCE_MS = 450;
 /** Mirrors MIN/MAX_ATR_STOP_MULT on the desk (`bot/config.py`). A multiple
  *  below the floor prices a near-zero stop, and risk sizing divides the risk
- *  budget by that distance — so 0.01 buys ~180× the intended position. This
- *  page has no flat stop-% field to fall back on, so 0 is not offered here. */
+ *  budget by that distance — so 0.01 buys ~180× the intended position. The
+ *  Stop loss field owns the stop here; the multiple is only its fallback. */
 const MIN_ATR_STOP_MULT = 0.1;
 const MAX_ATR_STOP_MULT = 10;
 
@@ -627,7 +631,9 @@ function manualExitFillPrice() {
   const limit = Number(manualFormValue("limit_price", ""));
   const trigger = manualTriggerPrice();
   if (manualNeedsLimit() && limit > 0) return limit;
-  if (trigger > 0) return trigger;
+  // The Trigger box keeps a default on every type, so it only prices the exit
+  // when the order has one — a Market sell by dollars used to size off it.
+  if (manualNeedsTrigger() && trigger > 0) return trigger;
   return Number.isFinite(mark) && mark > 0 ? mark : 0;
 }
 
@@ -1902,6 +1908,42 @@ async function cancelRestingOrder(orderId) {
 }
 
 /**
+ * Empty the dollar prices typed for the previous symbol.
+ *
+ * A $230 limit carried onto an $11 stock is marketable at any price, and the
+ * bracket priced off it put a sell stop far above the market. Emptied, the
+ * next defaults pass re-prices them from the new mark. `keep` spares the field
+ * the user is typing into right now.
+ */
+function clearSymbolPrices(keep = null) {
+  const clear = (name) => {
+    if (name !== keep) setManualFormValue(name, "");
+  };
+  clear("limit_price");
+  clear("stop_price");
+  clear("stop_limit_price");
+  clear("reinvest_limit_price");
+  // A rotate's price belongs to its own target symbol, not this one.
+  if (manualFollowOnKind() === "reverse") clear("followon_limit_price");
+  if (manualStopLossUnitMode() === "price") clear("stop_loss_val");
+  if (manualTakeProfitUnitMode() === "price") clear("take_profit_val");
+  if (manualReinvestStopLossUnitMode() === "price") clear("reinvest_stop_loss_val");
+  if (manualReinvestTakeProfitUnitMode() === "price") clear("reinvest_take_profit_val");
+}
+
+/** Mark the form's prices as belonging to `symbol`, clearing any left from another. */
+function claimPricesFor(symbol, keep = null) {
+  const next = String(symbol || "").trim().toUpperCase();
+  if (!next) return;
+  const changed = manualPriceSymbol && next !== manualPriceSymbol;
+  if (changed) clearSymbolPrices(keep);
+  manualPriceSymbol = next;
+  // The draft was saved with the new symbol and the old prices; a reload
+  // before the next keystroke would restore them as this symbol's.
+  if (changed) saveManualFormDraft();
+}
+
+/**
  * Place default sizing and pricing values based on the stock price, ATR, and account equity
  * so the ticket sizes to at least 1 whole share and prevents "less than one whole share" errors.
  */
@@ -1910,6 +1952,10 @@ function applyStockPriceDefaults(data) {
   const quote = data.quote || {};
   const mark = Number(quote.price);
   if (!(mark > 0)) return;
+  // A context for a symbol no longer in the box must not price this ticket.
+  const contextSymbol = String(data.symbol || "").trim().toUpperCase();
+  if (contextSymbol && contextSymbol !== manualSymbol()) return;
+  claimPricesFor(contextSymbol);
 
   const equity = Number(data.equity ?? data.account?.equity ?? manualContext?.equity ?? manualContext?.account?.equity ?? 0);
   const atr = Number(data.atr ?? manualContext?.atr ?? 0);
@@ -2517,8 +2563,17 @@ function renderManagePanel(data) {
     summary.classList.toggle("warn", !(stop > 0));
   }
   const stopInput = $("manual-manage-stop");
-  if (stopInput && !stopInput.value && Number.isFinite(stop) && stop > 0) {
-    stopInput.value = stop.toFixed(2);
+  if (stopInput) {
+    // A price typed or filled for another symbol is not a stop for this one —
+    // "Move stop" used to send the last symbol's stop to the new position.
+    const sym = String(data.symbol || "");
+    if (stopInput.dataset.symbol !== sym) {
+      stopInput.value = "";
+      stopInput.dataset.symbol = sym;
+    }
+    if (!stopInput.value && Number.isFinite(stop) && stop > 0) {
+      stopInput.value = String(normalizeStockPrice(stop));
+    }
   }
   const beBtn = $("btn-stop-breakeven");
   if (beBtn) {
@@ -3160,9 +3215,15 @@ function calculateSizeEstimate() {
   const mark = Number(manualContext?.quote?.price);
   const limit = Number(manualFormValue("limit_price", ""));
   const trigger = manualTriggerPrice();
-  // Whichever price this ticket would actually fill at.
+  // Whichever price this ticket would actually fill at. The Trigger box keeps
+  // a default on every type, so it only counts when the order has a trigger —
+  // a Market buy used to price its entry, stop and cost off it.
   const entry =
-    manualNeedsLimit() && limit > 0 ? limit : trigger > 0 ? trigger : mark;
+    manualNeedsLimit() && limit > 0
+      ? limit
+      : manualNeedsTrigger() && trigger > 0
+        ? trigger
+        : mark;
   const buyingPower = Number(manualContext?.buying_power);
 
   if (!symbol) return null;
@@ -3331,6 +3392,10 @@ function calculateSizeEstimate() {
     }
   }
 
+  // A stop typed on the ticket is a distance from the entry; the ATR fallback
+  // below is a distance from the mark. The two turn into a stop differently.
+  const typedStop = stopDistance > 0;
+
   // Fallback to ATR multiple if no direct stop distance
   if (!(stopDistance > 0)) {
     if (atrMult > 0 && atr > 0) {
@@ -3398,9 +3463,10 @@ function calculateSizeEstimate() {
     };
   }
 
-  // The desk converts the distance to a percent off the mark, then applies it
-  // to the entry reference (the limit price on a limit ticket).
-  const stopPct = stopDistance / mark;
+  // A typed stop is a percent of the entry, as the desk measures it. The ATR
+  // distance is converted to a percent off the mark, then applied to the entry
+  // reference (the limit price on a limit ticket).
+  const stopPct = stopDistance / (typedStop ? refPrice : mark);
   let stopPrice;
   let riskPerShare;
   if (isShort) {
@@ -7159,9 +7225,9 @@ function hydrateManualFromSettings(settings, { force = false } = {}) {
   }
   if (settings.ai_risk_pct != null) setManualFormValue("ai_risk_pct", settings.ai_risk_pct);
   if (settings.ai_atr_stop_mult != null) {
-    // Auto Trade allows 0 ("no ATR stop, use the flat percent") but this page
-    // has no flat-percent field, so 0 would load a ticket that can never
-    // validate. Lift it to the floor and let the user widen from there.
+    // Auto Trade allows 0 ("no ATR stop, use the flat percent"). Here the
+    // Stop loss field owns the stop and the multiple is only its fallback, so
+    // 0 is lifted to the floor rather than leaving that fallback distanceless.
     const deskMult = Number(settings.ai_atr_stop_mult);
     setManualFormValue(
       "ai_atr_stop_mult",
@@ -7796,10 +7862,14 @@ async function submitConfirmedOrder() {
         showToast(tx("order_cancelled", "Order cancelled"), "error");
         return;
       }
+      // Kept on every later resend: the desk checks the quantity before the
+      // limits, so a breach resend without it came back asking about the
+      // quantity again — and was then reported as submitted.
+      sent.confirm_adjusted_qty = true;
       setBusy(true, busyLabel);
       data = await api("/api/order", {
         method: "POST",
-        body: JSON.stringify({ ...sent, confirm_adjusted_qty: true }),
+        body: JSON.stringify(sent),
       });
       r = data.result || {};
     }
@@ -7807,12 +7877,24 @@ async function submitConfirmedOrder() {
     // If a new breach appeared after preview, modal confirmation still counts
     // as acknowledgement: resend once with breach override.
     if (r.needs_confirm && r.confirm_kind === "breach") {
+      sent.override_breaches = true;
       setBusy(true, busyLabel);
       data = await api("/api/order", {
         method: "POST",
-        body: JSON.stringify({ ...sent, override_breaches: true }),
+        body: JSON.stringify(sent),
       });
       r = data.result || {};
+    }
+
+    // Still asking means nothing reached the broker — never report it as sent.
+    if (r.needs_confirm) {
+      renderManualLastTicket(r);
+      throw new Error(
+        tx(
+          "order_not_sent_confirm",
+          "The desk still needs a confirmation — nothing was sent. Review the ticket and submit again."
+        )
+      );
     }
 
     formDirtyManual = true;
@@ -8149,7 +8231,11 @@ function reuseRecentTicket(orderId) {
   if (!row) return;
   if (busy) return;
   const symbol = String(row.symbol || "").trim().toUpperCase();
-  if (/^[A-Z.\-]{1,12}$/.test(symbol)) setManualFormValue("symbol", symbol);
+  if (/^[A-Z.\-]{1,12}$/.test(symbol)) {
+    // Clear the last symbol's prices first; the reused price below is this one's.
+    claimPricesFor(symbol);
+    setManualFormValue("symbol", symbol);
+  }
   const reusedSide = visibleTicketSide(row.side);
   if (reusedSide) setManualFormValue("side", reusedSide);
   if (
@@ -8570,6 +8656,23 @@ manualForm?.addEventListener("input", (ev) => {
   // Typing a limit of your own releases the pin. `syncStopLimitPin` writes the
   // element directly and fires no `input`, so it cannot unpin itself here.
   if (name === "stop_limit_price") stopLimitPinnedToStop = false;
+  // A price typed now belongs to the symbol in the box, even before its quote
+  // lands — otherwise the new context would clear what was just typed.
+  if (
+    [
+      "limit_price",
+      "stop_price",
+      "stop_limit_price",
+      "stop_loss_val",
+      "take_profit_val",
+      "reinvest_limit_price",
+      "reinvest_stop_loss_val",
+      "reinvest_take_profit_val",
+      "followon_limit_price",
+    ].includes(name)
+  ) {
+    claimPricesFor(manualSymbol(), name);
+  }
   if (
     [
       ...MANUAL_SIZING_FIELDS,
@@ -8732,6 +8835,9 @@ document.addEventListener("keydown", (ev) => {
 });
 
 restoreManualFormDraft();
+// The draft's prices were typed for the draft's symbol; a different symbol
+// from the URL has them cleared when its context lands.
+manualPriceSymbol = manualSymbol() || null;
 if (applyManualTicketFromUrl()) saveManualFormDraft();
 renderManualPresets();
 renderRecentTickets();

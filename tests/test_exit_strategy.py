@@ -78,6 +78,32 @@ class TestExitStrategy(unittest.TestCase):
         self.assertIn("underwater", str(ctx.exception).lower())
 
     @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_breakeven_without_entry_is_refused(self, mock_service_cls):
+        """No average entry must not turn into a stop a cent under the mark."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 160.0}
+        mock_service.get_avg_entry_price.return_value = None
+
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(symbol="AAPL", action="breakeven")
+        self.assertIn("average entry", str(ctx.exception))
+        mock_service.replace_stop_loss.assert_not_called()
+        mock_service.cancel_open_exit_orders.assert_not_called()
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_price_keeps_sub_dollar_ticks(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 1000.0
+        mock_service.get_mark_price.return_value = {"price": 0.4580}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_p", "stop_price": 0.4567}
+
+        self.state.manage_position_stop(symbol="PENY", action="price", stop_price=0.4567)
+        mock_service.replace_stop_loss.assert_called_once_with("PENY", 0.4567)
+
+    @patch("bot.web_state.AlpacaService")
     def test_manage_position_take_profit_long(self, mock_service_cls):
         mock_service = MagicMock()
         mock_service_cls.return_value = mock_service
