@@ -484,6 +484,14 @@ class MultiTradeManager:
         with self._lock:
             return self._runners.get(sym)
 
+    def is_running(self, symbol: str) -> bool:
+        """Return True if an auto-trade runner is currently active for the given symbol."""
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            return False
+        runner = self.get_runner(sym)
+        return bool(runner and runner.is_running)
+
     def get_runner_summary(self, symbol: str) -> dict[str, Any] | None:
         sym = symbol.strip().upper()
         with self._lock:

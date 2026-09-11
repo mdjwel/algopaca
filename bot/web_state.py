@@ -5259,9 +5259,10 @@ class AppState:
             except Exception as exc:
                 payload["reason"] += f" | stop arm failed: {exc}"
         elif stop_info is not None:
+            oto_sign = "+" if (stop_info.get("side") == "buy" or side_raw == "short") else "-"
             payload["reason"] += (
                 f" | OTO stop @{stop_info['stop_price']:.2f} "
-                f"(-{stop_info['pct']:.2f}%)"
+                f"({oto_sign}{stop_info['pct']:.2f}%)"
             )
 
         if stop_info is not None:
@@ -5521,10 +5522,15 @@ class AppState:
                 "action must be breakeven, price, trail, take_profit, bracket, "
                 "cancel_stops, cancel_take_profit, or cancel_all"
             )
-        if self.loop_running:
+        if self.is_symbol_in_auto_trade(symbol):
+            if self.loop_running and self._is_symbol_in_loop(symbol):
+                raise ValueError(
+                    "Stop the strategy loop before changing exit strategies by hand — the "
+                    "loop manages its own exits."
+                )
             raise ValueError(
-                "Stop the strategy loop before changing exit strategies by hand — the "
-                "loop manages its own exits."
+                f"Stop auto-trade for {symbol} before changing exit strategies by hand — "
+                "auto-trade manages its own exits."
             )
         self._require_live_execution()
 
@@ -10214,6 +10220,12 @@ class AppState:
                 p["stop_distance_pct"] = round(gap if pos_side == "long" else -gap, 2)
 
             auto_summary = self.multi_trader.get_runner_summary(sym)
+            if not auto_summary and self.loop_running and self._is_symbol_in_loop(sym):
+                auto_summary = {
+                    "is_running": True,
+                    "strategy_mode": self.settings.strategy_mode,
+                    "engine_name": f"Loop ({self.settings.strategy_mode.upper()})",
+                }
             p["auto_trade"] = auto_summary
             p["is_auto_trading"] = bool(auto_summary and auto_summary.get("is_running"))
 
@@ -10893,6 +10905,52 @@ class AppState:
     def list_multi_auto_trades(self, active_only: bool = False) -> list[dict[str, Any]]:
         """List snapshots of multi auto-trade runners."""
         return self.multi_trader.list_runners(active_only=active_only)
+
+    def _is_symbol_in_loop(self, symbol: str) -> bool:
+        """Check if a symbol is actively managed by the running main strategy loop."""
+        sym = str(symbol or "").strip().upper()
+        if not sym or not self.loop_running:
+            return False
+
+        with self.lock:
+            mode = self.settings.strategy_mode
+            if mode == "pair":
+                pair_symbols = {
+                    (self.settings.pair_long_symbol or "").strip().upper(),
+                    (self.settings.pair_short_symbol or "").strip().upper(),
+                    (self.settings.symbol or "").strip().upper(),
+                }
+                return sym in pair_symbols and bool(sym)
+            else:
+                symbols_list = tuple(
+                    part.strip().upper()
+                    for part in (self.settings.symbols or "").split(",")
+                    if part.strip()
+                )
+                head = (self.settings.symbol or "").strip().upper()
+                loop_symbols = set(symbols_list)
+                if head:
+                    loop_symbols.add(head)
+                if not loop_symbols:
+                    loop_symbols = {"AAPL"}
+                return sym in loop_symbols
+
+    def is_symbol_in_auto_trade(self, symbol: str) -> bool:
+        """Return True if the symbol is actively managed by an isolated runner or the main strategy loop."""
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            return False
+
+        # 1. Multi auto-trade runner check
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            if self.multi_trader.is_running(sym):
+                return True
+
+        # 2. Main strategy loop check
+        if self._is_symbol_in_loop(sym):
+            return True
+
+        return False
 
 
 STATE = AppState()

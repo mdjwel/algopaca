@@ -818,6 +818,7 @@
   "status_unprotected": "Desprotegido",
   "exit_strategy_success": "Estrategia de salida actualizada para {symbol}",
   "error_exit_strategy": "Error al actualizar la estrategia de salida",
+  "err_ticker_in_autotrade": "Detenga el auto-trade para {symbol} antes de cambiar estrategias de salida manualmente — el auto-trade gestiona sus propias salidas.",
   "err_invalid_stop_price": "Ingrese un precio de stop válido mayor a 0",
   "err_stop_above_market": "El stop loss para una posición larga debe estar por debajo del precio actual (${price})",
   "err_stop_below_market": "El stop loss para una posición corta debe estar por encima del precio actual (${price})",

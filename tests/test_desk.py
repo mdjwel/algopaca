@@ -467,6 +467,181 @@ class ManualOrderValidationTestCase(unittest.TestCase):
             self.assertEqual(res["followon"]["next_side"], "buy")
             self.assertEqual(res["followon"]["qty"], 5.0)
 
+    def test_place_manual_order_short_custom_qty(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv._client = None
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="short",
+                order_type="market",
+                qty=25.0,
+                preview=True,
+            )
+            self.assertEqual(res["side"], "short")
+            self.assertEqual(res["broker_side"], "sell")
+            self.assertEqual(res["order_qty"], 25.0)
+            self.assertEqual(res["price"], 100.0)
+
+    def test_place_manual_order_short_with_bracket(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.stop_price_for_entry.return_value = 105.0
+            srv.market_session.return_value = {"session": "regular", "is_open": True}
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="short",
+                order_type="limit",
+                limit_price=100.0,
+                qty=15.0,
+                stop_loss_price=105.0,
+                take_profit_price=90.0,
+                preview=True,
+            )
+            self.assertEqual(res["side"], "short")
+            self.assertEqual(res["order_qty"], 15.0)
+            self.assertEqual(res["stop_preview"], 105.0)
+            self.assertEqual(res["take_profit_price"], 90.0)
+            self.assertEqual(res["stop_distance"], 5.0)
+            self.assertEqual(res["take_profit_r"], 2.0)
+            self.assertEqual(res["ticket_risk"], 75.0)  # 15 shares * $5 risk
+
+    def test_place_manual_order_short_notional_mode(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.market_session.return_value = {"session": "regular", "is_open": True}
+            # $1,250 notional at $100/share -> 12.5 shares, floored to 12 whole shares for short
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="short",
+                order_type="market",
+                size_mode="notional",
+                notional=1250.0,
+                preview=True,
+            )
+            self.assertEqual(res["side"], "short")
+            self.assertEqual(res["order_qty"], 12.0)
+            self.assertTrue(res["qty_whole_for_short"])
+
+    def test_place_manual_order_short_fractional_rejected(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.market_session.return_value = {"session": "regular", "is_open": True}
+            # $50 notional at $100/share -> 0.5 shares -> whole = 0 -> raises ValueError
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="short",
+                    order_type="market",
+                    size_mode="notional",
+                    notional=50.0,
+                    preview=True,
+                )
+            self.assertIn("does not short fractional shares", str(ctx.exception))
+
+    def test_place_manual_order_short_stop_limit_cushion(self):
+        from unittest.mock import patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.stop_price_for_entry.return_value = 105.0
+            srv.market_session.return_value = {"session": "regular", "is_open": True}
+            # Cover limit must sit AT OR ABOVE stop (e.g. 106 >= 105)
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="short",
+                order_type="limit",
+                limit_price=100.0,
+                qty=10.0,
+                stop_loss_price=105.0,
+                stop_limit_price=106.0,
+                preview=True,
+            )
+            self.assertEqual(res["stop_limit_preview"], 106.0)
+
+            # Invalid: cover limit below stop (e.g. 104 < 105)
+            with self.assertRaises(ValueError) as ctx:
+                state.place_manual_order(
+                    symbol="AAPL",
+                    side="short",
+                    order_type="limit",
+                    limit_price=100.0,
+                    qty=10.0,
+                    stop_loss_price=105.0,
+                    stop_limit_price=104.0,
+                    preview=True,
+                )
+            self.assertIn("at or above the stop price", str(ctx.exception))
+
+    def test_place_manual_order_short_live_oto_stop_reason(self):
+        from unittest.mock import MagicMock, patch
+        from bot.web_state import AppState
+        state = AppState(user_id="test_user")
+        state.settings.manual_orders_enabled = True
+        with patch("bot.web_state.AlpacaService") as MockService:
+            srv = MockService.return_value
+            srv.get_mark_price.return_value = {"price": 100.0, "source": "test"}
+            srv.get_position_qty.return_value = 0.0
+            srv.account_summary.return_value = {"equity": 100000.0}
+            srv.market_session.return_value = {"session": "regular", "is_open": True}
+            mock_submitted = MagicMock()
+            mock_submitted.id = "short_order_123"
+            mock_submitted.client_order_id = "test_ticket"
+            mock_submitted.status = "new"
+            mock_submitted.filled_qty = "0"
+            mock_submitted.filled_avg_price = None
+            oto_stop = {
+                "stop_price": 105.0,
+                "pct": 5.0,
+                "attached": "bracket",
+                "side": "buy",
+            }
+            srv.submit_manual_order.return_value = (mock_submitted, oto_stop)
+            srv.exit_leg_ids.return_value = {"stop_order_id": "stop_leg_1", "take_profit_order_id": "tp_leg_1"}
+
+            res = state.place_manual_order(
+                symbol="AAPL",
+                side="short",
+                order_type="limit",
+                limit_price=100.0,
+                qty=10.0,
+                stop_loss_price=105.0,
+                take_profit_price=90.0,
+                preview=False,
+            )
+            self.assertEqual(res["side"], "short")
+            self.assertIn("OTO stop @105.00 (+5.00%)", res["reason"])
+            self.assertEqual(res["stop_loss"]["side"], "buy")
+
 
 if __name__ == "__main__":
     unittest.main()
+

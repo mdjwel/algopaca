@@ -1281,9 +1281,34 @@ function openExitStrategyModal(pos, initialMode = "stop_loss") {
     unrlEl.textContent = pctText ? `${formatPnl(upl)} (${pctText})` : formatPnl(upl);
     setPnlTone(unrlEl, upl);
   }
-  if (errEl) {
-    errEl.hidden = true;
-    errEl.textContent = "";
+  const isAutoTrading = !!pos.is_auto_trading;
+  const submitBtn = $("btn-exit-modal-submit");
+  if (isAutoTrading) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = tx(
+        "err_ticker_in_autotrade",
+        "Stop auto-trade for {symbol} before changing exit strategies by hand — auto trade manages its own exits.",
+        { symbol: pos.symbol }
+      );
+    }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.title = tx(
+        "err_ticker_in_autotrade",
+        "Stop auto-trade for {symbol} before changing exit strategies by hand — auto trade manages its own exits.",
+        { symbol: pos.symbol }
+      );
+    }
+  } else {
+    if (errEl) {
+      errEl.hidden = true;
+      errEl.textContent = "";
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.title = "";
+    }
   }
 
   // Active Protection Status Card
@@ -1510,6 +1535,9 @@ function setExitMode(mode) {
       submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");
       submitBtn.className = "primary primary-danger";
     }
+    if (activeExitPosition && activeExitPosition.is_auto_trading) {
+      submitBtn.disabled = true;
+    }
   }
 
   updateExitCalculations();
@@ -1604,6 +1632,21 @@ async function submitExitStrategy() {
   const pos = activeExitPosition;
   const submitBtn = $("btn-exit-modal-submit");
   const errEl = $("pos-exit-error");
+
+  if (pos.is_auto_trading) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = tx(
+        "err_ticker_in_autotrade",
+        "Stop auto-trade for {symbol} before changing exit strategies by hand — auto trade manages its own exits.",
+        { symbol: pos.symbol }
+      );
+    }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+    return;
+  }
 
   if (errEl) {
     errEl.hidden = true;
@@ -1722,7 +1765,7 @@ async function submitExitStrategy() {
     }
   } finally {
     if (submitBtn) {
-      submitBtn.disabled = false;
+      submitBtn.disabled = !!(activeExitPosition && activeExitPosition.is_auto_trading);
       const currentMode = activeExitMode || "stop_loss";
       if (currentMode === "clear") {
         submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");

@@ -318,20 +318,29 @@ function convertStopLossOnUnitToggle(nextMode, preserveValue = false) {
   const adornmentSl = $("adornment-stop-loss");
   const helpSl = $("help-stop-loss");
   const labelSl = $("label-stop-loss");
+  const isShort = manualOpensShort();
 
   if (nextMode === "price") {
     if (labelSl) labelSl.textContent = tx("label_stop_trigger_price", "Stop trigger price");
     if (adornmentSl) adornmentSl.textContent = "$";
-    if (helpSl) helpSl.textContent = tx("help_stop_trigger_price", "Exit triggers when market price drops to this exact dollar level.");
+    if (helpSl) {
+      helpSl.textContent = isShort
+        ? tx("help_stop_trigger_short_price", "Exit triggers when market price rises to this exact dollar level.")
+        : tx("help_stop_trigger_price", "Exit triggers when market price drops to this exact dollar level.");
+    }
     if (slInput) {
       slInput.step = "0.01";
       slInput.max = "100000";
       if (!preserveValue && mark > 0) {
         const currentPct = Number(slInput.value || 3);
         if (currentPct > 0 && currentPct <= 50) {
-          slInput.value = normalizeStockPrice(mark * (1 - currentPct / 100));
+          slInput.value = isShort
+            ? normalizeStockPrice(mark * (1 + currentPct / 100))
+            : normalizeStockPrice(mark * (1 - currentPct / 100));
         } else {
-          slInput.value = normalizeStockPrice(mark * 0.97);
+          slInput.value = isShort
+            ? normalizeStockPrice(mark * 1.03)
+            : normalizeStockPrice(mark * 0.97);
         }
       }
     }
@@ -339,16 +348,28 @@ function convertStopLossOnUnitToggle(nextMode, preserveValue = false) {
     // nextMode === "pct"
     if (labelSl) labelSl.textContent = tx("label_stop_loss", "Stop loss");
     if (adornmentSl) adornmentSl.textContent = "%";
-    if (helpSl) helpSl.textContent = tx("help_stop_loss_pct", "Percent below entry to exit and cut losses.");
+    if (helpSl) {
+      helpSl.textContent = isShort
+        ? tx("help_stop_loss_short_pct", "Percent above entry to exit and cut losses.")
+        : tx("help_stop_loss_pct", "Percent below entry to exit and cut losses.");
+    }
     if (slInput) {
       slInput.step = "0.1";
       slInput.max = "50";
       if (!preserveValue && mark > 0) {
         const currentPx = Number(slInput.value || 0);
-        if (currentPx > 0 && currentPx < mark) {
-          slInput.value = ((mark - currentPx) / mark * 100).toFixed(1);
+        if (isShort) {
+          if (currentPx > mark) {
+            slInput.value = ((currentPx - mark) / mark * 100).toFixed(1);
+          } else {
+            slInput.value = "3.0";
+          }
         } else {
-          slInput.value = "3.0";
+          if (currentPx > 0 && currentPx < mark) {
+            slInput.value = ((mark - currentPx) / mark * 100).toFixed(1);
+          } else {
+            slInput.value = "3.0";
+          }
         }
       }
     }
@@ -363,20 +384,29 @@ function convertTakeProfitOnUnitToggle(nextMode, preserveValue = false) {
   const adornmentTp = $("adornment-take-profit");
   const helpTp = $("help-take-profit");
   const labelTp = $("label-take-profit");
+  const isShort = manualOpensShort();
 
   if (nextMode === "price") {
     if (labelTp) labelTp.textContent = tx("label_take_profit_price", "Take profit price");
     if (adornmentTp) adornmentTp.textContent = "$";
-    if (helpTp) helpTp.textContent = tx("help_take_profit_price", "Exit with profit when price reaches this level. 0 sends stop only.");
+    if (helpTp) {
+      helpTp.textContent = isShort
+        ? tx("help_take_profit_short_price", "Exit with profit when price drops to this level. 0 sends stop only.")
+        : tx("help_take_profit_price", "Exit with profit when price reaches this level. 0 sends stop only.");
+    }
     if (tpInput) {
       tpInput.step = "0.01";
       tpInput.max = "100000";
       if (!preserveValue && mark > 0) {
         const currentPct = Number(tpInput.value || 6);
         if (currentPct > 0) {
-          tpInput.value = normalizeStockPrice(mark * (1 + currentPct / 100));
+          tpInput.value = isShort
+            ? normalizeStockPrice(mark * (1 - currentPct / 100))
+            : normalizeStockPrice(mark * (1 + currentPct / 100));
         } else {
-          tpInput.value = normalizeStockPrice(mark * 1.06);
+          tpInput.value = isShort
+            ? normalizeStockPrice(mark * 0.94)
+            : normalizeStockPrice(mark * 1.06);
         }
       }
     }
@@ -384,16 +414,28 @@ function convertTakeProfitOnUnitToggle(nextMode, preserveValue = false) {
     // nextMode === "pct"
     if (labelTp) labelTp.textContent = tx("label_take_profit", "Take profit");
     if (adornmentTp) adornmentTp.textContent = "%";
-    if (helpTp) helpTp.textContent = tx("help_take_profit_pct", "Percent above entry to exit with profit. 0 sends stop only.");
+    if (helpTp) {
+      helpTp.textContent = isShort
+        ? tx("help_take_profit_short_pct", "Percent below entry to exit with profit. 0 sends stop only.")
+        : tx("help_take_profit_pct", "Percent above entry to exit with profit. 0 sends stop only.");
+    }
     if (tpInput) {
       tpInput.step = "0.1";
       tpInput.max = "500";
       if (!preserveValue && mark > 0) {
         const currentPx = Number(tpInput.value || 0);
-        if (currentPx > mark) {
-          tpInput.value = ((currentPx - mark) / mark * 100).toFixed(1);
+        if (isShort) {
+          if (currentPx > 0 && currentPx < mark) {
+            tpInput.value = ((mark - currentPx) / mark * 100).toFixed(1);
+          } else {
+            tpInput.value = "6.0";
+          }
         } else {
-          tpInput.value = "6.0";
+          if (currentPx > mark) {
+            tpInput.value = ((currentPx - mark) / mark * 100).toFixed(1);
+          } else {
+            tpInput.value = "6.0";
+          }
         }
       }
     }
@@ -553,17 +595,18 @@ function syncStopLimitPin(calc) {
 function stopLimitFromStop(stopPrice, offsetPct, absoluteLimit) {
   const stop = Number(stopPrice);
   if (!(stop > 0)) return null;
+  const isShort = manualOpensShort();
   if (absoluteLimit != null && Number(absoluteLimit) > 0) {
     let limit = normalizeStockPrice(Number(absoluteLimit));
-    if (limit > stop) return null; // invalid — sell above stop
+    if (isShort ? limit < stop : limit > stop) return null;
     return limit > 0 ? limit : null;
   }
   const offset = Number(offsetPct);
   if (!(offset > 0)) return null;
-  const raw = stop * (1 - offset / 100);
+  const raw = isShort ? stop * (1 + offset / 100) : stop * (1 - offset / 100);
   if (!(raw > 0)) return null;
   let limit = normalizeStockPrice(raw);
-  if (limit > stop) limit = normalizeStockPrice(stop);
+  if (isShort ? limit < stop : limit > stop) limit = normalizeStockPrice(stop);
   return limit > 0 ? limit : null;
 }
 
@@ -1047,7 +1090,7 @@ function manualBracketEnabled() {
   const form = $("manual-order");
   const checked = form?.elements?.bracket_enabled ? form.elements.bracket_enabled.checked : true;
   return (
-    manualSide() === "buy" &&
+    manualIsEntry() &&
     ["market", "limit"].includes(manualOrderType()) &&
     checked === true
   );
@@ -1071,14 +1114,15 @@ function manualAttachesStop() {
 /**
  * Does the desk floor this ticket to whole shares?
  *
- * Two things force it on this form: an attached stop (Alpaca refuses fractional
- * OTO/bracket orders) and a name that is not fractionable. (The desk also floors
- * a short borrow, but the ticket only offers Buy and Sell.)
+ * Three things force it on this form: a short borrow (Alpaca never shorts fractions),
+ * an attached stop (Alpaca refuses fractional OTO/bracket orders) and a name that
+ * is not fractionable.
  * Flooring anywhere else made the panel promise a smaller ticket than the one
  * `place_manual_order` sends — a $1,000 buy of a $150 stock showed "6 shares ·
  * $900" while 6.6667 shares went to the broker.
  */
 function manualQtyIsWholeOnly() {
+  if (manualOpensShort()) return true;
   if (manualAttachesStop()) return true;
   if (manualContext?.asset?.fractionable === false) return true;
   return false;
@@ -1120,22 +1164,7 @@ function manualPayload() {
     time_in_force: manualTimeInForce(),
     extended_hours: manualExtendedHours(),
   };
-  if (action === "short") {
-    // A short is an entry that stands on the Sell button: it sizes from the
-    // Sell quantity box, and the borrow is always whole shares.
-    payload.size_mode = "qty";
-    payload.qty = Math.floor(manualSellQty());
-    // The Protective Bracket accordion is a Buy affordance, so a short carries
-    // no stop. Spelling the zeros out matters: omit them and the desk falls
-    // back to its own stop % and ATR multiple, attaching an OTO the form never
-    // showed and the user never asked for.
-    payload.ai_risk_pct = null;
-    payload.ai_atr_stop_mult = 0;
-    payload.stop_loss_pct = 0;
-    payload.take_profit_r = 0;
-    payload.stop_limit_offset_pct = 0;
-    payload.stop_limit_price = null;
-  } else if (action === "sell" || action === "cover") {
+  if (action === "sell" || action === "cover") {
     // An exit closes what is already there: the user picks how much. Risk
     // sizing has no meaning here — it would only get clamped anyway.
     payload.size_mode = "qty";
@@ -1145,6 +1174,9 @@ function manualPayload() {
     const followon = manualFollowOnPayload();
     if (followon) payload.followon = followon;
   } else {
+    // Both buy and short are entries: sized through the entry sizing block
+    // (Shares #, Dollars $, or Risk %), and can carry protective brackets.
+    const isShort = action === "short";
     payload.size_mode = manualBuySizeMode();
     const bracketOn = manualBracketEnabled();
     if (bracketOn) {
@@ -1157,10 +1189,18 @@ function manualPayload() {
 
       if (slUnitMode === "price") {
         payload.stop_loss_price = slVal > 0 ? slVal : null;
-        if (mark > 0 && slVal > 0 && slVal < mark) {
-          payload.stop_loss_pct = Number(((mark - slVal) / mark * 100).toFixed(2));
+        if (isShort) {
+          if (mark > 0 && slVal > 0 && slVal > mark) {
+            payload.stop_loss_pct = Number(((slVal - mark) / mark * 100).toFixed(2));
+          } else {
+            payload.stop_loss_pct = null;
+          }
         } else {
-          payload.stop_loss_pct = null;
+          if (mark > 0 && slVal > 0 && slVal < mark) {
+            payload.stop_loss_pct = Number(((mark - slVal) / mark * 100).toFixed(2));
+          } else {
+            payload.stop_loss_pct = null;
+          }
         }
       } else {
         payload.stop_loss_pct = slVal > 0 ? slVal : null;
@@ -1169,10 +1209,18 @@ function manualPayload() {
 
       if (tpUnitMode === "price") {
         payload.take_profit_price = tpVal > 0 ? tpVal : null;
-        if (mark > 0 && tpVal > mark) {
-          payload.take_profit_pct = Number(((tpVal - mark) / mark * 100).toFixed(2));
+        if (isShort) {
+          if (mark > 0 && tpVal > 0 && tpVal < mark) {
+            payload.take_profit_pct = Number(((mark - tpVal) / mark * 100).toFixed(2));
+          } else {
+            payload.take_profit_pct = null;
+          }
         } else {
-          payload.take_profit_pct = null;
+          if (mark > 0 && tpVal > mark) {
+            payload.take_profit_pct = Number(((tpVal - mark) / mark * 100).toFixed(2));
+          } else {
+            payload.take_profit_pct = null;
+          }
         }
       } else {
         payload.take_profit_pct = tpVal > 0 ? tpVal : null;
@@ -1183,8 +1231,10 @@ function manualPayload() {
       payload.stop_limit_offset_pct = manualStopLimitOffsetPct();
       const stopLimitPx = manualStopLimitPrice();
       if (stopLimitPx != null) payload.stop_limit_price = stopLimitPx;
-      const dipHunt = manualDipHuntPayload();
-      if (dipHunt) payload.dip_hunt = dipHunt;
+      if (!isShort) {
+        const dipHunt = manualDipHuntPayload();
+        if (dipHunt) payload.dip_hunt = dipHunt;
+      }
     } else {
       payload.ai_risk_pct = null;
       payload.ai_atr_stop_mult = 0;
@@ -1199,7 +1249,8 @@ function manualPayload() {
     if (payload.size_mode === "notional") {
       payload.notional = Number(manualFormValue("notional", 0) || 0);
     } else if (payload.size_mode === "qty") {
-      payload.qty = Number(manualFormValue("buy_qty", 0) || 0);
+      const rawQty = Number(manualFormValue("buy_qty", 0) || 0);
+      payload.qty = isShort ? Math.floor(rawQty) : rawQty;
     }
   }
   if (manualNeedsLimit()) {
@@ -1428,24 +1479,6 @@ function validateManualLocal() {
     if (calc?.blocked) return calc.blockedMessage;
     return null;
   }
-  if (p.side === "short") {
-    if (!(manualSellQty() > 0)) {
-      return manualSellMode() === "dollars"
-        ? tx("err_sell_notional", "Enter a dollar amount greater than $0.00.")
-        : tx("err_short_qty", "Enter how many shares to short.");
-    }
-    // Alpaca never borrows a fraction of a share, in any session. The payload
-    // already floors, so an under-one-share ticket would otherwise go out as 0.
-    if (!(p.qty > 0)) {
-      return tx(
-        "err_short_fractional",
-        "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
-      );
-    }
-    const calc = currentEstimate();
-    if (calc?.blocked) return calc.blockedMessage;
-    return null;
-  }
   if (p.side === "sell") {
     const held = manualPositionQty();
     if (held <= 0) {
@@ -1585,7 +1618,17 @@ function validateManualLocal() {
     return tx("err_notional", "Enter a dollar amount greater than $0.00.");
   }
   if (p.size_mode === "qty" && !(p.qty > 0)) {
-    return tx("err_buy_qty", "Enter how many shares to buy.");
+    return p.side === "short"
+      ? tx("err_short_qty", "Enter how many shares to short.")
+      : tx("err_buy_qty", "Enter how many shares to buy.");
+  }
+  if (p.side === "short") {
+    if (p.size_mode === "qty" && (p.qty < 1 || Math.floor(p.qty) !== p.qty)) {
+      return tx(
+        "err_short_fractional",
+        "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
+      );
+    }
   }
   if (bracketOn) {
     if (p.stop_loss_price != null) {
@@ -1638,8 +1681,11 @@ function validateManualLocal() {
       );
     }
     if (p.stop_limit_price != null) {
+      const isShort = p.side === "short";
       if (!(p.stop_limit_price > 0)) {
-        return tx("err_stop_limit_price", "Sell limit must be greater than $0.00.");
+        return isShort
+          ? tx("err_stop_limit_price_short", "Buy limit must be greater than $0.00.")
+          : tx("err_stop_limit_price", "Sell limit must be greater than $0.00.");
       }
       // The same estimate the "At stop" button and the preview panel read —
       // validating against the local mirror while the button fills from the
@@ -1647,11 +1693,20 @@ function validateManualLocal() {
       const calc = currentEstimate();
       const stopPx = calc?.stopPrice;
       if (stopPx != null && Number.isFinite(stopPx)) {
-        if (p.stop_limit_price > stopPx) {
-          return tx(
-            "err_stop_limit_below_stop",
-            "Sell limit must be at or below the stop price."
-          );
+        if (isShort) {
+          if (p.stop_limit_price < stopPx) {
+            return tx(
+              "err_stop_limit_above_stop",
+              "Buy limit must be at or above the stop price."
+            );
+          }
+        } else {
+          if (p.stop_limit_price > stopPx) {
+            return tx(
+              "err_stop_limit_below_stop",
+              "Sell limit must be at or below the stop price."
+            );
+          }
         }
       }
     }
@@ -1963,41 +2018,77 @@ function applyStockPriceDefaults(data) {
   const currentTp = Number(manualFormValue("take_profit_val", 0) || 0);
   const slInput = $("manual-stop-loss-val");
   const tpInput = $("manual-take-profit-val");
+  const isShort = manualOpensShort();
 
-  if (slUnitMode === "price") {
-    if (!(currentSl > 0) || currentSl >= mark) {
-      const defStop = normalizeStockPrice(mark * 0.97);
-      setManualFormValue("stop_loss_val", defStop);
+  if (isShort) {
+    if (slUnitMode === "price") {
+      if (!(currentSl > 0) || currentSl <= mark) {
+        const defStop = normalizeStockPrice(mark * 1.03);
+        setManualFormValue("stop_loss_val", defStop);
+      }
+      if (slInput) slInput.placeholder = String(normalizeStockPrice(mark * 1.03));
+    } else {
+      if (!(currentSl > 0 && currentSl <= 50)) {
+        setManualFormValue("stop_loss_val", 3.0);
+      }
+      if (slInput) slInput.placeholder = "3.0";
     }
-    if (slInput) slInput.placeholder = String(normalizeStockPrice(mark * 0.97));
+
+    if (tpUnitMode === "price") {
+      if (!(currentTp > 0) || currentTp >= mark) {
+        const defTp = normalizeStockPrice(mark * 0.94);
+        setManualFormValue("take_profit_val", defTp);
+      }
+      if (tpInput) tpInput.placeholder = String(normalizeStockPrice(mark * 0.94));
+    } else {
+      if (!(currentTp > 0)) {
+        setManualFormValue("take_profit_val", 6.0);
+      }
+      if (tpInput) tpInput.placeholder = "6.0";
+    }
   } else {
-    if (!(currentSl > 0 && currentSl <= 50)) {
-      setManualFormValue("stop_loss_val", 3.0);
+    if (slUnitMode === "price") {
+      if (!(currentSl > 0) || currentSl >= mark) {
+        const defStop = normalizeStockPrice(mark * 0.97);
+        setManualFormValue("stop_loss_val", defStop);
+      }
+      if (slInput) slInput.placeholder = String(normalizeStockPrice(mark * 0.97));
+    } else {
+      if (!(currentSl > 0 && currentSl <= 50)) {
+        setManualFormValue("stop_loss_val", 3.0);
+      }
+      if (slInput) slInput.placeholder = "3.0";
     }
-    if (slInput) slInput.placeholder = "3.0";
+
+    if (tpUnitMode === "price") {
+      if (!(currentTp > 0) || currentTp <= mark) {
+        const defTp = normalizeStockPrice(mark * 1.06);
+        setManualFormValue("take_profit_val", defTp);
+      }
+      if (tpInput) tpInput.placeholder = String(normalizeStockPrice(mark * 1.06));
+    } else {
+      if (!(currentTp > 0)) {
+        setManualFormValue("take_profit_val", 6.0);
+      }
+      if (tpInput) tpInput.placeholder = "6.0";
+    }
   }
 
-  if (tpUnitMode === "price") {
-    if (!(currentTp > 0) || currentTp <= mark) {
-      const defTp = normalizeStockPrice(mark * 1.06);
-      setManualFormValue("take_profit_val", defTp);
-    }
-    if (tpInput) tpInput.placeholder = String(normalizeStockPrice(mark * 1.06));
-  } else {
-    if (!(currentTp > 0)) {
-      setManualFormValue("take_profit_val", 6.0);
-    }
-    if (tpInput) tpInput.placeholder = "6.0";
-  }
-
-  const calculatedStopPx = mark > stopDistance ? mark - stopDistance : mark * 0.95;
+  const calculatedStopPx = isShort
+    ? mark + stopDistance
+    : (mark > stopDistance ? mark - stopDistance : mark * 0.95);
   const currentStopLimitPx = Number(manualFormValue("stop_limit_price", 0) || 0);
   const stopLimitInput = $("manual-stop-limit-price");
   if (stopLimitInput) {
     stopLimitInput.placeholder = String(normalizeStockPrice(calculatedStopPx));
-    // Clear sell limit if it was for a previous stock and sits above current mark!
-    if (currentStopLimitPx > mark) {
-      setManualFormValue("stop_limit_price", "");
+    if (isShort) {
+      if (currentStopLimitPx > 0 && currentStopLimitPx < mark) {
+        setManualFormValue("stop_limit_price", "");
+      }
+    } else {
+      if (currentStopLimitPx > mark) {
+        setManualFormValue("stop_limit_price", "");
+      }
     }
   }
 
@@ -3097,44 +3188,15 @@ function calculateSizeEstimate() {
     };
   }
 
-  if (manualOpensShort()) {
-    const exact = manualSellQty();
-    if (!(exact > 0)) return null;
-    // Alpaca never borrows a fraction of a share, so the desk floors a short
-    // in every session — the panel has to show the ticket that goes out.
-    const shares = Math.floor(exact);
-    if (!(shares > 0)) {
-      return {
-        side,
-        blocked: true,
-        blockedMessage: tx(
-          "err_short_fractional",
-          "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
-        ),
-      };
-    }
-    if (manualContext?.asset?.shortable === false) {
-      return {
-        side,
-        blocked: true,
-        blockedMessage: tx(
-          "err_not_shortable",
-          "This symbol is not shortable at Alpaca — the borrow is unavailable, so the ticket would be rejected."
-        ),
-      };
-    }
-    const proceeds = shares * entry;
+  const isShort = manualOpensShort();
+  if (isShort && manualContext?.asset?.shortable === false) {
     return {
       side,
-      isShortEntry: true,
-      shares,
-      entry,
-      proceeds,
-      truncated: shares !== exact,
-      // A short is opened, not closed, so it consumes buying power the way a
-      // buy does — the "Remaining" cell an exit shows means nothing here.
-      bpPct: buyingPower > 0 ? (proceeds / buyingPower) * 100 : null,
-      exceedsBp: buyingPower > 0 && proceeds > buyingPower,
+      blocked: true,
+      blockedMessage: tx(
+        "err_not_shortable",
+        "This symbol is not shortable at Alpaca — the borrow is unavailable, so the ticket would be rejected."
+      ),
     };
   }
 
@@ -3193,17 +3255,31 @@ function calculateSizeEstimate() {
       const dollars = Number(manualFormValue("notional", 0) || 0);
       if (!(dollars > 0)) return null;
       const exact = dollars / mark;
-      // Without a bracket nothing forces whole shares, and the desk sends the
-      // fraction — so the panel has to show it too.
+      // Without a bracket nothing forces whole shares, unless short or un-fractionable.
       shares = manualQtyIsWholeOnly() ? Math.floor(exact) : exact;
       truncated = shares !== exact;
     } else if (sizeMode === "qty") {
-      shares = Number(manualFormValue("buy_qty", 0) || 0);
+      const exact = Number(manualFormValue("buy_qty", 0) || 0);
+      shares = manualQtyIsWholeOnly() ? Math.floor(exact) : exact;
+      truncated = shares !== exact;
     }
-    if (!(shares > 0)) return null;
+    if (!(shares > 0)) {
+      if (isShort) {
+        return {
+          side,
+          blocked: true,
+          blockedMessage: tx(
+            "err_short_fractional",
+            "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
+          ),
+        };
+      }
+      return null;
+    }
     const cost = shares * entry;
     return {
       side,
+      isShortEntry: isShort,
       sizeMode,
       shares,
       entry,
@@ -3216,6 +3292,7 @@ function calculateSizeEstimate() {
       targetPrice: null,
       takeProfitR: 0,
       cost,
+      proceeds: isShort ? cost : undefined,
       truncated,
       usesAtr: false,
       equity,
@@ -3236,9 +3313,16 @@ function calculateSizeEstimate() {
   let stopDistance = 0;
   let usesAtr = false;
   if (slUnitMode === "price") {
-    if (slVal > 0 && slVal < refPrice) {
-      stopDistance = refPrice - slVal;
-      usesAtr = true;
+    if (isShort) {
+      if (slVal > 0 && slVal > refPrice) {
+        stopDistance = slVal - refPrice;
+        usesAtr = true;
+      }
+    } else {
+      if (slVal > 0 && slVal < refPrice) {
+        stopDistance = refPrice - slVal;
+        usesAtr = true;
+      }
     }
   } else {
     if (slVal > 0) {
@@ -3298,10 +3382,15 @@ function calculateSizeEstimate() {
       side,
       blocked: true,
       blockedMessage: wholeOnly
-        ? tx(
-            "err_size_zero",
-            "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop loss distance."
-          )
+        ? (isShort
+            ? tx(
+                "err_short_fractional",
+                "Alpaca does not short fractional shares — this ticket needs at least 1 whole share."
+              )
+            : tx(
+                "err_size_zero",
+                "This ticket sizes to less than one whole share, and a protective stop needs at least one. Raise Risk per trade % or lower Stop loss distance."
+              ))
         : tx(
             "err_size_zero_fractional",
             "This ticket sizes to nothing. Raise Risk per trade % or the dollar amount."
@@ -3312,23 +3401,44 @@ function calculateSizeEstimate() {
   // The desk converts the distance to a percent off the mark, then applies it
   // to the entry reference (the limit price on a limit ticket).
   const stopPct = stopDistance / mark;
-  const stopPrice = (slUnitMode === "price" && slVal > 0 && slVal < entry)
-    ? normalizeStockPrice(slVal)
-    : normalizeStockPrice(entry * (1 - stopPct));
+  let stopPrice;
+  let riskPerShare;
+  if (isShort) {
+    stopPrice = (slUnitMode === "price" && slVal > 0 && slVal > entry)
+      ? normalizeStockPrice(slVal)
+      : normalizeStockPrice(entry * (1 + stopPct));
+    riskPerShare = stopPrice - entry;
+  } else {
+    stopPrice = (slUnitMode === "price" && slVal > 0 && slVal < entry)
+      ? normalizeStockPrice(slVal)
+      : normalizeStockPrice(entry * (1 - stopPct));
+    riskPerShare = entry - stopPrice;
+  }
   const cost = shares * entry;
-  const riskPerShare = entry - stopPrice;
 
   let targetPrice = null;
   let takeProfitR = 0;
   if (tpUnitMode === "price") {
-    if (tpVal > 0 && tpVal > entry) {
-      targetPrice = normalizeStockPrice(tpVal);
-      takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+    if (isShort) {
+      if (tpVal > 0 && tpVal < entry) {
+        targetPrice = normalizeStockPrice(tpVal);
+        takeProfitR = riskPerShare > 0 ? (entry - targetPrice) / riskPerShare : 0;
+      }
+    } else {
+      if (tpVal > 0 && tpVal > entry) {
+        targetPrice = normalizeStockPrice(tpVal);
+        takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+      }
     }
   } else {
     if (tpVal > 0) {
-      targetPrice = normalizeStockPrice(entry * (1 + tpVal / 100));
-      takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+      if (isShort) {
+        targetPrice = normalizeStockPrice(entry * (1 - tpVal / 100));
+        takeProfitR = riskPerShare > 0 ? (entry - targetPrice) / riskPerShare : 0;
+      } else {
+        targetPrice = normalizeStockPrice(entry * (1 + tpVal / 100));
+        takeProfitR = riskPerShare > 0 ? (targetPrice - entry) / riskPerShare : 0;
+      }
     }
   }
 
@@ -3353,6 +3463,7 @@ function calculateSizeEstimate() {
       : null;
   return {
     side,
+    isShortEntry: isShort,
     sizeMode,
     shares,
     entry,
@@ -3365,6 +3476,7 @@ function calculateSizeEstimate() {
     targetPrice,
     takeProfitR,
     cost,
+    proceeds: isShort ? cost : undefined,
     truncated,
     usesAtr,
     equity,
@@ -3412,14 +3524,43 @@ function estimateFromServer(result) {
   if (side === "short") {
     const proceeds = shares * entry;
     const bp = Number(manualContext?.buying_power) || 0;
+    const stopPrice = Number(result.stop_preview);
+    const equity = Number(manualContext?.equity) || 0;
+    const riskDollars = Number(result.ticket_risk);
+    const openRisk = Number(manualContext?.heat?.open_risk);
     return {
       side,
       isShortEntry: true,
       fromServer: true,
+      sizeMode: result.size_mode,
       shares,
       entry,
       proceeds,
-      truncated: !!result.qty_whole_for_short,
+      stopDistance: Number(result.stop_distance) || null,
+      riskDollars: Number.isFinite(riskDollars) ? riskDollars : null,
+      riskPct: Number(result.ai_risk_pct),
+      stopPrice: Number.isFinite(stopPrice) ? stopPrice : null,
+      stopLimitPrice:
+        result.stop_limit_preview != null ? Number(result.stop_limit_preview) : null,
+      stopLimitOffset: Number(result.stop_limit_offset_pct) || 0,
+      targetPrice:
+        result.take_profit_price != null ? Number(result.take_profit_price) : null,
+      takeProfitR: Number(result.take_profit_r) || 0,
+      cost: proceeds,
+      truncated: !!(result.qty_truncated || result.qty_whole_for_short || result.qty_whole_for_stop),
+      usesAtr: Number(result.stop_distance) > 0,
+      equity,
+      projectedRiskPct:
+        equity > 0 && Number.isFinite(openRisk) && Number.isFinite(riskDollars)
+          ? ((openRisk + riskDollars) / equity) * 100
+          : null,
+      riskReward: manualRiskReward(
+        riskDollars,
+        result.take_profit_price != null ? Number(result.take_profit_price) : null,
+        shares,
+        entry
+      ),
+      attachesStop: Number(result.stop_preview) > 0,
       warnings: Array.isArray(result.warnings) ? result.warnings : [],
       breaches: Array.isArray(result.breaches) ? result.breaches : [],
       bpPct: bp > 0 ? (proceeds / bp) * 100 : null,
@@ -3623,7 +3764,7 @@ function updateSizeEstimate() {
     calc
   );
 
-  if (calc.isShortEntry) {
+  if (calc.isShortEntry && !manualBracketEnabled()) {
     valueEl.textContent = tx("estimate_short_value", "Short {shares} shares ≈ {credit}", {
       shares: formatQty(calc.shares),
       credit: money(calc.proceeds),
@@ -3720,11 +3861,19 @@ function updateSizeEstimate() {
     return;
   }
 
-  valueEl.textContent = tx("estimate_buy_value", "≈ {shares} shares @ {price}", {
-    shares: formatQty(calc.shares),
-    price: stockPrice(calc.entry),
-  });
-  setCell("est-cost", money(calc.cost));
+  if (calc.isShortEntry) {
+    valueEl.textContent = tx("estimate_short_value", "Short {shares} shares ≈ {credit}", {
+      shares: formatQty(calc.shares),
+      credit: money(calc.proceeds || calc.cost),
+    });
+    setCell("est-cost", money(calc.proceeds || calc.cost));
+  } else {
+    valueEl.textContent = tx("estimate_buy_value", "≈ {shares} shares @ {price}", {
+      shares: formatQty(calc.shares),
+      price: stockPrice(calc.entry),
+    });
+    setCell("est-cost", money(calc.cost));
+  }
   // The stop price alone hides how tight the stop is — the distance is what
   // decides whether market noise takes the trade out.
   const stopAway =
@@ -3736,7 +3885,7 @@ function updateSizeEstimate() {
     calc.stopPrice == null
       ? "—"
       : stopAway != null
-        ? `${stockPrice(calc.stopPrice)} · −${stopAway.toFixed(2)}%`
+        ? `${stockPrice(calc.stopPrice)} · ${calc.isShortEntry ? "+" : "−"}${stopAway.toFixed(2)}%`
         : stockPrice(calc.stopPrice)
   );
   setCell(
@@ -3744,7 +3893,7 @@ function updateSizeEstimate() {
     calc.stopLimitPrice != null
       ? `${stockPrice(calc.stopLimitPrice)}${
           calc.stopLimitOffset > 0
-            ? ` · −${Number(calc.stopLimitOffset).toFixed(1)}%`
+            ? ` · ${calc.isShortEntry ? "+" : "−"}${Number(calc.stopLimitOffset).toFixed(1)}%`
             : ""
         }`
       : calc.stopPrice != null
@@ -3766,7 +3915,9 @@ function updateSizeEstimate() {
   setCell(
     "est-target",
     calc.targetPrice != null
-      ? `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR}R`
+      ? (calc.takeProfitR > 0
+          ? `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR.toFixed(2)}R`
+          : stockPrice(calc.targetPrice))
       : tx("target_off", "off")
   );
   setCell(
@@ -3785,9 +3936,10 @@ function updateSizeEstimate() {
   if (bracketVisualizer) {
     // A take-profit of 0 sends a stop-only bracket — a real, common choice,
     // not an incomplete one, so entry + stop still earn a diagram.
-    if (!calc.isExit && !calc.isShortEntry && manualBracketEnabled() && calc.entry > 0 && calc.stopPrice > 0) {
+    if (!calc.isExit && manualBracketEnabled() && calc.entry > 0 && calc.stopPrice > 0) {
       const hasTarget = calc.targetPrice > 0;
       bracketVisualizer.hidden = false;
+      bracketVisualizer.dataset.direction = calc.isShortEntry ? "short" : "long";
       const targetTier = bracketVisualizer.querySelector(".target-tier");
       if (targetTier) targetTier.hidden = !hasTarget;
       const bTargetVal = $("bracket-target-val");
@@ -3802,9 +3954,13 @@ function updateSizeEstimate() {
       const bRrRatio = $("bracket-rr-ratio");
 
       const targetGainPct = hasTarget
-        ? ((calc.targetPrice - calc.entry) / calc.entry) * 100
+        ? (calc.isShortEntry
+            ? ((calc.entry - calc.targetPrice) / calc.entry) * 100
+            : ((calc.targetPrice - calc.entry) / calc.entry) * 100)
         : null;
-      const stopLossPct = ((calc.stopPrice - calc.entry) / calc.entry) * 100;
+      const stopLossPct = calc.isShortEntry
+        ? ((calc.entry - calc.stopPrice) / calc.entry) * 100
+        : ((calc.stopPrice - calc.entry) / calc.entry) * 100;
 
       if (hasTarget) {
         if (bTargetVal) bTargetVal.textContent = stockPrice(calc.targetPrice);
@@ -3850,6 +4006,7 @@ function updateSizeEstimate() {
       }
     } else {
       bracketVisualizer.hidden = true;
+      delete bracketVisualizer.dataset.direction;
     }
   }
 
@@ -3859,15 +4016,17 @@ function updateSizeEstimate() {
     if (!calc.isExit && calc.shares > 0 && calc.cost > 0) {
       inlineBadge.hidden = false;
       const bracketOn = manualBracketEnabled();
-      const stopDist = bracketOn && calc.stopPrice != null && calc.entry > 0
-        ? ` · ${escapeHtml(tx("stop_price", "Stop"))}: <strong>${stockPrice(calc.stopPrice)}</strong>`
-        : "";
-      const riskDist = bracketOn && calc.riskDollars != null
-        ? ` · ${escapeHtml(tx("max_risk", "Max risk"))}: <strong>${money(calc.riskDollars)}</strong>`
-        : "";
+      const extra = [];
+      if (bracketOn && calc.riskDollars != null) {
+        extra.push(`${escapeHtml(tx("max_risk", "Max risk"))}: <strong>${money(calc.riskDollars)}</strong>`);
+      }
+      if (bracketOn && calc.stopPrice != null && calc.entry > 0) {
+        extra.push(`${escapeHtml(tx("stop_price", "Stop"))}: <strong>${stockPrice(calc.stopPrice)}</strong>`);
+      }
+      const extraHtml = extra.length > 0 ? `<span class="badge-stat">${extra.join(" · ")}</span>` : "";
       inlineBadge.innerHTML = `
         <span class="badge-stat"><strong>${formatQty(calc.shares)}</strong> ${tx("shares", "shares")} (${money(calc.cost)})</span>
-        <span class="badge-stat">${riskDist}${stopDist}</span>
+        ${extraHtml}
       `;
     } else {
       inlineBadge.hidden = true;
@@ -3887,17 +4046,31 @@ function updateSizeEstimate() {
       )
     );
   }
+  if (calc.isShortEntry) {
+    notes.push(
+      tx(
+        "estimate_short_open_protected",
+        "Opens a short with attached stop-loss to protect against rising prices. Whole shares only.",
+        { shares: formatQty(calc.shares) }
+      )
+    );
+  }
   if (calc.truncated) {
     notes.push(
-      calc.attachesStop
+      calc.isShortEntry
         ? tx(
-            "estimate_whole_shares",
-            "Rounded down to whole shares — a protective stop cannot attach to a fractional order."
+            "estimate_whole_shares_short",
+            "Rounded down to whole shares — Alpaca does not short fractions."
           )
-        : tx(
-            "estimate_whole_shares_asset",
-            "Rounded down to whole shares — this symbol is not fractionable at Alpaca."
-          )
+        : calc.attachesStop
+          ? tx(
+              "estimate_whole_shares",
+              "Rounded down to whole shares — a protective stop cannot attach to a fractional order."
+            )
+          : tx(
+              "estimate_whole_shares_asset",
+              "Rounded down to whole shares — this symbol is not fractionable at Alpaca."
+            )
     );
   }
   if (calc.exceedsBp) {
@@ -3945,24 +4118,34 @@ const MANUAL_ENTRY_ONLY_ROWS = [
 function applyEstimateGridMode(mode, calc) {
   const isExit = mode === "exit";
   const isShort = mode === "short";
-  const hasBracket = !isExit && !isShort && manualBracketEnabled();
+  const hasBracket = !isExit && manualBracketEnabled();
   const hasTarget = hasBracket && Number(calc?.targetPrice) > 0;
   const hasStopLimit = hasBracket && Number(calc?.stopLimitPrice) > 0;
 
   const rowStop = $("est-row-stop");
-  if (rowStop) rowStop.hidden = isExit || isShort || !hasBracket;
+  if (rowStop) rowStop.hidden = isExit || !hasBracket;
 
   const rowStopLimit = $("est-row-stop-limit");
-  if (rowStopLimit) rowStopLimit.hidden = isExit || isShort || !hasBracket || !hasStopLimit;
+  if (rowStopLimit) {
+    rowStopLimit.hidden = isExit || !hasBracket || !hasStopLimit;
+    const stopLimitDt = rowStopLimit.querySelector("dt");
+    if (stopLimitDt) {
+      const dtKey = isShort ? "stop_limit_price_short" : "stop_limit_price";
+      stopLimitDt.setAttribute("data-i18n", dtKey);
+      stopLimitDt.textContent = isShort
+        ? tx("stop_limit_price_short", "Buy limit")
+        : tx("stop_limit_price", "Sell limit");
+    }
+  }
 
   const rowRisk = $("est-row-risk");
-  if (rowRisk) rowRisk.hidden = isExit || isShort || !hasBracket;
+  if (rowRisk) rowRisk.hidden = isExit || !hasBracket;
 
   const rowTarget = $("est-row-target");
-  if (rowTarget) rowTarget.hidden = isExit || isShort || !hasBracket || !hasTarget;
+  if (rowTarget) rowTarget.hidden = isExit || !hasBracket || !hasTarget;
 
   const rowRr = $("est-row-rr");
-  if (rowRr) rowRr.hidden = isExit || isShort || !hasBracket || !hasTarget;
+  if (rowRr) rowRr.hidden = isExit || !hasBracket || !hasTarget;
 
   const costLabel = $("est-cost-label");
   if (costLabel) {
@@ -4124,19 +4307,39 @@ function validateManualField(fieldName) {
       error = tx("err_field_gt_zero", "Must be greater than 0");
     } else if (raw !== "") {
       // The same rule the form validator and the desk enforce, checked here so
-      // an above-the-stop limit is caught while it is being typed rather than
+      // an invalid limit is caught while it is being typed rather than
       // at Preview — and so a pinned value that went stale says so.
       const stopPx = Number(currentEstimate()?.stopPrice);
-      if (stopPx > 0 && val > stopPx) {
-        error = tx("err_field_at_or_below_stop", "At or below {stop}", {
-          stop: stockPrice(stopPx),
-        });
+      const isShort = manualOpensShort();
+      if (stopPx > 0) {
+        if (isShort && val < stopPx) {
+          error = tx("err_field_at_or_above_stop", "At or above {stop}", {
+            stop: stockPrice(stopPx),
+          });
+        } else if (!isShort && val > stopPx) {
+          error = tx("err_field_at_or_below_stop", "At or below {stop}", {
+            stop: stockPrice(stopPx),
+          });
+        }
       }
     }
   } else if (fieldName === "notional") {
-    if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
+    if (!(val > 0)) {
+      error = tx("err_field_gt_zero", "Must be greater than 0");
+    } else if (manualOpensShort()) {
+      const px = manualEntryRefPrice();
+      if (px > 0 && Math.floor(val / px) < 1) {
+        error = tx("err_field_min_one_share", "At least 1 whole share");
+      }
+    }
   } else if (fieldName === "buy_qty") {
-    if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
+    if (!(val > 0)) {
+      error = tx("err_field_gt_zero", "Must be greater than 0");
+    } else if (manualOpensShort()) {
+      if (val < 1 || Math.floor(val) !== val) {
+        error = tx("err_field_min_one_share", "At least 1 whole share");
+      }
+    }
   } else if (fieldName === "sell_qty") {
     const held = manualPositionQty();
     if (!(val > 0)) error = tx("err_field_gt_zero", "Must be greater than 0");
@@ -4307,21 +4510,37 @@ function syncManualSideUi() {
     buySegment.classList.toggle("is-cover", isShortPos);
   }
 
+  const sellLabelEl = $("manual-side-sell-label");
+  const sellSegment = $("manual-segment-sell");
+  if (sellLabelEl) {
+    if (signed <= 0) {
+      sellLabelEl.textContent = tx("action_short", "Short");
+      sellLabelEl.setAttribute("data-i18n", "action_short");
+    } else {
+      sellLabelEl.textContent = tx("sell", "Sell");
+      sellLabelEl.setAttribute("data-i18n", "sell");
+    }
+  }
+  if (sellSegment) {
+    sellSegment.classList.toggle("is-short", signed <= 0);
+  }
+
   const form = $("manual-order");
-  if (form) form.dataset.side = isCover ? "cover" : side;
+  if (form) form.dataset.side = action;
   // The preview lives in the rail, outside the form, so the side has to be
   // published on the layout for the buy/sell colouring to reach it.
   const layout = $("page-manual-order");
-  if (layout) layout.dataset.side = isCover ? "cover" : side;
+  if (layout) layout.dataset.side = action;
   const sellGroup = $("manual-sell-group");
   const buySizingBlock = $("manual-buy-sizing-block");
   const riskGroup = $("manual-risk-group");
   const dipHuntGroup = $("manual-dip-hunt-group");
   const isBuy = side === "buy" && !isCover;
+  const isEntry = manualIsEntry();
   const typeAllowed = ["market", "limit"].includes(manualOrderType());
   if (sellGroup) sellGroup.hidden = !isExit;
   if (buySizingBlock) buySizingBlock.hidden = isExit;
-  if (riskGroup) riskGroup.hidden = !isBuy || !typeAllowed;
+  if (riskGroup) riskGroup.hidden = !isEntry || !typeAllowed;
   if (dipHuntGroup) dipHuntGroup.hidden = !isBuy || !typeAllowed || !manualBracketEnabled();
 
   const sideInputs = form?.elements?.side;
@@ -4423,13 +4642,18 @@ function syncManualSideUi() {
 
   const buyAvail = $("manual-buy-avail");
   if (buyAvail && !isExit) {
-    const bp = Number(manualContext?.buying_power);
-    if (bp > 0) {
-      buyAvail.textContent = tx("qty_available", "{qty} available", { qty: money(bp) });
-      buyAvail.classList.remove("is-empty");
+    if (opensShort && manualContext?.asset && manualContext.asset.shortable === false) {
+      buyAvail.textContent = tx("qty_not_shortable", "not shortable");
+      buyAvail.classList.add("is-empty");
     } else {
-      buyAvail.textContent = "";
-      buyAvail.classList.remove("is-empty");
+      const bp = Number(manualContext?.buying_power);
+      if (bp > 0) {
+        buyAvail.textContent = tx("qty_available", "{qty} available", { qty: money(bp) });
+        buyAvail.classList.remove("is-empty");
+      } else {
+        buyAvail.textContent = "";
+        buyAvail.classList.remove("is-empty");
+      }
     }
   } else if (buyAvail) {
     buyAvail.textContent = "";
@@ -5034,10 +5258,44 @@ function syncManualFollowOnUi() {
 
 function syncManualBracketUi() {
   const group = $("manual-risk-group");
-  const isBuy = manualSide() === "buy" && !manualOpensCover();
+  const isEntry = manualIsEntry();
   const typeAllowed = ["market", "limit"].includes(manualOrderType());
-  const shouldShow = isBuy && typeAllowed;
+  const shouldShow = isEntry && typeAllowed;
   if (group) group.hidden = !shouldShow;
+
+  const isShort = manualOpensShort();
+  const helpEl = $("manual-bracket-help");
+  if (helpEl) {
+    const bracketHelpKey = isShort ? "bracket_help_short" : "bracket_help";
+    helpEl.setAttribute("data-i18n", bracketHelpKey);
+    helpEl.textContent = isShort
+      ? tx("bracket_help_short", "Attach automated stop-loss (buy to cover) and take-profit exit orders when this short order fills.")
+      : tx("bracket_help", "Attach automated stop-loss and take-profit exit orders when this buy order fills.");
+  }
+  const stopLimitLabel = $("manual-stop-limit-price-row")?.querySelector("label span");
+  if (stopLimitLabel) {
+    const stopLimitLabelKey = isShort ? "stop_limit_price_short" : "stop_limit_price";
+    stopLimitLabel.setAttribute("data-i18n", stopLimitLabelKey);
+    stopLimitLabel.textContent = isShort
+      ? tx("stop_limit_price_short", "Buy limit")
+      : tx("stop_limit_price", "Sell limit");
+  }
+  const stopLimitHelp = $("help-stop-limit-price");
+  if (stopLimitHelp) {
+    const stopLimitHelpKey = isShort ? "help_stop_limit_price_short" : "help_stop_limit_price";
+    stopLimitHelp.setAttribute("data-i18n", stopLimitHelpKey);
+    stopLimitHelp.textContent = isShort
+      ? tx("help_stop_limit_price_short", "Optional. Must sit at or above the stop, not below. Overrides the cushion % when set. Leave empty for market or cushion.")
+      : tx("help_stop_limit_price", "Optional. Must sit at or below the stop, not above. Overrides the cushion % when set. Leave empty for market or cushion.");
+  }
+  const stopLimitOffsetHelp = $("help-stop-limit-offset");
+  if (stopLimitOffsetHelp) {
+    const stopLimitOffsetHelpKey = isShort ? "help_stop_limit_offset_short" : "help_stop_limit_offset";
+    stopLimitOffsetHelp.setAttribute("data-i18n", stopLimitOffsetHelpKey);
+    stopLimitOffsetHelp.textContent = isShort
+      ? tx("help_stop_limit_offset_short", "After the stop triggers, buy to cover at a limit this % above it. 0 buys at market unless you set a buy limit.")
+      : tx("help_stop_limit_offset", "After the stop triggers, sell at a limit this % below it. 0 sells at market unless you set a sell limit.");
+  }
 
   const form = $("manual-order");
   const toggle = form?.elements?.bracket_enabled;
@@ -5107,6 +5365,8 @@ function syncManualBracketUi() {
   const labelSl = $("label-stop-loss");
   const adornmentSl = $("adornment-stop-loss");
   if (labelSl) {
+    const slLabelKey = slUnitMode === "price" ? "label_stop_trigger_price" : "label_stop_loss";
+    labelSl.setAttribute("data-i18n", slLabelKey);
     labelSl.textContent = slUnitMode === "price"
       ? tx("label_stop_trigger_price", "Stop trigger price")
       : tx("label_stop_loss", "Stop loss");
@@ -5114,16 +5374,46 @@ function syncManualBracketUi() {
   if (adornmentSl) {
     adornmentSl.textContent = slUnitMode === "price" ? "$" : "%";
   }
+  const helpSl = $("help-stop-loss");
+  if (helpSl) {
+    const slKey = slUnitMode === "price"
+      ? (isShort ? "help_stop_trigger_short_price" : "help_stop_trigger_price")
+      : (isShort ? "help_stop_loss_short_pct" : "help_stop_loss_pct");
+    helpSl.setAttribute("data-i18n", slKey);
+    helpSl.textContent = isShort
+      ? (slUnitMode === "price"
+          ? tx("help_stop_trigger_short_price", "Exit triggers when market price rises to this exact dollar level.")
+          : tx("help_stop_loss_short_pct", "Percent above entry to exit and cut losses."))
+      : (slUnitMode === "price"
+          ? tx("help_stop_trigger_price", "Exit triggers when market price drops to this exact dollar level.")
+          : tx("help_stop_loss_pct", "Percent below entry to exit and cut losses."));
+  }
 
   const labelTp = $("label-take-profit");
   const adornmentTp = $("adornment-take-profit");
   if (labelTp) {
+    const tpLabelKey = tpUnitMode === "price" ? "label_take_profit_price" : "label_take_profit";
+    labelTp.setAttribute("data-i18n", tpLabelKey);
     labelTp.textContent = tpUnitMode === "price"
       ? tx("label_take_profit_price", "Take profit price")
       : tx("label_take_profit", "Take profit");
   }
   if (adornmentTp) {
     adornmentTp.textContent = tpUnitMode === "price" ? "$" : "%";
+  }
+  const helpTp = $("help-take-profit");
+  if (helpTp) {
+    const tpKey = tpUnitMode === "price"
+      ? (isShort ? "help_take_profit_short_price" : "help_take_profit_price")
+      : (isShort ? "help_take_profit_short_pct" : "help_take_profit_pct");
+    helpTp.setAttribute("data-i18n", tpKey);
+    helpTp.textContent = isShort
+      ? (tpUnitMode === "price"
+          ? tx("help_take_profit_short_price", "Exit with profit when price drops to this level. 0 sends stop only.")
+          : tx("help_take_profit_short_pct", "Percent below entry to exit with profit. 0 sends stop only."))
+      : (tpUnitMode === "price"
+          ? tx("help_take_profit_price", "Exit with profit when price reaches this level. 0 sends stop only.")
+          : tx("help_take_profit_pct", "Percent above entry to exit with profit. 0 sends stop only."));
   }
 
   const badge = $("manual-bracket-summary-badge");
@@ -5133,10 +5423,12 @@ function syncManualBracketUi() {
     } else {
       const slVal = Number(slInput ? slInput.value : manualFormValue("stop_loss_val", 3)) || 0;
       const tpVal = Number(tpInput ? tpInput.value : manualFormValue("take_profit_val", 6)) || 0;
-      const slBadge = slUnitMode === "price" ? `SL: $${slVal.toFixed(2)}` : `SL: -${slVal.toFixed(1)}%`;
+      const slSign = isShort ? "+" : "-";
+      const tpSign = isShort ? "-" : "+";
+      const slBadge = slUnitMode === "price" ? `SL: $${slVal.toFixed(2)}` : `SL: ${slSign}${slVal.toFixed(1)}%`;
       let tpBadge;
       if (tpVal > 0) {
-        tpBadge = tpUnitMode === "price" ? `TP: $${tpVal.toFixed(2)}` : `TP: +${tpVal.toFixed(1)}%`;
+        tpBadge = tpUnitMode === "price" ? `TP: $${tpVal.toFixed(2)}` : `TP: ${tpSign}${tpVal.toFixed(1)}%`;
       } else {
         tpBadge = tx("stop_only_bracket", "Stop only");
       }
@@ -5162,18 +5454,35 @@ function syncManualBracketUi() {
   let slText = "";
   let slStop = 0;
   if (entry > 0 && slVal > 0) {
-    if (slUnitMode === "price") {
-      slStop = slVal;
-      const slDist = entry - slVal;
-      const slPct = (slDist / entry) * 100;
-      if (slDist > 0) {
-        slText = `≈ -${slPct.toFixed(1)}% (-$${slDist.toFixed(2)}/sh)`;
+    if (isShort) {
+      if (slUnitMode === "price") {
+        slStop = slVal;
+        const slDist = slVal - entry;
+        const slPct = (slDist / entry) * 100;
+        if (slDist > 0) {
+          slText = `≈ +${slPct.toFixed(1)}% (+$${slDist.toFixed(2)}/sh)`;
+        }
+      } else {
+        slStop = entry * (1 + slVal / 100);
+        const slDist = slStop - entry;
+        if (slDist > 0) {
+          slText = `≈ $${slStop.toFixed(2)} (+$${slDist.toFixed(2)}/sh)`;
+        }
       }
     } else {
-      slStop = entry * (1 - slVal / 100);
-      const slDist = entry - slStop;
-      if (slDist > 0) {
-        slText = `≈ $${slStop.toFixed(2)} (-$${slDist.toFixed(2)}/sh)`;
+      if (slUnitMode === "price") {
+        slStop = slVal;
+        const slDist = entry - slVal;
+        const slPct = (slDist / entry) * 100;
+        if (slDist > 0) {
+          slText = `≈ -${slPct.toFixed(1)}% (-$${slDist.toFixed(2)}/sh)`;
+        }
+      } else {
+        slStop = entry * (1 - slVal / 100);
+        const slDist = entry - slStop;
+        if (slDist > 0) {
+          slText = `≈ $${slStop.toFixed(2)} (-$${slDist.toFixed(2)}/sh)`;
+        }
       }
     }
   }
@@ -5185,22 +5494,43 @@ function syncManualBracketUi() {
 
   let tpText = "";
   if (entry > 0 && tpVal > 0) {
-    const riskPerShare = (entry > 0 && slStop > 0 && slStop < entry) ? entry - slStop : 0;
-    if (tpUnitMode === "price") {
-      const tpDist = tpVal - entry;
-      const tpPct = (tpDist / entry) * 100;
-      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
-      const rText = rMultiple ? ` · ${rMultiple}R` : "";
-      if (tpDist > 0) {
-        tpText = `≈ +${tpPct.toFixed(1)}%${rText}`;
+    if (isShort) {
+      const riskPerShare = (entry > 0 && slStop > entry) ? slStop - entry : 0;
+      if (tpUnitMode === "price") {
+        const tpDist = entry - tpVal;
+        const tpPct = (tpDist / entry) * 100;
+        const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+        const rText = rMultiple ? ` · ${rMultiple}R` : "";
+        if (tpDist > 0) {
+          tpText = `≈ -${tpPct.toFixed(1)}%${rText}`;
+        }
+      } else {
+        const tpTarget = entry * (1 - tpVal / 100);
+        const tpDist = entry - tpTarget;
+        const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+        const rText = rMultiple ? ` · ${rMultiple}R` : "";
+        if (tpTarget > 0 && tpTarget < entry) {
+          tpText = `≈ $${tpTarget.toFixed(2)}${rText}`;
+        }
       }
     } else {
-      const tpTarget = entry * (1 + tpVal / 100);
-      const tpDist = tpTarget - entry;
-      const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
-      const rText = rMultiple ? ` · ${rMultiple}R` : "";
-      if (tpTarget > entry) {
-        tpText = `≈ $${tpTarget.toFixed(2)}${rText}`;
+      const riskPerShare = (entry > 0 && slStop > 0 && slStop < entry) ? entry - slStop : 0;
+      if (tpUnitMode === "price") {
+        const tpDist = tpVal - entry;
+        const tpPct = (tpDist / entry) * 100;
+        const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+        const rText = rMultiple ? ` · ${rMultiple}R` : "";
+        if (tpDist > 0) {
+          tpText = `≈ +${tpPct.toFixed(1)}%${rText}`;
+        }
+      } else {
+        const tpTarget = entry * (1 + tpVal / 100);
+        const tpDist = tpTarget - entry;
+        const rMultiple = (riskPerShare > 0 && tpDist > 0) ? (tpDist / riskPerShare).toFixed(1) : null;
+        const rText = rMultiple ? ` · ${rMultiple}R` : "";
+        if (tpTarget > entry) {
+          tpText = `≈ $${tpTarget.toFixed(2)}${rText}`;
+        }
       }
     }
   }
@@ -5306,6 +5636,30 @@ function selectManualSide(side) {
         setManualFormValue("stop_price", "");
       }
     }
+    // Also reset price-based bracket SL/TP if on wrong side of mark for new direction
+    const slUnit = manualStopLossUnitMode();
+    const tpUnit = manualTakeProfitUnitMode();
+    const slVal = Number(manualFormValue("stop_loss_val", 0) || 0);
+    const tpVal = Number(manualFormValue("take_profit_val", 0) || 0);
+    const isNowShort = next === "sell" && manualSignedPosition() <= 0;
+    if (mark > 0) {
+      if (slUnit === "price" && slVal > 0) {
+        if ((isNowShort && slVal <= mark) || (!isNowShort && slVal >= mark)) {
+          setManualFormValue("stop_loss_val", "");
+        }
+      }
+      if (tpUnit === "price" && tpVal > 0) {
+        if ((isNowShort && tpVal >= mark) || (!isNowShort && tpVal <= mark)) {
+          setManualFormValue("take_profit_val", "");
+        }
+      }
+      const stopLimitVal = Number(manualFormValue("stop_limit_price", 0) || 0);
+      if (stopLimitVal > 0) {
+        if ((isNowShort && stopLimitVal < mark) || (!isNowShort && stopLimitVal > mark)) {
+          setManualFormValue("stop_limit_price", "");
+        }
+      }
+    }
     applyStockPriceDefaults(manualContext);
   }
   saveManualFormDraft();
@@ -5338,13 +5692,23 @@ function syncManualPlaceButtons() {
         // The button names the action the desk will run, not the button the
         // ticket is standing on — "Place Sell Order" over a flat position was
         // about to open a short.
-        submitText.textContent =
-          {
-            buy: tx("place_buy", "Place Buy Order"),
-            sell: tx("place_sell", "Place Sell Order"),
-            short: tx("place_short", "Place Short Order"),
-            cover: tx("place_cover", "Place Cover Order"),
-          }[action] || tx("place_buy", "Place Buy Order");
+        const submitKey = {
+          buy: "place_buy",
+          sell: "place_sell",
+          short: "place_short",
+          cover: "place_cover",
+        }[action] || "place_buy";
+        submitText.setAttribute("data-i18n", submitKey);
+        submitText.textContent = tx(
+          submitKey,
+          action === "short"
+            ? "Place Short Order"
+            : action === "cover"
+              ? "Place Cover Order"
+              : action === "sell"
+                ? "Place Sell Order"
+                : "Place Buy Order"
+        );
       }
       if (submitPill) {
         submitPill.textContent = "";
@@ -5408,11 +5772,18 @@ function syncManualHelp() {
     text = tx("manual_help_market_tif", "Market {tif} order in regular hours.", { tif });
   }
   if (manualOpensShort()) {
-    text += ` ${tx(
-      "manual_help_short",
-      "Opens a short — no protective stop is attached, and whole shares only."
-    )}`;
-    isWarn = true;
+    if (manualBracketEnabled()) {
+      text += ` ${tx(
+        "manual_help_short_bracketed",
+        "Opens a short with attached protective bracket. Whole shares only."
+      )}`;
+    } else {
+      text += ` ${tx(
+        "manual_help_short",
+        "Opens a short — no protective stop is attached, and whole shares only."
+      )}`;
+      isWarn = true;
+    }
   } else if (manualIsExit()) {
     text += ` ${tx("manual_help_sell", "Protective stops are cancelled before a sell.")}`;
   } else if (manualAttachesStop()) {
@@ -6604,7 +6975,9 @@ function renderManualLastTicket(result) {
           : "—",
     ],
     [
-      tx("stop_limit_price", "Sell limit"),
+      String(result.side || "").toLowerCase() === "short"
+        ? tx("stop_limit_price_short", "Buy limit")
+        : tx("stop_limit_price", "Sell limit"),
       result.stop_loss?.limit_price != null
         ? stockPrice(result.stop_loss.limit_price)
         : result.stop_limit_preview != null
@@ -6850,6 +7223,7 @@ function openConfirmModal({ focus = "cancel" } = {}) {
   document.querySelector(".masthead")?.setAttribute("inert", "");
   document.querySelector("main")?.setAttribute("inert", "");
   document.querySelector(".desk-footer")?.setAttribute("inert", "");
+  document.getElementById("mobile-tab-bar")?.setAttribute("inert", "");
   // Focus lands on the way out, not the way through. This dialog is the last
   // gate before real money and it used to open with Submit focused, so a
   // stray Enter — the key that opened it — sent the order.
@@ -6868,6 +7242,7 @@ function closeConfirmModal() {
   document.querySelector(".masthead")?.removeAttribute("inert");
   document.querySelector("main")?.removeAttribute("inert");
   document.querySelector(".desk-footer")?.removeAttribute("inert");
+  document.getElementById("mobile-tab-bar")?.removeAttribute("inert");
   window.manualOrderPayload = null;
   if (manualModalReturnFocus?.focus) manualModalReturnFocus.focus();
   manualModalReturnFocus = null;
@@ -6922,7 +7297,7 @@ function renderConfirmationModal(payload) {
     [
       tx("action", "Action"),
       SIDE_LABELS[payload.side] || payload.side,
-      isCover ? "buy" : isExit ? "sell" : "buy",
+      isCover || payload.side === "buy" ? "buy" : "sell",
     ],
     [
       tx("order_type", "Order type"),
@@ -6965,17 +7340,35 @@ function renderConfirmationModal(payload) {
       rows.push(
         [tx("shares", "Shares"), formatQty(calc.shares)],
         [tx("entry_price", "Entry price"), stockPrice(calc.entry)],
-        [tx("est_credit", "Est. credit"), money(calc.proceeds)],
-        [
+        [tx("est_credit", "Est. credit"), money(calc.proceeds || calc.cost)]
+      );
+      const hasBracket = manualBracketEnabled();
+      if (hasBracket && calc.stopPrice != null) {
+        rows.push([
+          tx("stop_price", "Stop"),
+          stockPrice(calc.stopPrice),
+        ]);
+        if (calc.stopLimitPrice != null) {
+          rows.push([
+            tx("stop_limit_price_short", "Buy limit"),
+            stockPrice(calc.stopLimitPrice),
+          ]);
+        }
+        if (calc.targetPrice != null) {
+          rows.push([
+            tx("target_price", "Target"),
+            calc.takeProfitR > 0
+              ? `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR.toFixed(2)}R`
+              : stockPrice(calc.targetPrice),
+          ]);
+        }
+      } else {
+        rows.push([
           tx("stop_price", "Stop"),
           tx("confirm_short_no_stop", "None — this short is unprotected"),
           "warn",
-        ],
-        [
-          tx("pct_buying_power", "% of buying power"),
-          calc.bpPct != null ? `${calc.bpPct.toFixed(1)}%` : "—",
-        ]
-      );
+        ]);
+      }
     } else if (isExit) {
       rows.push(
         [tx("shares", "Shares"), formatQty(calc.shares)],
@@ -7016,42 +7409,15 @@ function renderConfirmationModal(payload) {
         if (calc.targetPrice != null) {
           rows.push([
             tx("target_price", "Target"),
-            `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR}R`,
-          ]);
-        }
-        if (calc.riskDollars != null) {
-          rows.push([
-            tx("max_risk", "Max risk"),
-            `${money(calc.riskDollars)}${
-              calc.equity > 0
-                ? ` (${((calc.riskDollars / calc.equity) * 100).toFixed(2)}% ${tx(
-                    "of_equity",
-                    "of equity"
-                  )})`
-                : ""
-            }`,
-            "warn",
-          ]);
-        }
-        if (calc.riskReward) {
-          rows.push([
-            tx("risk_reward", "Risk / reward"),
-            tx("risk_reward_value", "{ratio}:1 · {reward} up", {
-              ratio: calc.riskReward.ratio.toFixed(2),
-              reward: money(calc.riskReward.reward),
-            }),
+            calc.takeProfitR > 0
+              ? `${stockPrice(calc.targetPrice)} · ${calc.takeProfitR.toFixed(2)}R`
+              : stockPrice(calc.targetPrice),
           ]);
         }
       } else {
         rows.push([
           tx("bracket_legend", "Protective Bracket"),
           tx("bracket_off", "off"),
-        ]);
-      }
-      if (calc.projectedRiskPct != null) {
-        rows.push([
-          tx("portfolio_heat", "Portfolio heat"),
-          `${calc.projectedRiskPct.toFixed(2)}% ${tx("of_equity", "of equity")}`,
         ]);
       }
     }
@@ -7183,23 +7549,56 @@ function renderConfirmationModal(payload) {
 
   rows.push([tx("session", "Session"), formatSession(session) || "—"]);
 
+  const heroSideTone = isCover || payload.side === "buy" ? "buy" : "sell";
+  const heroHtml = `
+    <div class="confirm-hero-badge-card" data-side="${escapeHtml(payload.side)}">
+      <div class="confirm-hero-left">
+        <span class="confirm-hero-side value-${heroSideTone}">${escapeHtml(SIDE_LABELS[payload.side] || payload.side)}</span>
+        <span class="confirm-hero-symbol">${escapeHtml(payload.symbol)}</span>
+      </div>
+      <div class="confirm-hero-right">
+        <span class="confirm-hero-qty">${escapeHtml(formatQty(calc?.shares || payload.shares || 0))} ${escapeHtml(tx("shares", "shares"))}</span>
+        ${
+          calc && (calc.proceeds || calc.cost)
+            ? `<span class="confirm-hero-val">${escapeHtml(money(calc.proceeds || calc.cost))}</span>`
+            : payload.limit_price
+            ? `<span class="confirm-hero-val">@ ${escapeHtml(stockPrice(payload.limit_price))}</span>`
+            : ""
+        }
+      </div>
+    </div>
+  `;
+
   // Tone comes from the row that was pushed, not from comparing the rendered
   // label back against a translated string — which silently stopped colouring
   // anything the moment two labels happened to translate alike.
-  summary.innerHTML = rows
-    .map((entry) => {
-      const [label, value, tone] = entry;
-      const ddClass = tone ? `value-${tone}` : "";
-      return `<div class="confirm-row">
-           <dt>${escapeHtml(String(label))}</dt>
-           <dd class="${ddClass}">${escapeHtml(String(value))}</dd>
-         </div>`;
-    })
-    .join("");
+  summary.innerHTML =
+    heroHtml +
+    `<div class="confirm-details-list">` +
+    rows
+      .map((entry) => {
+        const [label, value, tone] = entry;
+        const ddClass = tone ? `value-${tone}` : "";
+        return `<div class="confirm-row">
+             <dt>${escapeHtml(String(label))}</dt>
+             <dd class="${ddClass}">${escapeHtml(String(value))}</dd>
+           </div>`;
+      })
+      .join("") +
+    `</div>`;
 
   const isLive = manualIsLiveAccount();
   const content = $("manual-confirm-content");
-  if (content) content.dataset.env = isLive ? "live" : "paper";
+  if (content) {
+    content.dataset.env = isLive ? "live" : "paper";
+    content.dataset.side = payload.side;
+  }
+  const envBadge = $("confirm-env-badge");
+  if (envBadge) {
+    envBadge.hidden = false;
+    envBadge.textContent = isLive ? tx("env_live", "Live") : tx("env_paper", "Paper");
+    envBadge.dataset.env = isLive ? "live" : "paper";
+  }
 
   // Desk limits. The server runs them for every action that opens risk, and a
   // short is one — gating on the Buy button alone hid them.
@@ -7240,12 +7639,21 @@ function renderConfirmationModal(payload) {
       );
     }
     if (isShortEntry) {
-      notes.push(
-        tx(
-          "confirm_short_note",
-          "This opens a short position: losses run without a ceiling until you buy the shares back, and no protective stop is attached. Close it from Positions."
-        )
-      );
+      if (manualBracketEnabled() && calc && calc.stopPrice != null) {
+        notes.push(
+          tx(
+            "confirm_short_protected_note",
+            "This opens a short position with an attached stop-loss order to buy back if price rises. Close it anytime from Positions."
+          )
+        );
+      } else {
+        notes.push(
+          tx(
+            "confirm_short_note",
+            "This opens a short position: losses run without a ceiling until you buy the shares back, and no protective stop is attached. Close it from Positions."
+          )
+        );
+      }
     }
     if (payload.reinvest) {
       const sellPrice = manualSellReference();
@@ -7868,10 +8276,11 @@ $("btn-confirm-submit")?.addEventListener("click", () => {
 
 // The backdrop sits above the modal box in hit-testing, so match either.
 $("manual-confirm-modal")?.addEventListener("click", (ev) => {
-  if (ev.target === ev.currentTarget || ev.target?.dataset?.modalDismiss) {
+  if (ev.target === ev.currentTarget || ev.target.closest?.("[data-modal-dismiss]")) {
     closeConfirmModal();
   }
 });
+$("btn-confirm-close")?.addEventListener("click", closeConfirmModal);
 
 document.addEventListener("keydown", (ev) => {
   const modal = $("manual-confirm-modal");

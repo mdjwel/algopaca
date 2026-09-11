@@ -111,17 +111,28 @@
     <div id="manual-confirm-modal" class="modal" hidden>
       <div class="modal-backdrop" data-modal-dismiss="true"></div>
       <div class="modal-content" id="manual-confirm-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="manual-confirm-summary">
-        <h3 id="confirm-title" data-i18n="confirm_order">Confirm Order</h3>
-        <div id="manual-confirm-summary" class="confirm-summary">
-          <!-- Summary rendered here -->
+        <div class="modal-sheet-handle" aria-hidden="true"></div>
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <h3 id="confirm-title" data-i18n="confirm_order">Confirm Order</h3>
+            <span id="confirm-env-badge" class="confirm-env-badge" hidden>Paper</span>
+          </div>
+          <button type="button" class="modal-close-btn" id="btn-confirm-close" data-modal-dismiss="true" aria-label="Close" data-i18n-aria-label="close">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
-        <ul id="manual-confirm-breaches" class="confirm-breaches" hidden></ul>
-        <p id="manual-confirm-note" class="confirm-note" hidden></p>
-        <!-- `window.prompt` was the last native dialog left on the page: it
-             ignored the desk's styling and could not be translated. -->
-        <div id="manual-confirm-prompt" class="confirm-prompt" hidden>
-          <label for="manual-confirm-prompt-input" id="manual-confirm-prompt-label"></label>
-          <input id="manual-confirm-prompt-input" type="text" autocomplete="off" spellcheck="false" maxlength="40" />
+        <div class="modal-body" id="manual-confirm-body">
+          <div id="manual-confirm-summary" class="confirm-summary">
+            <!-- Summary rendered here -->
+          </div>
+          <ul id="manual-confirm-breaches" class="confirm-breaches" hidden></ul>
+          <p id="manual-confirm-note" class="confirm-note" hidden></p>
+          <!-- `window.prompt` was the last native dialog left on the page: it
+               ignored the desk's styling and could not be translated. -->
+          <div id="manual-confirm-prompt" class="confirm-prompt" hidden>
+            <label for="manual-confirm-prompt-input" id="manual-confirm-prompt-label"></label>
+            <input id="manual-confirm-prompt-input" type="text" autocomplete="off" spellcheck="false" maxlength="40" />
+          </div>
         </div>
         <div class="modal-actions">
           <button type="button" class="ghost" id="btn-confirm-cancel" data-i18n="cancel">Cancel</button>

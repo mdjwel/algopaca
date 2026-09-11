@@ -210,6 +210,89 @@ class TestExitStrategy(unittest.TestCase):
             )
         self.assertIn("greater than 0", str(ctx2.exception).lower())
 
+    def test_is_symbol_in_auto_trade(self):
+        # 1. Idle state
+        self.state.loop_running = False
+        self.assertFalse(self.state.is_symbol_in_auto_trade("AAPL"))
+        self.assertFalse(self.state.is_symbol_in_auto_trade("INTW"))
+
+        # 2. Main loop running for AAPL
+        self.state.loop_running = True
+        self.state.settings.symbols = "AAPL"
+        self.state.settings.symbol = "AAPL"
+        self.state.settings.strategy_mode = "sma"
+        self.assertTrue(self.state.is_symbol_in_auto_trade("AAPL"))
+        self.assertFalse(self.state.is_symbol_in_auto_trade("INTW"))
+
+        # 3. Main loop in pair mode
+        self.state.settings.strategy_mode = "pair"
+        self.state.settings.pair_long_symbol = "GLD"
+        self.state.settings.pair_short_symbol = "SLV"
+        self.assertTrue(self.state.is_symbol_in_auto_trade("GLD"))
+        self.assertTrue(self.state.is_symbol_in_auto_trade("SLV"))
+        self.assertFalse(self.state.is_symbol_in_auto_trade("INTW"))
+
+        # 4. Multi auto-trade runner
+        self.state.loop_running = False
+        mock_runner = MagicMock()
+        mock_runner.is_running = True
+        with patch.object(self.state.multi_trader, "get_runner", return_value=mock_runner):
+            self.assertTrue(self.state.is_symbol_in_auto_trade("TSLA"))
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_allowed_when_not_in_auto_trade(self, mock_service_cls):
+        """If ticker is not in auto-trade, exit strategy applies even if loop is running."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 238.0
+        mock_service.get_mark_price.return_value = {"price": 23.14}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_intw", "stop_price": 22.45}
+
+        # Loop is running for AAPL, but user applies exit strategy for INTW
+        self.state.loop_running = True
+        self.state.settings.symbols = "AAPL"
+        self.state.settings.symbol = "AAPL"
+
+        res = self.state.manage_position_stop(
+            symbol="INTW",
+            action="price",
+            stop_price=22.45,
+            qty=238.0,
+        )
+        self.assertTrue(res["stop"])
+        self.assertEqual(res["stop"]["stop_price"], 22.45)
+        mock_service.replace_stop_loss.assert_called_once_with("INTW", 22.45, qty=238.0)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_blocked_when_in_auto_trade_loop(self, mock_service_cls):
+        """If ticker IS in auto-trade loop, manual exit strategy changes are blocked."""
+        self.state.loop_running = True
+        self.state.settings.symbols = "AAPL"
+        self.state.settings.symbol = "AAPL"
+
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=145.0,
+            )
+        self.assertIn("Stop the strategy loop before changing exit strategies by hand", str(ctx.exception))
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_blocked_when_in_multi_auto_trade(self, mock_service_cls):
+        """If ticker IS in isolated multi auto-trade, manual exit strategy changes are blocked."""
+        self.state.loop_running = False
+        mock_runner = MagicMock()
+        mock_runner.is_running = True
+        with patch.object(self.state.multi_trader, "get_runner", return_value=mock_runner):
+            with self.assertRaises(ValueError) as ctx:
+                self.state.manage_position_stop(
+                    symbol="MSFT",
+                    action="price",
+                    stop_price=300.0,
+                )
+            self.assertIn("Stop auto-trade for MSFT", str(ctx.exception))
+
 
 class TestArmBracketExit(unittest.TestCase):
     def setUp(self):

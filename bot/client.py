@@ -2579,6 +2579,7 @@ class AlpacaService:
                         "stop_price": attached_stop_price,
                         "pct": stop_pct,
                         "attached": "oto",
+                        "side": "buy" if short_entry else "sell",
                     }
                     if limit_exit is not None:
                         oto_stop["limit_price"] = limit_exit
