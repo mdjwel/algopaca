@@ -370,6 +370,7 @@
                   <option value="180" data-i18n="days_180">180 days</option>
                   <option value="365" selected data-i18n="days_365">1 year</option>
                   <option value="730" data-i18n="days_730">2 years</option>
+                  <option value="custom" data-i18n="range_custom">Custom</option>
                 </select>
               </label>
               <label for="bt-tf" class="stack"><span data-i18n="bar_timeframe">Bar timeframe</span>
@@ -380,6 +381,42 @@
                   <option value="5Min" data-i18n="tf_5min">5 minutes</option>
                 </select>
               </label>
+              <div id="bt-custom-date-wrap" class="bt-custom-date-wrap" hidden>
+                <div class="date-range" role="group" aria-label="Custom lookback date range" data-i18n-aria-label="custom_lookback_range">
+                  <label class="date-field"><span data-i18n="from_date">From</span>
+                    <span class="date-field-shell">
+                      <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                        <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                        <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                      </svg>
+                      <input id="bt-date-start" name="start_date" type="date" autocomplete="off" aria-describedby="bt-custom-date-hint" />
+                    </span>
+                  </label>
+                  <span class="date-range-span" aria-hidden="true"></span>
+                  <label class="date-field"><span data-i18n="to_date">To</span>
+                    <span class="date-field-shell">
+                      <svg class="date-field-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                        <rect x="3.5" y="5.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                        <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 3.25v4.5M16 3.25v4.5M3.5 10h17"/>
+                      </svg>
+                      <input id="bt-date-end" name="end_date" type="date" autocomplete="off" aria-describedby="bt-custom-date-hint" />
+                    </span>
+                  </label>
+                </div>
+                <div class="bt-custom-days-row">
+                  <label for="bt-custom-days-input" class="bt-custom-days-field">
+                    <span data-i18n="lookback_days">Lookback days</span>
+                    <input id="bt-custom-days-input" type="number" min="1" max="1500" value="30" class="bt-custom-days-input" inputmode="numeric" />
+                  </label>
+                  <div class="bt-custom-quick-chips" role="group" aria-label="Quick days" data-i18n-aria-label="quick_days">
+                    <button type="button" class="chip chip-sm" data-days="14">14d</button>
+                    <button type="button" class="chip chip-sm" data-days="45">45d</button>
+                    <button type="button" class="chip chip-sm" data-days="120">120d</button>
+                    <button type="button" class="chip chip-sm" data-days="250">250d</button>
+                  </div>
+                </div>
+                <p id="bt-custom-date-hint" class="field-help bt-custom-date-hint" data-i18n="bt_custom_date_hint">Select a custom start and end date or enter the exact number of lookback days.</p>
+              </div>
               <p id="bt-market-hint" class="field-help" data-i18n="market_timeframe_hint">Daily bars support up to 2 years. Intraday is capped at 60 days.</p>
             </fieldset>
 
@@ -476,6 +513,10 @@
               <div>
                 <span data-i18n="round_trips">Round trips</span>
                 <strong id="bt-trades-n">—</strong>
+              </div>
+              <div>
+                <span data-i18n="lookback_days">Lookback days</span>
+                <strong id="bt-lookback-days">—</strong>
               </div>
             </div>
             <p id="bt-meta" class="field-help"></p>

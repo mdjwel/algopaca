@@ -89,26 +89,41 @@ def _sanitize(plan: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def save_plans(plans: dict[str, dict[str, Any]], *, paper: bool = True) -> None:
+def save_plans(
+    plans: dict[str, dict[str, Any]],
+    *,
+    paper: bool = True,
+    path: Path | None = None,
+) -> None:
     """Write the ledger. Never raises — a full disk must not kill a ticket."""
-    path = plans_path_for(paper=paper)
+    if path is None:
+        path = plans_path_for(paper=paper)
     rows = []
     for plan in (plans or {}).values():
         clean = _sanitize(plan)
         if clean is not None:
             rows.append(clean)
     rows.sort(key=lambda p: float(p.get("created_at") or 0.0), reverse=True)
+    active = [p for p in rows if p.get("status") in ACTIVE_STATUSES]
+    settled = [p for p in rows if p.get("status") not in ACTIVE_STATUSES]
+    keep_settled = max(0, MAX_PLANS - len(active))
+    rows = active + settled[:keep_settled]
+    rows.sort(key=lambda p: float(p.get("created_at") or 0.0), reverse=True)
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(rows[:MAX_PLANS], indent=2) + "\n", encoding="utf-8"
+            json.dumps(rows, indent=2) + "\n", encoding="utf-8"
         )
     except OSError as exc:  # pragma: no cover - disk issues must not halt trading
         logger.warning("could not persist dip-hunt plans: %s", exc)
 
 
-def load_plans(*, paper: bool = True) -> dict[str, dict[str, Any]]:
+def load_plans(
+    *, paper: bool = True, path: Path | None = None
+) -> dict[str, dict[str, Any]]:
     """Read the ledger back, downgrading states that a restart invalidated."""
-    path = plans_path_for(paper=paper)
+    if path is None:
+        path = plans_path_for(paper=paper)
     if not path.exists():
         return {}
     try:

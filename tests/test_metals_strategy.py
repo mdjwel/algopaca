@@ -222,7 +222,7 @@ class TestMetalsPresets(unittest.TestCase):
         self.assertEqual(preset.take_profit_r, 4.0)
         self.assertEqual(preset.trail_after_r, 2.0)
         self.assertEqual(preset.min_confidence, 0.70)
-        self.assertEqual(preset.risk_pct, 1.5)
+        self.assertEqual(preset.risk_pct, 1.8)
         self.assertEqual(preset.max_positions, 2)
         self.assertIn("Gold/Silver ratio", preset.instructions)
         # The playbook must carry the calibrated regime gate, not a breakout gate.
@@ -240,7 +240,7 @@ class TestMetalsPresets(unittest.TestCase):
         self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GDXU, GLL, GDXD")
         self.assertEqual(bp["choices"]["ai_take_profit_r"], 4.0)
         self.assertEqual(bp["choices"]["ai_atr_stop_mult"], 1.6)
-        self.assertEqual(bp["choices"]["ai_risk_pct"], 1.5)
+        self.assertEqual(bp["choices"]["ai_risk_pct"], 1.8)
         self.assertEqual(bp["choices"]["ai_trail_after_r"], 2.0)
         self.assertEqual(bp["choices"]["ai_min_confidence"], 0.70)
         self.assertEqual(bp["choices"]["bar_timeframe"], "1Hour")
@@ -781,9 +781,9 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         row["dist_sma50_atr"] = 1.0
         row["trend_regime"] = "bullish_above_sma200"
 
-        # Condition 1: Macro Score < 0.5 -> Must reject (HOLD)
-        row["macro_composite_score"] = 0.2
-        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=0.2)
+        # Condition 1: Macro Score < 0.0 -> Must reject (HOLD)
+        row["macro_composite_score"] = -0.2
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=-0.2)
         self.assertEqual(sig, Signal.HOLD)
 
         # Condition 2: Macro Score >= +0.5 -> Approved (BUY, conf >= 0.70)
@@ -889,13 +889,13 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertEqual(preset.take_profit_r, 4.0)
         self.assertEqual(preset.trail_after_r, 2.0)
         self.assertEqual(preset.atr_stop_mult, 1.6)
-        self.assertEqual(preset.risk_pct, 1.5)
+        self.assertEqual(preset.risk_pct, 1.8)
         # Verify auto-defaults via __post_init__
         auto_params = AiBacktestParams(preset="gold_silver_macro")
         self.assertEqual(auto_params.take_profit_r, 4.0)
         self.assertEqual(auto_params.trail_after_r, 2.0)
         self.assertEqual(auto_params.min_confidence, 0.70)
-        self.assertEqual(auto_params.risk_pct, 1.5)
+        self.assertEqual(auto_params.risk_pct, 1.8)
         self.assertEqual(auto_params.atr_stop_mult, 1.6)
 
     def test_rule7_portfolio_backtest_with_macro_rules(self):
@@ -1042,6 +1042,137 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
                 self.assertIn("GDXU", [s.strip() for s in symbols.split(",")])
                 self.assertIn("GDXD", [s.strip() for s in symbols.split(",")])
                 self.assertEqual(match["choices"]["bar_timeframe"], "1Hour")
+    
+    def test_gold_silver_macro_entry_gates(self):
+        """Verify Auto Trade entry_gates enforce macro thresholds and late-session inverse block."""
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        from bot.ai_risk import entry_gates
+
+        config = MagicMock()
+        config.ai_preset = "gold_silver_macro"
+        config.ai_daily_loss_limit_pct = 3.0
+        config.ai_max_positions = 2
+        config.ai_max_spread_bps = 25.0
+        config.ai_cooldown_minutes = 60
+
+        # GLD: negative macro score (< 0.0) should be blocked
+        ctx_gld_neg = {
+            "symbol": "GLD",
+            "mark": {"bid": 240.0, "ask": 240.05},
+            "precious_metals_intel": {"macro_composite_score": -0.25},
+        }
+        gate = entry_gates(config, ctx_gld_neg, open_positions=0, day_pl_pct=0.0)
+        self.assertFalse(gate.allowed)
+        self.assertIn("GLD macro score", gate.reason)
+
+        # GLD: constructive macro score (>= 0.0) should be allowed
+        ctx_gld_pos = {
+            "symbol": "GLD",
+            "mark": {"bid": 240.0, "ask": 240.05},
+            "precious_metals_intel": {"macro_composite_score": 0.15},
+        }
+        gate = entry_gates(config, ctx_gld_pos, open_positions=0, day_pl_pct=0.0)
+        self.assertTrue(gate.allowed)
+
+        # SLV: macro < 0.2 and gsr_z < 0.8 should be blocked
+        ctx_slv_unsupportive = {
+            "symbol": "SLV",
+            "mark": {"bid": 28.0, "ask": 28.01},
+            "precious_metals_intel": {"macro_composite_score": 0.10, "gsr_z_score": 0.40},
+        }
+        gate = entry_gates(config, ctx_slv_unsupportive, open_positions=0, day_pl_pct=0.0)
+        self.assertFalse(gate.allowed)
+        self.assertIn("SLV macro score", gate.reason)
+
+        # SLV: stretched GSR (gsr_z >= 0.8) should be allowed
+        ctx_slv_stretched = {
+            "symbol": "SLV",
+            "mark": {"bid": 28.0, "ask": 28.01},
+            "precious_metals_intel": {"macro_composite_score": 0.10, "gsr_z_score": 0.95},
+        }
+        gate = entry_gates(config, ctx_slv_stretched, open_positions=0, day_pl_pct=0.0)
+        self.assertTrue(gate.allowed)
+
+        # GLL: late session entry (>= 19 UTC / 3 PM ET) should be blocked
+        late_dt = datetime(2026, 9, 15, 19, 15, tzinfo=timezone.utc)
+        early_dt = datetime(2026, 9, 15, 14, 30, tzinfo=timezone.utc)
+        ctx_gll = {
+            "symbol": "GLL",
+            "mark": {"bid": 25.0, "ask": 25.02},
+            "precious_metals_intel": {"macro_composite_score": -0.80},
+        }
+        with patch("bot.ai_risk.datetime") as mock_dt:
+            mock_dt.now.return_value = late_dt
+            gate = entry_gates(config, ctx_gll, open_positions=0, day_pl_pct=0.0)
+            self.assertFalse(gate.allowed)
+            self.assertIn("Late-session entry", gate.reason)
+
+        with patch("bot.ai_risk.datetime") as mock_dt:
+            mock_dt.now.return_value = early_dt
+            gate = entry_gates(config, ctx_gll, open_positions=0, day_pl_pct=0.0)
+            self.assertTrue(gate.allowed)
+
+    def test_ai_qty_for_risk_balanced_allocation_cap(self):
+        """Verify ai_qty_for_risk caps single position allocation to 55% when max_positions >= 2."""
+        from bot.config import Config
+
+        cfg = Config.default(
+            ai_risk_pct=1.8,
+            ai_atr_stop_mult=1.6,
+            ai_max_positions=2,
+            risk_engine_enabled=True,
+        )
+        equity = 20000.0
+        price = 100.0
+        # Extremely small stop distance so target_qty = (20000 * 0.018) / 0.10 = 3600 shares ($360,000)
+        stop_distance = 0.10
+        qty = cfg.ai_qty_for_risk(price=price, stop_distance=stop_distance, equity=equity)
+        # 55% of $20,000 = $11,000 / $100 = 110 shares
+        self.assertAlmostEqual(qty, 110.0, places=2)
+
+    def test_ai_brain_silver_gsr_boost(self):
+        """Verify AiBrain._max_qty boosts SLV position by 25% when GSR z >= 0.8."""
+        from bot.ai_brain import AiBrain
+        from bot.config import Config
+
+        cfg = Config.default(
+            ai_preset="gold_silver_macro",
+            ai_risk_pct=1.8,
+            ai_atr_stop_mult=1.6,
+            ai_max_positions=2,
+            risk_engine_enabled=True,
+            size_mode="ai",
+        )
+        brain = AiBrain.__new__(AiBrain)
+        brain.config = cfg
+
+        equity = 20000.0
+        price = 30.0
+        stop_dist = 1.50
+        # Normal risk qty = (20000 * 0.018) / 1.50 = 240 shares (under 55% cap of 366.6 shares)
+
+        # Normal GSR (z = 0.3)
+        ctx_normal = {
+            "symbol": "SLV",
+            "mark": {"price": price},
+            "account": {"equity": equity},
+            "risk": {"stop_distance": stop_dist},
+            "precious_metals_intel": {"gsr_z_score": 0.3},
+        }
+        qty_normal = brain._max_qty(ctx_normal)
+        self.assertAlmostEqual(qty_normal, 240.0, places=1)
+
+        # Stretched GSR (z = 1.1) -> 25% boost = 240 * 1.25 = 300 shares
+        ctx_stretched = {
+            "symbol": "SLV",
+            "mark": {"price": price},
+            "account": {"equity": equity},
+            "risk": {"stop_distance": stop_dist},
+            "precious_metals_intel": {"gsr_z_score": 1.1},
+        }
+        qty_stretched = brain._max_qty(ctx_stretched)
+        self.assertAlmostEqual(qty_stretched, 300.0, places=1)
 
 
 if __name__ == "__main__":

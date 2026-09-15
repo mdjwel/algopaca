@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -173,6 +174,48 @@ def entry_gates(
             False,
             f"Stopped out {float(stop_age):.0f}m ago — cooling down for {cooldown}m.",
         )
+
+    preset_id = getattr(config, "ai_preset", "")
+    if preset_id == "gold_silver_macro":
+        symbol = str(context.get("symbol") or "").upper().strip()
+        metals_intel = context.get("precious_metals_intel") or {}
+        try:
+            val_macro = metals_intel.get("macro_composite_score")
+            macro_score = float(val_macro) if val_macro is not None else 0.0
+        except (ValueError, TypeError):
+            macro_score = 0.0
+
+        try:
+            val_gsr = metals_intel.get("gsr_z_score")
+            gsr_z = float(val_gsr) if val_gsr is not None else 0.0
+        except (ValueError, TypeError):
+            gsr_z = 0.0
+
+        # 1. Late-session entry filter on inverse ETFs (hour >= 19 UTC / 3 PM ET)
+        if symbol in {"GLL", "GDXD"}:
+            now_utc = datetime.now(timezone.utc)
+            if now_utc.hour >= 19:
+                return Gate(
+                    False,
+                    f"Late-session entry on inverse ETF {symbol} blocked ({now_utc.strftime('%H:%M')} UTC >= 19:00 UTC) to avoid overnight gap risk.",
+                )
+
+        # 2. GLD / bullion macro gate (macro_composite_score >= 0.0)
+        if symbol in {"GLD", "IAU", "BAR", "OUNZ", "PHYS"}:
+            if macro_score < 0.0:
+                return Gate(
+                    False,
+                    f"GLD macro score ({macro_score:+.2f} < 0.00) is negative — waiting for constructive macro backdrop.",
+                )
+
+        # 3. SLV / silver catch-up gate (macro >= 0.2 or gsr_z >= 0.8)
+        if symbol in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}:
+            if macro_score < 0.2 and gsr_z < 0.8:
+                return Gate(
+                    False,
+                    f"SLV macro score ({macro_score:+.2f} < 0.20) and GSR z ({gsr_z:+.2f} < 0.80) are unsupportive for silver catch-up.",
+                )
+
     return ALLOW
 
 

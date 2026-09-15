@@ -1201,6 +1201,12 @@ a.pos-prot-badge.orders:focus-visible {
   border: 1px solid rgba(100, 160, 255, 0.3);
 }
 
+.pos-prot-badge.dh {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
 /* Allocation High Risk / Concentration Warning */
 .pos-alloc-segment.high-risk {
   filter: brightness(1.15);
@@ -3844,6 +3850,202 @@ a.pos-prot-badge.orders:focus-visible {
 #pos-exit-preview-rr {
   color: var(--text);
 }
+
+/* Dip Hunt (Re-buy after stop-out dip) in Exit Strategy Modal */
+#pos-exit-stat-sub-diphunt {
+  & strong {
+    color: var(--buy);
+  }
+}
+
+.pos-exit-dip-hunt-group {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface-soft, rgba(255, 255, 255, 0.025));
+  margin-bottom: 0.75rem;
+  box-sizing: border-box;
+  transition: background 160ms ease, border-color 160ms ease;
+
+  &[hidden] {
+    display: none !important;
+  }
+
+  & > summary.manual-accordion-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    min-height: 1.35rem;
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    user-select: none;
+    box-sizing: border-box;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::marker {
+      content: "";
+    }
+
+    &:hover {
+      color: var(--text);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--copper);
+      outline-offset: 2px;
+      border-radius: var(--radius-sm);
+    }
+
+    & .manual-accordion-title {
+      flex: 1;
+      min-width: 0;
+      color: inherit;
+    }
+
+    & .manual-fold-caret {
+      display: block;
+      width: 0.42rem;
+      height: 0.42rem;
+      flex-shrink: 0;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(-45deg);
+      transform-origin: 50% 50%;
+      transition: transform 160ms ease;
+    }
+
+    & .manual-accordion-badge {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel) 80%, transparent);
+      border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+      color: var(--muted);
+      text-transform: none;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+
+      &:empty {
+        display: none;
+      }
+    }
+  }
+
+  &[open] {
+    & > summary.manual-accordion-head {
+      margin-bottom: 0.65rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+      color: var(--text);
+
+      & .manual-fold-caret {
+        transform: rotate(45deg);
+      }
+    }
+  }
+
+  & .manual-accordion-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+
+    & > .check {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: var(--surface-soft, rgba(255, 255, 255, 0.03));
+      transition: border-color 0.18s ease, background 0.18s ease;
+      width: 100%;
+      cursor: pointer;
+      box-sizing: border-box;
+
+      &:hover {
+        border-color: color-mix(in srgb, var(--buy) 30%, transparent);
+        background: color-mix(in srgb, var(--buy) 5%, transparent);
+      }
+
+      &:focus-within {
+        border-color: var(--buy);
+      }
+
+      &:has(input:checked) {
+        border-color: color-mix(in srgb, var(--buy) 45%, transparent);
+        background: color-mix(in srgb, var(--buy) 10%, transparent);
+      }
+    }
+
+    & .field-pair-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 0.25rem;
+
+      & label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.76rem;
+        color: var(--text-muted);
+
+        & input {
+          width: 100%;
+          background: rgba(0, 0, 0, 0.38);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: var(--radius-sm);
+          padding: 0.45rem 0.65rem;
+          color: var(--text);
+          font-family: var(--mono);
+          font-size: 0.86rem;
+          box-sizing: border-box;
+
+          &:focus {
+            outline: none;
+            border-color: var(--buy);
+            box-shadow: 0 0 0 1px var(--buy);
+          }
+        }
+      }
+    }
+
+    & .field-help {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+      margin: 0;
+
+      &.info {
+        color: var(--text);
+        background: rgba(63, 191, 143, 0.08);
+        border-left: 3px solid var(--buy);
+        padding: 0.45rem 0.65rem;
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        margin-top: 0.35rem;
+      }
+    }
+  }
+}
+
 
 @media (max-width: 600px) {
   .pos-modal-backdrop {

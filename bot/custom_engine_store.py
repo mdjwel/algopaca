@@ -22,10 +22,10 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
         "is_blueprint": True,
         "instructions": (
             "Specialized Gold & Silver (GLD, SLV, GDXU, GLL, GDXD) macro playbook, calibrated on 2007-2025 GLD forward returns.\n"
-            "LONG gates: trend_regime 'bullish_above_sma200' AND macro_composite_score >= +0.5. Enter on a PULLBACK (RSI 38-58 or price at/below SMA20) — gold's 5-20 day momentum is negatively correlated with next-month returns, so fresh breakouts are a measured losing entry. Step up to GDXU only when the score is >= +1.5.\n"
-            "SHORT & INVERSE gates: trend_regime 'bearish_below_sma200' AND macro_composite_score <= -0.5, ideally with rising yields. Size smaller than an equivalent long — shorting gold fights a positive long-run drift. Keep inverse ETFs (GLL, GDXD) short-dated (max ~5 trading days or inverse RSI >= 65); their daily reset erodes multi-week holds.\n"
+            "LONG gates: trend_regime 'bullish_above_sma200' AND macro_composite_score >= 0.0. Enter on a PULLBACK (RSI 38-58 or price at/below SMA20) — gold's 5-20 day momentum is negatively correlated with next-month returns, so fresh breakouts are a measured losing entry. Step up to GDXU only when score is >= +1.5. SLV catch-up trigger: gsr_z_score >= +0.8 or macro >= +0.2 (size boosted 25%).\n"
+            "SHORT & INVERSE gates: trend_regime 'bearish_below_sma200' AND macro_composite_score <= -0.5, ideally with rising yields. Size smaller than an equivalent long — shorting gold fights a positive long-run drift. Keep inverse ETFs (GLL, GDXD) short-dated (max ~5 trading days or inverse RSI >= 65); skip late-session entry (hour >= 19 UTC / 3 PM ET) to avoid overnight gap risk.\n"
             "RISK & SAFETY: Hold into high-impact FOMC/CPI release windows (within 45 mins) to avoid whipsaws. Rates (0.40) and the Gold/Silver ratio (0.35) drive the macro score; miner leadership has no measured predictive power — treat it as colour only. GDX, GDXJ, DUST, and UGL are strictly excluded.\n"
-            "PATIENCE: overtrading is what destroys returns in this asset. On an open, working position the default answer is HOLD; exit on a regime flip or a macro score below -0.5, not on a shallow pullback."
+            "PATIENCE: overtrading is what destroys returns in this asset. On an open, working position the default answer is HOLD; exit on a regime flip or a macro score below -1.0, not on a shallow pullback."
         ),
         "choices": {
             "strategy_mode": "ai",
@@ -40,7 +40,7 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
             "trade_notional": 300.0,
             "poll_seconds": 120,
             "risk_engine_enabled": True,
-            "ai_risk_pct": 1.5,
+            "ai_risk_pct": 1.8,
             "ai_atr_stop_mult": 1.6,
             "ai_take_profit_r": 4.0,
             "ai_trail_after_r": 2.0,

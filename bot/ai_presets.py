@@ -268,7 +268,7 @@ _PRESETS: tuple[AiPreset, ...] = (
         take_profit_r=4.0,
         trail_after_r=2.0,
         max_positions=2,
-        risk_pct=1.5,
+        risk_pct=1.8,
         instructions=(
             "Specialized Gold & Silver (GLD, SLV, GDXU, GLL, GDXD) macro playbook.\n"
             "This playbook is calibrated against 2007-2025 forward-return studies on GLD, not on folklore. "
@@ -285,7 +285,7 @@ _PRESETS: tuple[AiPreset, ...] = (
             "LONG gates (all must hold):\n"
             "1. Regime: precious_metals_intel.trend_regime is 'bullish_above_sma200'. This is the single "
             "participation gate — it is what keeps you out of multi-year bear markets like 2012-2015.\n"
-            "2. Macro: macro_composite_score >= +0.5 (metals_macro_bias 'moderate_bullish' or better). The "
+            "2. Macro: macro_composite_score >= 0.0 (constructive/neutral macro bias). The "
             "score is a calibrated -3..+3 blend; scores below -0.5 preceded NEGATIVE average forward returns, "
             "so treat that band as a hard no-buy, not a discount.\n"
             "3. Entry timing: prefer entering on a PULLBACK — RSI between 38 and 58, or price at or below "
@@ -294,8 +294,8 @@ _PRESETS: tuple[AiPreset, ...] = (
             "4. Vehicle: default to GLD. Only step up to GDXU (3x miners) when macro_composite_score is "
             ">= +1.5 (ADX >= 20.0) AND trend_regime is bullish — GDX, GDXJ, DUST, and UGL are strictly excluded. "
             "GDXU is a long-only bull vehicle (unshortable at Alpaca); NEVER initiate a short/sell to open on it.\n"
-            "5. Relative value: when gsr_z_score >= +1.2 the ratio is stretched. Historically this marked a "
-            "risk-off bid that lifted the whole complex AND set up silver catch-up, so SLV is the higher-beta "
+            "5. Relative value: when gsr_z_score >= +0.8 or macro_composite_score >= +0.2 the ratio is stretched or supportive. "
+            "Historically this marked a risk-off bid that lifted the whole complex AND set up silver catch-up, so SLV is the higher-beta "
             "expression of a bullish call (size boosted). When gsr_z_score <= -1.2 the ratio is compressed — a risk-on tell "
             "that preceded below-average bullion returns. Do not read a low ratio as 'gold is cheap'.\n"
             "SHORT & INVERSE ETF gates:\n"
@@ -304,7 +304,8 @@ _PRESETS: tuple[AiPreset, ...] = (
             "3. Shorting gold fights a positive long-run drift. Require a clearly bearish macro score and "
             "size smaller than an equivalent long. Inverse ETFs (GLL, GDXD) express the bearish view without margin "
             "borrow by BUYING long (action='buy'). DUST is strictly excluded. Never short GDXD or GDXU directly, and never hold opposing pairs like GDXU and GDXD simultaneously. "
-            "Do NOT initiate or maintain shorts when US Dollar Index economic data is mixed or dollar_trend is 'neutral'.\n"
+            "Do NOT initiate or maintain shorts when US Dollar Index economic data is mixed or dollar_trend is 'neutral'. "
+            "Skip late-session entry (hour >= 19 UTC) on inverse ETFs to avoid overnight gap risk.\n"
             "RISK & VOLATILITY GATES:\n"
             "- If macro_risk_level is 'imminent_release' (high-impact FOMC / CPI within 45 minutes), HOLD to avoid spread whipsaws.\n"
             "- HARD SKIP when spread_bps > 25.\n"
@@ -315,7 +316,7 @@ _PRESETS: tuple[AiPreset, ...] = (
             "- Scale out at the 4.0R take-profit target; let the remainder trail for multi-week commodity upside.\n"
             "- INVERSE DECAY GUARD: For inverse ETFs (GLL, GDXD), never hold longer than ~5 trading days or when inverse RSI reaches >= 65.0 to guard against leveraged volatility decay.\n"
             "- Exit early ONLY on a confirmed regime flip (loss of trend_regime), a macro score that has "
-            "crossed below -0.5, or a major contradicting catalyst. Do not exit on short-term weakness alone "
+            "crossed below -1.0, or a major contradicting catalyst. Do not exit on short-term weakness alone "
             "— shallow pullbacks inside an uptrend are entries, not exits.\n"
             "- REVERSAL RULE: If analysis shows economic data for the US Dollar Index is mixed or neutral "
             "(dollar_trend 'neutral' or dollar_mixed is True), immediately CLOSE/COVER any open sell/short "

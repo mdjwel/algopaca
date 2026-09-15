@@ -835,6 +835,10 @@
                 <span data-i18n="distance_label">Distance</span>
                 <strong id="pos-exit-curr-dist" class="mono">—</strong>
               </div>
+              <div class="pos-exit-stat-sub" id="pos-exit-stat-sub-diphunt" hidden>
+                <span data-i18n="dip_hunt_enable">Re-buy Dip</span>
+                <strong id="pos-exit-curr-diphunt" class="mono">—</strong>
+              </div>
             </div>
           </div>
 
@@ -1026,6 +1030,39 @@
             </div>
             <p id="pos-exit-qty-hint" class="field-help"></p>
           </div>
+
+          <!-- Buy Automation: Dip Hunt (Re-buy after a stop-out dip) -->
+          <details class="field-group manual-accordion pos-exit-dip-hunt-group" id="pos-exit-dip-hunt-group" hidden>
+            <summary class="manual-accordion-head">
+              <span class="manual-fold-caret" aria-hidden="true"></span>
+              <span class="manual-accordion-title" data-i18n="dip_hunt_legend">Buy from the lowest price</span>
+              <span id="pos-exit-dip-hunt-summary-badge" class="manual-accordion-badge"></span>
+            </summary>
+            <div class="manual-accordion-body">
+              <label class="check" for="pos-exit-dip-hunt-enabled">
+                <input type="checkbox" id="pos-exit-dip-hunt-enabled" name="dip_hunt_enabled" />
+                <strong data-i18n="dip_hunt_enable">Re-buy after a stop-out dip</strong>
+              </label>
+              <p class="field-help" data-i18n="dip_hunt_help">When the stop fills, the desk waits for a further drop from that sell price. If the drop hits before the wait is up, it buys immediately. If the wait ends first, it parks a limit at the same target. The cycle repeats until you cancel it or the take-profit fills.</p>
+
+              <div id="pos-exit-dip-hunt-fields" hidden>
+                <div class="field-pair-row">
+                  <label for="pos-exit-dip-hunt-wait"><span data-i18n="dip_hunt_wait">Wait (minutes)</span>
+                    <input id="pos-exit-dip-hunt-wait" name="dip_hunt_wait_minutes" type="number" min="1" max="1440" step="1" value="10" inputmode="numeric" aria-describedby="help-pos-exit-dip-hunt-wait" />
+                    <p id="help-pos-exit-dip-hunt-wait" class="field-help" data-i18n="help_dip_hunt_wait">How long to watch after the stop fills before parking a limit. Skipped if the drop prints first. Max 1440 (24h).</p>
+                    <p class="field-error" role="alert" hidden></p>
+                  </label>
+                  <label for="pos-exit-dip-hunt-pct"><span data-i18n="dip_hunt_pct">Further drop %</span>
+                    <input id="pos-exit-dip-hunt-pct" name="dip_hunt_pct" type="number" min="0.1" max="50" step="0.1" value="5" inputmode="decimal" aria-describedby="help-pos-exit-dip-hunt-pct" />
+                    <p id="help-pos-exit-dip-hunt-pct" class="field-help" data-i18n="help_dip_hunt_pct">Buy this far below the stop-out fill. Example: stop at $10, 5% → limit at $9.50.</p>
+                    <p class="field-error" role="alert" hidden></p>
+                  </label>
+                </div>
+                <p id="pos-exit-dip-hunt-summary" class="field-help info" aria-live="polite"></p>
+                <p class="field-help info" data-i18n="dip_hunt_runtime_note">Live hunts are saved and resume after a restart until the re-buy fills or you cancel them.</p>
+              </div>
+            </div>
+          </details>
 
           <!-- Risk / Reward Live Preview Matrix -->
           <div class="pos-modal-preview pos-exit-preview" id="pos-exit-preview-box">

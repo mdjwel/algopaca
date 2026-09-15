@@ -735,6 +735,13 @@ function protectionMarkup(pos) {
     const tp = `$${Number(pos.take_profit_price).toFixed(2)}`;
     parts.push(`<span class="pos-prot-badge tp" title="${escapeHtml(tx("take_profit", "Take profit"))} ${tp}">🎯 ${tp}</span>`);
   }
+  if (pos.has_dip_hunt) {
+    const dh = pos.dip_hunt_plan;
+    const dhText = dh ? `${dh.wait_minutes}m · ${dh.dip_pct}%` : "";
+    parts.push(
+      `<span class="pos-prot-badge dh" title="${escapeHtml(tx("orders_dip_hunt_armed", "Dip Hunt armed") + (dhText ? ` (${dhText})` : ""))}">🎯 ${escapeHtml(tx("dip_hunt", "Dip Hunt"))}${dhText ? ` <em>${escapeHtml(dhText)}</em>` : ""}</span>`
+    );
+  }
   // Resting orders hold shares back; a close that ignores them gets rejected.
   const openCount = Number(pos.open_orders_count || 0);
   if (openCount > 0) {
@@ -1313,9 +1320,17 @@ function openExitStrategyModal(pos, initialMode = null) {
 
   const hasSl = !!pos.has_stop_loss;
   const hasTp = !!pos.has_take_profit;
+  const hasDh = !!pos.has_dip_hunt;
+  const dhPlan = pos.dip_hunt_plan;
 
   if (statusIndicator) {
-    if (hasSl && hasTp) {
+    if (hasSl && hasTp && hasDh) {
+      statusIndicator.textContent = tx("status_bracket_dip_active", "Bracket + Re-buy Active");
+      statusIndicator.className = "pos-exit-status-indicator pos";
+    } else if (hasSl && hasDh) {
+      statusIndicator.textContent = tx("status_stop_dip_active", "Stop + Re-buy Active");
+      statusIndicator.className = "pos-exit-status-indicator pos";
+    } else if (hasSl && hasTp) {
       statusIndicator.textContent = tx("status_bracket_active", "Bracket Active");
       statusIndicator.className = "pos-exit-status-indicator pos";
     } else if (hasSl) {
@@ -1335,6 +1350,17 @@ function openExitStrategyModal(pos, initialMode = null) {
   }
   if (currDist) {
     currDist.textContent = pos.stop_distance_pct != null ? `${Math.abs(pos.stop_distance_pct).toFixed(1)}%` : "—";
+  }
+
+  const currDhSub = $("pos-exit-stat-sub-diphunt");
+  const currDhVal = $("pos-exit-curr-diphunt");
+  if (currDhSub) {
+    if (hasDh && dhPlan) {
+      currDhSub.hidden = false;
+      if (currDhVal) currDhVal.textContent = `${dhPlan.wait_minutes}m / ${dhPlan.dip_pct}%`;
+    } else {
+      currDhSub.hidden = true;
+    }
   }
 
   // Default stop loss price (3% default distance, ensuring valid level)
@@ -1462,6 +1488,25 @@ function openExitStrategyModal(pos, initialMode = null) {
   });
   syncExitQtyUi(heldQty, heldQty);
 
+  // Initialize Dip Hunt accordion & inputs
+  const dhGroup = $("pos-exit-dip-hunt-group");
+  const dhToggle = $("pos-exit-dip-hunt-enabled");
+  const dhWait = $("pos-exit-dip-hunt-wait");
+  const dhPct = $("pos-exit-dip-hunt-pct");
+
+  if (dhToggle) {
+    dhToggle.checked = hasDh;
+  }
+  if (dhWait) {
+    dhWait.value = String(dhPlan?.wait_minutes ?? 10);
+  }
+  if (dhPct) {
+    dhPct.value = String(dhPlan?.dip_pct ?? 5);
+  }
+  if (dhGroup) {
+    dhGroup.open = hasDh;
+  }
+
   // Smart initial mode selection based on active exits
   let modeToOpen = initialMode;
   if (!modeToOpen) {
@@ -1506,9 +1551,112 @@ function syncExitQtyUi(qty, heldQty) {
   }
 }
 
+function formatExitPrice(value) {
+  const price = Number(value);
+  if (!Number.isFinite(price)) return "—";
+  const digits = Math.abs(price) < 1 ? 4 : 2;
+  return `$${price.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+function syncExitDipHuntUI(resolvedStopPx) {
+  if (!activeExitPosition) return;
+  const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+  const isSupportedMode = ["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode);
+  const shouldShow = !isShort && isSupportedMode;
+
+  const group = $("pos-exit-dip-hunt-group");
+  if (group) {
+    group.hidden = !shouldShow;
+  }
+
+  const toggle = $("pos-exit-dip-hunt-enabled");
+  const isChecked = toggle ? toggle.checked : false;
+  const enabled = shouldShow && isChecked;
+
+  const fields = $("pos-exit-dip-hunt-fields");
+  if (fields) {
+    fields.hidden = !enabled;
+  }
+
+  const waitInput = $("pos-exit-dip-hunt-wait");
+  const pctInput = $("pos-exit-dip-hunt-pct");
+  const badge = $("pos-exit-dip-hunt-summary-badge");
+  const summaryEl = $("pos-exit-dip-hunt-summary");
+
+  if (badge) {
+    if (!enabled) {
+      badge.textContent = tx("target_off", "off");
+    } else {
+      const wait = Number(waitInput?.value || 10);
+      const dip = Number(pctInput?.value || 5);
+      badge.textContent = `${wait}m / ${dip}%`;
+    }
+  }
+
+  if (summaryEl) {
+    if (!enabled) {
+      summaryEl.textContent = "";
+    } else {
+      const wait = Number(waitInput?.value || 10);
+      const dip = Number(pctInput?.value || 5);
+      let stopPx = resolvedStopPx;
+      if (stopPx == null || stopPx <= 0) {
+        const currPx = Number(activeExitPosition.current_price || 0);
+        let entryPx = Number(activeExitPosition.avg_entry_price || 0);
+        if (entryPx <= 0) entryPx = currPx;
+        if (activeExitMode === "stop_loss") {
+          stopPx = Number($("pos-exit-sl-price")?.value || 0);
+        } else if (activeExitMode === "breakeven") {
+          stopPx = entryPx - 0.01;
+        } else if (activeExitMode === "trailing") {
+          const trail = Number($("pos-exit-trail-pct")?.value || 3.0);
+          stopPx = currPx * (1 - trail / 100);
+        } else if (activeExitMode === "bracket") {
+          stopPx = Number($("pos-exit-bracket-sl")?.value || 0);
+        }
+      }
+
+      let extra = "";
+      if (Number.isFinite(stopPx) && stopPx > 0) {
+        const target = stopPx * (1 - dip / 100);
+        extra = tx("dip_hunt_summary_price", " Example from the mark: stop ~{stop} → buy at {buy}.", {
+          stop: formatExitPrice(stopPx),
+          buy: formatExitPrice(target),
+        });
+      }
+      summaryEl.textContent =
+        tx(
+          "dip_hunt_summary",
+          "After a stop-out, wait up to {wait} minutes for a further {dip}% drop — or buy immediately if that drop hits sooner. Then repeat.",
+          { wait: String(wait), dip: String(dip) }
+        ) + extra;
+    }
+  }
+}
+
 function closeExitStrategyModal() {
   closePosModal("pos-exit-modal");
   activeExitPosition = null;
+  const dhGroup = $("pos-exit-dip-hunt-group");
+  if (dhGroup) {
+    dhGroup.open = false;
+    dhGroup.hidden = true;
+  }
+  const dhToggle = $("pos-exit-dip-hunt-enabled");
+  if (dhToggle) {
+    dhToggle.checked = false;
+  }
+  const dhFields = $("pos-exit-dip-hunt-fields");
+  if (dhFields) {
+    dhFields.hidden = true;
+  }
+  const dhSummary = $("pos-exit-dip-hunt-summary");
+  if (dhSummary) {
+    dhSummary.textContent = "";
+  }
 }
 
 function setExitMode(mode) {
@@ -1588,6 +1736,7 @@ function setExitMode(mode) {
     }
   }
 
+  syncExitDipHuntUI();
   updateExitCalculations();
 }
 
@@ -1613,6 +1762,7 @@ function updateExitCalculations() {
 
   if (activeExitMode === "clear") {
     if (previewBox) previewBox.hidden = true;
+    syncExitDipHuntUI();
     return;
   }
   if (previewBox) previewBox.hidden = false;
@@ -1674,6 +1824,8 @@ function updateExitCalculations() {
       rrRow.hidden = true;
     }
   }
+
+  syncExitDipHuntUI(stopPx);
 }
 
 async function submitExitStrategy() {
@@ -1803,6 +1955,35 @@ async function submitExitStrategy() {
       else if (clearStops) payload.action = "cancel_stops";
       else if (clearTp) payload.action = "cancel_take_profit";
       else throw new Error(tx("err_select_cancellation", "Select at least one order type to cancel"));
+    }
+
+    if (activeExitMode !== "clear") {
+      const dhToggle = $("pos-exit-dip-hunt-enabled");
+      const isDipHuntSupported = !isShort && ["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode);
+
+      if (isDipHuntSupported && dhToggle && dhToggle.checked) {
+        if (activeExitMode === "bracket" && (!(Number($("pos-exit-bracket-sl")?.value) > 0))) {
+          throw new Error(tx("err_dip_hunt_requires_stop", "Re-buy after dip requires a protective stop loss order"));
+        }
+        const waitMinutes = Number($("pos-exit-dip-hunt-wait")?.value);
+        const dipPct = Number($("pos-exit-dip-hunt-pct")?.value);
+
+        if (!Number.isFinite(waitMinutes) || waitMinutes < 1 || waitMinutes > 1440) {
+          throw new Error(tx("err_dip_hunt_wait", "Wait time must be between 1 and 1440 minutes (24h)"));
+        }
+        if (!Number.isFinite(dipPct) || dipPct <= 0 || dipPct > 50) {
+          throw new Error(tx("err_dip_hunt_pct", "Dip percentage must sit between 0.1% and 50%"));
+        }
+        payload.dip_hunt = {
+          enabled: true,
+          wait_minutes: waitMinutes,
+          dip_pct: dipPct,
+        };
+      } else if (pos.has_dip_hunt) {
+        payload.dip_hunt = {
+          enabled: false,
+        };
+      }
     }
 
     const res = await fetch("/api/position/stop", {
@@ -3574,6 +3755,17 @@ function initPositionsUi() {
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
     });
+  });
+
+  // Exit Strategy Modal: Dip Hunt live inputs
+  $("pos-exit-dip-hunt-enabled")?.addEventListener("change", () => {
+    syncExitDipHuntUI();
+  });
+  $("pos-exit-dip-hunt-wait")?.addEventListener("input", () => {
+    syncExitDipHuntUI();
+  });
+  $("pos-exit-dip-hunt-pct")?.addEventListener("input", () => {
+    syncExitDipHuntUI();
   });
 
   // Modal Actions

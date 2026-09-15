@@ -124,7 +124,7 @@ const AI_PRESET_DEFAULTS = {
   momentum: { min_conf: 0.55, atr_stop: 2.0, tp_r: 3.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Follow strength: moving average breakouts & expanding MACD." },
   mean_reversion: { min_conf: 0.60, atr_stop: 2.5, tp_r: 1.2, trail_r: 0.0, risk_pct: 0.5, max_pos: 2, summary: "Fade stretched RSI and Bollinger washes back to the mean." },
   trend_atr: { min_conf: 0.55, atr_stop: 2.5, tp_r: 0.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Pure trend following with dynamic ATR trailing stop and no cap." },
-  gold_silver_macro: { min_conf: 0.70, atr_stop: 1.6, tp_r: 4.0, trail_r: 2.0, risk_pct: 1.5, max_pos: 2, summary: "GLD/SLV calibrated macro momentum: buys pullbacks in bull regime." },
+  gold_silver_macro: { min_conf: 0.70, atr_stop: 1.6, tp_r: 4.0, trail_r: 2.0, risk_pct: 1.8, max_pos: 2, summary: "GLD/SLV calibrated macro momentum: buys pullbacks in bull regime." },
 };
 
 function applyBtAiPreset(presetId) {
@@ -351,9 +351,11 @@ function syncBacktestUi() {
       : "Select a row to focus the summary and trades.";
   }
   const intraday = tf !== "1Day";
+  const isCustom = daysEl?.value === "custom";
   if (daysEl) {
     let selected = Number(daysEl.value);
     [...daysEl.options].forEach((opt) => {
+      if (opt.value === "custom") return;
       const days = Number(opt.value);
       const invalid = intraday && days > 60;
       opt.disabled = invalid;
@@ -361,12 +363,31 @@ function syncBacktestUi() {
         selected = 60;
       }
     });
-    if (intraday && selected > 60) selected = 60;
-    if (![...daysEl.options].some((o) => Number(o.value) === selected && !o.disabled)) {
-      selected = intraday ? 60 : 365;
+    if (!isCustom) {
+      if (intraday && selected > 60) selected = 60;
+      if (![...daysEl.options].some((o) => (o.value === "custom" ? false : Number(o.value) === selected) && !o.disabled)) {
+        selected = intraday ? 60 : 365;
+      }
+      daysEl.value = String(selected);
     }
-    daysEl.value = String(selected);
   }
+
+  const customWrap = $("bt-custom-date-wrap");
+  if (customWrap) {
+    customWrap.hidden = !isCustom;
+    const customDaysInput = $("bt-custom-days-input");
+    if (customDaysInput) {
+      customDaysInput.max = intraday ? "60" : "1500";
+      if (intraday && Number(customDaysInput.value || 0) > 60) {
+        customDaysInput.value = "60";
+      }
+    }
+    if (isCustom) {
+      initDateFields(customWrap);
+      ensureCustomDatesPopulated();
+    }
+  }
+
   if (marketHint) {
     marketHint.textContent = intraday
       ? "Intraday lookbacks are capped at 60 days. Longer options are disabled."
@@ -374,6 +395,155 @@ function syncBacktestUi() {
   }
   refreshNiceSelects(form);
   syncNiceSelectDisabled(form);
+}
+
+function syncCustomChipsActive(days) {
+  const dStr = String(days);
+  document.querySelectorAll(".bt-custom-quick-chips button[data-days]").forEach((btn) => {
+    const on = btn.getAttribute("data-days") === dStr;
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function shiftIsoDate(isoStr, dayOffset) {
+  const parts = parseIsoDate(isoStr) || parseIsoDate(nyTodayIso()) || {
+    y: new Date().getFullYear(),
+    m: new Date().getMonth(),
+    d: new Date().getDate(),
+  };
+  const dt = new Date(Date.UTC(parts.y, parts.m, parts.d + dayOffset));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    dt.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+function calcIsoDateDiff(startIso, endIso) {
+  const sParts = parseIsoDate(startIso);
+  const eParts = parseIsoDate(endIso);
+  if (!sParts || !eParts) return null;
+  const sUtc = Date.UTC(sParts.y, sParts.m, sParts.d);
+  const eUtc = Date.UTC(eParts.y, eParts.m, eParts.d);
+  return Math.round((eUtc - sUtc) / (24 * 60 * 60 * 1000));
+}
+
+function ensureCustomDatesPopulated() {
+  const form = $("backtest-form");
+  const tf = form?.elements.bar_timeframe?.value || "1Day";
+  const intraday = tf !== "1Day";
+  const startEl = $("bt-date-start");
+  const endEl = $("bt-date-end");
+  const daysEl = $("bt-custom-days-input");
+  const hintEl = $("bt-custom-date-hint");
+  if (!startEl || !endEl || !daysEl) return;
+
+  if (!endEl.value) {
+    endEl.value = typeof nyTodayIso === "function" ? nyTodayIso() : new Date().toISOString().slice(0, 10);
+    if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(endEl);
+  }
+
+  let numDays = Number(daysEl.value || 30);
+  if (intraday && numDays > 60) numDays = 60;
+  if (numDays < 1) numDays = 1;
+  daysEl.value = String(numDays);
+  syncCustomChipsActive(numDays);
+
+  if (!startEl.value) {
+    startEl.value = shiftIsoDate(endEl.value, -numDays);
+    if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(startEl);
+  }
+  if (hintEl) {
+    hintEl.textContent = "Select a custom start and end date or enter the exact number of lookback days.";
+    hintEl.classList.remove("text-danger", "text-warning");
+  }
+  const rangeEl = startEl.closest(".date-range");
+  if (rangeEl) {
+    rangeEl.classList.toggle("is-complete", Boolean(startEl.value && endEl.value));
+  }
+}
+
+function syncCustomDatesFromDaysInput() {
+  const form = $("backtest-form");
+  const tf = form?.elements.bar_timeframe?.value || "1Day";
+  const intraday = tf !== "1Day";
+  const startEl = $("bt-date-start");
+  const endEl = $("bt-date-end");
+  const daysEl = $("bt-custom-days-input");
+  const hintEl = $("bt-custom-date-hint");
+  if (!startEl || !endEl || !daysEl) return;
+
+  if (!endEl.value) {
+    endEl.value = typeof nyTodayIso === "function" ? nyTodayIso() : new Date().toISOString().slice(0, 10);
+    if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(endEl);
+  }
+
+  let days = Number(daysEl.value || 30);
+  const maxDays = intraday ? 60 : 1500;
+  if (days > maxDays) days = maxDays;
+  if (days < 1) days = 1;
+  daysEl.value = String(days);
+  syncCustomChipsActive(days);
+
+  startEl.value = shiftIsoDate(endEl.value, -days);
+  if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(startEl);
+  const rangeEl = startEl.closest(".date-range");
+  if (rangeEl) {
+    rangeEl.classList.toggle("is-complete", Boolean(startEl.value && endEl.value));
+  }
+  if (hintEl) {
+    hintEl.textContent = "Select a custom start and end date or enter the exact number of lookback days.";
+    hintEl.classList.remove("text-danger", "text-warning");
+  }
+  saveBacktestFormDraft();
+}
+
+function syncCustomDaysFromDatesInput() {
+  const form = $("backtest-form");
+  const tf = form?.elements.bar_timeframe?.value || "1Day";
+  const intraday = tf !== "1Day";
+  const startEl = $("bt-date-start");
+  const endEl = $("bt-date-end");
+  const daysEl = $("bt-custom-days-input");
+  const hintEl = $("bt-custom-date-hint");
+  if (!startEl || !endEl || !daysEl) return;
+
+  if (!startEl.value || !endEl.value) return;
+
+  const diff = calcIsoDateDiff(startEl.value, endEl.value);
+  if (diff == null) return;
+
+  if (diff <= 0) {
+    if (hintEl) {
+      hintEl.textContent = "Start date must be before end date.";
+      hintEl.classList.remove("text-warning");
+      hintEl.classList.add("text-danger");
+    }
+    syncCustomChipsActive(-1);
+    return;
+  }
+
+  const maxDays = intraday ? 60 : 1500;
+  daysEl.value = String(diff);
+  syncCustomChipsActive(diff);
+
+  const rangeEl = startEl.closest(".date-range");
+  if (rangeEl) {
+    rangeEl.classList.toggle("is-complete", Boolean(startEl.value && endEl.value && diff > 0));
+  }
+
+  if (diff > maxDays && intraday) {
+    if (hintEl) {
+      hintEl.textContent = "Intraday lookback is capped at 60 days. Shorten date range.";
+      hintEl.classList.remove("text-danger");
+      hintEl.classList.add("text-warning");
+    }
+  } else {
+    if (hintEl) {
+      hintEl.textContent = "Select a custom start and end date or enter the exact number of lookback days.";
+      hintEl.classList.remove("text-danger", "text-warning");
+    }
+  }
+  saveBacktestFormDraft();
 }
 
 function applyDeskSettingsToBacktest(settings) {
@@ -589,7 +759,17 @@ function parseBtSymbolsInput(raw) {
 function backtestPayload() {
   const form = $("backtest-form");
   const mode = String(form.elements.mode.value || "sma");
-  let days = Number(form.elements.days.value || 365);
+  const isCustom = form.elements.days.value === "custom";
+  let days = 365;
+  let startDate = null;
+  let endDate = null;
+  if (isCustom) {
+    days = Number($("bt-custom-days-input")?.value || 30);
+    startDate = $("bt-date-start")?.value || null;
+    endDate = $("bt-date-end")?.value || null;
+  } else {
+    days = Number(form.elements.days.value || 365);
+  }
   const tf = String(form.elements.bar_timeframe.value || "1Day");
   if (tf !== "1Day" && days > 60) days = 60;
   const stopOn = !!form.elements.stop_loss_enabled?.checked;
@@ -607,6 +787,8 @@ function backtestPayload() {
     symbol: symbols[0] || "AAPL",
     run_kind: runKind === "portfolio" ? "portfolio" : "per_symbol",
     days,
+    start_date: startDate,
+    end_date: endDate,
     bar_timeframe: tf,
     qty: Number(form.elements.qty.value || 1),
     initial_cash: Number(form.elements.initial_cash.value || 10000),
@@ -701,6 +883,9 @@ function saveBacktestFormDraft() {
       .toUpperCase(),
     run_kind: form.elements.run_kind?.value || "per_symbol",
     days: form.elements.days?.value || "365",
+    custom_days: $("bt-custom-days-input")?.value || "30",
+    start_date: $("bt-date-start")?.value || "",
+    end_date: $("bt-date-end")?.value || "",
     bar_timeframe: form.elements.bar_timeframe?.value || "1Day",
     initial_cash: form.elements.initial_cash?.value || "10000",
     qty: form.elements.qty?.value || "1",
@@ -769,6 +954,18 @@ function restoreBacktestFormDraft() {
     setVal("run_kind", rk === "portfolio" ? "portfolio" : "per_symbol");
   }
   setVal("days", draft.days);
+  const customDaysEl = $("bt-custom-days-input");
+  if (customDaysEl && draft.custom_days != null) customDaysEl.value = String(draft.custom_days);
+  const startEl = $("bt-date-start");
+  if (startEl && draft.start_date) {
+    startEl.value = String(draft.start_date);
+    if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(startEl);
+  }
+  const endEl = $("bt-date-end");
+  if (endEl && draft.end_date) {
+    endEl.value = String(draft.end_date);
+    if (typeof syncDateFieldDisplay === "function") syncDateFieldDisplay(endEl);
+  }
   setVal("bar_timeframe", draft.bar_timeframe);
   setVal("initial_cash", draft.initial_cash);
   setVal("qty", draft.qty);
@@ -962,6 +1159,21 @@ $("backtest-form")?.addEventListener("submit", async (ev) => {
     setBtError("RSI buy threshold must be less than RSI sell.");
     return;
   }
+  if (payload.start_date && payload.end_date) {
+    if (payload.start_date >= payload.end_date) {
+      setBtError("Start date must be before end date.");
+      return;
+    }
+    const todayIso = typeof nyTodayIso === "function" ? nyTodayIso() : new Date().toISOString().slice(0, 10);
+    if (payload.start_date > todayIso || payload.end_date > todayIso) {
+      setBtError("Backtest dates cannot be in the future.");
+      return;
+    }
+    if (payload.bar_timeframe !== "1Day" && payload.days > 60) {
+      setBtError("Intraday backtests are limited to 60 days.");
+      return;
+    }
+  }
   try {
     if (btn) {
       btn.disabled = true;
@@ -1051,6 +1263,38 @@ $("bt-history-select")?.addEventListener("change", () => {
 });
 $("btn-bt-trades-more")?.addEventListener("click", () => {
   showNextBtTradesBatch();
+});
+
+$("bt-date-start")?.addEventListener("change", () => {
+  syncCustomDaysFromDatesInput();
+});
+$("bt-date-start")?.addEventListener("input", () => {
+  syncCustomDaysFromDatesInput();
+});
+
+$("bt-date-end")?.addEventListener("change", () => {
+  syncCustomDaysFromDatesInput();
+});
+$("bt-date-end")?.addEventListener("input", () => {
+  syncCustomDaysFromDatesInput();
+});
+
+$("bt-custom-days-input")?.addEventListener("change", () => {
+  syncCustomDatesFromDaysInput();
+});
+$("bt-custom-days-input")?.addEventListener("input", () => {
+  syncCustomDatesFromDaysInput();
+});
+
+document.querySelector(".bt-custom-quick-chips")?.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-days]");
+  if (!btn) return;
+  const days = Number(btn.getAttribute("data-days") || 30);
+  const daysEl = $("bt-custom-days-input");
+  if (daysEl) {
+    daysEl.value = String(days);
+    syncCustomDatesFromDaysInput();
+  }
 });
 
 // Initialization

@@ -25,6 +25,16 @@ class TestExitStrategy(unittest.TestCase):
         m4 = ManageStopIn(symbol="AAPL", action="cancel_all")
         self.assertEqual(m4.action, "cancel_all")
 
+        m5 = ManageStopIn(
+            symbol="AAPL",
+            action="price",
+            stop_price=145.0,
+            dip_hunt={"enabled": True, "wait_minutes": 15, "dip_pct": 4.5},
+        )
+        self.assertEqual(m5.dip_hunt.enabled, True)
+        self.assertEqual(m5.dip_hunt.wait_minutes, 15)
+        self.assertEqual(m5.dip_hunt.dip_pct, 4.5)
+
         # Invalid action should raise ValueError
         with self.assertRaises(Exception):
             ManageStopIn(symbol="AAPL", action="invalid_action")
@@ -378,6 +388,187 @@ class TestExitStrategy(unittest.TestCase):
             trail_percent=None,
             qty=None,
         )
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_with_dip_hunt_long_position(self, mock_service_cls):
+        """Long position setting stop loss with dip hunt arms the dip hunt plan."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0  # Long
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_sl_100", "stop_price": 95.0}
+
+        res = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=95.0,
+            dip_hunt={"enabled": True, "wait_minutes": 15, "dip_pct": 5.0},
+        )
+        self.assertIn("dip_hunt", res)
+        self.assertEqual(res["dip_hunt"]["symbol"], "AAPL")
+        self.assertEqual(res["dip_hunt"]["stop_order_id"], "ord_sl_100")
+        self.assertEqual(res["dip_hunt"]["wait_minutes"], 15.0)
+        self.assertEqual(res["dip_hunt"]["dip_pct"], 5.0)
+        self.assertEqual(res["dip_hunt"]["status"], "watching_stop")
+        self.assertIn(res["dip_hunt"]["id"], self.state.dip_hunt_plans)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_with_dip_hunt_short_rejected(self, mock_service_cls):
+        """Short position setting dip hunt raises ValueError."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = -10.0  # Short
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_sl_short", "stop_price": 105.0}
+
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=105.0,
+                dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+            )
+        self.assertIn("only attaches to a buy", str(ctx.exception))
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_with_dip_hunt_disabled_cancels_existing(self, mock_service_cls):
+        """Setting dip_hunt enabled: False cancels any active dip hunt for symbol."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_sl_2", "stop_price": 95.0}
+
+        # Arm a dip hunt first
+        self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=95.0,
+            dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+        )
+        active_plans = [p for p in self.state.dip_hunt_plans.values() if p["symbol"] == "AAPL" and p["status"] == "watching_stop"]
+        self.assertEqual(len(active_plans), 1)
+
+        # Now update exit strategy with dip hunt disabled
+        res = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=96.0,
+            dip_hunt={"enabled": False},
+        )
+        self.assertNotIn("dip_hunt", res)
+        cancelled_plans = [p for p in self.state.dip_hunt_plans.values() if p["symbol"] == "AAPL" and p["status"] == "cancelled"]
+        self.assertEqual(len(cancelled_plans), 1)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_cancel_all_disarms_dip_hunt(self, mock_service_cls):
+        """Action cancel_all disarms any active dip hunt for the symbol."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_sl_3", "stop_price": 95.0}
+        mock_service.cancel_open_exit_orders.return_value = {"stops_cancelled": 1, "take_profits_cancelled": 0}
+
+        # Arm dip hunt
+        self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=95.0,
+            dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+        )
+        self.assertTrue(any(p["symbol"] == "AAPL" and p["status"] == "watching_stop" for p in self.state.dip_hunt_plans.values()))
+
+        # Cancel all
+        self.state.manage_position_stop(symbol="AAPL", action="cancel_all")
+        self.assertFalse(any(p["symbol"] == "AAPL" and p["status"] == "watching_stop" for p in self.state.dip_hunt_plans.values()))
+
+    @patch("bot.web_state.AlpacaService")
+    def test_positions_overview_includes_dip_hunt_info(self, mock_service_cls):
+        """positions_overview attaches has_dip_hunt and dip_hunt_plan metadata."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_all_positions.return_value = [
+            {
+                "symbol": "AAPL",
+                "qty": "10",
+                "side": "long",
+                "market_value": "1500.00",
+                "cost_basis": "1400.00",
+                "unrealized_pl": "100.00",
+                "current_price": "150.00",
+            }
+        ]
+        mock_service.account_summary.return_value = {"equity": 10000.0, "cash": 5000.0, "buying_power": 10000.0}
+        mock_service.get_open_orders_summary.return_value = {}
+
+        # Initially no dip hunt
+        ov1 = self.state.positions_overview()
+        self.assertFalse(ov1["positions"][0]["has_dip_hunt"])
+        self.assertIsNone(ov1["positions"][0]["dip_hunt_plan"])
+
+        # Register a dip hunt for AAPL
+        self.state.dip_hunt_plans["dh-test"] = {
+            "id": "dh-test",
+            "symbol": "AAPL",
+            "status": "watching_stop",
+            "wait_minutes": 10.0,
+            "dip_pct": 5.0,
+            "cycle": 1,
+            "target_price": 95.0,
+        }
+
+        ov2 = self.state.positions_overview()
+        self.assertTrue(ov2["positions"][0]["has_dip_hunt"])
+        self.assertIsNotNone(ov2["positions"][0]["dip_hunt_plan"])
+        self.assertEqual(ov2["positions"][0]["dip_hunt_plan"]["wait_minutes"], 10.0)
+        self.assertEqual(ov2["positions"][0]["dip_hunt_plan"]["dip_pct"], 5.0)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_close_single_position_disarms_dip_hunt(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.close_position.return_value = {"id": "ord_close_1", "status": "filled"}
+
+        self.state.dip_hunt_plans["dh-close-test"] = {
+            "id": "dh-close-test",
+            "symbol": "AAPL",
+            "status": "watching_stop",
+            "wait_minutes": 10.0,
+            "dip_pct": 5.0,
+        }
+
+        self.state.close_single_position("AAPL", cancel_orders=True)
+        self.assertEqual(self.state.dip_hunt_plans["dh-close-test"]["status"], "cancelled")
+
+    def test_dip_hunt_store_custom_path_save_and_load(self):
+        import tempfile
+        from pathlib import Path
+        from bot import dip_hunt_store
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir) / "test_plans.json"
+            plans = {
+                "dh-1": {
+                    "id": "dh-1",
+                    "symbol": "NVDA",
+                    "status": "watching_stop",
+                    "qty": 10.0,
+                    "stop_loss_pct": 3.0,
+                    "take_profit_r": 2.0,
+                    "wait_minutes": 15.0,
+                    "dip_pct": 4.0,
+                    "cycle": 1,
+                    "created_at": 1000.0,
+                }
+            }
+            dip_hunt_store.save_plans(plans, paper=True, path=tmp_path)
+            self.assertTrue(tmp_path.exists())
+
+            loaded = dip_hunt_store.load_plans(paper=True, path=tmp_path)
+            self.assertIn("dh-1", loaded)
+            self.assertEqual(loaded["dh-1"]["symbol"], "NVDA")
+            self.assertEqual(loaded["dh-1"]["wait_minutes"], 15.0)
 
 
 class TestArmBracketExit(unittest.TestCase):

@@ -82,8 +82,8 @@ class AiBacktestParams:
                 self.trail_after_r = 2.0
             if self.min_confidence == 0.55:
                 self.min_confidence = 0.70
-            if self.risk_pct in (0.5, 0.6):
-                self.risk_pct = 1.5
+            if self.risk_pct in (0.5, 0.6, 1.5):
+                self.risk_pct = 1.8
             if self.atr_stop_mult == 1.8:
                 self.atr_stop_mult = 1.6
 
@@ -383,6 +383,18 @@ def evaluate_ai_signal(
 
         # 1. Inverse ETFs (e.g. GDXD, GLL, ZSL): express bear view by BUYING long
         if is_inverse:
+            dt = getattr(row, "name", None)
+            if dt is not None and hasattr(dt, "hour"):
+                try:
+                    h = dt.hour
+                    if getattr(dt, "tzinfo", None) is not None:
+                        dt_utc = dt.tz_convert(timezone.utc) if hasattr(dt, "tz_convert") else dt.astimezone(timezone.utc)
+                        h = dt_utc.hour
+                    if h >= 19:
+                        return Signal.HOLD, 0.35, f"Skip late-session entry on inverse {sym} (hour={h} UTC) to avoid overnight gap"
+                except Exception:
+                    if getattr(dt, "hour", 0) >= 19:
+                        return Signal.HOLD, 0.35, f"Skip late-session entry on inverse {sym} to avoid overnight gap"
             inv_bull = close > sma20 and (close > sma50 or (close > sma200 if has_sma200 else True))
             if inv_bull and 36.0 <= rsi <= 68.0 and dist_sma50 <= 3.2:
                 conf = 0.74 + (0.05 if macd_hist > 0 else 0.0) + (0.04 if adx >= 20.0 else 0.0)
@@ -410,8 +422,8 @@ def evaluate_ai_signal(
         not_overextended = dist_sma50 <= 3.2
 
         # Macro Score Filter Rule 2:
-        # macro_composite_score must be >= +0.5. If below -0.5, strict no-buy discount trap.
-        macro_score_ok = (macro_score is None) or (macro_score >= 0.5)
+        # macro_composite_score must be >= 0.0 (constructive/neutral macro bias). If below -0.5, strict no-buy discount trap.
+        macro_score_ok = (macro_score is None) or (macro_score >= 0.0)
 
         # 2. Leveraged Bull ETFs (GDXU, UGL, AGQ):
         # Rule 2: Requires macro score > +1.5 AND strong trend
@@ -425,11 +437,11 @@ def evaluate_ai_signal(
             return Signal.HOLD, 0.35, f"Leveraged bull vehicle {sym} is unshortable and stands aside (requires macro score > +1.5 & strong trend)"
 
         # 3. Silver (SLV, SIL, SILJ, PSLV):
-        # Rule 2: Stepped up when macro score >= +1.2 or GSR stretched (z >= 1.2)
+        # Rule 2: Stepped up when macro score >= +0.2 or GSR stretched (z >= 0.8)
         if is_silver:
             strong_trend = (adx >= 20.0) and (close > sma50)
-            strong_macro = (macro_score is not None and macro_score >= 1.2 and strong_trend)
-            silver_gsr_edge = (gsr_z is not None and gsr_z >= 1.2)
+            strong_macro = (macro_score is not None and macro_score >= 0.2 and strong_trend)
+            silver_gsr_edge = (gsr_z is not None and gsr_z >= 0.8)
             if is_bull_regime and macro_score_ok and (strong_macro or silver_gsr_edge or macro_score is None) and pullback_ok and not_overextended:
                 conf = 0.72 + (0.06 if close > sma50 else 0.0) + (0.04 if adx >= 20.0 else 0.0) + (0.03 if close >= bar_open else 0.0)
                 if silver_gsr_edge:
@@ -438,7 +450,7 @@ def evaluate_ai_signal(
                 else:
                     thesis = f"Gold/Silver Macro: Silver pullback bounce in bull regime (RSI={rsi:.1f})"
                 return Signal.BUY, min(max(conf, 0.70), 0.95), thesis
-            return Signal.HOLD, 0.35, f"Silver {sym} stands aside (requires macro score >= +1.2 or GSR >= 1.2 catch-up)"
+            return Signal.HOLD, 0.35, f"Silver {sym} stands aside (requires macro score >= +0.2 or GSR >= 0.8 catch-up)"
 
         # 4. Standard Bullion (GLD, IAU, PHYS, etc.):
         if is_bull_regime and macro_score_ok and pullback_ok and not_overextended:
@@ -681,7 +693,7 @@ def run_ai_backtest(
                     else:
                         fill_p = position.target if bar_open <= position.target else bar_open
                         _close_position(i, fill_p, "take_profit")
-                # Regime flip, inverse decay protection or defensive trend break exit for Gold/Silver
+                # Regime flip, inverse decay protection or macro exit for Gold/Silver
                 elif p.preset == "gold_silver_macro":
                     has_200 = not np.isnan(curr_row["sma200"])
                     macro_sc = float(curr_row["macro_composite_score"]) if "macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"]) else None
@@ -691,11 +703,9 @@ def run_ai_backtest(
                         _close_position(i, bar_close, "inverse_decay_protection")
                     elif has_200 and curr_row["close"] < curr_row["sma200"] and curr_row["close"] < curr_row["sma50"]:
                         _close_position(i, bar_close, "regime_flip")
-                    elif macro_sc is not None and macro_sc < -0.5:
+                    elif macro_sc is not None and macro_sc < -1.0:
                         _close_position(i, bar_close, "regime_flip")
-                    elif (not has_200 or curr_row["close"] < curr_row["sma50"]) and curr_row["macd_hist"] < 0 and prev_row is not None and prev_row["macd_hist"] < 0:
-                        _close_position(i, bar_close, "trend_break")
-                # Strategy trend break exit (close below SMA20 + MACD flipping negative)
+                # Strategy trend break exit for general presets (close below SMA20 + MACD flipping negative)
                 elif curr_row["close"] < curr_row["sma20"] and curr_row["macd_hist"] < 0 and prev_row is not None and prev_row["macd_hist"] >= 0:
                     _close_position(i, bar_close, "trend_break")
 
@@ -846,6 +856,10 @@ def run_ai_backtest(
 
             # Risk-based sizing: risk_pct of current equity / stop distance
             risk_budget = equity * (max(0.1, p.risk_pct) / 100.0)
+            if p.preset == "gold_silver_macro" and symbol.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}:
+                gsr_val = float(curr_row["gsr_z"]) if "gsr_z" in curr_row and not pd.isna(curr_row["gsr_z"]) else 0.0
+                if gsr_val >= 0.8:
+                    risk_budget = round(risk_budget * 1.25, 2)
             target_qty = risk_budget / stop_dist if stop_dist > 0 else 1.0
 
             # Override with fixed qty if user specified
@@ -1332,12 +1346,9 @@ def run_ai_portfolio_backtest(
                     elif has_200 and bar_close < float(row["sma200"]) and bar_close < float(row["sma50"]):
                         exit_p = _fill(bar_close, "long", "out")
                         _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
-                    elif macro_sc is not None and macro_sc < -0.5:
+                    elif macro_sc is not None and macro_sc < -1.0:
                         exit_p = _fill(bar_close, "long", "out")
                         _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
-                    elif (not has_200 or bar_close < float(row["sma50"])) and float(row["macd_hist"]) < 0 and prev_hist < 0:
-                        exit_p = _fill(bar_close, "long", "out")
-                        _close_pos(s, exit_p, _ts_str(stamp), "trend_break")
                 elif float(row["close"]) < float(row["sma20"]) and float(row["macd_hist"]) < 0:
                     loc_now = frames[s].index.get_loc(stamp)
                     if isinstance(loc_now, int) and loc_now > 0 and float(frames[s].iloc[loc_now - 1]["macd_hist"]) >= 0:
@@ -1531,10 +1542,14 @@ def run_ai_portfolio_backtest(
                     stop_dist = max(0.01, bar_atr * max(0.5, p.atr_stop_mult))
 
                     risk_budget = port_equity * (max(0.1, p.risk_pct) / 100.0)
-                    if p.preset == "gold_silver_macro" and s.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"} and (gsr_z_map.get(stamp) or 0.0) >= 1.2:
+                    if p.preset == "gold_silver_macro" and s.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"} and (gsr_z_map.get(stamp) or 0.0) >= 0.8:
                         risk_budget = round(risk_budget * 1.25, 2)
                     target_qty = risk_budget / stop_dist if stop_dist > 0 else 1.0
-                    max_cash_qty = (cash * 0.95) / entry_p if entry_p > 0 else 0.0
+                    if p.max_positions >= 2:
+                        max_cash_budget = min(cash * 0.95, port_equity * 0.55)
+                    else:
+                        max_cash_budget = cash * 0.95
+                    max_cash_qty = max_cash_budget / entry_p if entry_p > 0 else 0.0
                     qty = min(target_qty, max_cash_qty) if max_cash_qty > 0 else target_qty
                     qty = round(max(0.01, qty), 4)
 

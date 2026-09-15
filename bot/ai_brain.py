@@ -94,6 +94,17 @@ class AiBrain:
         if callable(sizer):
             risk_qty = sizer(price, stop_distance or 0, equity)
             if risk_qty and risk_qty > 0:
+                preset_id = getattr(self.config, "ai_preset", "")
+                sym_upper = str(context.get("symbol") or "").upper().strip()
+                if (
+                    preset_id == "gold_silver_macro"
+                    and sym_upper in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}
+                ):
+                    metals_intel = context.get("precious_metals_intel") or {}
+                    gsr_z = float(metals_intel.get("gsr_z_score") or 0.0)
+                    if gsr_z >= 0.8:
+                        max_cash = (float(equity) * 0.55) / price if price > 0 else risk_qty
+                        risk_qty = min(risk_qty * 1.25, max_cash)
                 return float(risk_qty)
 
         if self._size_mode() == "ai":
@@ -472,22 +483,23 @@ class AiBrain:
                 "  Gold/Silver ratio (0.35), long-term trend (0.15) and the dollar (0.10). Mean forward 20d\n"
                 "  GLD return by score band was: <=-1.5 -> -0.29%, -1.5..-0.5 -> -0.18%, -0.5..+0.5 -> +0.53%,\n"
                 "  +0.5..+1.5 -> +1.14%, >=+1.5 -> +1.09%.\n"
-                "  * Score >= +0.5: a genuine tailwind. Above +1.5, size up and consider higher-beta vehicles.\n"
+                "  * Score >= 0.0: constructive/neutral macro bias. Above +1.5, size up and consider higher-beta vehicles.\n"
                 "  * Score <= -0.5: forward returns were NEGATIVE on average. Treat as a no-buy band, not a dip.\n"
                 "  * factor_scores breaks the score into its parts if you need to see what is driving it.\n"
                 "- trend_regime: 'bullish_above_sma200' or 'bearish_below_sma200'. This is the participation\n"
                 "  gate that keeps the desk out of multi-year metals bear markets. Respect it.\n"
                 "- Gold/Silver Ratio: gsr_live is the live GLD/SLV ratio; gsr_z_score is its deviation from the\n"
                 "  gsr_z_window mean (1 year when history allows — far more informative than a 20d window).\n"
-                "  * gsr_z_score >= +1.2: the ratio is stretched. Historically a risk-off bid that lifted the\n"
-                "    whole complex, with silver the higher-beta catch-up expression. Bullish, not just relative.\n"
+                "  * gsr_z_score >= +0.8 or macro_composite_score >= +0.2: the ratio is stretched or supportive. Historically a risk-off bid that lifted the\n"
+                "    whole complex, with silver (SLV) the higher-beta catch-up expression (size boosted 25%). Bullish, not just relative.\n"
                 "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
                 "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
                 "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
                 "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, and UGL are strictly excluded from the metals playbook.\n"
                 "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
                 "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
-                "- INVERSE DECAY GUARD: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
+                "- INVERSE DECAY GUARD & TIMING: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
+                "  Skip late-session entry (hour >= 19 UTC / 3 PM ET) on inverse ETFs to avoid overnight gap risk.\n"
                 "- If macro_risk_level is 'imminent_release' (high-impact FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
                 "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
                 "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"

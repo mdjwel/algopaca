@@ -88,6 +88,17 @@ def summarize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw_label, str) and raw_label.startswith("AI AI "):
         raw_label = raw_label[3:].lstrip()
 
+    days_val = result.get("days")
+    if days_val is None:
+        days_val = params.get("days") or entry.get("days")
+    if days_val is None and result.get("start") and result.get("end"):
+        try:
+            s_dt = datetime.fromisoformat(str(result["start"]).replace("Z", "+00:00"))
+            e_dt = datetime.fromisoformat(str(result["end"]).replace("Z", "+00:00"))
+            days_val = max(1, round((e_dt - s_dt).total_seconds() / 86400))
+        except (ValueError, TypeError):
+            pass
+
     return {
         "id": entry.get("id"),
         "created_at": entry.get("created_at"),
@@ -101,7 +112,9 @@ def summarize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "ai_preset": ai_preset_id,
         "ai_preset_label": ai_preset_label,
         "bar_timeframe": result.get("bar_timeframe"),
-        "days": result.get("days"),
+        "days": days_val,
+        "start_date": result.get("start_date") or params.get("start_date"),
+        "end_date": result.get("end_date") or params.get("end_date"),
         "qty": result.get("qty"),
         "stop_loss_pct": result.get("stop_loss_pct"),
         "initial_cash": result.get("initial_cash"),

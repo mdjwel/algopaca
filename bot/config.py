@@ -333,7 +333,11 @@ class Config:
             return None
         qty = (equity * (self.ai_risk_pct / 100.0)) / stop_distance
         # Never let one position exceed the account, regardless of how tight the stop is.
-        max_affordable = equity / price
+        # When concurrent positions are allowed (max_positions >= 2), cap allocation to 55%
+        # of portfolio equity so secondary assets (like SLV) are not starved of capital.
+        max_pos = int(getattr(self, "ai_max_positions", 0) or 0)
+        alloc_cap = 0.55 if max_pos >= 2 else 1.0
+        max_affordable = (equity * alloc_cap) / price
         return max(0.0, min(qty, max_affordable))
 
     def size_summary(self) -> str:

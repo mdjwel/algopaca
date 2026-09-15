@@ -227,7 +227,8 @@ function syncBtHistorySelect(activeId) {
     const retStr = Number.isFinite(ret)
       ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%`
       : "";
-    const parts = [idNum, symStr, label, retStr].filter(Boolean);
+    const lbStr = formatBtLookbackPill(row.days);
+    const parts = [idNum, symStr, label, lbStr, retStr].filter(Boolean);
     opt.textContent = parts.join(" · ");
     if (currentId && Number(row.id) === currentId) {
       opt.selected = true;
@@ -343,8 +344,10 @@ function renderBacktestResult(result, options = {}) {
             ? `${allLabel} (${symCount})`
             : result.symbol)
         : `${view.symbol} (of ${result.symbol})`;
+    const lbMeta = formatBtLookbackText(view.days ?? result.days ?? result.params?.days);
+    const lbPart = lbMeta ? ` · ${lbMeta}` : "";
     meta.textContent =
-      `${symLabel}${kind} · ${label} · ${result.bar_timeframe} · ` +
+      `${symLabel}${kind} · ${label} · ${result.bar_timeframe}${lbPart} · ` +
       `${view.start || result.start ? formatDisplayDate(view.start || result.start) : "?"} → ${view.end || result.end ? formatDisplayDate(view.end || result.end) : "?"} · ` +
       `${view.evaluated_bars ?? result.evaluated_bars ?? "—"} bars · ${sizingLabel}${stop}${open}${hist}`;
   }
@@ -677,6 +680,27 @@ function fillBtSummaryMetrics(view, root, { multi } = {}) {
     tn.textContent = String(
       rounds != null ? rounds : view.trades ?? 0
     );
+  }
+  const lbDaysEl = $("bt-lookback-days");
+  if (lbDaysEl) {
+    const rawDays = view.days ?? root?.days ?? root?.params?.days;
+    const numDays = Number(rawDays);
+    if (Number.isFinite(numDays) && numDays > 0) {
+      lbDaysEl.textContent = formatBtLookbackDays(numDays);
+      lbDaysEl.title = `${numDays} days lookback`;
+    } else if (view.start && view.end) {
+      const s = new Date(view.start).getTime();
+      const e = new Date(view.end).getTime();
+      if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+        const diff = Math.round((e - s) / 86400000);
+        lbDaysEl.textContent = `${diff} days`;
+        lbDaysEl.title = `${diff} days lookback`;
+      } else {
+        lbDaysEl.textContent = "—";
+      }
+    } else {
+      lbDaysEl.textContent = "—";
+    }
   }
 }
 
@@ -1153,8 +1177,36 @@ function formatBtRsiSummary(row) {
   return "—";
 }
 
+function formatBtLookbackDays(days) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return "";
+  if (d === 365) return "365 days (1y)";
+  if (d === 730) return "730 days (2y)";
+  return `${d} days`;
+}
+
+function formatBtLookbackPill(days) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return "";
+  if (d === 365) return "365d (1y)";
+  if (d === 730) return "730d (2y)";
+  return `${d}d`;
+}
+
+function formatBtLookbackText(days) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return "";
+  if (d === 365) return "1y (365d) lookback";
+  if (d === 730) return "2y (730d) lookback";
+  return `${d}d lookback`;
+}
+
 function formatBtHistoryWhen(iso) {
-  return formatAge(iso);
+  if (!iso) return "—";
+  const ms = new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  return formatAge(sec);
 }
 
 function syncBtCompareButton() {
@@ -1247,14 +1299,18 @@ function renderBacktestHistory(history) {
         : Number(row.symbol_count) > 1
           ? "multi"
           : "";
+    const cleanLabel = String(row.label || row.mode || "—").replace(/^AI\s+AI\s+/i, "AI ");
+    const presetLabel = String(row.day_preset_label || row.ai_preset_label || "").replace(/^AI\s+AI\s+/i, "AI ").trim();
+    const showPreset = presetLabel && presetLabel !== cleanLabel;
+
     title.innerHTML =
       `<span class="bt-sym">${escapeHtml(String(row.symbol || "—"))}</span>` +
       (kind
         ? `<span class="bt-rsi" title="Run mode">${escapeHtml(kind)}</span>`
         : "") +
-      `<span class="bt-label">${escapeHtml(String(row.label || row.mode || "—").replace(/^AI\s+AI\s+/i, "AI "))}</span>` +
-      (row.day_preset_label || row.ai_preset_label
-        ? `<span class="bt-rsi" title="Preset">${escapeHtml(String(row.day_preset_label || row.ai_preset_label).replace(/^AI\s+AI\s+/i, "AI "))}</span>`
+      `<span class="bt-label">${escapeHtml(cleanLabel)}</span>` +
+      (showPreset
+        ? `<span class="bt-rsi" title="Preset">${escapeHtml(presetLabel)}</span>`
         : "") +
       (rsiLine !== "—"
         ? `<span class="bt-rsi" title="Strategy parameters">${escapeHtml(
@@ -1263,15 +1319,34 @@ function renderBacktestHistory(history) {
               : rsiLine
           )}</span>`
         : "");
+
     const meta = document.createElement("div");
     meta.className = "bt-history-meta";
-    const window =
+
+    let daysVal = Number(row.days);
+    if ((!Number.isFinite(daysVal) || daysVal <= 0) && row.start && row.end) {
+      const s = new Date(row.start).getTime();
+      const e = new Date(row.end).getTime();
+      if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+        daysVal = Math.round((e - s) / 86400000);
+      }
+    }
+
+    const lbText = formatBtLookbackText(daysVal);
+    const dateRange =
       row.start || row.end
         ? `${formatDisplayDate(row.start || "")} → ${formatDisplayDate(row.end || "")}`
-        : `${row.days || "—"}d`;
-    meta.textContent =
-      `${formatBtHistoryWhen(row.created_at)} · ${row.bar_timeframe || "—"} · ${window}` +
-      ` · ${row.trades ?? 0} trades`;
+        : "";
+
+    const parts = [
+      formatBtHistoryWhen(row.created_at),
+      row.bar_timeframe || "—",
+      lbText ? `<span class="bt-history-lookback">${escapeHtml(lbText)}</span>` : "",
+      dateRange ? escapeHtml(dateRange) : "",
+      `${row.trades ?? 0} trades`,
+    ].filter(Boolean);
+
+    meta.innerHTML = parts.join(" · ");
     main.append(title, meta);
 
     const metrics = document.createElement("div");

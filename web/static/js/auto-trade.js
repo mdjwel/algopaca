@@ -1546,6 +1546,20 @@ function applyAiPreset(presetId, { forceInstructions = true } = {}) {
         form[fieldName].value = value;
       }
     }
+    if (preset.id === "gold_silver_macro") {
+      const symsField = form.elements?.symbols;
+      if (symsField && (!symsField.value || symsField.value.trim() === "AAPL")) {
+        symsField.value = "GLD, SLV, GLL";
+      }
+      const symField = form.elements?.symbol;
+      if (symField && (!symField.value || symField.value.trim() === "AAPL")) {
+        symField.value = "GLD";
+      }
+      if (form.elements?.bar_timeframe && form.elements.bar_timeframe.value === "15Min") {
+        form.elements.bar_timeframe.value = "1Hour";
+        refreshNiceSelect(form.elements.bar_timeframe);
+      }
+    }
   }
   syncPresetHint();
   applyingPreset = false;

@@ -446,6 +446,7 @@ class ManageStopIn(BaseModel):
     take_profit_r: Optional[float] = Field(None, gt=0, le=20)
     use_trailing: Optional[bool] = False
     qty: Optional[float] = Field(None, gt=0)
+    dip_hunt: Optional[DipHuntIn] = None
 
 
 class CancelOrderIn(BaseModel):
@@ -492,6 +493,8 @@ class BacktestIn(BaseModel):
         "per_symbol", pattern="(?i)^(per_symbol|portfolio|per-symbol)$"
     )
     days: int = Field(365, ge=1, le=1500)
+    start_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     bar_timeframe: str = "1Day"
     qty: Optional[float] = Field(None, gt=0)
     initial_cash: float = Field(10_000.0, ge=100)
@@ -2149,6 +2152,7 @@ def manage_position_stop(
             take_profit_r=body.take_profit_r,
             use_trailing=body.use_trailing,
             qty=body.qty,
+            dip_hunt=body.dip_hunt.model_dump() if body.dip_hunt else None,
         )
         return {"ok": True, **result}
     except ValueError as exc:

@@ -1981,11 +1981,82 @@ class AppState:
             approval_handler=self.create_pending_approval,
         )
 
+    @staticmethod
+    def _parse_backtest_dates(
+        *,
+        days: int,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        bar_timeframe: str = "1Day",
+        min_days: int = 1,
+        max_days: int = 1500,
+    ) -> tuple[int, datetime, datetime, str | None, str | None]:
+        """Parse and validate lookback window from days or explicit start/end dates.
+
+        Returns:
+            (days_i, start_cutoff, end_dt, start_iso, end_iso)
+        """
+        now_utc = datetime.now(timezone.utc)
+        s_raw = str(start_date).strip() if start_date else None
+        e_raw = str(end_date).strip() if end_date else None
+
+        if s_raw or e_raw:
+            if not (s_raw and e_raw):
+                raise ValueError(
+                    "Both start_date and end_date must be provided for custom date ranges"
+                )
+            try:
+                s_d = datetime.strptime(s_raw, "%Y-%m-%d").date()
+                e_d = datetime.strptime(e_raw, "%Y-%m-%d").date()
+            except Exception as err:
+                raise ValueError(f"Dates must be in YYYY-MM-DD format: {err}") from err
+            if s_d > e_d:
+                raise ValueError("start_date cannot be after end_date")
+            if e_d > now_utc.date():
+                raise ValueError("end_date cannot be in the future")
+            diff_days = max(1, (e_d - s_d).days)
+            if diff_days < min_days:
+                raise ValueError(f"Date range must span at least {min_days} day(s)")
+            if diff_days > max_days:
+                raise ValueError(f"Date range cannot exceed {max_days} days")
+            days_i = diff_days
+            start_cutoff = datetime(
+                s_d.year, s_d.month, s_d.day, 0, 0, 0, tzinfo=timezone.utc
+            )
+            end_dt = min(
+                now_utc,
+                datetime(e_d.year, e_d.month, e_d.day, 23, 59, 59, tzinfo=timezone.utc),
+            )
+            s_iso = s_d.isoformat()
+            e_iso = e_d.isoformat()
+        else:
+            days_i = int(days)
+            if days_i < min_days or days_i > max_days:
+                raise ValueError(f"days must be between {min_days} and {max_days}")
+            end_dt = now_utc
+            start_cutoff = end_dt - timedelta(days=days_i)
+            s_iso = None
+            e_iso = None
+
+        if str(bar_timeframe or "1Day").strip() != "1Day" and days_i > 60:
+            raise ValueError("Intraday backtests are limited to 60 days")
+
+        return days_i, start_cutoff, end_dt, s_iso, e_iso
+
     def _trim_backtest_bars(
-        self, bars: pd.DataFrame, *, days_i: int, end: datetime
+        self,
+        bars: pd.DataFrame,
+        *,
+        days_i: int,
+        end: datetime,
+        start_cutoff: datetime | None = None,
     ) -> pd.DataFrame:
         """Trim to the requested evaluation window but keep warmup rows."""
-        cutoff = end - timedelta(days=days_i)
+        cutoff = (
+            start_cutoff
+            if start_cutoff is not None
+            else (end - timedelta(days=days_i))
+        )
         if bars.index.tz is None:
             cutoff = cutoff.replace(tzinfo=None)
         else:
@@ -2014,13 +2085,20 @@ class AppState:
         slip_bps: float | None,
         symbols: str | None = None,
         symbol: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
-        days_i = int(days)
-        if days_i < 30 or days_i > 1500:
-            raise ValueError("days must be between 30 and 1500")
         tf = str(bar_timeframe or "1Day").strip()
         if tf != "1Day":
             raise ValueError("Pair backtest currently supports 1Day bars only")
+        days_i, start_cutoff, end, s_iso, e_iso = self._parse_backtest_dates(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            bar_timeframe=tf,
+            min_days=1,
+            max_days=1500,
+        )
         cash = float(initial_cash)
         if cash < 100:
             raise ValueError("initial_cash must be at least 100")
@@ -2096,8 +2174,7 @@ class AppState:
         }
 
         pad = max(sma_p + look + 30, 120)
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days_i + pad)
+        start = start_cutoff - timedelta(days=pad)
         config = self._base_config()
         service = AlpacaService(config)
         long_bars = service.get_bars_range(
@@ -2108,8 +2185,12 @@ class AppState:
         )
         if long_bars.empty or short_bars.empty:
             raise ValueError(f"No bar data for {long_s}/{short_s}")
-        long_use = self._trim_backtest_bars(long_bars, days_i=days_i, end=end)
-        short_use = self._trim_backtest_bars(short_bars, days_i=days_i, end=end)
+        long_use = self._trim_backtest_bars(
+            long_bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+        )
+        short_use = self._trim_backtest_bars(
+            short_bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+        )
         result = run_pair_backtest(
             long_use,
             short_use,
@@ -2132,6 +2213,11 @@ class AppState:
             "run_kind": "pair",
             "symbols": [long_s, short_s],
         }
+        if s_iso and e_iso:
+            result["start_date"] = s_iso
+            result["end_date"] = e_iso
+            result["meta"]["start_date"] = s_iso
+            result["meta"]["end_date"] = e_iso
         # History is persisted by the /api/backtest handler (same as sma/dip).
         return result
 
@@ -2157,6 +2243,8 @@ class AppState:
         day_open_buffer_mins: int | None = None,
         day_eod_flatten_mins: int | None = None,
         day_eod_flatten: bool | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """Replay Day Trading rules over recent intraday bars."""
         kind = str(run_kind or "per_symbol").strip().lower().replace("-", "_")
@@ -2164,11 +2252,15 @@ class AppState:
             raise ValueError("run_kind must be per_symbol or portfolio")
 
         symbol_list = parse_backtest_symbols(symbols, symbol)
-        days_i = int(days)
-        if days_i < 1 or days_i > 60:
-            raise ValueError("Day Trading backtests cover 1 to 60 days of intraday bars")
-
         tf = resolve_day_timeframe(bar_timeframe)
+        days_i, start_cutoff, end, s_iso, e_iso = self._parse_backtest_dates(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            bar_timeframe=tf,
+            min_days=1,
+            max_days=60,
+        )
         cash = float(initial_cash)
         if cash < 100:
             raise ValueError("initial_cash must be at least 100")
@@ -2207,8 +2299,7 @@ class AppState:
             preset_id = day_preset or s.day_preset
 
         service = AlpacaService(self._base_config())
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=max(days_i * 2, days_i + 7))
+        start = start_cutoff - timedelta(days=max(days_i * 2, days_i + 7))
 
         bars_by_symbol: dict[str, pd.DataFrame] = {}
         errors: list[dict[str, Any]] = []
@@ -2217,7 +2308,9 @@ class AppState:
                 bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
                 if bars.empty:
                     raise ValueError(f"No bar data returned for {sym}")
-                bars_by_symbol[sym] = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+                bars_by_symbol[sym] = self._trim_backtest_bars(
+                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+                )
             except Exception as exc:  # noqa: BLE001
                 errors.append({"symbol": sym, "error": str(exc)})
 
@@ -2232,6 +2325,20 @@ class AppState:
                 detail = errors[0]["error"] if errors else "no data"
                 raise ValueError(f"Day Trading backtest produced no results: {detail}")
             res = run_day_backtest(bars_by_symbol[sym], symbol=sym, params=params)
+            single_meta = {
+                "mode": "day",
+                "bar_timeframe": tf,
+                "days": days_i,
+                "run_kind": "per_symbol",
+                "symbols": symbol_list,
+                "day_preset": preset_id,
+                "params": asdict(params),
+            }
+            if s_iso and e_iso:
+                single_meta["start_date"] = s_iso
+                single_meta["end_date"] = e_iso
+                res["start_date"] = s_iso
+                res["end_date"] = e_iso
             res.update(
                 {
                     "mode": "day",
@@ -2241,15 +2348,7 @@ class AppState:
                     "symbols": symbol_list,
                     "day_preset": preset_id,
                     "errors": errors,
-                    "meta": {
-                        "mode": "day",
-                        "bar_timeframe": tf,
-                        "days": days_i,
-                        "run_kind": "per_symbol",
-                        "symbols": symbol_list,
-                        "day_preset": preset_id,
-                        "params": asdict(params),
-                    },
+                    "meta": single_meta,
                 }
             )
             return res
@@ -2271,6 +2370,20 @@ class AppState:
                 )
             for err in errors:
                 legs.append({"symbol": err["symbol"], "error": err["error"], "mode": "day", "days": days_i})
+            portfolio_meta = {
+                "mode": "day",
+                "bar_timeframe": tf,
+                "days": days_i,
+                "run_kind": "portfolio",
+                "symbols": symbol_list,
+                "day_preset": preset_id,
+                "params": asdict(params),
+            }
+            if s_iso and e_iso:
+                portfolio_meta["start_date"] = s_iso
+                portfolio_meta["end_date"] = e_iso
+                book["start_date"] = s_iso
+                book["end_date"] = e_iso
             book.update(
                 {
                     "mode": "day",
@@ -2281,15 +2394,7 @@ class AppState:
                     "results": legs,
                     "summary": [summary_from_result(r) for r in legs],
                     "errors": errors,
-                    "meta": {
-                        "mode": "day",
-                        "bar_timeframe": tf,
-                        "days": days_i,
-                        "run_kind": "portfolio",
-                        "symbols": symbol_list,
-                        "day_preset": preset_id,
-                        "params": asdict(params),
-                    },
+                    "meta": portfolio_meta,
                 }
             )
             return book
@@ -2306,6 +2411,9 @@ class AppState:
                 r["day_preset"] = preset_id
                 r["run_kind"] = "per_symbol"
                 r["params"] = asdict(params)
+                if s_iso and e_iso:
+                    r["start_date"] = s_iso
+                    r["end_date"] = e_iso
                 results.append(r)
             except Exception as exc:  # noqa: BLE001
                 errors.append({"symbol": sym, "error": str(exc)})
@@ -2338,7 +2446,16 @@ class AppState:
         total_wins = sum(int(r.get("wins") or 0) for r in ok_results)
         label = "+".join(symbol_list)
 
-        return {
+        compare_meta = {
+            "mode": "day",
+            "bar_timeframe": tf,
+            "days": days_i,
+            "day_preset": preset_id,
+            "params": asdict(params),
+            "run_kind": "per_symbol",
+            "symbols": symbol_list,
+        }
+        res_compare = {
             "symbol": label,
             "mode": "day",
             "bar_timeframe": tf,
@@ -2386,16 +2503,14 @@ class AppState:
             "errors": errors,
             "open_qty": 0,
             "open_entry": None,
-            "meta": {
-                "mode": "day",
-                "bar_timeframe": tf,
-                "days": days_i,
-                "day_preset": preset_id,
-                "params": asdict(params),
-                "run_kind": "per_symbol",
-                "symbols": symbol_list,
-            },
+            "meta": compare_meta,
         }
+        if s_iso and e_iso:
+            compare_meta["start_date"] = s_iso
+            compare_meta["end_date"] = e_iso
+            res_compare["start_date"] = s_iso
+            res_compare["end_date"] = e_iso
+        return res_compare
 
     def _run_ai_backtest(
         self,
@@ -2416,6 +2531,8 @@ class AppState:
         ai_trail_after_r: float | None = None,
         ai_risk_pct: float | None = None,
         ai_max_positions: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """Replay AI Trader engine rules over historical bars."""
         kind = str(run_kind or "per_symbol").strip().lower().replace("-", "_")
@@ -2423,16 +2540,18 @@ class AppState:
             raise ValueError("run_kind must be per_symbol or portfolio")
 
         symbol_list = parse_backtest_symbols(symbols, symbol)
-        days_i = int(days)
-        if days_i < 15 or days_i > 1500:
-            raise ValueError("AI backtests cover 15 to 1500 days")
-
         tf = str(bar_timeframe or "1Day").strip()
         allowed_tf = {"1Min", "5Min", "15Min", "1Hour", "1Day"}
         if tf not in allowed_tf:
             raise ValueError(f"bar_timeframe must be one of {sorted(allowed_tf)}")
-        if tf != "1Day" and days_i > 60:
-            raise ValueError("Intraday backtests are limited to 60 days")
+        days_i, start_cutoff, end, s_iso, e_iso = self._parse_backtest_dates(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            bar_timeframe=tf,
+            min_days=1,
+            max_days=1500,
+        )
 
         cash = float(initial_cash)
         if cash < 100:
@@ -2490,8 +2609,7 @@ class AppState:
             )
 
         pad = 120 if tf == "1Day" else max(days_i, 14)
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days_i + pad)
+        start = start_cutoff - timedelta(days=days_i + pad)
 
         service = AlpacaService(self._base_config())
         bars_by_symbol: dict[str, pd.DataFrame] = {}
@@ -2501,7 +2619,9 @@ class AppState:
                 bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
                 if bars.empty:
                     raise ValueError(f"No bar data returned for {sym}")
-                bars_by_symbol[sym] = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+                bars_by_symbol[sym] = self._trim_backtest_bars(
+                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+                )
             except Exception as exc:  # noqa: BLE001
                 errors.append({"symbol": sym, "error": str(exc)})
 
@@ -2525,7 +2645,9 @@ class AppState:
                     try:
                         mb = service.get_bars_range(msym, start=start, end=end, timeframe=tf)
                         if not mb.empty:
-                            macro_bars[msym] = self._trim_backtest_bars(mb, days_i=days_i, end=end)
+                            macro_bars[msym] = self._trim_backtest_bars(
+                                mb, days_i=days_i, end=end, start_cutoff=start_cutoff
+                            )
                     except Exception:
                         pass
             try:
@@ -2545,6 +2667,9 @@ class AppState:
             "ai_preset": preset_id,
             "ai_preset_label": preset_meta.label if preset_id != "custom" else "Custom",
         }
+        if s_iso and e_iso:
+            meta["start_date"] = s_iso
+            meta["end_date"] = e_iso
 
         # Single-symbol per_symbol keeps flat payload
         if len(symbol_list) == 1 and kind == "per_symbol":
@@ -2651,12 +2776,19 @@ class AppState:
         ls_time_stop_bars: int | None = None,
         ls_commission_pct: float | None = None,
         ls_slippage_pct: float | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """Walk-forward Regime Dual Momentum long/short (daily bars)."""
-        days_i = int(days)
-        if days_i < 30 or days_i > 1500:
-            raise ValueError("days must be between 30 and 1500")
         tf = "1Day"
+        days_i, start_cutoff, end, s_iso, e_iso = self._parse_backtest_dates(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            bar_timeframe=tf,
+            min_days=1,
+            max_days=1500,
+        )
         cash = float(initial_cash)
         if cash < 100:
             raise ValueError("initial_cash must be at least 100")
@@ -2720,8 +2852,7 @@ class AppState:
         }
 
         pad = max(strategy.bars_needed + 30, 120)
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days_i + pad)
+        start = start_cutoff - timedelta(days=pad)
         config = self._base_config()
         service = AlpacaService(config)
 
@@ -2729,9 +2860,11 @@ class AppState:
             bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
             if bars.empty:
                 raise ValueError(f"No bar data returned for {sym}")
-            bars_use = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+            bars_use = self._trim_backtest_bars(
+                bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+            )
             # Eval starts at the lookback window (after warmup retained in bars_use)
-            cutoff = end - timedelta(days=days_i)
+            cutoff = start_cutoff
             if bars_use.index.tz is None:
                 cutoff = cutoff.replace(tzinfo=None)
             else:
@@ -2750,13 +2883,16 @@ class AppState:
             result["bar_timeframe"] = tf
             result["days"] = days_i
             result["params"] = params
+            if s_iso and e_iso:
+                result["start_date"] = s_iso
+                result["end_date"] = e_iso
             return result
 
         if kind == "per_symbol" and len(symbol_list) == 1:
             result = _one(symbol_list[0], cash)
             result["run_kind"] = "per_symbol"
             result["symbols"] = symbol_list
-            result["meta"] = {
+            ls_meta = {
                 "mode": "ls",
                 "bar_timeframe": tf,
                 "days": days_i,
@@ -2764,6 +2900,12 @@ class AppState:
                 "run_kind": "per_symbol",
                 "symbols": symbol_list,
             }
+            if s_iso and e_iso:
+                ls_meta["start_date"] = s_iso
+                ls_meta["end_date"] = e_iso
+                result["start_date"] = s_iso
+                result["end_date"] = e_iso
+            result["meta"] = ls_meta
             return result
 
         if kind == "portfolio" or len(symbol_list) > 1:
@@ -2777,7 +2919,7 @@ class AppState:
                     if bars.empty:
                         raise ValueError(f"No bar data returned for {sym}")
                     bars_by_symbol[sym] = self._trim_backtest_bars(
-                        bars, days_i=days_i, end=end
+                        bars, days_i=days_i, end=end, start_cutoff=start_cutoff
                     )
                 except Exception as exc:  # noqa: BLE001
                     errors.append({"symbol": sym, "error": str(exc)})
@@ -2786,7 +2928,7 @@ class AppState:
                 detail = "; ".join(f"{e['symbol']}: {e['error']}" for e in errors)
                 raise ValueError(detail or "No bar data for LS symbols")
 
-            cutoff = end - timedelta(days=days_i)
+            cutoff = start_cutoff
             # Align eval_start from first available series
             sample = next(iter(bars_by_symbol.values()))
             if sample.index.tz is None:
@@ -2820,6 +2962,22 @@ class AppState:
                             "run_kind": "portfolio_leg",
                         }
                     )
+                    if s_iso and e_iso:
+                        leg["start_date"] = s_iso
+                        leg["end_date"] = e_iso
+                portfolio_meta = {
+                    "mode": "ls",
+                    "bar_timeframe": tf,
+                    "days": days_i,
+                    "params": params,
+                    "run_kind": "portfolio",
+                    "symbols": list(bars_by_symbol.keys()),
+                }
+                if s_iso and e_iso:
+                    portfolio_meta["start_date"] = s_iso
+                    portfolio_meta["end_date"] = e_iso
+                    book["start_date"] = s_iso
+                    book["end_date"] = e_iso
                 book.update(
                     {
                         "mode": "ls",
@@ -2831,14 +2989,7 @@ class AppState:
                         "results": legs,
                         "summary": [summary_from_result(r) for r in legs],
                         "errors": errors,
-                        "meta": {
-                            "mode": "ls",
-                            "bar_timeframe": tf,
-                            "days": days_i,
-                            "params": params,
-                            "run_kind": "portfolio",
-                            "symbols": list(bars_by_symbol.keys()),
-                        },
+                        "meta": portfolio_meta,
                     }
                 )
                 return book
@@ -2869,6 +3020,9 @@ class AppState:
                 r["days"] = days_i
                 r["params"] = params
                 r["run_kind"] = "per_symbol"
+                if s_iso and e_iso:
+                    r["start_date"] = s_iso
+                    r["end_date"] = e_iso
                 results.append(r)
             for err in errors:
                 results.append(
@@ -2898,7 +3052,18 @@ class AppState:
             total_round = sum(int(r.get("round_trips") or 0) for r in ok_results)
             total_wins = sum(int(r.get("wins") or 0) for r in ok_results)
             label = "+".join(symbol_list)
-            return {
+            compare_meta = {
+                "mode": "ls",
+                "bar_timeframe": tf,
+                "days": days_i,
+                "params": params,
+                "run_kind": "per_symbol",
+                "symbols": symbol_list,
+            }
+            if s_iso and e_iso:
+                compare_meta["start_date"] = s_iso
+                compare_meta["end_date"] = e_iso
+            res_ls = {
                 "symbol": label,
                 "mode": "ls",
                 "bar_timeframe": tf,
@@ -2938,15 +3103,12 @@ class AppState:
                 "errors": errors,
                 "open_qty": 0,
                 "open_entry": None,
-                "meta": {
-                    "mode": "ls",
-                    "bar_timeframe": tf,
-                    "days": days_i,
-                    "params": params,
-                    "run_kind": "per_symbol",
-                    "symbols": symbol_list,
-                },
+                "meta": compare_meta,
             }
+            if s_iso and e_iso:
+                res_ls["start_date"] = s_iso
+                res_ls["end_date"] = e_iso
+            return res_ls
 
         # Fallback single
         return _one(symbol_list[0], cash)
@@ -2959,6 +3121,8 @@ class AppState:
         symbols: str | None = None,
         run_kind: str = "per_symbol",
         days: int = 365,
+        start_date: str | None = None,
+        end_date: str | None = None,
         bar_timeframe: str = "1Day",
         qty: float | None = None,
         initial_cash: float = 10_000.0,
@@ -3015,6 +3179,8 @@ class AppState:
         if mode_key == "ai":
             return self._run_ai_backtest(
                 days=days,
+                start_date=start_date,
+                end_date=end_date,
                 bar_timeframe=bar_timeframe,
                 initial_cash=initial_cash,
                 symbols=symbols,
@@ -3035,6 +3201,8 @@ class AppState:
         if mode_key == "pair":
             return self._run_pair_backtest(
                 days=days,
+                start_date=start_date,
+                end_date=end_date,
                 bar_timeframe=bar_timeframe,
                 initial_cash=initial_cash,
                 pair_preset=pair_preset,
@@ -3052,6 +3220,8 @@ class AppState:
         if mode_key == "day":
             return self._run_day_backtest(
                 days=days,
+                start_date=start_date,
+                end_date=end_date,
                 bar_timeframe=bar_timeframe,
                 initial_cash=initial_cash,
                 symbols=symbols,
@@ -3075,6 +3245,8 @@ class AppState:
         if mode_key == "ls":
             return self._run_ls_backtest(
                 days=days,
+                start_date=start_date,
+                end_date=end_date,
                 bar_timeframe=bar_timeframe,
                 initial_cash=initial_cash,
                 symbols=symbols,
@@ -3097,16 +3269,19 @@ class AppState:
 
         symbol_list = parse_backtest_symbols(symbols, symbol)
 
-        days_i = int(days)
-        if days_i < 30 or days_i > 1500:
-            raise ValueError("days must be between 30 and 1500")
-
         tf = str(bar_timeframe or "1Day").strip()
         allowed_tf = {"1Min", "5Min", "15Min", "1Hour", "1Day"}
         if tf not in allowed_tf:
             raise ValueError(f"bar_timeframe must be one of {sorted(allowed_tf)}")
-        if tf != "1Day" and days_i > 60:
-            raise ValueError("Intraday backtests are limited to 60 days")
+
+        days_i, start_cutoff, end, s_iso, e_iso = self._parse_backtest_dates(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            bar_timeframe=tf,
+            min_days=1,
+            max_days=1500,
+        )
 
         cash = float(initial_cash)
         if cash < 100:
@@ -3190,8 +3365,7 @@ class AppState:
 
         # Extra calendar days so indicators have warmup before the window.
         pad = 120 if tf == "1Day" else max(days_i, 14)
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days_i + pad)
+        start = start_cutoff - timedelta(days=pad)
 
         meta = {
             "mode": mode_key,
@@ -3203,6 +3377,9 @@ class AppState:
             "run_kind": kind,
             "symbols": symbol_list,
         }
+        if s_iso and e_iso:
+            meta["start_date"] = s_iso
+            meta["end_date"] = e_iso
 
         # Single-symbol per_symbol keeps the legacy flat payload.
         if kind == "per_symbol" and len(symbol_list) == 1:
@@ -3213,7 +3390,9 @@ class AppState:
             bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
             if bars.empty:
                 raise ValueError(f"No bar data returned for {sym}")
-            bars_use = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+            bars_use = self._trim_backtest_bars(
+                bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+            )
             result = run_backtest(
                 bars_use,
                 strategy,
@@ -3243,7 +3422,7 @@ class AppState:
                     if bars.empty:
                         raise ValueError(f"No bar data returned for {sym}")
                     bars_by_symbol[sym] = self._trim_backtest_bars(
-                        bars, days_i=days_i, end=end
+                        bars, days_i=days_i, end=end, start_cutoff=start_cutoff
                     )
                 except Exception as exc:  # noqa: BLE001 — per-symbol soft fail
                     errors.append({"symbol": sym, "error": str(exc)})
@@ -3262,18 +3441,20 @@ class AppState:
             legs = list(book.pop("results", []) or [])
             # Attach shared meta onto each leg for UI detail views.
             for leg in legs:
-                leg.update(
-                    {
-                        "mode": mode_key,
-                        "bar_timeframe": tf,
-                        "days": days_i,
-                        "qty": trade_qty,
-                        "stop_loss_pct": stop_pct,
-                        "params": params,
-                        "run_kind": "portfolio_leg",
-                        "initial_cash": cash,
-                    }
-                )
+                leg_meta = {
+                    "mode": mode_key,
+                    "bar_timeframe": tf,
+                    "days": days_i,
+                    "qty": trade_qty,
+                    "stop_loss_pct": stop_pct,
+                    "params": params,
+                    "run_kind": "portfolio_leg",
+                    "initial_cash": cash,
+                }
+                if s_iso and e_iso:
+                    leg_meta["start_date"] = s_iso
+                    leg_meta["end_date"] = e_iso
+                leg.update(leg_meta)
             for err in errors:
                 legs.append(err)
             summary = [summary_from_result(r) for r in legs]
@@ -3296,7 +3477,9 @@ class AppState:
                 bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
                 if bars.empty:
                     raise ValueError(f"No bar data returned for {sym}")
-                bars_use = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+                bars_use = self._trim_backtest_bars(
+                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+                )
                 one = run_backtest(
                     bars_use,
                     strategy,
@@ -3304,19 +3487,21 @@ class AppState:
                     initial_cash=cash,
                     stop_loss_pct=stop_pct,
                 )
-                results.append(
-                    {
-                        "symbol": sym,
-                        "mode": mode_key,
-                        "bar_timeframe": tf,
-                        "days": days_i,
-                        "qty": trade_qty,
-                        "stop_loss_pct": stop_pct,
-                        "params": params,
-                        "run_kind": "per_symbol",
-                        **one,
-                    }
-                )
+                item = {
+                    "symbol": sym,
+                    "mode": mode_key,
+                    "bar_timeframe": tf,
+                    "days": days_i,
+                    "qty": trade_qty,
+                    "stop_loss_pct": stop_pct,
+                    "params": params,
+                    "run_kind": "per_symbol",
+                    **one,
+                }
+                if s_iso and e_iso:
+                    item["start_date"] = s_iso
+                    item["end_date"] = e_iso
+                results.append(item)
             except Exception as exc:  # noqa: BLE001 — keep other symbols running
                 results.append({"symbol": sym, "error": str(exc)})
 
@@ -5793,6 +5978,7 @@ class AppState:
         take_profit_r: float | None = None,
         use_trailing: bool | None = False,
         qty: float | None = None,
+        dip_hunt: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Configure or move exit strategy orders on an open position.
 
@@ -5843,6 +6029,9 @@ class AppState:
 
         # Handle cancellation actions first
         if action == "cancel_stops":
+            self._cancel_dip_hunt_plans_for_symbol(
+                symbol, message="Stop loss orders cancelled."
+            )
             cancelled = service.cancel_open_stop_orders(symbol)
             synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
             cancelled = (cancelled if isinstance(cancelled, int) else 0) + synth_cancelled
@@ -5853,6 +6042,9 @@ class AppState:
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
         if action == "cancel_all":
+            self._cancel_dip_hunt_plans_for_symbol(
+                symbol, message="All exit orders cancelled."
+            )
             res = service.cancel_open_exit_orders(symbol)
             synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
             res["stops_cancelled"] = (res.get("stops_cancelled") or 0) + synth_cancelled
@@ -5960,6 +6152,11 @@ class AppState:
 
         qty_kw = {"qty": qty} if qty is not None else {}
 
+        res: dict[str, Any]
+        stop_id: str | None = None
+        tp_id: str | None = None
+        stop_pct_val: float = 0.0
+
         if action in {"trail", "trailing_stop"}:
             pct = float(trail_percent or 0)
             amt = float(trail_price or 0)
@@ -5975,9 +6172,11 @@ class AppState:
             if not armed:
                 raise ValueError("Could not arm the trailing stop")
             self._invalidate_manual_heat()
-            return {"symbol": symbol, "action": "trail", "stop": armed, "mark": mark_price}
+            stop_id = (armed or {}).get("id")
+            stop_pct_val = pct if pct > 0 else (amt / mark_price * 100.0 if amt > 0 and mark_price > 0 else 3.0)
+            res = {"symbol": symbol, "action": "trail", "stop": armed, "mark": mark_price}
 
-        if action == "breakeven":
+        elif action == "breakeven":
             if avg_entry is None or avg_entry <= 0:
                 raise ValueError(
                     f"Alpaca has no average entry price for {symbol}, so the desk "
@@ -6000,27 +6199,32 @@ class AppState:
             if not armed:
                 raise ValueError("Could not move the stop to breakeven")
             self._invalidate_manual_heat()
-            return {"symbol": symbol, "action": action, "stop": armed, "mark": mark_price}
+            stop_id = (armed or {}).get("id")
+            stop_pct_val = abs(mark_price - target) / mark_price * 100.0 if mark_price > 0 else 1.0
+            res = {"symbol": symbol, "action": action, "stop": armed, "mark": mark_price}
 
-        if action in {"price", "stop_loss"}:
+        elif action in {"price", "stop_loss"}:
             target_stop = _resolve_stop_target(stop_price, stop_pct)
             service.cancel_open_exit_orders(symbol)
             armed = service.replace_stop_loss(symbol, target_stop, **qty_kw)
             if not armed:
                 raise ValueError("Could not move the stop")
             self._invalidate_manual_heat()
-            return {"symbol": symbol, "action": "price", "stop": armed, "mark": mark_price}
+            stop_id = (armed or {}).get("id")
+            stop_pct_val = abs(mark_price - target_stop) / mark_price * 100.0 if mark_price > 0 else 3.0
+            res = {"symbol": symbol, "action": "price", "stop": armed, "mark": mark_price}
 
-        if action == "take_profit":
+        elif action == "take_profit":
             target_tp = _resolve_take_profit_target(take_profit_price, take_profit_pct, take_profit_r)
             service.cancel_open_exit_orders(symbol)
             armed_tp = service.arm_take_profit(symbol, target_tp, **qty_kw)
             if not armed_tp:
                 raise ValueError("Could not set the take profit limit order")
             self._invalidate_manual_heat()
-            return {"symbol": symbol, "action": action, "take_profit": armed_tp, "mark": mark_price}
+            tp_id = (armed_tp or {}).get("id")
+            res = {"symbol": symbol, "action": action, "take_profit": armed_tp, "mark": mark_price}
 
-        if action == "bracket":
+        elif action == "bracket":
             target_stop = None
             if (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
                 target_stop = _resolve_stop_target(stop_price, stop_pct)
@@ -6061,15 +6265,63 @@ class AppState:
                 qty=qty,
             )
             self._invalidate_manual_heat()
-            return {
+            stop_info = result.get("stop")
+            tp_info = result.get("take_profit")
+            stop_id = (stop_info or {}).get("id") or (result.get("order_id") if not tp_info else None)
+            tp_id = (tp_info or {}).get("id")
+            if target_stop and mark_price > 0:
+                stop_pct_val = abs(mark_price - target_stop) / mark_price * 100.0
+            elif trail:
+                stop_pct_val = float(trail)
+            else:
+                stop_pct_val = float(self.settings.stop_loss_pct or 3.0)
+            res = {
                 "symbol": symbol,
                 "action": action,
-                "stop": result.get("stop"),
-                "take_profit": result.get("take_profit"),
+                "stop": stop_info,
+                "take_profit": tp_info,
                 "order_id": result.get("order_id"),
                 "order_class": result.get("order_class"),
                 "mark": mark_price,
             }
+
+        # Handle dip-hunt automation for position exit strategies
+        dip_hunt_plan = None
+        if dip_hunt is not None:
+            if isinstance(dip_hunt, dict) and dip_hunt.get("enabled"):
+                dip_hunt_plan = self.normalize_dip_hunt_request(
+                    dip_hunt, side="buy" if not is_short else "sell"
+                )
+            elif isinstance(dip_hunt, dict) and not dip_hunt.get("enabled"):
+                self._cancel_dip_hunt_plans_for_symbol(
+                    symbol, message="Dip hunt disabled in exit strategy."
+                )
+
+        if dip_hunt_plan is not None:
+            if action == "take_profit":
+                raise ValueError("Dip hunt after stop-loss requires a protective stop loss order.")
+            if not stop_id:
+                stop_id = service.open_protective_stop_id(symbol) or None
+
+            # Cancel any previous dip hunt plans for this symbol before registering the new one
+            self._cancel_dip_hunt_plans_for_symbol(
+                symbol, message="Exit strategy updated with new dip hunt."
+            )
+
+            hunt_qty = float(qty) if qty is not None else abs(position)
+            armed_hunt = self._register_dip_hunt_plan(
+                symbol=symbol,
+                buy_order_id="",
+                qty=hunt_qty,
+                stop_loss_pct=stop_pct_val or 3.0,
+                take_profit_r=float(take_profit_r or 0),
+                stop_order_id=stop_id,
+                take_profit_order_id=tp_id,
+                plan=dip_hunt_plan,
+            )
+            res["dip_hunt"] = armed_hunt
+
+        return res
 
     def manual_order_status(self, order_id: str) -> dict[str, Any]:
         """Terminal state of a submitted ticket — acceptance is not a fill."""
@@ -9429,6 +9681,29 @@ class AppState:
             self._persist_dip_hunt_plans()
         return cancelled
 
+    def _cancel_dip_hunt_plans_for_symbol(
+        self, symbol: str, message: str = "Exit strategy updated."
+    ) -> int:
+        """Disarm any active dip-hunt plans for a symbol."""
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            return 0
+        with self.lock:
+            pids = [
+                pid
+                for pid, p in self.dip_hunt_plans.items()
+                if str(p.get("symbol") or "").strip().upper() == sym
+                and p.get("status") in _DIP_HUNT_CANCELLABLE
+            ]
+        cancelled = 0
+        for pid in pids:
+            try:
+                self.cancel_dip_hunt_plan(pid)
+                cancelled += 1
+            except Exception:
+                pass
+        return cancelled
+
     def cancel_dip_hunt_plan(self, plan_id: str) -> dict[str, Any]:
         """Disarm a live hunt. A parked dip-buy is cancelled; the stop is not."""
         plan_id = str(plan_id or "").strip()
@@ -10470,6 +10745,11 @@ class AppState:
             loop_running = self.loop_running
             mode_status = self._trading_mode_status_locked()
             cached_desk_entries = dict(getattr(self, "_desk_avg_entries", {}))
+            cached_dip_hunts = {
+                str(p.get("symbol") or "").upper(): dict(p)
+                for p in self.dip_hunt_plans.values()
+                if p.get("status") in _DIP_HUNT_ACTIVE
+            }
 
         # Reconcile position metrics with desk-calculated lot values when available
         for p in positions:
@@ -10616,6 +10896,21 @@ class AppState:
                 }
             p["auto_trade"] = auto_summary
             p["is_auto_trading"] = bool(auto_summary and auto_summary.get("is_running"))
+
+            hunt = cached_dip_hunts.get(sym)
+            if hunt:
+                p["has_dip_hunt"] = True
+                p["dip_hunt_plan"] = {
+                    "id": hunt.get("id"),
+                    "status": hunt.get("status"),
+                    "wait_minutes": hunt.get("wait_minutes"),
+                    "dip_pct": hunt.get("dip_pct"),
+                    "cycle": hunt.get("cycle"),
+                    "target_price": hunt.get("target_price"),
+                }
+            else:
+                p["has_dip_hunt"] = False
+                p["dip_hunt_plan"] = None
 
         # Sort positions by market_value desc by default
         positions.sort(key=lambda x: abs(float(x.get("market_value") or 0.0)), reverse=True)
@@ -10830,6 +11125,10 @@ class AppState:
             percentage=percentage,
             cancel_orders=cancel_orders,
         )
+        if cancel_orders or percentage in (100, 100.0) or (qty is None and percentage is None):
+            self._cancel_dip_hunt_plans_for_symbol(
+                symbol, message="Position closed by user."
+            )
         try:
             self.refresh_account()
             self.refresh_quote(force=True)
@@ -10849,6 +11148,11 @@ class AppState:
         results = service.close_batch_positions(
             symbols, cancel_orders=cancel_orders
         )
+        if cancel_orders:
+            for sym in symbols:
+                self._cancel_dip_hunt_plans_for_symbol(
+                    sym, message="Position closed in batch by user."
+                )
         try:
             self.refresh_account()
             self.refresh_quote(force=True)
@@ -10872,6 +11176,13 @@ class AppState:
         results = service.close_all_positions(
             cancel_orders=cancel_orders
         )
+        if cancel_orders:
+            with self.lock:
+                all_syms = list({str(p.get("symbol") or "").strip().upper() for p in self.dip_hunt_plans.values()})
+            for sym in all_syms:
+                self._cancel_dip_hunt_plans_for_symbol(
+                    sym, message="All positions closed by user."
+                )
         try:
             self.refresh_account()
             self.refresh_quote(force=True)
