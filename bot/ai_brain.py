@@ -75,6 +75,18 @@ class AiBrain:
         except (TypeError, ValueError):
             price = 0.0
 
+        if self._size_mode() == "notional":
+            resolver = getattr(self.config, "order_qty_for_price", None)
+            if callable(resolver) and price > 0:
+                try:
+                    return float(resolver(price))
+                except ValueError:
+                    pass
+        elif self._size_mode() == "qty":
+            qty = float(getattr(self.config, "trade_qty", 1) or 1)
+            if qty > 0:
+                return qty
+
         risk = context.get("risk") or {}
         stop_distance = risk.get("stop_distance")
         equity = ((context.get("account") or {}).get("equity")) or 0
@@ -472,9 +484,10 @@ class AiBrain:
                 "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
                 "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
                 "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
-                "  predictive power for gold (IC -0.01). Never let it carry a trade decision on its own.\n"
+                "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, and UGL are strictly excluded from the metals playbook.\n"
                 "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
                 "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
+                "- INVERSE DECAY GUARD: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
                 "- If macro_risk_level is 'imminent_release' (high-impact FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
                 "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
                 "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"

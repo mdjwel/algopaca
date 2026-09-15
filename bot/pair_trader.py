@@ -297,6 +297,10 @@ class PairTradingBot:
         mark = float(price or 0)
         if mark <= 0:
             raise ValueError("Need a positive mark price to size pair entry")
+        if getattr(self.config, "size_mode", "qty") == "notional" and float(getattr(self.config, "trade_notional", 0) or 0) > 0:
+            return float(self.config.order_qty_for_price(mark))
+        if getattr(self.config, "size_mode", "qty") == "qty" and float(getattr(self.config, "trade_qty", 0) or 0) > 0:
+            return float(self.config.trade_qty)
         cash = equity = 0.0
         try:
             summary = self.service.account_summary()

@@ -747,6 +747,10 @@ class DayTradingBot:
     def _entry_qty(
         self, price: float, stop_distance: float, equity: float
     ) -> float:
+        if getattr(self.config, "size_mode", "qty") == "notional" and float(getattr(self.config, "trade_notional", 0) or 0) > 0:
+            return self.config.order_qty_for_price(price)
+        if getattr(self.config, "size_mode", "qty") == "qty" and float(getattr(self.config, "trade_qty", 0) or 0) > 0:
+            return float(self.config.trade_qty)
         risk_qty = risk_qty_for(self.config, price, stop_distance, equity)
         if risk_qty is not None and risk_qty > 0:
             return float(risk_qty)

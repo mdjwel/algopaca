@@ -37,6 +37,15 @@
   margin-top: 0.1rem;
 }
 
+.provider-model-label {
+  margin-top: 0.5rem;
+}
+
+.provider-model-label select,
+.provider-model-label .nice-select {
+  width: 100%;
+}
+
 /* ── Trading environment selector ─────────────────────────────── */
 /* `.form label` turns every label into a stacked, mono, uppercase field —
    correct for text inputs, wrong for these cards, so each property it sets is

@@ -37,6 +37,13 @@ from bot.ai_presets import (
     resolve_preset_id,
     risk_profile_for,
 )
+from bot.ai_backtest import (
+    AiBacktestParams,
+    run_ai_backtest,
+    run_ai_portfolio_backtest,
+)
+from bot.econ_calendar import fetch_economic_calendar
+from bot.metals_intel import is_precious_metal
 from bot.ai_trader import AiTradingBot
 from bot.alpaca_errors import (
     broker_error_kind,
@@ -428,6 +435,8 @@ class AppState:
         # Order ids being cancel-and-resubmitted (accepted → new ticket).
         # Watchers must not drop the desk plan while the close is mid-rewrite.
         self._rewriting_order_ids: set[str] = set()
+        # Desk-calculated lot metrics per symbol: sym -> {avg_entry_price, cost_basis, unrealized_pl, qty, side}
+        self._desk_avg_entries: dict[str, dict[str, Any]] = {}
         # Dip-hunt plans: a buy ticket that asked the desk to re-enter cheaper
         # after its stop fills. Same persistence story as re-investment.
         self.dip_hunt_plans: dict[str, dict[str, Any]] = {}
@@ -2388,6 +2397,242 @@ class AppState:
             },
         }
 
+    def _run_ai_backtest(
+        self,
+        *,
+        days: int,
+        bar_timeframe: str,
+        initial_cash: float,
+        symbols: str | None,
+        symbol: str,
+        run_kind: str = "per_symbol",
+        slip_bps: float | None = None,
+        qty: float | None = None,
+        stop_loss_pct: float | None = None,
+        ai_preset: str | None = None,
+        ai_min_confidence: float | None = None,
+        ai_atr_stop_mult: float | None = None,
+        ai_take_profit_r: float | None = None,
+        ai_trail_after_r: float | None = None,
+        ai_risk_pct: float | None = None,
+        ai_max_positions: int | None = None,
+    ) -> dict[str, Any]:
+        """Replay AI Trader engine rules over historical bars."""
+        kind = str(run_kind or "per_symbol").strip().lower().replace("-", "_")
+        if kind not in {"per_symbol", "portfolio"}:
+            raise ValueError("run_kind must be per_symbol or portfolio")
+
+        symbol_list = parse_backtest_symbols(symbols, symbol)
+        days_i = int(days)
+        if days_i < 15 or days_i > 1500:
+            raise ValueError("AI backtests cover 15 to 1500 days")
+
+        tf = str(bar_timeframe or "1Day").strip()
+        allowed_tf = {"1Min", "5Min", "15Min", "1Hour", "1Day"}
+        if tf not in allowed_tf:
+            raise ValueError(f"bar_timeframe must be one of {sorted(allowed_tf)}")
+        if tf != "1Day" and days_i > 60:
+            raise ValueError("Intraday backtests are limited to 60 days")
+
+        cash = float(initial_cash)
+        if cash < 100:
+            raise ValueError("initial_cash must be at least 100")
+
+        with self.lock:
+            s = self.settings
+            preset_id = resolve_preset_id(ai_preset or s.ai_preset)
+            preset_meta = get_preset(preset_id)
+            preset_risk = risk_profile_for(preset_id)
+
+            min_conf = (
+                float(ai_min_confidence)
+                if ai_min_confidence is not None
+                else float(preset_meta.min_confidence or s.ai_min_confidence or 0.55)
+            )
+            atr_mult = (
+                float(ai_atr_stop_mult)
+                if ai_atr_stop_mult is not None
+                else float(preset_risk.get("ai_atr_stop_mult", s.ai_atr_stop_mult or 1.8))
+            )
+            tp_r = (
+                float(ai_take_profit_r)
+                if ai_take_profit_r is not None
+                else float(preset_risk.get("ai_take_profit_r", s.ai_take_profit_r or 2.0))
+            )
+            trail_r = (
+                float(ai_trail_after_r)
+                if ai_trail_after_r is not None
+                else float(preset_risk.get("ai_trail_after_r", s.ai_trail_after_r or 1.0))
+            )
+            risk_p = (
+                float(ai_risk_pct)
+                if ai_risk_pct is not None
+                else float(preset_risk.get("ai_risk_pct", s.ai_risk_pct or 0.5))
+            )
+            max_pos = (
+                int(ai_max_positions)
+                if ai_max_positions is not None
+                else int(preset_risk.get("ai_max_positions", s.ai_max_positions or 3))
+            )
+            trade_qty = float(qty) if qty is not None and qty > 0 else (float(s.trade_qty) if s.size_mode == "qty" else None)
+
+            params = AiBacktestParams(
+                preset=preset_id,
+                min_confidence=min_conf,
+                atr_stop_mult=atr_mult,
+                take_profit_r=tp_r,
+                trail_after_r=trail_r,
+                risk_pct=risk_p,
+                max_positions=max_pos,
+                initial_cash=cash,
+                slippage_bps=float(slip_bps) if slip_bps is not None else DEFAULT_SLIPPAGE_BPS,
+                qty=trade_qty,
+            )
+
+        pad = 120 if tf == "1Day" else max(days_i, 14)
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days_i + pad)
+
+        service = AlpacaService(self._base_config())
+        bars_by_symbol: dict[str, pd.DataFrame] = {}
+        errors: list[dict[str, Any]] = []
+        for sym in symbol_list:
+            try:
+                bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
+                if bars.empty:
+                    raise ValueError(f"No bar data returned for {sym}")
+                bars_by_symbol[sym] = self._trim_backtest_bars(bars, days_i=days_i, end=end)
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"symbol": sym, "error": str(exc)})
+
+        if not bars_by_symbol:
+            detail = "; ".join(f"{e['symbol']}: {e['error']}" for e in errors)
+            raise ValueError(detail or "AI backtest produced no results: no bar data")
+
+        macro_bars: dict[str, pd.DataFrame] | None = None
+        calendar_events: list[dict[str, Any]] | None = None
+        is_metals_run = (
+            preset_id == "gold_silver_macro"
+            or any(is_precious_metal(s) for s in symbol_list)
+        )
+        if is_metals_run:
+            macro_syms = ["TLT", "UUP", "GLD", "SLV"]
+            macro_bars = {}
+            for msym in macro_syms:
+                if msym in bars_by_symbol:
+                    macro_bars[msym] = bars_by_symbol[msym]
+                else:
+                    try:
+                        mb = service.get_bars_range(msym, start=start, end=end, timeframe=tf)
+                        if not mb.empty:
+                            macro_bars[msym] = self._trim_backtest_bars(mb, days_i=days_i, end=end)
+                    except Exception:
+                        pass
+            try:
+                calendar_events = fetch_economic_calendar(hours_ahead=days_i * 24, hours_behind=days_i * 24)
+            except Exception:
+                calendar_events = None
+
+        meta = {
+            "mode": "ai",
+            "bar_timeframe": tf,
+            "days": days_i,
+            "qty": trade_qty,
+            "initial_cash": cash,
+            "params": asdict(params),
+            "run_kind": kind,
+            "symbols": symbol_list,
+            "ai_preset": preset_id,
+            "ai_preset_label": preset_meta.label if preset_id != "custom" else "Custom",
+        }
+
+        # Single-symbol per_symbol keeps flat payload
+        if len(symbol_list) == 1 and kind == "per_symbol":
+            sym = symbol_list[0]
+            if sym not in bars_by_symbol:
+                detail = errors[0]["error"] if errors else "no data"
+                raise ValueError(f"AI backtest produced no results for {sym}: {detail}")
+            res = run_ai_backtest(
+                bars_by_symbol[sym],
+                symbol=sym,
+                params=params,
+                macro_bars=macro_bars,
+                calendar_events=calendar_events,
+            )
+            res.update({**meta, "symbol": sym, "errors": errors})
+            return res
+
+        # Shared-cash portfolio run
+        if kind == "portfolio":
+            book = run_ai_portfolio_backtest(
+                bars_by_symbol,
+                params=params,
+                macro_bars=macro_bars,
+                calendar_events=calendar_events,
+            )
+            legs = list(book.get("results") or [])
+            for leg in legs:
+                leg_sym = leg.get("symbol")
+                leg_cash = leg.get("initial_cash", cash)
+                leg.update(
+                    {
+                        **meta,
+                        "symbol": leg_sym,
+                        "initial_cash": leg_cash,
+                        "run_kind": "portfolio_leg",
+                    }
+                )
+            for err in errors:
+                legs.append(err)
+            summary = [summary_from_result(r) for r in legs]
+            label = "+".join(symbol_list)
+            return {
+                "symbol": label,
+                **meta,
+                **book,
+                "symbols": symbol_list,
+                "results": legs,
+                "summary": summary,
+                "errors": errors,
+            }
+
+        # Multi-symbol per_symbol independent runs
+        results: list[dict[str, Any]] = []
+        for sym in symbol_list:
+            if sym not in bars_by_symbol:
+                continue
+            try:
+                one = run_ai_backtest(
+                    bars_by_symbol[sym],
+                    symbol=sym,
+                    params=params,
+                    macro_bars=macro_bars,
+                    calendar_events=calendar_events,
+                )
+                one.update(
+                    {
+                        **meta,
+                        "symbol": sym,
+                    }
+                )
+                results.append(one)
+            except Exception as exc:  # noqa: BLE001
+                results.append({"symbol": sym, "error": str(exc), **meta})
+
+        for err in errors:
+            results.append({**err, **meta})
+
+        summary = [summary_from_result(r) for r in results]
+        label = "+".join(symbol_list)
+        return {
+            "symbol": label,
+            **meta,
+            "symbols": symbol_list,
+            "results": results,
+            "summary": summary,
+            "errors": errors,
+        }
+
     def _run_ls_backtest(
         self,
         *,
@@ -2754,11 +2999,38 @@ class AppState:
         day_open_buffer_mins: int | None = None,
         day_eod_flatten_mins: int | None = None,
         day_eod_flatten: bool | None = None,
+        ai_preset: str | None = None,
+        ai_min_confidence: float | None = None,
+        ai_atr_stop_mult: float | None = None,
+        ai_take_profit_r: float | None = None,
+        ai_trail_after_r: float | None = None,
+        ai_risk_pct: float | None = None,
+        ai_max_positions: int | None = None,
     ) -> dict[str, Any]:
-        """Fetch history and walk-forward SMA, dip, pair, or LS (no live orders)."""
+        """Fetch history and walk-forward SMA, dip, pair, LS, day, or AI (no live orders)."""
         mode_key = str(mode or "sma").strip().lower()
-        if mode_key not in {"sma", "dip", "pair", "ls", "day"}:
-            raise ValueError("Backtest supports sma, dip, pair, or ls only (not AI)")
+        if mode_key not in {"sma", "dip", "pair", "ls", "day", "ai"}:
+            raise ValueError("Backtest supports sma, dip, pair, ls, day, or ai")
+
+        if mode_key == "ai":
+            return self._run_ai_backtest(
+                days=days,
+                bar_timeframe=bar_timeframe,
+                initial_cash=initial_cash,
+                symbols=symbols,
+                symbol=symbol,
+                run_kind=run_kind,
+                slip_bps=slip_bps,
+                qty=qty,
+                stop_loss_pct=stop_loss_pct,
+                ai_preset=ai_preset,
+                ai_min_confidence=ai_min_confidence,
+                ai_atr_stop_mult=ai_atr_stop_mult,
+                ai_take_profit_r=ai_take_profit_r,
+                ai_trail_after_r=ai_trail_after_r,
+                ai_risk_pct=ai_risk_pct,
+                ai_max_positions=ai_max_positions,
+            )
 
         if mode_key == "pair":
             return self._run_pair_backtest(
@@ -10197,6 +10469,25 @@ class AppState:
             cached_account = dict(self.account or {}) if self.account else {}
             loop_running = self.loop_running
             mode_status = self._trading_mode_status_locked()
+            cached_desk_entries = dict(getattr(self, "_desk_avg_entries", {}))
+
+        # Reconcile position metrics with desk-calculated lot values when available
+        for p in positions:
+            sym = str(p.get("symbol") or "").upper()
+            cached = cached_desk_entries.get(sym)
+            if (
+                cached
+                and abs(float(p.get("qty") or 0.0) - float(cached.get("qty") or 0.0)) < 1e-6
+                and str(p.get("side") or "").lower().replace("positionside.", "")
+                == str(cached.get("side") or "").lower().replace("positionside.", "")
+            ):
+                p["alpaca_avg_entry_price"] = p.get("avg_entry_price")
+                p["avg_entry_price"] = cached["avg_entry_price"]
+                p["desk_avg_entry_price"] = cached["avg_entry_price"]
+                p["cost_basis"] = cached["cost_basis"]
+                p["unrealized_pl"] = cached["unrealized_pl"]
+                if cached["cost_basis"] > 0:
+                    p["unrealized_pct"] = round((cached["unrealized_pl"] / cached["cost_basis"]) * 100.0, 3)
 
         # Merge live summary if available, fallback to cached
         acc_equity = float((account or {}).get("equity") or cached_account.get("equity") or 0.0)
@@ -10475,24 +10766,37 @@ class AppState:
 
         total_cost = sum(lot["cost_basis"] for lot in lots)
         total_qty = sum(lot["qty"] for lot in lots)
+        # Calculate actual average entry directly from the desk's lots
+        desk_avg_entry = (
+            round(total_cost / total_qty, 4) if total_qty > 0 else (avg_entry or None)
+        )
+        total_upl = round(sum(lot["unrealized_pl"] for lot in lots), 2)
+
+        with self.lock:
+            if not hasattr(self, "_desk_avg_entries"):
+                self._desk_avg_entries = {}
+            self._desk_avg_entries[sym] = {
+                "avg_entry_price": desk_avg_entry,
+                "cost_basis": round(total_cost, 2),
+                "unrealized_pl": total_upl,
+                "qty": held,
+                "side": side,
+            }
+
         return {
             "symbol": sym,
             "side": side,
             "qty": held,
             "current_price": current_px or None,
-            "avg_entry_price": avg_entry or None,
+            "avg_entry_price": desk_avg_entry,
+            "desk_avg_entry_price": desk_avg_entry,
+            "alpaca_avg_entry_price": avg_entry or None,
             "lot_count": len(lots),
             "lots": lots,
             "total_qty": round(total_qty, 9),
             "total_cost_basis": round(total_cost, 2),
-            "total_unrealized_pl": round(
-                sum(lot["unrealized_pl"] for lot in lots), 2
-            ),
-            # A blended average that disagrees with Alpaca's means the window
-            # missed fills; the page says so rather than presenting a guess.
-            "weighted_avg_price": (
-                round(total_cost / total_qty, 4) if total_qty > 0 else None
-            ),
+            "total_unrealized_pl": total_upl,
+            "weighted_avg_price": desk_avg_entry,
             "estimated_qty": round(max(0.0, carried_qty), 9),
             "lookback_days": days,
             "window_truncated": bool(window["truncated"]),

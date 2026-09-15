@@ -447,6 +447,56 @@ class TestUserSettings(unittest.TestCase):
         self.assertFalse(clear_data["ai_key_status"]["openai"]["set"])
         self.assertFalse(clear_data["state"]["ai_ready"]["openai"])
 
+    def test_api_keys_provider_and_model_settings(self) -> None:
+        # First set strategy_mode to dip and symbol to TSLA via settings
+        self.client.post(
+            "/api/settings",
+            json={"symbol": "TSLA", "symbols": "TSLA", "strategy_mode": "dip"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+
+        payload = {
+            "ai_provider": "gemini",
+            "gemini_model": "gemini-3.6-flash",
+            "openai_model": "gpt-5.6-terra",
+            "save_to_env": False,
+        }
+        res = self.client.post(
+            "/api/keys",
+            json=payload,
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        settings = data["state"]["settings"]
+        self.assertEqual(settings["ai_provider"], "gemini")
+        self.assertEqual(settings["gemini_model"], "gemini-3.6-flash")
+        self.assertEqual(settings["openai_model"], "gpt-5.6-terra")
+        # Strategy settings must be preserved
+        self.assertEqual(settings["strategy_mode"], "dip")
+        self.assertEqual(settings["symbol"], "TSLA")
+
+        # Now test updating only an Anthropic model alone via /api/keys
+        single_res = self.client.post(
+            "/api/keys",
+            json={"anthropic_model": "claude-sonnet-5"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(single_res.status_code, 200)
+        single_settings = single_res.json()["state"]["settings"]
+        self.assertEqual(single_settings["anthropic_model"], "claude-sonnet-5")
+        self.assertEqual(single_settings["strategy_mode"], "dip")
+        self.assertEqual(single_settings["symbol"], "TSLA")
+
+        # Invalid provider returns 400
+        bad_res = self.client.post(
+            "/api/keys",
+            json={"ai_provider": "unsupported_ai"},
+            cookies={"algopaca_session": self.trader_token},
+        )
+        self.assertEqual(bad_res.status_code, 400)
+
 
     def test_setup_wizard_page_routing(self) -> None:
         """Verify /setup-wizard and /wizard routes require auth and render for authenticated user."""

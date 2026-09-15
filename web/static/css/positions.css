@@ -4262,5 +4262,42 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-signal-badge.sell { background: #991b1b; color: #fecaca; }
 .pos-signal-badge.hold { background: #334155; color: #cbd5e1; }
 
+.pos-autotrade-field .notional-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+
+  & .btn-notional-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-family: var(--mono, monospace);
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--text-muted, #94a3b8);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: #ffffff;
+      border-color: var(--copper, #d4894c);
+      background: rgba(212, 137, 76, 0.15);
+    }
+
+    &.is-active {
+      color: #000000;
+      background: var(--copper, #d4894c);
+      border-color: var(--copper, #d4894c);
+      font-weight: 600;
+    }
+  }
+}
+
 
 

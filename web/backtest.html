@@ -134,9 +134,10 @@
                   <option value="pair" data-i18n="mode_pair">Long &amp; Short Pair</option>
                   <option value="ls" data-i18n="mode_ls">Regime Dual Momentum (L/S)</option>
                   <option value="day" data-i18n="mode_day">Day trading (VWAP &amp; ORB)</option>
+                  <option value="ai" data-i18n="mode_ai">AI trader</option>
                 </select>
               </label>
-              <p id="bt-mode-hint" class="field-help" data-i18n="bt_mode_hint">Buy RSI ≤30 or lower BB; exit RSI ≥60 or upper band.</p>
+              <p id="bt-mode-hint" class="field-help" data-i18n="mode_hint_dip">Buys oversold washes (RSI or lower Bollinger); sells into RSI recovery or upper band.</p>
 
               <label for="bt-sma-preset" class="stack bt-sma-only" hidden><span data-i18n="sma_preset">SMA preset</span>
                 <select id="bt-sma-preset" name="sma_preset">
@@ -303,6 +304,42 @@
                   <input id="bt-day-max-trades" name="day_max_trades_per_day" type="number" min="1" max="20" value="3" inputmode="numeric" />
                 </label>
               </div>
+
+              <!-- AI Trader Engine controls -->
+              <label for="bt-ai-preset" class="stack bt-ai-only" hidden><span data-i18n="ai_preset">AI preset</span>
+                <select id="bt-ai-preset" name="ai_preset">
+                  <option value="balanced" selected data-i18n="preset_ai_balanced">Balanced (Multi-factor Trend &amp; Momentum)</option>
+                  <option value="conservative" data-i18n="preset_ai_conservative">Conservative (High-conviction Quality)</option>
+                  <option value="momentum" data-i18n="preset_ai_momentum">Momentum (Breakouts &amp; Moving Average Stack)</option>
+                  <option value="mean_reversion" data-i18n="preset_ai_mean_reversion">Mean Reversion (Oversold &amp; Overbought Fades)</option>
+                  <option value="trend_atr" data-i18n="preset_ai_trend_atr">Trend + ATR Trail (Riding Large Runners)</option>
+                  <option value="gold_silver_macro" data-i18n="preset_gold_silver_macro">AI Gold &amp; Silver Macro Momentum</option>
+                  <option value="custom" data-i18n="preset_custom">Custom</option>
+                </select>
+              </label>
+              <p id="bt-ai-hint" class="field-help bt-ai-only" hidden data-i18n="bt_ai_hint">
+                Multi-factor AI reasoning with ATR stops, R-multiple targets, and dynamic trailing exits.
+              </p>
+              <div class="bt-ai-windows bt-ai-only" hidden>
+                <label for="bt-ai-min-conf"><span data-i18n="min_confidence">Min confidence</span>
+                  <input id="bt-ai-min-conf" name="ai_min_confidence" type="number" min="0.1" max="1.0" step="0.05" value="0.55" inputmode="decimal" />
+                </label>
+                <label for="bt-ai-atr-stop"><span data-i18n="atr_stop_mult">Stop (ATR ×)</span>
+                  <input id="bt-ai-atr-stop" name="ai_atr_stop_mult" type="number" min="0.5" max="5.0" step="0.1" value="1.8" inputmode="decimal" />
+                </label>
+                <label for="bt-ai-tp-r"><span data-i18n="take_profit_r">Target (R)</span>
+                  <input id="bt-ai-tp-r" name="ai_take_profit_r" type="number" min="0.0" max="10.0" step="0.5" value="2.0" inputmode="decimal" />
+                </label>
+                <label for="bt-ai-trail-r"><span data-i18n="trail_after_r">Trail after (R)</span>
+                  <input id="bt-ai-trail-r" name="ai_trail_after_r" type="number" min="0.0" max="10.0" step="0.5" value="1.0" inputmode="decimal" />
+                </label>
+                <label for="bt-ai-risk-pct"><span data-i18n="risk_pct">Risk %</span>
+                  <input id="bt-ai-risk-pct" name="ai_risk_pct" type="number" min="0.1" max="10.0" step="0.1" value="0.5" inputmode="decimal" />
+                </label>
+                <label for="bt-ai-max-pos"><span data-i18n="max_positions">Max positions</span>
+                  <input id="bt-ai-max-pos" name="ai_max_positions" type="number" min="1" max="10" value="3" inputmode="numeric" />
+                </label>
+              </div>
             </fieldset>
 
             <fieldset class="field-group">
@@ -402,7 +439,7 @@
               <div class="bt-multi-head" id="bt-multi-head">
                 <div class="bt-multi-head-copy" id="bt-multi-head-copy">
                   <h3 class="history-subhead" data-i18n="by_symbol">By symbol</h3>
-                  <p id="bt-multi-hint" class="field-help bt-multi-hint" data-i18n="by_symbol_hint">Select a row to focus the summary, chart, and trades.</p>
+                  <p id="bt-multi-hint" class="field-help bt-multi-hint" data-i18n="by_symbol_hint">Select a row to focus the summary and trades.</p>
                 </div>
               </div>
               <div id="bt-compare-symbols" class="bt-symbol-table-wrap"></div>
@@ -442,33 +479,12 @@
               </div>
             </div>
             <p id="bt-meta" class="field-help"></p>
-            <div class="bt-chart-block" id="bt-chart-block">
-              <div class="bt-chart-head">
-                <h3 class="history-subhead" data-i18n="equity_curve">Equity curve</h3>
-                <div class="bt-chart-controls">
-                  <div class="bt-chart-toggles range-chips" role="group" aria-label="Chart series" data-i18n-aria-label="chart_series">
-                    <button type="button" class="chip is-active" data-bt-series="strategy" aria-pressed="true" data-i18n="series_strategy">Strategy</button>
-                    <button type="button" class="chip is-active" data-bt-series="hold" aria-pressed="true" data-i18n="series_buyhold">Buy &amp; hold</button>
-                    <button type="button" class="chip" data-bt-series="drawdown" aria-pressed="false" data-i18n="series_drawdown">Drawdown</button>
-                    <button type="button" class="chip is-active" data-bt-series="trades" aria-pressed="true" data-i18n="series_trades">Trades</button>
-                  </div>
-                  <button type="button" id="btn-bt-chart-fs" class="ghost bt-chart-fs-btn" aria-pressed="false" title="Fullscreen chart" aria-label="Fullscreen equity curve" data-i18n-title="fs_chart_title" data-i18n-aria-label="fs_chart_aria">
-                    <svg class="bt-chart-fs-enter" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" d="M8 3H4v4M16 3h4v4M8 21H4v-4M16 21h4v-4"/>
-                    </svg>
-                    <svg class="bt-chart-fs-exit" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" hidden>
-                      <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div class="bt-equity-wrap">
-                <canvas id="bt-equity-chart" class="bt-equity-chart" aria-labelledby="bt-chart-caption" role="img"></canvas>
-              </div>
-              <p id="bt-chart-caption" class="field-help bt-chart-caption" data-i18n="chart_caption">Hover for date, equity, and price. Toggle series above.</p>
-            </div>
             <h3 class="history-subhead" data-i18n="simulated_trades">Simulated trades</h3>
             <div id="bt-trades" class="history-list trades-list" role="list" aria-label="Backtest trades" data-i18n-aria-label="simulated_trades"></div>
+            <div id="bt-trades-more-wrap" class="bt-trades-more-wrap" hidden>
+              <button type="button" id="btn-bt-trades-more" class="ghost bt-trades-more-btn" data-i18n="show_more">Show more</button>
+              <span id="bt-trades-count-note" class="field-help bt-trades-count-note"></span>
+            </div>
           </div>
           </div>
           <p class="field-help bt-run-footer">
@@ -537,7 +553,6 @@
     </footer>
   </div>
   <script src="/static/vendor/nice-select2/nice-select2.min.js?v=2.4.1-p5"></script>
-  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
   <script src="/static/i18n.js"></script>
   <script src="/static/js/common.js"></script>
   <script src="/static/js/backtest-shared.js"></script>

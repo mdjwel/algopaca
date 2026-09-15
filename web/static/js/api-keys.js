@@ -9,6 +9,7 @@ let configBusyTarget = null;
 // overwrite a selection mid-typing.
 let pendingModeChoice = null;
 let pendingProviderChoice = null;
+let aiModels = { openai: [], gemini: [], anthropic: [], xai: [], defaults: {} };
 
 const AI_PROVIDER_LABELS = {
   openai: "OpenAI",
@@ -94,7 +95,57 @@ function syncAiProviderUi(settings) {
     if (clearBtn) {
       clearBtn.hidden = p !== shown;
     }
+    const modelSelect = $(`field-${p}-model`);
+    if (modelSelect && s[`${p}_model`]) {
+      if (modelSelect.value !== s[`${p}_model`]) {
+        modelSelect.value = s[`${p}_model`];
+        if (typeof refreshNiceSelect === "function") refreshNiceSelect(modelSelect);
+      }
+    }
   });
+}
+
+function fillModelSelect(select, options, preferred) {
+  if (!select || !options?.length) return;
+  const wanted = preferred || select.value || options[0].id;
+  const ids = options.map((m) => m.id);
+  const extra =
+    wanted && !ids.includes(wanted)
+      ? [{ id: wanted, label: `${wanted} (saved)` }]
+      : [];
+  const all = [...extra, ...options];
+  const same =
+    select.options.length === all.length &&
+    [...select.options].every((opt, i) => opt.value === all[i].id);
+  const targetVal = all.some((m) => m.id === wanted) ? wanted : all[0].id;
+  if (!same) {
+    select.innerHTML = all
+      .map(
+        (m) =>
+          `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label || m.id)}</option>`
+      )
+      .join("");
+    select.value = targetVal;
+    if (typeof refreshNiceSelect === "function") refreshNiceSelect(select);
+  } else if (select.value !== targetVal) {
+    select.value = targetVal;
+    if (typeof refreshNiceSelect === "function") refreshNiceSelect(select);
+  }
+}
+
+function populateModelOptions(models) {
+  if (!models) return;
+  aiModels = {
+    openai: Array.isArray(models.openai) ? models.openai : [],
+    gemini: Array.isArray(models.gemini) ? models.gemini : [],
+    anthropic: Array.isArray(models.anthropic) ? models.anthropic : [],
+    xai: Array.isArray(models.xai) ? models.xai : [],
+    defaults: models.defaults || {},
+  };
+  fillModelSelect($("field-openai-model"), aiModels.openai, lastDeskSettings?.openai_model || aiModels.defaults?.openai);
+  fillModelSelect($("field-gemini-model"), aiModels.gemini, lastDeskSettings?.gemini_model || aiModels.defaults?.gemini);
+  fillModelSelect($("field-anthropic-model"), aiModels.anthropic, lastDeskSettings?.anthropic_model || aiModels.defaults?.anthropic);
+  fillModelSelect($("field-xai-model"), aiModels.xai, lastDeskSettings?.xai_model || aiModels.defaults?.xai);
 }
 
 function keysPayload() {
@@ -102,12 +153,20 @@ function keysPayload() {
   const gemini = String($("field-gemini-key")?.value || "").trim();
   const anthropic = String($("field-anthropic-key")?.value || "").trim();
   const xai = String($("field-xai-key")?.value || "").trim();
+  const openaiModel = String($("field-openai-model")?.value || "").trim();
+  const geminiModel = String($("field-gemini-model")?.value || "").trim();
+  const anthropicModel = String($("field-anthropic-model")?.value || "").trim();
+  const xaiModel = String($("field-xai-model")?.value || "").trim();
   return {
     openai_api_key: openai,
     gemini_api_key: gemini,
     anthropic_api_key: anthropic,
     xai_api_key: xai,
     ai_provider: selectedAiProvider(),
+    openai_model: openaiModel || undefined,
+    gemini_model: geminiModel || undefined,
+    anthropic_model: anthropicModel || undefined,
+    xai_model: xaiModel || undefined,
     save_to_env: !!$("field-save-keys")?.checked,
   };
 }
@@ -381,9 +440,14 @@ async function onSaveKeys(ev) {
     !!payload.xai_api_key;
   const currentProvider = activeAiProvider(lastDeskSettings);
   const providerChanged = payload.ai_provider && payload.ai_provider !== currentProvider;
+  const modelChanged =
+    (payload.openai_model && payload.openai_model !== lastDeskSettings?.openai_model) ||
+    (payload.gemini_model && payload.gemini_model !== lastDeskSettings?.gemini_model) ||
+    (payload.anthropic_model && payload.anthropic_model !== lastDeskSettings?.anthropic_model) ||
+    (payload.xai_model && payload.xai_model !== lastDeskSettings?.xai_model);
 
-  if (!hasKeys && !providerChanged) {
-    const msg = "Paste at least one AI API key or choose a different AI provider.";
+  if (!hasKeys && !providerChanged && !modelChanged) {
+    const msg = "Paste at least one AI API key, choose an AI provider, or select a model.";
     if (errEl) {
       errEl.hidden = false;
       errEl.textContent = msg;
@@ -428,7 +492,7 @@ async function onSaveKeys(ev) {
           : `${saved} key saved for this session (Active: ${activeLabel}).`,
         "ok"
       );
-    } else {
+    } else if (providerChanged) {
       showToast(
         tx(
           "ai_provider_switched",
@@ -437,6 +501,8 @@ async function onSaveKeys(ev) {
         ),
         "ok"
       );
+    } else {
+      showToast(tx("model_updated", "AI model configuration saved."), "ok");
     }
   } catch (err) {
     if (errEl) {
@@ -722,9 +788,14 @@ async function applyAiProvider(provider) {
   try {
     setBusy(true, `Switching AI provider to ${label}…`);
     setConfigBusy(true, "ai");
+    const payload = { ai_provider: provider };
+    const modelSelect = $(`field-${provider}-model`);
+    if (modelSelect && modelSelect.value) {
+      payload[`${provider}_model`] = modelSelect.value;
+    }
     const data = await api("/api/keys", {
       method: "POST",
-      body: JSON.stringify({ ai_provider: provider }),
+      body: JSON.stringify(payload),
     });
     if (data.state) applyDeskState(data.state);
     else await refreshStatus({ forceSettings: true });
@@ -818,6 +889,7 @@ function applyDeskState(state) {
   if (!state || typeof state !== "object") return;
   if (state.settings) lastDeskSettings = state.settings;
   if (state.account) applyAccount(state.account);
+  if (state.ai_models) populateModelOptions(state.ai_models);
   applyAiKeys(state.ai_ready, state.ai_key_status);
   applyAlpacaKeys(state.alpaca_key_status);
   applyTradingEnv(state.trading_mode || state.alpaca_key_status);
@@ -864,6 +936,26 @@ $("btn-clear-gemini")?.addEventListener("click", () => onClearAiKey("gemini"));
 $("btn-clear-anthropic")?.addEventListener("click", () => onClearAiKey("anthropic"));
 $("btn-clear-xai")?.addEventListener("click", () => onClearAiKey("xai"));
 
+["field-openai-model", "field-gemini-model", "field-anthropic-model", "field-xai-model"].forEach((id) => {
+  $(id)?.addEventListener("change", async (ev) => {
+    const modelName = ev.target.name;
+    const modelVal = ev.target.value;
+    if (!modelName || !modelVal) return;
+    try {
+      const data = await api("/api/keys", {
+        method: "POST",
+        body: JSON.stringify({ [modelName]: modelVal }),
+      });
+      if (data.state?.settings) {
+        lastDeskSettings = data.state.settings;
+      }
+      showToast(tx("model_updated", "Model updated successfully."), "ok");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+});
+
 // Initialization
 refreshStatus({ forceSettings: true })
   .then(() => syncAiProviderUi(lastDeskSettings))
@@ -877,6 +969,9 @@ function onDeskLanguageChange() {
 }
 
 function onDeskStatusUpdate(state) {
+  if (state.ai_models) {
+    populateModelOptions(state.ai_models);
+  }
   if (state.settings) {
     lastDeskSettings = state.settings;
     syncAiProviderUi(state.settings);

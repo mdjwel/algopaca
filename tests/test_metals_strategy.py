@@ -41,6 +41,10 @@ class TestMetalsIntelligence(unittest.TestCase):
         self.assertTrue(is_precious_metal("GDX"))
         self.assertTrue(is_precious_metal("AGQ"))
         self.assertTrue(is_precious_metal("UGL"))
+        self.assertTrue(is_precious_metal("GDXD"))
+        self.assertTrue(is_precious_metal("gdxd"))
+        self.assertTrue(is_precious_metal("GDXU"))
+        self.assertTrue(is_precious_metal("gdxu"))
 
         self.assertFalse(is_precious_metal("AAPL"))
         self.assertFalse(is_precious_metal("SPY"))
@@ -54,6 +58,8 @@ class TestMetalsIntelligence(unittest.TestCase):
         self.assertEqual(get_metal_category("SLV"), "silver")
         self.assertEqual(get_metal_category("AGQ"), "silver")
         self.assertEqual(get_metal_category("GDX"), "miners")
+        self.assertEqual(get_metal_category("GDXD"), "miners")
+        self.assertEqual(get_metal_category("GDXU"), "miners")
         self.assertEqual(get_metal_category("MSFT"), "other")
 
     def test_calculate_gsr(self):
@@ -211,12 +217,12 @@ class TestMetalsPresets(unittest.TestCase):
     def test_ai_preset_gold_silver_macro(self):
         preset = get_ai_preset("gold_silver_macro")
         self.assertEqual(preset.id, "gold_silver_macro")
-        # Wider stop and a longer 4.0R target to let multi-week trends run for large gains.
-        # trail_after_r set to 2.0R so pullbacks don't choke winners prematurely.
-        self.assertEqual(preset.atr_stop_mult, 2.2)
+        # Calibrated 1.6 ATR stop and 4.0R target with 2.0R breakeven trail ratchet.
+        self.assertEqual(preset.atr_stop_mult, 1.6)
         self.assertEqual(preset.take_profit_r, 4.0)
         self.assertEqual(preset.trail_after_r, 2.0)
         self.assertEqual(preset.min_confidence, 0.70)
+        self.assertEqual(preset.risk_pct, 1.5)
         self.assertEqual(preset.max_positions, 2)
         self.assertIn("Gold/Silver ratio", preset.instructions)
         # The playbook must carry the calibrated regime gate, not a breakout gate.
@@ -231,12 +237,14 @@ class TestMetalsPresets(unittest.TestCase):
         self.assertIsNotNone(bp)
         self.assertEqual(bp["base_engine"], "ai")
         self.assertEqual(bp["choices"]["ai_preset"], "gold_silver_macro")
-        self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GDX, UGL, GLL, DUST")
+        self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GDXU, GLL, GDXD")
         self.assertEqual(bp["choices"]["ai_take_profit_r"], 4.0)
-        self.assertEqual(bp["choices"]["ai_atr_stop_mult"], 2.2)
+        self.assertEqual(bp["choices"]["ai_atr_stop_mult"], 1.6)
+        self.assertEqual(bp["choices"]["ai_risk_pct"], 1.5)
         self.assertEqual(bp["choices"]["ai_trail_after_r"], 2.0)
         self.assertEqual(bp["choices"]["ai_min_confidence"], 0.70)
-        self.assertEqual(bp["choices"]["bar_timeframe"], "1Day")
+        self.assertEqual(bp["choices"]["bar_timeframe"], "1Hour")
+        self.assertEqual(bp["choices"]["poll_seconds"], 120)
 
     def test_day_trading_preset(self):
         preset = get_day_preset("ai_metals_breakout")
@@ -712,6 +720,331 @@ class TestMixedDollarIndexReversalRule(unittest.TestCase):
         self.assertEqual(service.submit_order.call_count, 2)
 
 
+from bot.metals_intel import compute_historical_macro_series
+from bot.ai_backtest import (
+    AiBacktestParams,
+    Signal,
+    compute_ai_indicator_frame,
+    evaluate_ai_signal,
+    run_ai_backtest,
+    run_ai_portfolio_backtest,
+)
+from tests.test_ai_backtest import _generate_synthetic_daily_bars
+
+
+class TestMetalsBacktestMacroRules(unittest.TestCase):
+    """Verify the 7 macro trading and risk rules in backtesting."""
+
+    def setUp(self):
+        self.gld_bars = _generate_synthetic_daily_bars(days=160, trend="bull", start_price=180.0, seed=10)
+        self.tlt_bars = _generate_synthetic_daily_bars(days=160, trend="bull", start_price=95.0, seed=11)
+        self.uup_bars = _generate_synthetic_daily_bars(days=160, trend="bear", start_price=28.0, seed=12)
+        self.slv_bars = _generate_synthetic_daily_bars(days=160, trend="bull", start_price=24.0, seed=13)
+
+    def test_rule1_macro_composite_score_computation(self):
+        """Rule 1: Verify Macro Composite Score (-3 to +3) with factor weighting."""
+        macro_bars = {
+            "TLT": self.tlt_bars,
+            "UUP": self.uup_bars,
+            "SLV": self.slv_bars,
+        }
+        res = compute_historical_macro_series(self.gld_bars, symbol="GLD", macro_bars=macro_bars)
+        self.assertIn("macro_composite_score", res.columns)
+        self.assertIn("rates_score", res.columns)
+        self.assertIn("gsr_score", res.columns)
+        self.assertIn("trend_score", res.columns)
+        self.assertIn("dollar_score", res.columns)
+        self.assertIn("yield_trend", res.columns)
+        self.assertIn("dollar_trend", res.columns)
+        self.assertIn("dollar_mixed", res.columns)
+
+        valid_scores = res["macro_composite_score"].dropna()
+        self.assertTrue((valid_scores >= -3.0).all())
+        self.assertTrue((valid_scores <= 3.0).all())
+
+    def test_rule2_long_entry_macro_and_pullback(self):
+        """Rule 2: Long entry requires bullish regime, macro score >= +0.5, pullback, and confidence >= 0.70."""
+        params = AiBacktestParams(preset="gold_silver_macro", min_confidence=0.70)
+        frame = compute_ai_indicator_frame(self.gld_bars, symbol="GLD")
+        row = frame.iloc[-1].copy()
+        prev = frame.iloc[-2].copy()
+
+        # Set up a bullish regime above SMA 200
+        row["close"] = 200.0
+        row["sma200"] = 180.0
+        row["sma50"] = 190.0
+        row["sma20"] = 199.0
+        row["open"] = 198.0
+        row["high"] = 202.0
+        row["low"] = 197.0
+        row["rsi14"] = 48.0  # In pullback zone [38, 58]
+        row["dist_sma50_atr"] = 1.0
+        row["trend_regime"] = "bullish_above_sma200"
+
+        # Condition 1: Macro Score < 0.5 -> Must reject (HOLD)
+        row["macro_composite_score"] = 0.2
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=0.2)
+        self.assertEqual(sig, Signal.HOLD)
+
+        # Condition 2: Macro Score >= +0.5 -> Approved (BUY, conf >= 0.70)
+        row["macro_composite_score"] = 1.2
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=1.2)
+        self.assertEqual(sig, Signal.BUY)
+        self.assertGreaterEqual(conf, 0.70)
+
+        # Condition 3: Breakout Chase rejection (RSI > 58 AND price > SMA20 * 1.01)
+        row["rsi14"] = 68.0
+        row["close"] = 215.0  # Much higher than SMA20 (199 * 1.01 = 200.99)
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=1.2)
+        self.assertEqual(sig, Signal.HOLD)
+
+        # Condition 4: Asset Selection: GDXU requires macro > 1.5 & strong trend
+        row["rsi14"] = 48.0
+        row["close"] = 200.0
+        row["adx14"] = 25.0
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GDXU", macro_score=1.2)
+        self.assertEqual(sig, Signal.HOLD)
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GDXU", macro_score=1.8)
+        self.assertEqual(sig, Signal.BUY)
+
+    def test_rule3_short_entry_and_dollar_mixed_ban(self):
+        """Rule 3: Short requires price < 200 SMA, macro <= -0.5, rising yields, and strictly bans if dollar is mixed."""
+        params = AiBacktestParams(preset="gold_silver_macro", min_confidence=0.70, allow_short=True)
+        frame = compute_ai_indicator_frame(self.gld_bars, symbol="GLD")
+        row = frame.iloc[-1].copy()
+        prev = frame.iloc[-2].copy()
+
+        # Bear regime below SMA 200
+        row["close"] = 160.0
+        row["sma200"] = 180.0
+        row["sma50"] = 175.0
+        row["sma20"] = 168.0
+        row["rsi14"] = 35.0
+        row["macd_hist"] = -0.5
+        row["adx14"] = 22.0
+        row["dist_sma50_atr"] = -1.5
+        row["macro_composite_score"] = -1.0
+        row["trend_regime"] = "bearish_below_sma200"
+        row["yield_trend"] = "rising_yields"
+        row["dollar_trend"] = "bullish"
+        row["dollar_mixed"] = False
+
+        # Should be approved for short when dollar is trending/bullish
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=-1.0, allow_short=True)
+        self.assertEqual(sig, Signal.SELL)
+        self.assertGreaterEqual(conf, 0.70)
+
+        # Strict ban: If dollar is Mixed or Neutral -> MUST return Signal.HOLD
+        row["dollar_mixed"] = True
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=-1.0, allow_short=True)
+        self.assertEqual(sig, Signal.HOLD)
+        self.assertIn("mixed or neutral", thesis.lower())
+
+        row["dollar_mixed"] = False
+        row["dollar_trend"] = "neutral"
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=-1.0, allow_short=True)
+        self.assertEqual(sig, Signal.HOLD)
+        self.assertIn("mixed or neutral", thesis.lower())
+
+    def test_rule4_and_rule6_short_reversals_in_backtest(self):
+        """Rule 4 & 6: Verify dollar mixed reversal and short stop reversal buy mechanics."""
+        # Create bars that trigger short then reversal
+        bear_bars = _generate_synthetic_daily_bars(days=120, trend="bear", start_price=200.0, seed=42)
+        macro_bars = {
+            "TLT": _generate_synthetic_daily_bars(days=120, trend="bear", start_price=90.0, seed=43),
+            "UUP": _generate_synthetic_daily_bars(days=120, trend="flat", start_price=28.0, seed=44),
+        }
+        params = AiBacktestParams(
+            preset="gold_silver_macro",
+            allow_short=True,
+            min_confidence=0.60,
+            reversal_buy_on_stop=True,
+        )
+        res = run_ai_backtest(bear_bars, symbol="GLD", params=params, macro_bars=macro_bars)
+        self.assertIsInstance(res["trades"], int)
+        self.assertIn("trade_log", res)
+
+    def test_rule5_event_protection_and_45m_filter(self):
+        """Rule 5 & Event filter: 45m entry freeze and 5m stop loss tightening."""
+        params = AiBacktestParams(preset="gold_silver_macro", min_confidence=0.70)
+        frame = compute_ai_indicator_frame(self.gld_bars, symbol="GLD")
+        row = frame.iloc[-1].copy()
+        prev = frame.iloc[-2].copy()
+        row["macro_composite_score"] = 1.5
+        row["close"] = 200.0
+        row["sma200"] = 180.0
+        row["rsi14"] = 45.0
+        row["trend_regime"] = "bullish_above_sma200"
+
+        # Within 45m of event -> evaluate_ai_signal must return HOLD
+        sig, conf, thesis = evaluate_ai_signal(
+            row, prev, params, symbol="GLD", macro_score=1.5, event_imminent_45m=True
+        )
+        self.assertEqual(sig, Signal.HOLD)
+        self.assertIn("within 45 minutes", thesis.lower())
+
+    def test_rule7_preset_defaults_and_scale_out_configuration(self):
+        """Rule 7: Take-profit 4.0R, trailing stop ratchet after 2.0R."""
+        preset = get_ai_preset("gold_silver_macro")
+        self.assertEqual(preset.take_profit_r, 4.0)
+        self.assertEqual(preset.trail_after_r, 2.0)
+        self.assertEqual(preset.atr_stop_mult, 1.6)
+        self.assertEqual(preset.risk_pct, 1.5)
+        # Verify auto-defaults via __post_init__
+        auto_params = AiBacktestParams(preset="gold_silver_macro")
+        self.assertEqual(auto_params.take_profit_r, 4.0)
+        self.assertEqual(auto_params.trail_after_r, 2.0)
+        self.assertEqual(auto_params.min_confidence, 0.70)
+        self.assertEqual(auto_params.risk_pct, 1.5)
+        self.assertEqual(auto_params.atr_stop_mult, 1.6)
+
+    def test_rule7_portfolio_backtest_with_macro_rules(self):
+        """Rule 7: Verify portfolio backtest accepts macro_bars and executes multi-symbol simulation."""
+        bars_by_sym = {
+            "GLD": self.gld_bars,
+            "SLV": self.slv_bars,
+        }
+        macro_bars = {
+            "TLT": self.tlt_bars,
+            "UUP": self.uup_bars,
+            "GLD": self.gld_bars,
+            "SLV": self.slv_bars,
+        }
+        params = AiBacktestParams(preset="gold_silver_macro", min_confidence=0.60)
+        res = run_ai_portfolio_backtest(bars_by_sym, params=params, macro_bars=macro_bars)
+        self.assertEqual(res["run_kind"], "portfolio")
+        self.assertIn("symbols", res)
+        self.assertIn("results", res)
+        self.assertEqual(len(res["results"]), 2)
+
+    def test_miners_and_dust_strictly_excluded_from_metal_strategy(self):
+        """Verify that GDX, GDXJ and DUST are strictly excluded from AI Gold & Silver Macro playbook."""
+        params = AiBacktestParams(preset="gold_silver_macro")
+        row = self.gld_bars.iloc[-1].copy()
+        prev = self.gld_bars.iloc[-2].copy()
+        row["macro_composite_score"] = 2.0
+        row["trend_regime"] = "bullish_above_sma200"
+
+        for sym in ["GDX", "GDXJ", "DUST", "UGL"]:
+            sig, conf, thesis = evaluate_ai_signal(
+                row, prev, params, symbol=sym, macro_score=2.0
+            )
+            self.assertEqual(sig, Signal.HOLD)
+            self.assertEqual(conf, 0.0)
+            self.assertIn("strictly excluded", thesis.lower())
+
+    def test_gdxu_and_gdxd_allowed_in_metal_strategy(self):
+        """Verify that GDXU and GDXD are kept and allowed in the metal strategy."""
+        params = AiBacktestParams(preset="gold_silver_macro")
+        frame = compute_ai_indicator_frame(self.gld_bars, symbol="GDXU")
+        row = frame.iloc[-1].copy()
+        prev = frame.iloc[-2].copy()
+        row["macro_composite_score"] = 1.8
+        row["trend_regime"] = "bullish_above_sma200"
+        row["close"] = 100.0
+        row["open"] = 98.0
+        row["high"] = 102.0
+        row["low"] = 97.0
+        row["sma200"] = 80.0
+        row["sma50"] = 90.0
+        row["sma20"] = 99.0
+        row["rsi14"] = 50.0
+        row["adx14"] = 25.0
+        row["dist_sma50_atr"] = 1.0
+
+        # GDXU in bull regime with high macro score
+        sig, conf, thesis = evaluate_ai_signal(
+            row, prev, params, symbol="GDXU", macro_score=1.8
+        )
+        self.assertEqual(sig, Signal.BUY)
+        self.assertGreaterEqual(conf, 0.70)
+
+        # GDXD as inverse ETF in inverse trend
+        sig, conf, thesis = evaluate_ai_signal(
+            row, prev, params, symbol="GDXD"
+        )
+        self.assertEqual(sig, Signal.BUY)
+        self.assertGreaterEqual(conf, 0.70)
+
+    def test_ai_trader_live_excludes_gdx_gdxj_dust(self):
+        """Verify AiTradingBot skips GDX, GDXJ, and DUST in gold_silver_macro without querying LLM."""
+        from bot.ai_trader import AiTradingBot
+
+        config = MagicMock()
+        config.ai_preset = "gold_silver_macro"
+        config.symbol = "GDX"
+        config.paper = True
+
+        service = MagicMock()
+        brain = MagicMock()
+        brain.build_context.return_value = {
+            "position_qty": 0.0,
+            "mark": {"price": 35.0},
+            "session": {"session": "open"},
+        }
+
+        bot = AiTradingBot.__new__(AiTradingBot)
+        bot.config = config
+        bot.service = service
+        bot.brain = brain
+
+        for excluded_sym in ("GDX", "GDXJ", "DUST", "UGL"):
+            res = bot._run_symbol(excluded_sym)
+            self.assertEqual(res["signal"], Signal.HOLD.value)
+            self.assertIn("strictly excluded", res["reason"])
+            brain.decide.assert_not_called()
+
+    def test_ai_trader_inverse_decay_protection_in_management(self):
+        """Verify AiTradingBot._manage_open_position trims inverse ETF when RSI >= 65."""
+        from bot.ai_trader import AiTradingBot
+
+        config = MagicMock()
+        config.ai_preset = "gold_silver_macro"
+        config.take_profit_r = 4.0
+        config.trail_after_r = 2.0
+        config.paper = True
+
+        service = MagicMock()
+        service.market_session.return_value = {"is_open": True}
+        order_mock = MagicMock(id="order_trim_999")
+        service.submit_order.return_value = order_mock
+
+        bot = AiTradingBot.__new__(AiTradingBot)
+        bot.config = config
+        bot.service = service
+
+        context = {
+            "position": {"qty": 10.0, "side": "long", "avg_entry": 30.0, "r_multiple": 0.8},
+            "mark": {"price": 31.0},
+            "technicals": {"rsi_14": 68.0},
+        }
+
+        out = bot._manage_open_position("GLL", context)
+        self.assertIn("scale_out", out)
+        self.assertEqual(out["scale_out"]["id"], "order_trim_999")
+        self.assertTrue(any("inverse decay protection trim" in a for a in out["actions"]))
+
+    def test_saved_custom_engine_68_integrity(self):
+        """Verify saved custom engine ce_978e8cd9cc does not contain GDX, DUST, or UGL and has 1Hour timeframe."""
+        import json
+        from pathlib import Path
+
+        path = Path(".custom_engines.68.json")
+        if path.exists():
+            engines = json.loads(path.read_text(encoding="utf-8"))
+            match = next((e for e in engines if e.get("id") == "ce_978e8cd9cc"), None)
+            if match:
+                symbols = match["choices"]["symbols"]
+                self.assertNotIn("GDX", [s.strip() for s in symbols.split(",")])
+                self.assertNotIn("GDXJ", [s.strip() for s in symbols.split(",")])
+                self.assertNotIn("DUST", [s.strip() for s in symbols.split(",")])
+                self.assertNotIn("UGL", [s.strip() for s in symbols.split(",")])
+                self.assertIn("GDXU", [s.strip() for s in symbols.split(",")])
+                self.assertIn("GDXD", [s.strip() for s in symbols.split(",")])
+                self.assertEqual(match["choices"]["bar_timeframe"], "1Hour")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

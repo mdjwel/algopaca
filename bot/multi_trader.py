@@ -346,6 +346,16 @@ class TickerRunner:
             elif self.started_at and self.stopped_at:
                 uptime = max(0, int(self.stopped_at - self.started_at))
 
+            size_mode = str(self.settings.get("size_mode") or "qty").lower()
+            trade_notional = self.settings.get("trade_notional")
+            trade_qty = self.settings.get("trade_qty", 1)
+            if size_mode == "notional" and trade_notional is not None:
+                size_display = f"${float(trade_notional):.2f}"
+            elif size_mode == "ai":
+                size_display = "AI"
+            else:
+                size_display = f"{float(trade_qty or 1):g} sh"
+
             return {
                 "id": self.id,
                 "symbol": self.symbol,
@@ -367,6 +377,10 @@ class TickerRunner:
                 "cycles_count": self.cycles_count,
                 "trades_count": self.trades_count,
                 "error": self.error,
+                "size_mode": size_mode,
+                "size_display": size_display,
+                "trade_notional": float(trade_notional) if trade_notional is not None else None,
+                "trade_qty": float(trade_qty) if trade_qty is not None else None,
                 "settings": {
                     k: v
                     for k, v in self.settings.items()

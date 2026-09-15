@@ -808,3 +808,25 @@ body.bt-chart-fs-open {
   color: var(--muted);
   opacity: 0.92;
 }
+
+.bt-trades-more-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin: 0.85rem 0 0.25rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.bt-trades-more-btn {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.85rem;
+}
+
+.bt-trades-count-note {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}

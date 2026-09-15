@@ -1,6 +1,6 @@
 /**
  * Backtest Page JavaScript for AlgoPaca
- * Backtest runner, preset management, Chart.js equity curve & drawdown analysis, multi-symbol performance table, trade logs.
+ * Backtest runner, preset management, multi-symbol performance table, trade logs.
  */
 
 /** Strategy preset tables — refreshed from /api/status on every poll. */
@@ -118,6 +118,33 @@ function applyBtDayPreset(presetId) {
   if (form.elements.day_max_trades_per_day) form.elements.day_max_trades_per_day.value = p.max_trades;
 }
 
+const AI_PRESET_DEFAULTS = {
+  balanced: { min_conf: 0.55, atr_stop: 1.8, tp_r: 2.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Balanced multi-factor trend, momentum, and regime alignment." },
+  conservative: { min_conf: 0.62, atr_stop: 2.2, tp_r: 2.5, trail_r: 1.0, risk_pct: 0.35, max_pos: 2, summary: "Rare, high-conviction quality setups with wide ATR stop." },
+  momentum: { min_conf: 0.55, atr_stop: 2.0, tp_r: 3.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Follow strength: moving average breakouts & expanding MACD." },
+  mean_reversion: { min_conf: 0.60, atr_stop: 2.5, tp_r: 1.2, trail_r: 0.0, risk_pct: 0.5, max_pos: 2, summary: "Fade stretched RSI and Bollinger washes back to the mean." },
+  trend_atr: { min_conf: 0.55, atr_stop: 2.5, tp_r: 0.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Pure trend following with dynamic ATR trailing stop and no cap." },
+  gold_silver_macro: { min_conf: 0.70, atr_stop: 1.6, tp_r: 4.0, trail_r: 2.0, risk_pct: 1.5, max_pos: 2, summary: "GLD/SLV calibrated macro momentum: buys pullbacks in bull regime." },
+};
+
+function applyBtAiPreset(presetId) {
+  const form = $("backtest-form");
+  const p = AI_PRESET_DEFAULTS[presetId];
+  if (!form || !p) return;
+  if (form.elements.ai_min_confidence) form.elements.ai_min_confidence.value = p.min_conf;
+  if (form.elements.ai_atr_stop_mult) form.elements.ai_atr_stop_mult.value = p.atr_stop;
+  if (form.elements.ai_take_profit_r) form.elements.ai_take_profit_r.value = p.tp_r;
+  if (form.elements.ai_trail_after_r) form.elements.ai_trail_after_r.value = p.trail_r;
+  if (form.elements.ai_risk_pct) form.elements.ai_risk_pct.value = p.risk_pct;
+  if (form.elements.ai_max_positions) form.elements.ai_max_positions.value = p.max_pos;
+  if (presetId === "gold_silver_macro") {
+    const symInput = form.elements.symbols || form.elements.symbol;
+    if (symInput && (!symInput.value || symInput.value.trim() === "AAPL")) {
+      symInput.value = "GLD, SLV, GDXU, GLL, GDXD";
+    }
+  }
+}
+
 function syncBtRunKindChips(runKind) {
   const kind = runKind === "portfolio" ? "portfolio" : "per_symbol";
   const hidden = $("bt-run-kind");
@@ -138,6 +165,7 @@ function syncBacktestUi() {
   const pair = mode === "pair";
   const ls = mode === "ls";
   const day = mode === "day";
+  const ai = mode === "ai";
 
   form.querySelectorAll(".bt-sma-only").forEach((el) => {
     el.hidden = !sma;
@@ -154,35 +182,48 @@ function syncBacktestUi() {
   form.querySelectorAll(".bt-day-only").forEach((el) => {
     el.hidden = !day;
   });
+  form.querySelectorAll(".bt-ai-only").forEach((el) => {
+    el.hidden = !ai;
+  });
   form.querySelectorAll(".bt-shares-only").forEach((el) => {
-    // Day Trading sizes from the desk risk engine, like pair and ls.
-    el.hidden = !!pair || !!ls || !!day;
+    // Day Trading and AI Trader size from the risk engine, like pair and ls.
+    el.hidden = !!pair || !!ls || !!day || !!ai;
   });
 
   const smaPreset = form.elements.sma_preset?.value || "classic";
   const dipPreset = form.elements.dip_preset?.value || "deep";
   const pairPreset = form.elements.pair_preset?.value || "research_max";
   const dayPreset = form.elements.day_preset?.value || "ai_vwap_momentum";
+  const aiPreset = form.elements.ai_preset?.value || "balanced";
   if (sma && smaPreset !== "custom") applyBtSmaPreset(smaPreset);
   if (dip && dipPreset !== "custom") applyBtDipPreset(dipPreset);
   if (pair && pairPreset !== "custom") applyBtPairPreset(pairPreset);
   if (day && dayPreset !== "custom") applyBtDayPreset(dayPreset);
+  if (ai && aiPreset !== "custom") applyBtAiPreset(aiPreset);
 
   const modeHint = $("bt-mode-hint");
   if (modeHint) {
-    modeHint.textContent = sma
-      ? "Buy when fast SMA crosses above slow; sell on cross below. Fills at bar close."
-      : pair
-        ? "Full-capital long/short rotator — long in bull regime, short only on crash impulses."
-        : ls
-          ? (() => {
-              const rr = Number(form.elements.ls_rr?.value || 2);
-              const nice = Number.isFinite(rr) ? String(rr) : "2";
-              return `Per-ticker long or short from EMA/ADX regime + MACD hist. ATR stops, ${nice}R targets, frictions.`;
-            })()
-        : day
-          ? "Replays Day Trading rules on intraday bars — VWAP, opening range, ATR stops, R targets and the end-of-day square-off."
-        : "Oversold washes via RSI / Bollinger — pick a dip preset below.";
+    const tr = (k, fb) => (typeof window.t === "function" ? window.t(k, fb) : fb);
+    let hintKey = "mode_hint_dip";
+    let fallback = "Oversold washes via RSI / Bollinger — pick a dip preset below.";
+    if (sma) {
+      hintKey = "mode_hint_sma";
+      fallback = "Buy when fast SMA crosses above slow; sell on cross below. Fills at bar close.";
+    } else if (pair) {
+      hintKey = "mode_hint_pair";
+      fallback = "Full-capital long/short rotator — long in bull regime, short only on crash impulses.";
+    } else if (ls) {
+      hintKey = "mode_hint_ls";
+      fallback = "Per-ticker long or short from EMA/ADX regime + MACD hist. ATR stops, 2R targets, frictions.";
+    } else if (day) {
+      hintKey = "mode_hint_day";
+      fallback = "Replays Day Trading rules on intraday bars — VWAP, opening range, ATR stops, R targets and the end-of-day square-off.";
+    } else if (ai) {
+      hintKey = "mode_hint_ai";
+      fallback = "Multi-factor AI reasoning with dynamic ATR stops, R-multiple targets, and trailing exits.";
+    }
+    modeHint.setAttribute("data-i18n", hintKey);
+    modeHint.textContent = tr(hintKey, fallback);
   }
   const smaHint = $("bt-sma-hint");
   if (smaHint) {
@@ -205,6 +246,12 @@ function syncBacktestUi() {
     const p = DAY_PRESET_DEFAULTS[dayPreset];
     dayHint.textContent =
       p?.summary || "Intraday VWAP & 9/21 EMA trend following with 1.2R target, 1.0 ATR stop, and EOD square-off.";
+  }
+  const aiHint = $("bt-ai-hint");
+  if (aiHint) {
+    const p = AI_PRESET_DEFAULTS[aiPreset];
+    aiHint.textContent =
+      p?.summary || "Multi-factor AI reasoning with ATR stops, R-multiple targets, and dynamic trailing exits.";
   }
 
   // Pair / LS force daily bars; symbols stay user-editable.
@@ -301,7 +348,7 @@ function syncBacktestUi() {
   if (multiHint) {
     multiHint.textContent = portfolioMode
       ? "Book row is the shared book. Pick a symbol for its fills and stats."
-      : "Select a row to focus the summary, chart, and trades.";
+      : "Select a row to focus the summary and trades.";
   }
   const intraday = tf !== "1Day";
   if (daysEl) {
@@ -613,6 +660,14 @@ function backtestPayload() {
     if (!(payload.ls_ema_fast < payload.ls_ema_slow)) {
       throw new Error("LS EMA fast must be smaller than EMA slow.");
     }
+  } else if (mode === "ai") {
+    payload.ai_preset = form.elements.ai_preset?.value || "balanced";
+    payload.ai_min_confidence = Number(form.elements.ai_min_confidence?.value || 0.55);
+    payload.ai_atr_stop_mult = Number(form.elements.ai_atr_stop_mult?.value || 1.8);
+    payload.ai_take_profit_r = Number(form.elements.ai_take_profit_r?.value ?? 2.0);
+    payload.ai_trail_after_r = Number(form.elements.ai_trail_after_r?.value ?? 1.0);
+    payload.ai_risk_pct = Number(form.elements.ai_risk_pct?.value || 0.5);
+    payload.ai_max_positions = Number(form.elements.ai_max_positions?.value || 3);
   } else {
     payload.dip_preset = form.elements.dip_preset.value || "deep";
     payload.dip_rsi_buy = Number(form.elements.dip_rsi_buy.value || 30);
@@ -673,6 +728,13 @@ function saveBacktestFormDraft() {
     ls_time_stop_bars: form.elements.ls_time_stop_bars?.value || "15",
     ls_slippage_pct: form.elements.ls_slippage_pct?.value || "0.02",
     ls_commission_pct: form.elements.ls_commission_pct?.value || "0.05",
+    ai_preset: form.elements.ai_preset?.value || "balanced",
+    ai_min_confidence: form.elements.ai_min_confidence?.value || "0.55",
+    ai_atr_stop_mult: form.elements.ai_atr_stop_mult?.value || "1.8",
+    ai_take_profit_r: form.elements.ai_take_profit_r?.value || "2.0",
+    ai_trail_after_r: form.elements.ai_trail_after_r?.value || "1.0",
+    ai_risk_pct: form.elements.ai_risk_pct?.value || "0.5",
+    ai_max_positions: form.elements.ai_max_positions?.value || "3",
   };
   try {
     localStorage.setItem(BT_FORM_STORAGE_KEY, JSON.stringify(draft));
@@ -696,7 +758,7 @@ function restoreBacktestFormDraft() {
   };
 
   const mode = String(draft.mode || "").toLowerCase();
-  if (["sma", "dip", "pair", "ls", "day"].includes(mode)) setVal("mode", mode);
+  if (["sma", "dip", "pair", "ls", "day", "ai"].includes(mode)) setVal("mode", mode);
   const symbols =
     draft.symbols ||
     draft.symbol ||
@@ -734,60 +796,14 @@ function restoreBacktestFormDraft() {
   setVal("ls_time_stop_bars", draft.ls_time_stop_bars);
   setVal("ls_slippage_pct", draft.ls_slippage_pct);
   setVal("ls_commission_pct", draft.ls_commission_pct);
+  setVal("ai_preset", draft.ai_preset);
+  setVal("ai_min_confidence", draft.ai_min_confidence);
+  setVal("ai_atr_stop_mult", draft.ai_atr_stop_mult);
+  setVal("ai_take_profit_r", draft.ai_take_profit_r);
+  setVal("ai_trail_after_r", draft.ai_trail_after_r);
+  setVal("ai_risk_pct", draft.ai_risk_pct);
+  setVal("ai_max_positions", draft.ai_max_positions);
   return true;
-}
-
-function applyBtChartSeriesVisibility() {
-  if (!btEquityChart) return;
-  const map = {
-    Strategy: "strategy",
-    "Buy & hold": "hold",
-    "Drawdown %": "drawdown",
-    Buys: "trades",
-    Sells: "trades",
-  };
-  btEquityChart.data.datasets.forEach((ds) => {
-    const key = map[ds.label];
-    if (key) ds.hidden = !btChartSeries[key];
-  });
-  if (btEquityChart.options.scales?.y1) {
-    btEquityChart.options.scales.y1.display = btChartSeries.drawdown;
-  }
-  btEquityChart.update();
-  syncBtChartToggles();
-}
-
-function isBtChartFullscreen() {
-  return !!$("bt-chart-block")?.classList.contains("is-fullscreen");
-}
-
-function syncBtChartFullscreenUi(on) {
-  const btn = $("btn-bt-chart-fs");
-  const enter = btn?.querySelector(".bt-chart-fs-enter");
-  const exit = btn?.querySelector(".bt-chart-fs-exit");
-  if (btn) {
-    btn.setAttribute("aria-pressed", on ? "true" : "false");
-    btn.setAttribute("aria-label", on ? "Exit fullscreen" : "Fullscreen equity curve");
-    btn.title = on ? "Exit fullscreen (Esc)" : "Fullscreen chart";
-  }
-  if (enter) enter.hidden = !!on;
-  if (exit) exit.hidden = !on;
-  document.body.classList.toggle("bt-chart-fs-open", !!on);
-}
-
-function setBtChartFullscreen(on) {
-  const block = $("bt-chart-block");
-  if (!block) return;
-  const next = !!on;
-  block.classList.toggle("is-fullscreen", next);
-  syncBtChartFullscreenUi(next);
-  requestAnimationFrame(() => {
-    btEquityChart?.resize();
-  });
-}
-
-function toggleBtChartFullscreen() {
-  setBtChartFullscreen(!isBtChartFullscreen());
 }
 
 $("backtest-form")?.addEventListener("change", (ev) => {
@@ -855,6 +871,20 @@ $("backtest-form")?.addEventListener("change", (ev) => {
       form.elements.day_preset.value = "custom";
     }
   }
+  if (name === "ai_preset") applyBtAiPreset(ev.target.value);
+  if (
+    name === "ai_min_confidence" ||
+    name === "ai_atr_stop_mult" ||
+    name === "ai_take_profit_r" ||
+    name === "ai_trail_after_r" ||
+    name === "ai_risk_pct" ||
+    name === "ai_max_positions"
+  ) {
+    const form = $("backtest-form");
+    if (form?.elements.ai_preset && form.elements.ai_preset.value !== "custom") {
+      form.elements.ai_preset.value = "custom";
+    }
+  }
   syncBacktestUi();
   saveBacktestFormDraft();
 });
@@ -880,6 +910,19 @@ $("backtest-form")?.addEventListener("input", (ev) => {
     const form = $("backtest-form");
     if (form?.elements.dip_preset && form.elements.dip_preset.value !== "custom") {
       form.elements.dip_preset.value = "custom";
+    }
+  }
+  if (
+    name === "ai_min_confidence" ||
+    name === "ai_atr_stop_mult" ||
+    name === "ai_take_profit_r" ||
+    name === "ai_trail_after_r" ||
+    name === "ai_risk_pct" ||
+    name === "ai_max_positions"
+  ) {
+    const form = $("backtest-form");
+    if (form?.elements.ai_preset && form.elements.ai_preset.value !== "custom") {
+      form.elements.ai_preset.value = "custom";
     }
   }
   saveBacktestFormDraft();
@@ -976,31 +1019,6 @@ $("btn-bt-clear-history")?.addEventListener("click", async () => {
     showToast(err.message || "Clear failed", "error");
   }
 });
-document.querySelector(".bt-chart-toggles")?.addEventListener("click", (ev) => {
-  const btn = ev.target.closest("[data-bt-series]");
-  if (!btn) return;
-  const key = btn.getAttribute("data-bt-series");
-  if (!key || !(key in btChartSeries)) return;
-  btChartSeries[key] = !btChartSeries[key];
-  // Keep at least one equity series visible.
-  if (
-    !btChartSeries.strategy &&
-    !btChartSeries.hold &&
-    !btChartSeries.drawdown
-  ) {
-    btChartSeries[key] = true;
-  }
-  applyBtChartSeriesVisibility();
-});
-$("btn-bt-chart-fs")?.addEventListener("click", () => {
-  toggleBtChartFullscreen();
-});
-document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && isBtChartFullscreen()) {
-    ev.preventDefault();
-    setBtChartFullscreen(false);
-  }
-});
 $("bt-symbols")?.addEventListener("blur", () => {
   const el = $("bt-symbols");
   if (!el) return;
@@ -1031,6 +1049,9 @@ $("bt-history-select")?.addEventListener("change", () => {
   if (!val) return;
   loadBacktestHistoryEntry(Number(val), { scroll: false, quiet: false });
 });
+$("btn-bt-trades-more")?.addEventListener("click", () => {
+  showNextBtTradesBatch();
+});
 
 // Initialization
 restoreBacktestFormDraft();
@@ -1052,4 +1073,12 @@ function onDeskStatusUpdate(state, { forceSettings } = {}) {
   if (forceSettings) {
     syncBacktestUi();
   }
+}
+
+window.addEventListener("languageChange", () => {
+  syncBacktestUi();
+});
+
+function onDeskLanguageChange() {
+  syncBacktestUi();
 }

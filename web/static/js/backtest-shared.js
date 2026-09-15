@@ -115,8 +115,10 @@ function clearBacktestResultsPanel() {
   const stratBadge = $("bt-strategy-badge");
   if (stratBadge) stratBadge.textContent = "";
   syncBtHistorySelect(null);
-  destroyBtEquityChart();
-  btChartCache = null;
+  btTradeGroups = [];
+  btTradeGroupsShown = 0;
+  const moreWrap = $("bt-trades-more-wrap");
+  if (moreWrap) moreWrap.hidden = true;
 }
 
 function restoreBacktestLastResult() {
@@ -134,11 +136,7 @@ function restoreBacktestLastResult() {
   return true;
 }
 
-let btEquityChart = null;
-
 let btCompareChart = null;
-
-let btChartCache = null;
 
 let btHistorySummaries = [];
 
@@ -149,13 +147,6 @@ const btSelectedHistoryIds = new Set();
 const BT_COMPARE_MAX = 4;
 
 const BT_COMPARE_COLORS = ["#d4894c", "#5b9fd4", "#3fbf8f", "#c9a0dc"];
-
-const btChartSeries = {
-  strategy: true,
-  hold: true,
-  drawdown: false,
-  trades: true,
-};
 
 /* parseBtTime, MONTHS_LONG, MONTHS_SHORT and formatDisplayDate live in common.js */
 
@@ -170,331 +161,6 @@ function formatBtTooltipDate(iso) {
   return formatDisplayDate(iso, { withTime: true });
 }
 
-function buildBtDrawdown(equities) {
-  let peak = equities[0] || 0;
-  return equities.map((v) => {
-    if (v > peak) peak = v;
-    if (!peak) return 0;
-    return -((peak - v) / peak) * 100;
-  });
-}
-
-function nearestCurveIndex(pts, tradeTime) {
-  const target = parseBtTime(tradeTime);
-  if (!Number.isFinite(target) || !pts.length) return -1;
-  let best = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < pts.length; i += 1) {
-    const t = parseBtTime(pts[i].t);
-    if (!Number.isFinite(t)) continue;
-    const diff = Math.abs(t - target);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-  }
-  return best;
-}
-
-function destroyBtEquityChart() {
-  if (btEquityChart) {
-    btEquityChart.destroy();
-    btEquityChart = null;
-  }
-}
-
-function syncBtChartToggles() {
-  document.querySelectorAll("[data-bt-series]").forEach((btn) => {
-    const key = btn.getAttribute("data-bt-series");
-    const on = !!btChartSeries[key];
-    btn.classList.toggle("is-active", on);
-    btn.setAttribute("aria-pressed", on ? "true" : "false");
-  });
-}
-
-function renderEquityChart(curve, initialCash, trades = []) {
-  const canvas = $("bt-equity-chart");
-  if (!canvas) return;
-  if (typeof Chart === "undefined") {
-    console.warn("Chart.js is not loaded");
-    return;
-  }
-
-  const pts = Array.isArray(curve) ? curve : [];
-  destroyBtEquityChart();
-  if (pts.length < 2) {
-    btChartCache = null;
-    return;
-  }
-
-  const cash = Number(initialCash) || Number(pts[0]?.equity) || 1;
-  const firstPx = Number(pts[0]?.price) || 0;
-  const labels = pts.map((p) => String(p.t || ""));
-  const strategy = pts.map((p) => Number(p.equity));
-  const hasHoldEquity = pts.some(
-    (p) => p.hold_equity != null && Number.isFinite(Number(p.hold_equity))
-  );
-  const hold = pts.map((p) => {
-    if (hasHoldEquity && p.hold_equity != null) {
-      return +Number(p.hold_equity).toFixed(2);
-    }
-    const px = Number(p.price);
-    if (!firstPx || !px) return cash;
-    return +(cash * (px / firstPx)).toFixed(2);
-  });
-  const drawdown = buildBtDrawdown(strategy);
-  const prices = pts.map((p) => Number(p.price));
-
-  const buyPoints = [];
-  const sellPoints = [];
-  for (const trade of Array.isArray(trades) ? trades : []) {
-    const idx = nearestCurveIndex(pts, trade.time);
-    if (idx < 0) continue;
-    const point = {
-      x: labels[idx],
-      y: strategy[idx],
-      trade,
-    };
-    if (String(trade.side || "").toLowerCase() === "buy") buyPoints.push(point);
-    else if (String(trade.side || "").toLowerCase() === "sell") sellPoints.push(point);
-  }
-
-  btChartCache = {
-    labels,
-    strategy,
-    hold,
-    drawdown,
-    prices,
-    buyPoints,
-    sellPoints,
-  };
-
-  const copper = cssVar("--copper", "#d4894c");
-  const muted = cssVar("--muted", "#9aa8b8");
-  const buy = cssVar("--buy", "#3fbf8f");
-  const sell = cssVar("--sell", "#e35d5d");
-  const text = cssVar("--text", "#f2ebe1");
-  const line = cssVar("--line", "#2a384c");
-  const mono = cssVar("--mono", "IBM Plex Mono, monospace");
-
-  const tickCount = Math.min(8, Math.max(4, Math.floor(labels.length / 18) || 4));
-
-  btEquityChart = new Chart(canvas.getContext("2d"), {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Strategy",
-          data: strategy,
-          borderColor: copper,
-          backgroundColor: "rgba(212, 137, 76, 0.12)",
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointHoverBackgroundColor: copper,
-          tension: 0.15,
-          fill: true,
-          yAxisID: "y",
-          hidden: !btChartSeries.strategy,
-          order: 2,
-        },
-        {
-          label: "Buy & hold",
-          data: hold,
-          borderColor: muted,
-          backgroundColor: "transparent",
-          borderWidth: 1.75,
-          borderDash: [5, 4],
-          pointRadius: 0,
-          pointHoverRadius: 3,
-          tension: 0.15,
-          fill: false,
-          yAxisID: "y",
-          hidden: !btChartSeries.hold,
-          order: 3,
-        },
-        {
-          label: "Drawdown %",
-          data: drawdown,
-          borderColor: sell,
-          backgroundColor: "rgba(227, 93, 93, 0.12)",
-          borderWidth: 1.5,
-          pointRadius: 0,
-          pointHoverRadius: 3,
-          tension: 0.1,
-          fill: true,
-          yAxisID: "y1",
-          hidden: !btChartSeries.drawdown,
-          order: 4,
-        },
-        {
-          label: "Buys",
-          type: "scatter",
-          data: buyPoints,
-          parsing: false,
-          showLine: false,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointStyle: "triangle",
-          backgroundColor: buy,
-          borderColor: buy,
-          yAxisID: "y",
-          hidden: !btChartSeries.trades,
-          order: 1,
-        },
-        {
-          label: "Sells",
-          type: "scatter",
-          data: sellPoints,
-          parsing: false,
-          showLine: false,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointStyle: "triangle",
-          rotation: 180,
-          backgroundColor: sell,
-          borderColor: sell,
-          yAxisID: "y",
-          hidden: !btChartSeries.trades,
-          order: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        mode: "index",
-        intersect: false,
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: "rgba(12, 18, 25, 0.94)",
-          titleColor: text,
-          bodyColor: muted,
-          borderColor: line,
-          borderWidth: 1,
-          padding: 10,
-          titleFont: { family: mono, size: 12, weight: "500" },
-          bodyFont: { family: mono, size: 11 },
-          displayColors: true,
-          callbacks: {
-            title(items) {
-              const idx = items[0]?.dataIndex;
-              const fromScatter = items[0]?.raw?.trade?.time;
-              if (fromScatter) return formatBtTooltipDate(fromScatter);
-              if (idx == null) return "";
-              return formatBtTooltipDate(labels[idx]);
-            },
-            label(ctx) {
-              const label = ctx.dataset.label || "";
-              if (label === "Buys" || label === "Sells") {
-                const trade = ctx.raw?.trade;
-                if (!trade) return `${label}`;
-                const pnl =
-                  trade.pnl != null ? ` · ${formatPnl(trade.pnl)}` : "";
-                return `${String(trade.side || label).toUpperCase()} @ ${money(trade.price)}${pnl}`;
-              }
-              if (label === "Drawdown %") {
-                return `Drawdown ${Number(ctx.parsed.y).toFixed(2)}%`;
-              }
-              return `${label}: ${money(ctx.parsed.y)}`;
-            },
-            afterBody(items) {
-              const idx = items[0]?.dataIndex;
-              if (idx == null || items[0]?.raw?.trade) return [];
-              const px = prices[idx];
-              const lines = [];
-              if (Number.isFinite(px)) lines.push(`Bar close: ${money(px)}`);
-              const strat = strategy[idx];
-              const bhVal = hold[idx];
-              if (Number.isFinite(strat) && Number.isFinite(bhVal)) {
-                const delta = strat - bhVal;
-                lines.push(
-                  `vs hold: ${delta >= 0 ? "+" : ""}${money(delta)}`
-                );
-              }
-              return lines;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          type: "category",
-          ticks: {
-            color: muted,
-            font: { family: mono, size: 10 },
-            maxRotation: 0,
-            autoSkip: true,
-            maxTicksLimit: tickCount,
-            callback(value) {
-              const label = this.getLabelForValue(value);
-              return formatBtAxisDate(label);
-            },
-          },
-          grid: {
-            color: "rgba(42, 56, 76, 0.45)",
-            drawTicks: false,
-          },
-          border: { color: line },
-        },
-        y: {
-          position: "left",
-          ticks: {
-            color: muted,
-            font: { family: mono, size: 10 },
-            callback: (v) => {
-              const n = Number(v);
-              if (!Number.isFinite(n)) return v;
-              if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}k`;
-              return `$${n.toFixed(0)}`;
-            },
-          },
-          grid: {
-            color: "rgba(42, 56, 76, 0.35)",
-          },
-          border: { color: line },
-          title: {
-            display: true,
-            text: "Equity ($)",
-            color: muted,
-            font: { family: mono, size: 10 },
-          },
-        },
-        y1: {
-          position: "right",
-          display: btChartSeries.drawdown,
-          ticks: {
-            color: sell,
-            font: { family: mono, size: 10 },
-            callback: (v) => `${Number(v).toFixed(0)}%`,
-          },
-          grid: { drawOnChartArea: false },
-          border: { color: line },
-          title: {
-            display: true,
-            text: "Drawdown %",
-            color: sell,
-            font: { family: mono, size: 10 },
-          },
-        },
-      },
-    },
-  });
-
-  const start = formatBtTooltipDate(labels[0]);
-  const end = formatBtTooltipDate(labels[labels.length - 1]);
-  const caption = $("bt-chart-caption");
-  if (caption) {
-    caption.textContent =
-      `${start} → ${end} · hover for date & equity · toggle series above`;
-  }
-  syncBtChartToggles();
-}
-
 function formatBtStrategyName(result) {
   if (!result) return "";
   const mode = String(result.mode || "").toLowerCase();
@@ -506,11 +172,18 @@ function formatBtStrategyName(result) {
   else if (mode === "pair") modeName = tr("mode_pair", "Long & Short Pair");
   else if (mode === "ls") modeName = tr("mode_ls", "Regime Dual Momentum (L/S)");
   else if (mode === "day") modeName = tr("mode_day", "Day trading (VWAP & ORB)");
+  else if (mode === "ai") modeName = tr("mode_ai", "AI trader");
   else modeName = result.mode ? String(result.mode).toUpperCase() : "";
 
-  const label = result.params?.label || result.day_preset_label;
+  let label = result.params?.label || result.day_preset_label || result.ai_preset_label;
   if (!label || label.toLowerCase() === modeName.toLowerCase()) {
     return modeName;
+  }
+  if (typeof label === "string") {
+    label = label.replace(/^AI\s+AI\s+/i, "AI ").trim();
+    if (mode === "ai" && label.toLowerCase().startsWith("ai ")) {
+      label = label.slice(3).trim();
+    }
   }
   return `${modeName} · ${label}`;
 }
@@ -546,7 +219,10 @@ function syncBtHistorySelect(activeId) {
       const firstSym = symStr.split("+")[0];
       symStr = `${firstSym} (+${Number(row.symbol_count) - 1})`;
     }
-    const label = row.label || row.day_preset_label || row.mode || "";
+    let label = row.label || row.day_preset_label || row.ai_preset_label || row.mode || "";
+    if (typeof label === "string") {
+      label = label.replace(/^AI\s+AI\s+/i, "AI ").trim();
+    }
     const ret = Number(row.total_return_pct);
     const retStr = Number.isFinite(ret)
       ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%`
@@ -580,56 +256,6 @@ function getAggregateTradeList(result) {
     return String(tb).localeCompare(String(ta));
   });
   return all;
-}
-
-function getAggregateEquityCurve(result) {
-  if (Array.isArray(result.equity_curve) && result.equity_curve.length >= 2) {
-    return result.equity_curve;
-  }
-  if (!Array.isArray(result.results) || !result.results.length) return [];
-  const validLegs = result.results.filter(
-    (r) => !r.error && Array.isArray(r.equity_curve) && r.equity_curve.length >= 2
-  );
-  if (!validLegs.length) return [];
-
-  const map = new Map();
-  for (const leg of validLegs) {
-    for (const pt of leg.equity_curve) {
-      if (!pt || !pt.t) continue;
-      if (!map.has(pt.t)) {
-        map.set(pt.t, { equities: [], holdEquities: [] });
-      }
-      const entry = map.get(pt.t);
-      if (pt.equity != null && Number.isFinite(Number(pt.equity))) {
-        entry.equities.push(Number(pt.equity));
-      }
-      if (pt.hold_equity != null && Number.isFinite(Number(pt.hold_equity))) {
-        entry.holdEquities.push(Number(pt.hold_equity));
-      }
-    }
-  }
-
-  const sortedTimes = Array.from(map.keys()).sort();
-  if (sortedTimes.length < 2) return [];
-
-  const curve = [];
-  for (const t of sortedTimes) {
-    const { equities, holdEquities } = map.get(t);
-    const avgEq = equities.length
-      ? equities.reduce((a, b) => a + b, 0) / equities.length
-      : null;
-    const avgHold = holdEquities.length
-      ? holdEquities.reduce((a, b) => a + b, 0) / holdEquities.length
-      : null;
-    if (avgEq != null) {
-      curve.push({
-        t,
-        equity: Math.round(avgEq * 100) / 100,
-        hold_equity: avgHold != null ? Math.round(avgHold * 100) / 100 : avgEq,
-      });
-    }
-  }
-  return curve;
 }
 
 function renderBacktestResult(result, options = {}) {
@@ -671,7 +297,10 @@ function renderBacktestResult(result, options = {}) {
 
   const meta = $("bt-meta");
   if (meta) {
-    const label = result.params?.label || result.mode;
+    let label = result.params?.label || result.mode;
+    if (typeof label === "string") {
+      label = label.replace(/^AI\s+AI\s+/i, "AI ").trim();
+    }
     const stop =
       result.stop_loss_pct > 0 ? ` · stop ${result.stop_loss_pct}%` : "";
     const open =
@@ -694,10 +323,15 @@ function renderBacktestResult(result, options = {}) {
         : multi
           ? " · per symbol"
           : "";
-    const sizing =
+    const isRiskSized =
+      result.mode === "ai" || result.mode === "day" || result.mode === "ls";
+    const riskPctVal = result.params?.risk_pct ?? result.risk_pct;
+    const sizingLabel =
       result.mode === "pair" || result.run_kind === "pair"
         ? "full equity"
-        : formatQty(result.qty);
+        : isRiskSized && riskPctVal != null
+          ? `${riskPctVal}% risk`
+          : `qty ${formatQty(result.qty)}`;
     const symCount = result.symbols?.length || result.results?.length || 0;
     const allLabel =
       typeof window.t === "function"
@@ -712,32 +346,16 @@ function renderBacktestResult(result, options = {}) {
     meta.textContent =
       `${symLabel}${kind} · ${label} · ${result.bar_timeframe} · ` +
       `${view.start || result.start ? formatDisplayDate(view.start || result.start) : "?"} → ${view.end || result.end ? formatDisplayDate(view.end || result.end) : "?"} · ` +
-      `${view.evaluated_bars ?? result.evaluated_bars ?? "—"} bars · qty ${sizing}${stop}${open}${hist}`;
+      `${view.evaluated_bars ?? result.evaluated_bars ?? "—"} bars · ${sizingLabel}${stop}${open}${hist}`;
   }
 
-  const aggCurve = getAggregateEquityCurve(result);
   const aggTrades = getAggregateTradeList(result);
-  const chartCurve =
-    view.equity_curve && view.equity_curve.length
-      ? view.equity_curve
-      : aggCurve;
-  const chartTrades =
+  const trades =
     view.trade_list && (view !== result || result.run_kind === "portfolio")
       ? view.trade_list
       : aggTrades;
-  const chartCash =
-    view.initial_cash != null ? view.initial_cash : result.initial_cash;
 
-  if (chartCurve && chartCurve.length >= 2) {
-    renderEquityChart(chartCurve, chartCash, chartTrades);
-  } else if (result.run_kind === "per_symbol" && multi && view.equity_curve) {
-    renderEquityChart(view.equity_curve, view.initial_cash, view.trade_list);
-  } else {
-    destroyBtEquityChart();
-    btChartCache = null;
-  }
-
-  renderBtTradeList(chartTrades || view.trade_list || [], view, result);
+  renderBtTradeList(trades || view.trade_list || [], view, result);
 
   if (options.scroll !== false) {
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1238,10 +856,32 @@ function groupBtTradeLegs(trades) {
   });
 
   // Newest-first for the trade log.
+  const getGroupLatestTime = (g) => {
+    let maxMs = -Infinity;
+    let maxStr = "";
+    for (const leg of g.legs || []) {
+      const raw = leg?.time;
+      if (!raw) continue;
+      const ms = Date.parse(raw);
+      if (Number.isFinite(ms)) {
+        if (ms > maxMs) {
+          maxMs = ms;
+          maxStr = String(raw);
+        }
+      } else if (String(raw) > maxStr) {
+        maxStr = String(raw);
+      }
+    }
+    return { maxMs, maxStr };
+  };
+
   groups.sort((a, b) => {
-    const ta = a.legs[a.legs.length - 1]?.time || a.legs[0]?.time || "";
-    const tb = b.legs[b.legs.length - 1]?.time || b.legs[0]?.time || "";
-    return String(tb).localeCompare(String(ta));
+    const ta = getGroupLatestTime(a);
+    const tb = getGroupLatestTime(b);
+    if (Number.isFinite(ta.maxMs) && Number.isFinite(tb.maxMs) && ta.maxMs !== tb.maxMs) {
+      return tb.maxMs - ta.maxMs;
+    }
+    return tb.maxStr.localeCompare(ta.maxStr);
   });
   return groups;
 }
@@ -1263,7 +903,22 @@ function renderBtTradeLegRow(t) {
   const sym = t.symbol
     ? `<span class="history-symbol">${escapeHtml(String(t.symbol))}</span>`
     : "";
+  const isExit = t.pnl != null;
   const audit = formatBtAuditLine(t);
+  let displaySide = side.toUpperCase() || "—";
+  let sideTitle = "";
+  if (side === "sell" && isExit) {
+    displaySide = "SELL (CLOSE)";
+    sideTitle = "Sell to close long position";
+  } else if (side === "cover" && isExit) {
+    displaySide = "COVER (CLOSE)";
+    sideTitle = "Buy to cover short position";
+  } else if (side === "buy") {
+    sideTitle = "Buy to open long position";
+  } else if (side === "short") {
+    sideTitle = "Sell to open short position";
+  }
+
   const row = document.createElement("div");
   row.className = "history-row";
   row.dataset.signal = side;
@@ -1271,7 +926,7 @@ function renderBtTradeLegRow(t) {
   row.innerHTML =
     `<div class="history-row-top">` +
     `<span class="history-time">${when}</span>` +
-    `<span class="history-signal ${escapeHtml(side)}">${escapeHtml(side.toUpperCase() || "—")}</span>` +
+    `<span class="history-signal ${escapeHtml(side)}"${sideTitle ? ` title="${escapeHtml(sideTitle)}"` : ""}>${escapeHtml(displaySide)}</span>` +
     (sym || `<span class="history-price">${escapeHtml(px)}</span>`) +
     (sym ? `<span class="history-price">${escapeHtml(px)}</span>` : "") +
     `</div>` +
@@ -1323,6 +978,123 @@ function renderBtOpenPositionRow(open) {
   return row;
 }
 
+const BT_TRADES_PAGE_SIZE = 20;
+let btTradeGroups = [];
+let btTradeGroupsShown = 0;
+
+function renderBtTradeGroupElement(group) {
+  if (group.legs.length > 1 || group.label) {
+    const wrap = document.createElement("div");
+    wrap.className = "bt-trade-group";
+    wrap.setAttribute("role", "group");
+    if (group.label) {
+      const head = document.createElement("div");
+      head.className = "bt-trade-group-label";
+      head.textContent = group.label;
+      wrap.appendChild(head);
+    }
+    // Narrative order inside a group: entry → exit → (optional re-entry).
+    const ordered = group.legs.slice().sort((a, b) => {
+      const ta = String(a.time || "");
+      const tb = String(b.time || "");
+      if (ta !== tb) return ta.localeCompare(tb);
+      // Same timestamp rotation: prior entry buy → sell → new buy.
+      const rank = (leg) => {
+        const s = String(leg.side || "").toLowerCase();
+        if (s === "sell" || s === "cover") return 1;
+        if (
+          (s === "buy" || s === "short") &&
+          leg.rotation_id != null
+        ) {
+          return 2;
+        }
+        return 0;
+      };
+      return rank(a) - rank(b);
+    });
+    for (const leg of ordered) {
+      wrap.appendChild(renderBtTradeLegRow(leg));
+    }
+    return wrap;
+  }
+  return renderBtTradeLegRow(group.legs[0]);
+}
+
+function updateBtTradesMoreButton() {
+  const wrap = $("bt-trades-more-wrap");
+  const btn = $("btn-bt-trades-more");
+  const note = $("bt-trades-count-note");
+  if (!wrap) return;
+
+  const total = btTradeGroups.length;
+  const shown = btTradeGroupsShown;
+  const tr = (k, fb, params) => {
+    if (typeof window.t === "function") {
+      let s = window.t(k, fb);
+      if (params) {
+        for (const [pk, pv] of Object.entries(params)) {
+          s = s.replace(new RegExp(`\\{${pk}\\}`, "g"), pv);
+        }
+      }
+      return s;
+    }
+    let s = fb;
+    if (params) {
+      for (const [pk, pv] of Object.entries(params)) {
+        s = s.replace(new RegExp(`\\{${pk}\\}`, "g"), pv);
+      }
+    }
+    return s;
+  };
+
+  if (total <= BT_TRADES_PAGE_SIZE) {
+    wrap.hidden = true;
+    return;
+  }
+
+  wrap.hidden = false;
+  const remaining = total - shown;
+  if (remaining > 0) {
+    if (btn) {
+      btn.hidden = false;
+      const nextBatch = Math.min(BT_TRADES_PAGE_SIZE, remaining);
+      btn.textContent = tr("show_more", "Show more");
+      btn.setAttribute(
+        "aria-label",
+        tr("show_more_trades_aria", "Show {count} more trades", { count: nextBatch })
+      );
+    }
+    if (note) {
+      note.textContent = tr("showing_trades_count", "Showing {shown} of {total} trades", { shown, total });
+    }
+  } else {
+    if (btn) btn.hidden = true;
+    if (note) {
+      note.textContent = tr("showing_all_trades", "Showing all {total} trades", { total });
+    }
+  }
+}
+
+function showNextBtTradesBatch() {
+  const list = $("bt-trades");
+  if (!list) return;
+  if (!btTradeGroups.length) {
+    updateBtTradesMoreButton();
+    return;
+  }
+
+  const start = btTradeGroupsShown;
+  const end = Math.min(start + BT_TRADES_PAGE_SIZE, btTradeGroups.length);
+  const nextSlice = btTradeGroups.slice(start, end);
+
+  for (const group of nextSlice) {
+    list.appendChild(renderBtTradeGroupElement(group));
+  }
+
+  btTradeGroupsShown = end;
+  updateBtTradesMoreButton();
+}
+
 function renderBtTradeList(trades, view = null, root = null) {
   const list = $("bt-trades");
   if (!list) return;
@@ -1336,6 +1108,8 @@ function renderBtTradeList(trades, view = null, root = null) {
     empty.textContent =
       "No trades in this window — try a longer lookback, milder dip preset, or shorter SMA windows.";
     list.appendChild(empty);
+    const wrap = $("bt-trades-more-wrap");
+    if (wrap) wrap.hidden = true;
     return;
   }
 
@@ -1343,45 +1117,9 @@ function renderBtTradeList(trades, view = null, root = null) {
     list.appendChild(renderBtOpenPositionRow(open));
   }
 
-  const groups = groupBtTradeLegs(rows);
-  for (const group of groups) {
-    if (group.legs.length > 1 || group.label) {
-      const wrap = document.createElement("div");
-      wrap.className = "bt-trade-group";
-      wrap.setAttribute("role", "group");
-      if (group.label) {
-        const head = document.createElement("div");
-        head.className = "bt-trade-group-label";
-        head.textContent = group.label;
-        wrap.appendChild(head);
-      }
-      // Narrative order inside a group: entry → exit → (optional re-entry).
-      const ordered = group.legs.slice().sort((a, b) => {
-        const ta = String(a.time || "");
-        const tb = String(b.time || "");
-        if (ta !== tb) return ta.localeCompare(tb);
-        // Same timestamp rotation: prior entry buy → sell → new buy.
-        const rank = (leg) => {
-          const s = String(leg.side || "").toLowerCase();
-          if (s === "sell" || s === "cover") return 1;
-          if (
-            (s === "buy" || s === "short") &&
-            leg.rotation_id != null
-          ) {
-            return 2;
-          }
-          return 0;
-        };
-        return rank(a) - rank(b);
-      });
-      for (const leg of ordered) {
-        wrap.appendChild(renderBtTradeLegRow(leg));
-      }
-      list.appendChild(wrap);
-    } else {
-      list.appendChild(renderBtTradeLegRow(group.legs[0]));
-    }
-  }
+  btTradeGroups = groupBtTradeLegs(rows);
+  btTradeGroupsShown = 0;
+  showNextBtTradesBatch();
 }
 
 function pctToneText(value, { signed = false, digits = 2 } = {}) {
@@ -1514,9 +1252,9 @@ function renderBacktestHistory(history) {
       (kind
         ? `<span class="bt-rsi" title="Run mode">${escapeHtml(kind)}</span>`
         : "") +
-      `<span class="bt-label">${escapeHtml(String(row.label || row.mode || "—"))}</span>` +
-      (row.day_preset_label
-        ? `<span class="bt-rsi" title="Preset">${escapeHtml(String(row.day_preset_label))}</span>`
+      `<span class="bt-label">${escapeHtml(String(row.label || row.mode || "—").replace(/^AI\s+AI\s+/i, "AI "))}</span>` +
+      (row.day_preset_label || row.ai_preset_label
+        ? `<span class="bt-rsi" title="Preset">${escapeHtml(String(row.day_preset_label || row.ai_preset_label).replace(/^AI\s+AI\s+/i, "AI "))}</span>`
         : "") +
       (rsiLine !== "—"
         ? `<span class="bt-rsi" title="Strategy parameters">${escapeHtml(

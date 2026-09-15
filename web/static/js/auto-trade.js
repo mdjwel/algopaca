@@ -107,9 +107,7 @@ function formPayload() {
   const mode = String(formValue("strategy_mode", "sma") || "sma");
   const symbolRaw = String(formValue("symbol", "") || "").trim().toUpperCase();
   const symbolsRaw = String(formValue("symbols", "") || "").trim().toUpperCase();
-  const provider = String(formValue("ai_provider", "openai") || "openai");
-  const openaiKey = String($("field-openai-key")?.value || "").trim();
-  const geminiKey = String($("field-gemini-key")?.value || "").trim();
+  const provider = String(lastDeskSettings?.ai_provider || "openai");
   const pairLegs = mode === "pair" ? parsePairLegsFromText(symbolsRaw || symbolRaw) : null;
   const symbol = pairLegs
     ? pairLegs.long
@@ -192,35 +190,22 @@ function formPayload() {
     notify_email: !!$("field-notify-email")?.checked,
     notification_email: String($("field-notification-email")?.value || "").trim(),
     openai_model: String(
-      formValue("openai_model", aiModels.defaults?.openai || FALLBACK_OPENAI_MODEL) ||
-        FALLBACK_OPENAI_MODEL
+      lastDeskSettings?.openai_model || aiModels.defaults?.openai || FALLBACK_OPENAI_MODEL
     ).trim(),
     gemini_model: String(
-      formValue("gemini_model", aiModels.defaults?.gemini || FALLBACK_GEMINI_MODEL) ||
-        FALLBACK_GEMINI_MODEL
+      lastDeskSettings?.gemini_model || aiModels.defaults?.gemini || FALLBACK_GEMINI_MODEL
     ).trim(),
     anthropic_model: String(
-      formValue("anthropic_model", aiModels.defaults?.anthropic || FALLBACK_ANTHROPIC_MODEL) ||
-        FALLBACK_ANTHROPIC_MODEL
+      lastDeskSettings?.anthropic_model || aiModels.defaults?.anthropic || FALLBACK_ANTHROPIC_MODEL
     ).trim(),
     xai_model: String(
-      formValue("xai_model", aiModels.defaults?.xai || FALLBACK_XAI_MODEL) ||
-        FALLBACK_XAI_MODEL
+      lastDeskSettings?.xai_model || aiModels.defaults?.xai || FALLBACK_XAI_MODEL
     ).trim(),
     custom_engine_id: activeCustomEngineId || "",
     lang: typeof i18n !== "undefined" ? i18n.getCurrentLanguage() : "en",
   };
 }
 
-function keysPayload() {
-  const openai = String($("field-openai-key")?.value || "").trim();
-  const gemini = String($("field-gemini-key")?.value || "").trim();
-  return {
-    openai_api_key: openai,
-    gemini_api_key: gemini,
-    save_to_env: !!$("field-save-keys")?.checked,
-  };
-}
 
 function collectExecutedTrades(state) {
   const items = [];
@@ -733,16 +718,39 @@ function syncSizeModeUi() {
       label.setAttribute("data-i18n", "quantity");
     }
   }
+
+  const notionalChips = $("desk-notional-chips");
+  if (notionalChips) {
+    const curVal = Number(formValue("trade_notional", 100) || 0);
+    notionalChips.querySelectorAll(".btn-notional-chip").forEach((btn) => {
+      btn.classList.toggle("is-active", Number(btn.dataset.val) === curVal);
+    });
+  }
+
   const hint = $("size-hint");
   if (!hint) return;
   if (strategyMode === "pair") {
+    if (mode === "notional") {
+      const dollars = Number(formValue("trade_notional", 100) || 0);
+      hint.textContent = dollars > 0
+        ? `Pair mode deploys ${money(dollars)} into the active leg per signal.`
+        : "Enter a dollar amount greater than 0.";
+      return;
+    }
     hint.textContent =
-      "Pair mode deploys available cash into the active leg (desk size is only a fallback).";
+      "Pair mode deploys available cash into the active leg (or switch to Dollars to set a fixed amount).";
     return;
   }
   if (strategyMode === "ls") {
+    if (mode === "notional") {
+      const dollars = Number(formValue("trade_notional", 100) || 0);
+      hint.textContent = dollars > 0
+        ? `LS mode trades ${money(dollars)} of shares per signal (converted at live mark).`
+        : "Enter a dollar amount greater than 0.";
+      return;
+    }
     hint.textContent =
-      "LS sizes by equity × risk% / ATR stop distance. Desk size is only a fallback if equity is unavailable.";
+      "LS sizes by equity × risk% / ATR stop distance (or switch to Dollars to set a fixed trade amount).";
     return;
   }
   // AI size mode first: the card above already spells out the risk-engine
@@ -754,19 +762,19 @@ function syncSizeModeUi() {
     );
     return;
   }
+  if (mode === "notional") {
+    const dollars = Number(formValue("trade_notional", 100) || 0);
+    hint.textContent = dollars > 0
+      ? `Orders trade approximately ${money(dollars)} of shares at the live mark (converted each cycle).`
+      : "Enter a dollar amount greater than 0 to size orders in USD.";
+    return;
+  }
   const riskPct = Number(formValue("ai_risk_pct", 0.5) || 0);
   if (riskPct > 0 && (strategyMode === "sma" || strategyMode === "dip" || strategyMode === "ai")) {
     hint.textContent = tx(
       "size_hint_risk",
-      "Risk engine sizes shares so a stop-out costs that % of equity (desk qty/dollars are the fallback when risk % is 0)."
+      "Risk engine sizes shares so a stop-out costs that % of equity (switch to Dollars to set an exact trade amount)."
     );
-    return;
-  }
-  if (mode === "notional") {
-    const dollars = Number(formValue("trade_notional", 100) || 0);
-    hint.textContent = dollars > 0
-      ? `Orders size to about ${money(dollars)} at the live mark (converted to shares each cycle).`
-      : "Enter a dollar amount greater than 0 to size orders in USD.";
     return;
   }
   const qty = Number(formValue("trade_qty", 1) || 0);
@@ -1187,6 +1195,22 @@ function maybeSyncWatchlistFromPrimary(ev) {
   lastPrimarySymbol = next || prev;
 }
 
+function syncActiveAiDisplay() {
+  const activeAiName = $("ai-active-provider-name");
+  if (!activeAiName) return;
+  const pNames = {
+    openai: "OpenAI",
+    gemini: "Google Gemini",
+    anthropic: "Anthropic",
+    xai: "xAI",
+  };
+  const provider = lastDeskSettings?.ai_provider || "openai";
+  const pName = pNames[provider] || provider;
+  const modelKey = `${provider}_model`;
+  const mName = lastDeskSettings?.[modelKey] || aiModels.defaults?.[provider] || "";
+  activeAiName.textContent = mName ? `${pName} · ${mName}` : pName;
+}
+
 function populateModelOptions(models) {
   if (!models) return;
   aiModels = {
@@ -1196,56 +1220,9 @@ function populateModelOptions(models) {
     xai: Array.isArray(models.xai) ? models.xai : [],
     defaults: models.defaults || {},
   };
-  fillModelSelect(
-    $("field-openai-model"),
-    aiModels.openai,
-    aiModels.defaults.openai || FALLBACK_OPENAI_MODEL
-  );
-  fillModelSelect(
-    $("field-gemini-model"),
-    aiModels.gemini,
-    aiModels.defaults.gemini || FALLBACK_GEMINI_MODEL
-  );
-  fillModelSelect(
-    $("field-anthropic-model"),
-    aiModels.anthropic,
-    aiModels.defaults.anthropic || FALLBACK_ANTHROPIC_MODEL
-  );
-  fillModelSelect(
-    $("field-xai-model"),
-    aiModels.xai,
-    aiModels.defaults.xai || FALLBACK_XAI_MODEL
-  );
+  syncActiveAiDisplay();
 }
 
-function fillModelSelect(select, options, preferred) {
-  if (!select || !options?.length) return;
-  const wanted = preferred || select.value || options[0].id;
-  const ids = options.map((m) => m.id);
-  // Preserve a saved custom / legacy model so refresh doesn't silently change it.
-  const extra =
-    wanted && !ids.includes(wanted)
-      ? [{ id: wanted, label: `${wanted} (saved)` }]
-      : [];
-  const all = [...extra, ...options];
-  const same =
-    select.options.length === all.length &&
-    [...select.options].every((opt, i) => opt.value === all[i].id);
-  const targetVal = all.some((m) => m.id === wanted) ? wanted : all[0].id;
-  if (!same) {
-    select.innerHTML = all
-      .map(
-        (m) =>
-          `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label || m.id)}</option>`
-      )
-      .join("");
-    select.value = targetVal;
-    refreshNiceSelect(select);
-  } else if (select.value !== targetVal) {
-    select.value = targetVal;
-    refreshNiceSelect(select);
-  }
-}
 
 function syncModeUi() {
   if (!$("settings")) return;
@@ -1260,15 +1237,8 @@ function syncModeUi() {
   const AI_PROVIDERS = ["openai", "gemini", "anthropic", "xai"];
   const provider = AI_PROVIDERS.includes(payload.ai_provider)
     ? payload.ai_provider
-    : "openai";
+    : (lastDeskSettings?.ai_provider || "openai");
   document.body.classList.toggle("mode-ai", ai);
-  // Provider panels first, then ai-only — so SMA/dip mode re-hides model fields
-  // that also carry provider-* classes.
-  AI_PROVIDERS.forEach((p) => {
-    document.querySelectorAll(`.provider-${p}`).forEach((el) => {
-      el.hidden = provider !== p;
-    });
-  });
   document.querySelectorAll(".ai-only").forEach((el) => {
     el.hidden = !ai;
   });
@@ -1329,11 +1299,8 @@ function syncModeUi() {
       if (form.symbols) form.symbols.value = "";
     }
   }
-  // Model dropdown: only the active provider's select while in AI mode.
-  AI_PROVIDERS.forEach((p) => {
-    const modelLabel = $(`field-${p}-model`)?.closest("label");
-    if (modelLabel) modelLabel.hidden = !ai || provider !== p;
-  });
+  // Active AI provider status badge while in AI mode
+  syncActiveAiDisplay();
   const metricA = $("metric-a-label");
   const metricB = $("metric-b-label");
   if (metricA && metricB) {
@@ -1809,28 +1776,8 @@ function applyCustomEngine(engineId, { syncPersist = true } = {}) {
     if (form.ai_instructions) {
       form.ai_instructions.value = engine.instructions || choices.ai_instructions || "";
     }
-    if (form.ai_provider && choices.ai_provider) {
-      form.ai_provider.value = choices.ai_provider;
-      refreshNiceSelect(form.ai_provider);
-    }
     if (form.ai_min_confidence && choices.ai_min_confidence !== undefined) {
       form.ai_min_confidence.value = choices.ai_min_confidence;
-    }
-    if (choices.openai_model && form.openai_model) {
-      form.openai_model.value = choices.openai_model;
-      refreshNiceSelect(form.openai_model);
-    }
-    if (choices.gemini_model && form.gemini_model) {
-      form.gemini_model.value = choices.gemini_model;
-      refreshNiceSelect(form.gemini_model);
-    }
-    if (choices.anthropic_model && form.anthropic_model) {
-      form.anthropic_model.value = choices.anthropic_model;
-      refreshNiceSelect(form.anthropic_model);
-    }
-    if (choices.xai_model && form.xai_model) {
-      form.xai_model.value = choices.xai_model;
-      refreshNiceSelect(form.xai_model);
     }
   }
 
@@ -2312,11 +2259,19 @@ function applySettings(settings, { force = false } = {}) {
       : savedMode === "notional"
         ? "notional"
         : "qty";
-  if (form.size_mode) form.size_mode.value = resolvedSize;
+  if (form.size_mode) {
+    if (form.elements.size_mode instanceof RadioNodeList || Array.isArray(form.elements.size_mode)) {
+      [...form.elements.size_mode].forEach((r) => {
+        r.checked = r.value === resolvedSize;
+      });
+    } else {
+      form.elements.size_mode.value = resolvedSize;
+    }
+  }
+  syncSizeModeUi();
   form.bar_timeframe.value = settings.bar_timeframe || "15Min";
   form.poll_seconds.value = settings.poll_seconds ?? 20;
   if (form.strategy_mode) form.strategy_mode.value = settings.strategy_mode || "sma";
-  if (form.ai_provider) form.ai_provider.value = settings.ai_provider || "openai";
   if (form.ai_preset) form.ai_preset.value = settings.ai_preset || "balanced";
   if (form.ai_instructions) {
     let text = settings.ai_instructions || "";
@@ -2367,34 +2322,6 @@ function applySettings(settings, { force = false } = {}) {
   const emailField = $("email-notification-field");
   if (emailField) {
     emailField.hidden = !settings.notify_email;
-  }
-  if (form.openai_model) {
-    fillModelSelect(
-      form.openai_model,
-      aiModels.openai,
-      settings.openai_model || aiModels.defaults?.openai || FALLBACK_OPENAI_MODEL
-    );
-  }
-  if (form.gemini_model) {
-    fillModelSelect(
-      form.gemini_model,
-      aiModels.gemini,
-      settings.gemini_model || aiModels.defaults?.gemini || FALLBACK_GEMINI_MODEL
-    );
-  }
-  if (form.anthropic_model) {
-    fillModelSelect(
-      form.anthropic_model,
-      aiModels.anthropic,
-      settings.anthropic_model || aiModels.defaults?.anthropic || FALLBACK_ANTHROPIC_MODEL
-    );
-  }
-  if (form.xai_model) {
-    fillModelSelect(
-      form.xai_model,
-      aiModels.xai,
-      settings.xai_model || aiModels.defaults?.xai || FALLBACK_XAI_MODEL
-    );
   }
   if (settings.custom_engine_id) {
     activeCustomEngineId = settings.custom_engine_id;
@@ -3413,6 +3340,22 @@ if (form) {
     }
     schedulePersistSettings();
   });
+  $("desk-notional-chips")?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".btn-notional-chip");
+    if (!btn || loopRunning) return;
+    const val = Number(btn.dataset.val);
+    const inp = $("field-notional");
+    if (inp && val > 0) {
+      inp.value = val;
+      formDirty = true;
+      if (activeCustomEngineId) {
+        const mod = $("active-custom-engine-modified");
+        if (mod) mod.hidden = false;
+      }
+      syncSizeModeUi();
+      schedulePersistSettings();
+    }
+  });
   form.addEventListener("focusin", () => {
     formFocused = true;
   });
@@ -4051,6 +3994,7 @@ function renderMultiAutoTrades(state) {
           </button>
         </div>
         <div class="multi-runner-meta">
+          <span>${escapeHtml(tx("trade_size", "Size"))}: <strong>${escapeHtml(String(runner.size_display || (runner.settings?.size_mode === "notional" && runner.settings?.trade_notional ? "$" + Number(runner.settings.trade_notional).toFixed(2) : (runner.settings?.trade_qty ? runner.settings.trade_qty + " sh" : "—"))))}</strong></span>
           <span>${escapeHtml(tx("bar_timeframe", "Bar Timeframe"))}: <strong>${escapeHtml(String(runner.timeframe || "—"))}</strong></span>
           <span>${escapeHtml(tx("poll_interval", "Poll Interval"))}: <strong>${escapeHtml(String(runner.poll_seconds || "—"))}s</strong></span>
           <span>${escapeHtml(tx("autotrade_cycles", "Cycles"))}: <strong>${escapeHtml(String(runner.cycles_count || 0))}</strong></span>

@@ -518,48 +518,16 @@
                 </p>
 
                 <!-- AI trader options -->
-                <label for="field-provider" class="ai-only" hidden><span data-i18n="ai_provider">AI provider</span>
-                  <select id="field-provider" name="ai_provider">
-                    <option value="openai">OpenAI</option>
-                    <option value="gemini">Gemini</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="xai">xAI</option>
-                  </select>
-                </label>
-                <label for="field-openai-model" class="ai-only provider-openai" hidden><span data-i18n="model">Model</span>
-                  <select id="field-openai-model" name="openai_model">
-                    <option value="gpt-5.6-sol" data-i18n="model_gpt_5_6_sol">GPT-5.6 Sol (flagship)</option>
-                    <option value="gpt-5.6-terra" data-i18n="model_gpt_5_6_terra">GPT-5.6 Terra (balanced)</option>
-                    <option value="gpt-5.6-luna" selected data-i18n="model_gpt_5_6_luna">GPT-5.6 Luna (fast / low cost)</option>
-                    <option value="gpt-5.4" data-i18n="model_gpt_5_4">GPT-5.4</option>
-                    <option value="gpt-5.4-mini" data-i18n="model_gpt_5_4_mini">GPT-5.4 mini</option>
-                  </select>
-                </label>
-                <label for="field-gemini-model" class="ai-only provider-gemini" hidden><span data-i18n="model">Model</span>
-                  <select id="field-gemini-model" name="gemini_model">
-                    <option value="gemini-3.6-flash" data-i18n="model_gemini_3_6_flash">Gemini 3.6 Flash (latest)</option>
-                    <option value="gemini-3.5-flash" data-i18n="model_gemini_3_5_flash">Gemini 3.5 Flash</option>
-                    <option value="gemini-3.5-flash-lite" selected data-i18n="model_gemini_3_5_flash_lite">Gemini 3.5 Flash-Lite</option>
-                    <option value="gemini-3.1-pro-preview" data-i18n="model_gemini_3_1_pro_preview">Gemini 3.1 Pro (preview)</option>
-                    <option value="gemini-3.1-flash-lite" data-i18n="model_gemini_3_1_flash_lite">Gemini 3.1 Flash-Lite</option>
-                  </select>
-                </label>
-                <label for="field-anthropic-model" class="ai-only provider-anthropic" hidden><span data-i18n="model">Model</span>
-                  <select id="field-anthropic-model" name="anthropic_model">
-                    <option value="claude-opus-5" data-i18n="model_claude_opus_5">Claude Opus 5 (flagship)</option>
-                    <option value="claude-sonnet-5" data-i18n="model_claude_sonnet_5">Claude Sonnet 5 (balanced)</option>
-                    <option value="claude-fable-5" data-i18n="model_claude_fable_5">Claude Fable 5</option>
-                    <option value="claude-haiku-4-5-20251001" selected data-i18n="model_claude_haiku_4_5_20251001">Claude Haiku 4.5 (fast / low cost)</option>
-                  </select>
-                </label>
-                <label for="field-xai-model" class="ai-only provider-xai" hidden><span data-i18n="model">Model</span>
-                  <select id="field-xai-model" name="xai_model">
-                    <option value="grok-4" data-i18n="model_grok_4">Grok 4 (flagship)</option>
-                    <option value="grok-4-fast" data-i18n="model_grok_4_fast">Grok 4 Fast (balanced)</option>
-                    <option value="grok-3" data-i18n="model_grok_3">Grok 3</option>
-                    <option value="grok-3-mini" selected data-i18n="model_grok_3_mini">Grok 3 Mini (fast / low cost)</option>
-                  </select>
-                </label>
+                <div class="ai-active-provider-card ai-only" id="ai-active-provider-card" hidden>
+                  <div class="ai-active-provider-info">
+                    <span class="ai-active-provider-icon" aria-hidden="true">✦</span>
+                    <div class="ai-active-provider-meta">
+                      <span class="ai-active-provider-label" data-i18n="active_ai_provider">Active AI provider</span>
+                      <strong id="ai-active-provider-name" class="ai-active-provider-name">OpenAI · GPT-5.6 Luna</strong>
+                    </div>
+                  </div>
+                  <a href="/api-keys" class="ai-active-provider-link" data-i18n="manage_ai_in_settings">Manage in API Settings ↗</a>
+                </div>
                 <div class="field-pair-row ai-only" hidden>
                   <label for="field-confidence"><span data-i18n="min_confidence">Min confidence</span>
                     <input id="field-confidence" name="ai_min_confidence" type="number" value="0.55" min="0" max="1" step="0.05" inputmode="decimal" />
@@ -614,15 +582,15 @@
                       <span id="auto-size-avail" class="qty-field-avail"></span>
                     </div>
                     <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
-                      <label class="qty-unit" data-tooltip="Shares" data-i18n-tooltip="shares_title">
-                        <input type="radio" name="size_mode" value="qty" checked />
-                        <span aria-hidden="true">#</span>
-                        <span class="sr-only" data-i18n="shares_title">Shares</span>
-                      </label>
-                      <label class="qty-unit" data-tooltip="Dollars" data-i18n-tooltip="dollars_title">
+                      <label class="qty-unit" data-tooltip="Dollars ($)" data-i18n-tooltip="dollars_title">
                         <input type="radio" name="size_mode" value="notional" />
                         <span aria-hidden="true">$</span>
-                        <span class="sr-only" data-i18n="dollars_title">Dollars</span>
+                        <span class="sr-only" data-i18n="dollars_title">Dollars ($)</span>
+                      </label>
+                      <label class="qty-unit" data-tooltip="Shares (#)" data-i18n-tooltip="shares_title">
+                        <input type="radio" name="size_mode" value="qty" checked />
+                        <span aria-hidden="true">#</span>
+                        <span class="sr-only" data-i18n="shares_title">Shares (#)</span>
                       </label>
                       <label class="qty-unit" id="size-unit-ai" data-tooltip="AI" data-i18n-tooltip="size_ai_title" hidden>
                         <input type="radio" name="size_mode" value="ai" />
@@ -642,6 +610,13 @@
                   <div class="qty-field-input" id="auto-notional-label" hidden>
                     <div class="price-input-shell">
                       <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" placeholder="100" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" />
+                    </div>
+                    <div class="notional-quick-chips" id="desk-notional-chips" role="group" aria-label="Quick dollar amounts" data-i18n-aria-label="quick_dollar_amounts">
+                      <button type="button" class="btn-notional-chip" data-val="100">$100</button>
+                      <button type="button" class="btn-notional-chip" data-val="250">$250</button>
+                      <button type="button" class="btn-notional-chip" data-val="500">$500</button>
+                      <button type="button" class="btn-notional-chip" data-val="1000">$1,000</button>
+                      <button type="button" class="btn-notional-chip" data-val="2500">$2,500</button>
                     </div>
                     <p class="field-error" role="alert" hidden></p>
                   </div>

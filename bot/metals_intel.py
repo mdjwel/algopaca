@@ -25,6 +25,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from bot.client import AlpacaService
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 # Core tradeable precious metals & miners symbols on Alpaca
 GOLD_SYMBOLS = {"GLD", "IAU", "UGL", "GLL", "PHYS"}
 SILVER_SYMBOLS = {"SLV", "AGQ", "ZSL", "SIL", "SILJ", "PSLV"}
-MINER_SYMBOLS = {"GDX", "GDXJ"}
+MINER_SYMBOLS = {"GDX", "GDXJ", "GDXD", "GDXU"}
 PRECIOUS_METALS = GOLD_SYMBOLS | SILVER_SYMBOLS | MINER_SYMBOLS
 
 # --- Calibrated factor windows and scales (see module docstring) -------------
@@ -239,6 +240,168 @@ def classify_bias(score: float) -> str:
     if score <= _MODERATE_BEAR:
         return "moderate_bearish"
     return "neutral"
+
+
+def compute_historical_macro_series(
+    bars: pd.DataFrame,
+    symbol: str = "GLD",
+    macro_bars: dict[str, pd.DataFrame] | None = None,
+) -> pd.DataFrame:
+    """Compute rolling historical macro factors and composite score for each bar.
+
+    Weights calibrated against GLD returns (IC measurements):
+        - Rates / Yields (TLT momentum): 40% weight
+        - Gold-to-Silver Ratio (GSR z-score): 35% weight
+        - 200-day Trend (GLD vs SMA200): 15% weight
+        - US Dollar Index (UUP z-score): 10% weight
+
+    Args:
+        bars: The primary asset's OHLCV DataFrame (must have DatetimeIndex and 'close').
+        symbol: The primary asset symbol (e.g. 'GLD', 'SLV', 'UGL').
+        macro_bars: Optional dictionary of companion DataFrames:
+            'TLT' (rates / yields), 'UUP' (dollar), 'GLD' (gold benchmark), 'SLV' (silver benchmark).
+
+    Returns:
+        pd.DataFrame indexed by bars.index with columns:
+            - macro_composite_score (float, -3.0 to +3.0)
+            - metals_macro_bias (str)
+            - trend_regime (str: 'bullish_above_sma200' or 'bearish_below_sma200')
+            - yield_trend (str: 'falling_yields', 'rising_yields', or 'neutral')
+            - dollar_trend (str: 'falling', 'rising', or 'neutral')
+            - dollar_mixed (bool)
+            - gsr_z (float or NaN)
+            - rates_score (float or NaN)
+            - dollar_score (float or NaN)
+            - gsr_score (float or NaN)
+            - trend_score (float or NaN)
+    """
+    if bars is None or bars.empty or "close" not in bars.columns:
+        return pd.DataFrame()
+
+    df_index = bars.index
+    mb = macro_bars or {}
+    sym = (symbol or "GLD").upper().strip()
+
+    # 1. Gold series for 200-day trend
+    gld_df = mb.get("GLD")
+    if gld_df is not None and not gld_df.empty and "close" in gld_df.columns:
+        gld_closes = gld_df["close"].astype(float).reindex(df_index, method="ffill")
+    elif sym in GOLD_SYMBOLS or "GLD" in sym:
+        gld_closes = bars["close"].astype(float)
+    else:
+        gld_closes = bars["close"].astype(float)
+
+    # 200-day trend score
+    win_trend = min(TREND_WINDOW, max(10, len(gld_closes)))
+    sma200 = gld_closes.rolling(win_trend, min_periods=min(15, win_trend)).mean()
+    trend_score = pd.Series(np.where(gld_closes >= sma200, 1.0, -1.0), index=df_index)
+    trend_regime = pd.Series(
+        np.where(trend_score > 0, "bullish_above_sma200", "bearish_below_sma200"),
+        index=df_index,
+    )
+
+    # 2. Rates score from TLT (rising TLT = falling yields = bullish for gold)
+    tlt_df = mb.get("TLT")
+    if tlt_df is not None and not tlt_df.empty and "close" in tlt_df.columns:
+        tlt_closes = tlt_df["close"].astype(float).reindex(df_index, method="ffill")
+        fast_step = min(RATES_FAST_PERIODS, max(2, len(tlt_closes) - 1))
+        slow_step = min(RATES_SLOW_PERIODS, max(5, len(tlt_closes) - 1))
+        fast_mom = (tlt_closes / tlt_closes.shift(fast_step) - 1.0) / RATES_FAST_SCALE
+        slow_mom = (tlt_closes / tlt_closes.shift(slow_step) - 1.0) / RATES_SLOW_SCALE
+        fast_clipped = fast_mom.clip(-1.0, 1.0)
+        slow_clipped = slow_mom.clip(-1.0, 1.0)
+        parts_sum = fast_clipped.fillna(0.0) + slow_clipped.fillna(0.0)
+        parts_cnt = (fast_clipped.notna().astype(float) + slow_clipped.notna().astype(float)).replace(0, np.nan)
+        rates_score = (parts_sum / parts_cnt).clip(-1.0, 1.0)
+    else:
+        rates_score = pd.Series(np.nan, index=df_index)
+
+    yield_trend = pd.Series("neutral", index=df_index)
+    yield_trend[rates_score > 0.25] = "falling_yields"
+    yield_trend[rates_score < -0.25] = "rising_yields"
+
+    # 3. Gold / Silver ratio z-score & score
+    slv_df = mb.get("SLV")
+    if slv_df is not None and not slv_df.empty and "close" in slv_df.columns:
+        slv_closes = slv_df["close"].astype(float).reindex(df_index, method="ffill")
+    elif sym in SILVER_SYMBOLS:
+        slv_closes = bars["close"].astype(float)
+    else:
+        slv_closes = None
+
+    if slv_closes is not None and gld_closes is not None:
+        raw_gsr = (gld_closes / slv_closes.replace(0, np.nan)).dropna()
+        gsr = raw_gsr.reindex(df_index, method="ffill")
+        win_gsr = min(GSR_Z_WINDOW, max(15, len(gsr)))
+        gsr_mean = gsr.rolling(win_gsr, min_periods=min(10, win_gsr)).mean()
+        gsr_std = gsr.rolling(win_gsr, min_periods=min(10, win_gsr)).std().replace(0, np.nan)
+        gsr_z = (gsr - gsr_mean) / gsr_std
+        gsr_score = (gsr_z / GSR_Z_SCALE).clip(-1.0, 1.0)
+    else:
+        gsr_z = pd.Series(np.nan, index=df_index)
+        gsr_score = pd.Series(np.nan, index=df_index)
+
+    # 4. Dollar score from UUP
+    uup_df = mb.get("UUP")
+    if uup_df is not None and not uup_df.empty and "close" in uup_df.columns:
+        uup_closes = uup_df["close"].astype(float).reindex(df_index, method="ffill")
+        win_uup = min(DOLLAR_Z_WINDOW, max(10, len(uup_closes)))
+        uup_mean = uup_closes.rolling(win_uup, min_periods=min(8, win_uup)).mean()
+        uup_std = uup_closes.rolling(win_uup, min_periods=min(8, win_uup)).std().replace(0, np.nan)
+        uup_z = (uup_closes - uup_mean) / uup_std
+        dollar_score = (-uup_z / DOLLAR_Z_SCALE).clip(-1.0, 1.0)
+    else:
+        dollar_score = pd.Series(np.nan, index=df_index)
+
+    dollar_trend = pd.Series("neutral", index=df_index)
+    dollar_trend[dollar_score > 0.25] = "falling"
+    dollar_trend[dollar_score < -0.25] = "rising"
+    dollar_mixed = (dollar_trend == "neutral") | (dollar_score.abs() <= 0.25) | dollar_score.isna()
+
+    # 5. Composite macro score combining all available factors
+    # Weights: rates: 0.40, gsr: 0.35, trend: 0.15, dollar: 0.10
+    w_rates = FACTOR_WEIGHTS["rates"]
+    w_gsr = FACTOR_WEIGHTS["gsr"]
+    w_trend = FACTOR_WEIGHTS["trend"]
+    w_dollar = FACTOR_WEIGHTS["dollar"]
+
+    has_rates = rates_score.notna()
+    has_gsr = gsr_score.notna()
+    has_trend = trend_score.notna()
+    has_dollar = dollar_score.notna()
+
+    total_w = (
+        has_rates.astype(float) * w_rates
+        + has_gsr.astype(float) * w_gsr
+        + has_trend.astype(float) * w_trend
+        + has_dollar.astype(float) * w_dollar
+    ).replace(0, np.nan)
+
+    weighted_val = (
+        rates_score.fillna(0.0) * w_rates
+        + gsr_score.fillna(0.0) * w_gsr
+        + trend_score.fillna(0.0) * w_trend
+        + dollar_score.fillna(0.0) * w_dollar
+    )
+    macro_score = np.round((weighted_val / total_w).fillna(0.0) * SCORE_SCALE, 2)
+    metals_bias = [classify_bias(float(s)) for s in macro_score]
+
+    return pd.DataFrame(
+        {
+            "macro_composite_score": macro_score,
+            "metals_macro_bias": metals_bias,
+            "trend_regime": trend_regime,
+            "yield_trend": yield_trend,
+            "dollar_trend": dollar_trend,
+            "dollar_mixed": dollar_mixed,
+            "gsr_z": gsr_z.round(2),
+            "rates_score": rates_score.round(3),
+            "dollar_score": dollar_score.round(3),
+            "gsr_score": gsr_score.round(3),
+            "trend_score": trend_score.round(3),
+        },
+        index=df_index,
+    )
 
 
 def _fetch_closes(

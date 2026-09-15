@@ -1295,7 +1295,8 @@ details.desk-accordion .exec-notification-section > .check:has(input:checked) {
   }
 }
 
-.bt-day-windows {
+.bt-day-windows,
+.bt-ai-windows {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
@@ -1303,7 +1304,8 @@ details.desk-accordion .exec-notification-section > .check:has(input:checked) {
 }
 
 @media (max-width: 768px) {
-  .bt-day-windows {
+  .bt-day-windows,
+  .bt-ai-windows {
     grid-template-columns: 1fr;
   }
 }
@@ -2023,3 +2025,125 @@ details.loop-order-accordion[open] > summary.loop-order-summary .loop-order-care
     width: 100%;
   }
 }
+
+/* ── Active AI Provider Card in Auto Trade ─────────────────────── */
+.ai-active-provider-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--copper) 8%, var(--surface-soft, rgba(255, 255, 255, 0.03)));
+  border: 1px solid color-mix(in srgb, var(--copper) 30%, var(--line));
+  border-radius: var(--radius-md);
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ai-active-provider-card[hidden] {
+  display: none !important;
+}
+
+.ai-active-provider-info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.ai-active-provider-icon {
+  font-size: 1rem;
+  color: var(--copper);
+  line-height: 1;
+}
+
+.ai-active-provider-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ai-active-provider-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.ai-active-provider-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.ai-active-provider-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--copper);
+  text-decoration: none;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--copper) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper) 25%, transparent);
+  transition: all 0.15s ease;
+}
+
+.ai-active-provider-link:hover {
+  background: color-mix(in srgb, var(--copper) 22%, transparent);
+  border-color: var(--copper);
+  color: var(--copper);
+}
+
+@media (max-width: 640px) {
+  .ai-active-provider-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ai-active-provider-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ── Trade Notional Quick Chips ────────────────────────────────── */
+.notional-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+
+  & .btn-notional-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm, 6px);
+    font-family: var(--mono, monospace);
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--line) 40%, var(--panel, #131a29));
+    border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--text);
+      border-color: var(--copper);
+      background: color-mix(in srgb, var(--copper) 14%, transparent);
+    }
+
+    &.is-active {
+      color: var(--ink, #000);
+      background: var(--copper);
+      border-color: var(--copper);
+      font-weight: 600;
+    }
+  }
+}
+

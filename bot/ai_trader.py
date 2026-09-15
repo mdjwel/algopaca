@@ -19,6 +19,7 @@ from bot.ai_risk import (
     save_trade_state,
     should_scale_out,
 )
+from bot.ai_backtest import OPPOSING_METALS_PAIRS, UNSHORTABLE_SYMBOLS
 from bot.client import AlpacaService
 from bot.config import Config, normalize_lang
 from bot.metals_intel import (
@@ -212,6 +213,21 @@ class AiTradingBot:
         # round trip below is the slow part and is worth skipping on Stop.
         if stopping():
             raise CycleStopped(symbol)
+
+        preset_id = getattr(self.config, "ai_preset", "")
+        sym_upper = symbol.upper().strip()
+        if preset_id == "gold_silver_macro" and sym_upper in {"GDX", "GDXJ", "DUST", "UGL"}:
+            if float(context.get("position_qty") or 0) == 0:
+                logger.info("%s is strictly excluded from AI Gold & Silver Macro playbook", symbol)
+                return {
+                    "symbol": symbol,
+                    "signal": Signal.HOLD.value,
+                    "price": float((context.get("mark") or {}).get("price") or 0),
+                    "reason": f"{symbol} is strictly excluded from the AI Gold & Silver Macro playbook",
+                    "session": (context.get("session") or {}).get("session", "?"),
+                    "position": 0.0,
+                    "confidence": 0.0,
+                }
 
         decision, context = self.brain.decide(symbol, context)
         if stopping():
@@ -438,6 +454,12 @@ class AiTradingBot:
                             except Exception as rev_err:
                                 logger.warning("Failed to submit long order on reversal for %s: %s", symbol, rev_err)
             elif decision.action == Signal.BUY.value and position_qty == 0:
+                sym_upper = symbol.upper()
+                opp_sym = OPPOSING_METALS_PAIRS.get(sym_upper)
+                if opp_sym and self.service.get_position_qty(opp_sym) != 0:
+                    payload["reason"] += f" | skipped: opposing leveraged position in {opp_sym} is currently open"
+                    logger.info("AI BUY skipped for %s: opposing %s position is active", symbol, opp_sym)
+                    return payload
                 sized = self._qty_for_session(qty)
                 if sized is None:
                     payload["reason"] += " | skipped: qty"
@@ -520,6 +542,11 @@ class AiTradingBot:
                     payload["intent"] = "close_long"
                     self._open_positions = max(0, self._open_positions - 1)
             elif decision.action == Signal.SELL.value and position_qty == 0:
+                sym_upper = symbol.upper()
+                if sym_upper in UNSHORTABLE_SYMBOLS:
+                    payload["reason"] += f" | skipped: {symbol} is unshortable at Alpaca (long-only vehicle)"
+                    logger.info("AI SHORT skipped for %s: unshortable instrument", symbol)
+                    return payload
                 # Alpaca does not short fractionals — whole shares only.
                 sized = self._qty_for_session(qty, whole=True)
                 if sized is None:
@@ -607,7 +634,21 @@ class AiTradingBot:
                     f"scaled out {trimmed['qty']:g} @ +{float(r):.1f}R"
                 )
 
-        # 2) Move the stop to breakeven, then trail it. Never loosens.
+        # 2) Inverse ETF volatility decay protection (GLL, GDXD, etc.)
+        sym_upper = symbol.upper().strip()
+        if sym_upper in {"GLL", "GDXD", "ZSL", "JDST"} and side == "long" and not out.get("scale_out"):
+            rsi = (context.get("technicals") or {}).get("rsi_14")
+            if rsi is not None and float(rsi) >= 65.0 and not state.get("decay_trimmed"):
+                trimmed = self._scale_out(symbol, position)
+                if trimmed:
+                    state["decay_trimmed"] = True
+                    state["scaled_out"] = True
+                    out["scale_out"] = trimmed
+                    actions.append(
+                        f"inverse decay protection trim {trimmed['qty']:g} (RSI {float(rsi):.1f} >= 65.0)"
+                    )
+
+        # 3) Move the stop to breakeven, then trail it. Never loosens.
         # Skipped in the same cycle as a trim: the sell is still pending, so a new
         # stop would be sized against a position that is about to shrink. The next
         # cycle sees no resting stop and arms it against the settled size.

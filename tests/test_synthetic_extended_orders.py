@@ -258,23 +258,24 @@ class SyntheticExtendedOrdersTestCase(unittest.TestCase):
         self.assertTrue(synthetic_order_store.is_day_order_expired(created_ts, now_dt_after))
 
         # Order created in state and advanced past expiry
-        synth = self.state._register_synthetic_order(
-            symbol="SPY",
-            side="sell",
-            qty=10.0,
-            order_type="stop_limit",
-            time_in_force="day",
-            stop_price=500.0,
-            limit_price=498.0,
-        )
-        oid = synth["id"]
-        # Set created_at to 2 days ago
-        with self.state.lock:
-            self.state.synthetic_orders[oid]["created_at"] = time.time() - (86400 * 2)
+        with patch.object(self.state, "_start_synthetic_order_watcher"):
+            synth = self.state._register_synthetic_order(
+                symbol="SPY",
+                side="sell",
+                qty=10.0,
+                order_type="stop_limit",
+                time_in_force="day",
+                stop_price=500.0,
+                limit_price=498.0,
+            )
+            oid = synth["id"]
+            # Set created_at to 7 days ago (guaranteed expired even across weekends)
+            with self.state.lock:
+                self.state.synthetic_orders[oid]["created_at"] = time.time() - (86400 * 7)
 
-        with patch("bot.web_state.AlpacaService") as MockService:
-            self.state._advance_synthetic_order(oid)
-            self.assertEqual(self.state.synthetic_orders[oid]["status"], "expired")
+            with patch("bot.web_state.AlpacaService") as MockService:
+                self.state._advance_synthetic_order(oid)
+                self.assertEqual(self.state.synthetic_orders[oid]["status"], "expired")
 
     def test_replace_synthetic_order(self):
         synth = self.state._register_synthetic_order(

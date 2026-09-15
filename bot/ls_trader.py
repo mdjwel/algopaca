@@ -158,6 +158,10 @@ class LsTradingBot:
 
     def _entry_qty(self, price: float, atr: float) -> float:
         """ATR risk sizing with desk qty/notional as fallback."""
+        if getattr(self.config, "size_mode", "qty") == "notional" and float(getattr(self.config, "trade_notional", 0) or 0) > 0:
+            return float(self.config.order_qty_for_price(price))
+        if getattr(self.config, "size_mode", "qty") == "qty" and float(getattr(self.config, "trade_qty", 0) or 0) > 0:
+            return float(self.config.trade_qty)
         stop_dist = _stop_distance(price, atr, self.risk)
         equity = self._account_equity()
         qty = _position_qty(equity, stop_dist, self.risk) if equity > 0 else 0.0

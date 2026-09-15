@@ -253,7 +253,7 @@
             </fieldset>
 
             <fieldset class="field-group">
-              <legend data-i18n="api_keys_legend">API keys</legend>
+              <legend data-i18n="api_keys_legend">API keys &amp; Models</legend>
               <div class="key-field" id="key-field-openai">
                 <label for="field-openai-key">
                   <span class="key-field-header">
@@ -263,6 +263,15 @@
                   <input id="field-openai-key" name="openai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… paste here" data-i18n-placeholder="placeholder_openai" aria-describedby="openai-key-hint" />
                 </label>
                 <p id="openai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+                <label for="field-openai-model" class="stack provider-model-label"><span data-i18n="model">Model</span>
+                  <select id="field-openai-model" name="openai_model">
+                    <option value="gpt-5.6-sol" data-i18n="model_gpt_5_6_sol">GPT-5.6 Sol (flagship)</option>
+                    <option value="gpt-5.6-terra" data-i18n="model_gpt_5_6_terra">GPT-5.6 Terra (balanced)</option>
+                    <option value="gpt-5.6-luna" selected data-i18n="model_gpt_5_6_luna">GPT-5.6 Luna (fast / low cost)</option>
+                    <option value="gpt-5.4" data-i18n="model_gpt_5_4">GPT-5.4</option>
+                    <option value="gpt-5.4-mini" data-i18n="model_gpt_5_4_mini">GPT-5.4 mini</option>
+                  </select>
+                </label>
               </div>
               <div class="key-field" id="key-field-gemini" hidden>
                 <label for="field-gemini-key">
@@ -273,6 +282,15 @@
                   <input id="field-gemini-key" name="gemini_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… paste here" data-i18n-placeholder="placeholder_gemini" aria-describedby="gemini-key-hint" />
                 </label>
                 <p id="gemini-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+                <label for="field-gemini-model" class="stack provider-model-label"><span data-i18n="model">Model</span>
+                  <select id="field-gemini-model" name="gemini_model">
+                    <option value="gemini-3.6-flash" data-i18n="model_gemini_3_6_flash">Gemini 3.6 Flash (latest)</option>
+                    <option value="gemini-3.5-flash" data-i18n="model_gemini_3_5_flash">Gemini 3.5 Flash</option>
+                    <option value="gemini-3.5-flash-lite" selected data-i18n="model_gemini_3_5_flash_lite">Gemini 3.5 Flash-Lite</option>
+                    <option value="gemini-3.1-pro-preview" data-i18n="model_gemini_3_1_pro_preview">Gemini 3.1 Pro (preview)</option>
+                    <option value="gemini-3.1-flash-lite" data-i18n="model_gemini_3_1_flash_lite">Gemini 3.1 Flash-Lite</option>
+                  </select>
+                </label>
               </div>
               <div class="key-field" id="key-field-anthropic" hidden>
                 <label for="field-anthropic-key">
@@ -283,6 +301,14 @@
                   <input id="field-anthropic-key" name="anthropic_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… paste here" data-i18n-placeholder="placeholder_anthropic" aria-describedby="anthropic-key-hint" />
                 </label>
                 <p id="anthropic-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+                <label for="field-anthropic-model" class="stack provider-model-label"><span data-i18n="model">Model</span>
+                  <select id="field-anthropic-model" name="anthropic_model">
+                    <option value="claude-opus-5" data-i18n="model_claude_opus_5">Claude Opus 5 (flagship)</option>
+                    <option value="claude-sonnet-5" data-i18n="model_claude_sonnet_5">Claude Sonnet 5 (balanced)</option>
+                    <option value="claude-fable-5" data-i18n="model_claude_fable_5">Claude Fable 5</option>
+                    <option value="claude-haiku-4-5-20251001" selected data-i18n="model_claude_haiku_4_5_20251001">Claude Haiku 4.5 (fast / low cost)</option>
+                  </select>
+                </label>
               </div>
               <div class="key-field" id="key-field-xai" hidden>
                 <label for="field-xai-key">
@@ -293,6 +319,14 @@
                   <input id="field-xai-key" name="xai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="xai-… paste here" data-i18n-placeholder="placeholder_xai" aria-describedby="xai-key-hint" />
                 </label>
                 <p id="xai-key-hint" class="field-help" data-i18n="not_set">Not set</p>
+                <label for="field-xai-model" class="stack provider-model-label"><span data-i18n="model">Model</span>
+                  <select id="field-xai-model" name="xai_model">
+                    <option value="grok-4" data-i18n="model_grok_4">Grok 4 (flagship)</option>
+                    <option value="grok-4-fast" data-i18n="model_grok_4_fast">Grok 4 Fast (balanced)</option>
+                    <option value="grok-3" data-i18n="model_grok_3">Grok 3</option>
+                    <option value="grok-3-mini" selected data-i18n="model_grok_3_mini">Grok 3 Mini (fast / low cost)</option>
+                  </select>
+                </label>
               </div>
               <label class="check stack" for="field-save-keys">
                 <input id="field-save-keys" name="save_keys_to_env" type="checkbox" checked />

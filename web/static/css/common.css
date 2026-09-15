@@ -3968,7 +3968,8 @@ button.ghost.ghost-danger:focus-visible {
 .bt-dip-windows,
 .bt-pair-windows,
 .bt-ls-windows,
-.bt-day-windows {
+.bt-day-windows,
+.bt-ai-windows {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
@@ -3981,7 +3982,8 @@ button.ghost.ghost-danger:focus-visible {
 .bt-dip-windows > label,
 .bt-pair-windows > label,
 .bt-ls-windows > label,
-.bt-day-windows > label {
+.bt-day-windows > label,
+.bt-ai-windows > label {
   min-width: 0;
 }
 

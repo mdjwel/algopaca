@@ -185,6 +185,10 @@ class ApiKeysIn(BaseModel):
     anthropic_api_key: str = ""
     xai_api_key: str = ""
     ai_provider: Optional[str] = None
+    openai_model: Optional[str] = None
+    gemini_model: Optional[str] = None
+    anthropic_model: Optional[str] = None
+    xai_model: Optional[str] = None
     save_to_env: bool = True
 
 
@@ -481,7 +485,7 @@ class ReplaceOrderIn(BaseModel):
 
 
 class BacktestIn(BaseModel):
-    mode: str = Field("sma", pattern="(?i)^(sma|dip|pair|ls|day)$")
+    mode: str = Field("sma", pattern="(?i)^(sma|dip|pair|ls|day|ai)$")
     symbol: str = "AAPL"
     symbols: Optional[str] = None
     run_kind: str = Field(
@@ -528,6 +532,13 @@ class BacktestIn(BaseModel):
     day_open_buffer_mins: Optional[int] = Field(None, ge=0)
     day_eod_flatten_mins: Optional[int] = Field(None, ge=0)
     day_eod_flatten: Optional[bool] = None
+    ai_preset: Optional[str] = None
+    ai_min_confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    ai_atr_stop_mult: Optional[float] = Field(None, gt=0)
+    ai_take_profit_r: Optional[float] = Field(None, ge=0)
+    ai_trail_after_r: Optional[float] = Field(None, ge=0)
+    ai_risk_pct: Optional[float] = Field(None, gt=0, le=100)
+    ai_max_positions: Optional[int] = Field(None, ge=1)
 
 
 class ClosePositionIn(BaseModel):
@@ -1602,14 +1613,33 @@ def save_keys(body: ApiKeysIn, user: dict = Depends(require_auth)) -> dict:
             or body.anthropic_api_key.strip()
             or body.xai_api_key.strip()
         )
-        if not has_keys and not (body.ai_provider and body.ai_provider.strip()):
-            raise ValueError("Paste at least one API key or choose an AI provider to save.")
+        has_models = bool(
+            (body.openai_model and body.openai_model.strip())
+            or (body.gemini_model and body.gemini_model.strip())
+            or (body.anthropic_model and body.anthropic_model.strip())
+            or (body.xai_model and body.xai_model.strip())
+        )
+        if not has_keys and not (body.ai_provider and body.ai_provider.strip()) and not has_models:
+            raise ValueError("Paste at least one API key, choose an AI provider, or select a model to save.")
 
+        settings_updates = {}
         if body.ai_provider and body.ai_provider.strip():
             provider = body.ai_provider.strip().lower()
             if provider not in {"openai", "gemini", "anthropic", "xai"}:
                 raise ValueError("ai_provider must be openai, gemini, anthropic, or xai")
-            state.update_settings({"ai_provider": provider})
+            settings_updates["ai_provider"] = provider
+
+        if body.openai_model and body.openai_model.strip():
+            settings_updates["openai_model"] = body.openai_model.strip()
+        if body.gemini_model and body.gemini_model.strip():
+            settings_updates["gemini_model"] = body.gemini_model.strip()
+        if body.anthropic_model and body.anthropic_model.strip():
+            settings_updates["anthropic_model"] = body.anthropic_model.strip()
+        if body.xai_model and body.xai_model.strip():
+            settings_updates["xai_model"] = body.xai_model.strip()
+
+        if settings_updates:
+            state.update_settings(settings_updates)
 
         if has_keys:
             status = state.apply_api_keys(

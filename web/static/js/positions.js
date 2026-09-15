@@ -2342,7 +2342,8 @@ async function openLotsModal(symbol) {
   fillLotsSummary({
     lot_count: null,
     qty: pos?.qty,
-    avg_entry_price: pos?.avg_entry_price,
+    avg_entry_price: pos?.desk_avg_entry_price ?? pos?.avg_entry_price,
+    desk_avg_entry_price: pos?.desk_avg_entry_price,
     current_price: pos?.current_price,
   });
   setLotsModalState({ loading: true });
@@ -2361,6 +2362,32 @@ async function openLotsModal(symbol) {
     renderLotsRows(data);
     renderLotsNote(data);
     setLotsModalState({ hasRows: data.lots.length > 0, empty: data.lots.length === 0 });
+
+    // Sync active positionsData holding with the desk's verified lot metrics
+    const deskAvg = data.desk_avg_entry_price ?? data.weighted_avg_price ?? (
+      data.total_cost_basis != null && Number(data.total_qty || data.qty || 0) > 0
+        ? Number(data.total_cost_basis) / Number(data.total_qty || data.qty)
+        : (data.avg_entry_price != null ? Number(data.avg_entry_price) : null)
+    );
+    if (deskAvg != null && positionsData && Array.isArray(positionsData.positions)) {
+      const posObj = findPositionBySymbol(sym);
+      if (posObj) {
+        posObj.avg_entry_price = deskAvg;
+        posObj.desk_avg_entry_price = deskAvg;
+        if (data.total_cost_basis != null) {
+          posObj.cost_basis = Number(data.total_cost_basis);
+        }
+        if (data.total_unrealized_pl != null) {
+          posObj.unrealized_pl = Number(data.total_unrealized_pl);
+          if (Number(data.total_cost_basis) > 0) {
+            posObj.unrealized_pct = (Number(data.total_unrealized_pl) / Number(data.total_cost_basis)) * 100;
+          }
+        }
+        const filtered = filterAndSortPositions(positionsData.positions);
+        renderPositionsTable(filtered);
+        renderPositionsCards(filtered);
+      }
+    }
   } catch (err) {
     if (seq !== lotsRequestSeq) return;
     setLotsModalState({});
@@ -2379,7 +2406,37 @@ function fillLotsSummary(data) {
   const pnlEl = $("pos-lots-total-pnl");
   if (countEl) countEl.textContent = data.lot_count == null ? "—" : String(data.lot_count);
   if (qtyEl) qtyEl.textContent = formatPositionQty(data.qty);
-  if (avgEl) avgEl.textContent = data.avg_entry_price != null ? `$${Number(data.avg_entry_price).toFixed(2)}` : "—";
+
+  // Compute actual average entry from the desk's lots
+  let avgPrice = null;
+  const totalCost = data.total_cost_basis != null ? Number(data.total_cost_basis) : null;
+  const totalQty = Number(data.total_qty != null ? data.total_qty : data.qty || 0);
+  if (totalCost != null && totalQty > 0) {
+    avgPrice = totalCost / totalQty;
+  } else if (data.desk_avg_entry_price != null) {
+    avgPrice = Number(data.desk_avg_entry_price);
+  } else if (data.weighted_avg_price != null) {
+    avgPrice = Number(data.weighted_avg_price);
+  } else if (data.avg_entry_price != null) {
+    avgPrice = Number(data.avg_entry_price);
+  }
+
+  if (avgEl) {
+    avgEl.textContent = avgPrice != null ? `$${Number(avgPrice).toFixed(2)}` : "—";
+    if (
+      avgPrice != null &&
+      data.alpaca_avg_entry_price != null &&
+      Math.abs(avgPrice - Number(data.alpaca_avg_entry_price)) >= 0.01
+    ) {
+      avgEl.title = tx("pos_lots_avg_discrepancy_hint", "Desk average: {desk} (Alpaca reported: {alpaca})", {
+        desk: `$${Number(avgPrice).toFixed(2)}`,
+        alpaca: `$${Number(data.alpaca_avg_entry_price).toFixed(2)}`,
+      });
+    } else {
+      avgEl.removeAttribute("title");
+    }
+  }
+
   if (pxEl) pxEl.textContent = data.current_price != null ? `$${Number(data.current_price).toFixed(2)}` : "—";
   if (pnlEl) {
     // Absent until the lots are actually back — a bare $0.00 on a live holding
@@ -2674,12 +2731,21 @@ async function fetchCustomEnginesList() {
 function syncSizingModeUI(mode) {
   const select = $("pos-autotrade-sizing-mode");
   const lbl = $("pos-autotrade-size-label");
+  const chips = $("pos-notional-chips");
   if (select && mode) select.value = mode;
   const currentMode = select ? select.value : mode;
   if (currentMode === "notional") {
     if (lbl) lbl.textContent = tx("trade_notional", "Trade Notional ($)");
+    if (chips) {
+      chips.hidden = false;
+      const curVal = parseFloat($("pos-autotrade-size-input")?.value || "0");
+      chips.querySelectorAll(".btn-notional-chip").forEach((btn) => {
+        btn.classList.toggle("is-active", parseFloat(btn.dataset.val) === curVal);
+      });
+    }
   } else {
     if (lbl) lbl.textContent = tx("trade_qty", "Trade Quantity");
+    if (chips) chips.hidden = true;
   }
 }
 
@@ -3550,13 +3616,27 @@ function initPositionsUi() {
     desc.textContent = selected?.description || "";
   });
   $("pos-autotrade-sizing-mode")?.addEventListener("change", (e) => {
-    syncSizingModeUI(e.target.value);
     const inp = $("pos-autotrade-size-input");
     if (e.target.value === "notional") {
       if (inp && Number(inp.value) === 1) inp.value = "500";
     } else {
       if (inp && Number(inp.value) === 500) inp.value = "1";
     }
+    syncSizingModeUI(e.target.value);
+  });
+  $("pos-notional-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".btn-notional-chip");
+    if (!chip) return;
+    const val = chip.dataset.val;
+    const inp = $("pos-autotrade-size-input");
+    if (inp && val) {
+      inp.value = val;
+      syncSizingModeUI("notional");
+    }
+  });
+  $("pos-autotrade-size-input")?.addEventListener("input", () => {
+    const mode = $("pos-autotrade-sizing-mode")?.value || "qty";
+    syncSizingModeUI(mode);
   });
   $("btn-stop-all-autotrades")?.addEventListener("click", stopAllAutoTrades);
   $("pos-autotrades-list")?.addEventListener("click", (e) => {
