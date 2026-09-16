@@ -171,18 +171,39 @@ def momentum(series: pd.Series | None, periods: int) -> float | None:
     return float(series.iloc[-1]) / past - 1.0
 
 
-def score_rates(tlt_closes: pd.Series | None) -> float | None:
-    """Rising TLT means falling yields, the strongest measured gold tailwind."""
-    fast = momentum(tlt_closes, RATES_FAST_PERIODS)
-    slow = momentum(tlt_closes, RATES_SLOW_PERIODS)
-    parts = []
-    if fast is not None:
-        parts.append(clip_unit(fast / RATES_FAST_SCALE))
-    if slow is not None:
-        parts.append(clip_unit(slow / RATES_SLOW_SCALE))
-    if not parts:
-        return None
-    return clip_unit(sum(parts) / len(parts))
+def score_rates(
+    tlt_closes: pd.Series | None,
+    tip_closes: pd.Series | None = None,
+) -> float | None:
+    """Rising TIP (falling real yields) and rising TLT (falling nominal yields) are strong gold tailwinds.
+
+    Real yields (TIP) carry the primary structural driver; nominal yields (TLT) provide duration proxy.
+    When TIP is available, it is blended with TLT (65% TIP / 35% TLT) or prioritized.
+    """
+    def _mom_score(s: pd.Series | None) -> float | None:
+        if s is None:
+            return None
+        fast = momentum(s, RATES_FAST_PERIODS)
+        slow = momentum(s, RATES_SLOW_PERIODS)
+        parts = []
+        if fast is not None:
+            parts.append(clip_unit(fast / RATES_FAST_SCALE))
+        if slow is not None:
+            parts.append(clip_unit(slow / RATES_SLOW_SCALE))
+        if not parts:
+            return None
+        return clip_unit(sum(parts) / len(parts))
+
+    tip_score = _mom_score(tip_closes)
+    tlt_score = _mom_score(tlt_closes)
+
+    if tip_score is not None and tlt_score is not None:
+        return clip_unit(tip_score * 0.65 + tlt_score * 0.35)
+    if tip_score is not None:
+        return tip_score
+    if tlt_score is not None:
+        return tlt_score
+    return None
 
 
 def score_gsr(gsr_z: float | None) -> float | None:
@@ -278,118 +299,116 @@ def compute_historical_macro_series(
     if bars is None or bars.empty or "close" not in bars.columns:
         return pd.DataFrame()
 
+    # Factors are defined in trading *days*, while decisions may run hourly.
+    # Compute on daily closes and then forward-fill completed daily values into
+    # the execution bars.  This prevents a 250-day GSR window becoming 250
+    # hours whenever the desk is configured for intraday execution.
     df_index = bars.index
+
+    def _day_index(index: pd.Index) -> pd.DatetimeIndex:
+        idx = pd.DatetimeIndex(index)
+        if idx.tz is not None:
+            idx = idx.tz_convert("UTC").tz_localize(None)
+        return idx.normalize()
+
+    execution_days = _day_index(df_index)
+    calc_index = pd.DatetimeIndex(execution_days.unique()).sort_values()
+
+    def _daily_closes(frame: pd.DataFrame | None) -> pd.Series | None:
+        if frame is None or frame.empty or "close" not in frame.columns:
+            return None
+        closes = frame["close"].astype(float).dropna()
+        if closes.empty:
+            return None
+        daily = closes.groupby(_day_index(closes.index)).last().sort_index()
+        return daily.reindex(calc_index, method="ffill")
+
     mb = macro_bars or {}
     sym = (symbol or "GLD").upper().strip()
+    gld_closes = _daily_closes(mb.get("GLD"))
+    if gld_closes is None:
+        gld_closes = _daily_closes(bars)
+    if gld_closes is None:
+        return pd.DataFrame(index=df_index)
 
-    # 1. Gold series for 200-day trend
-    gld_df = mb.get("GLD")
-    if gld_df is not None and not gld_df.empty and "close" in gld_df.columns:
-        gld_closes = gld_df["close"].astype(float).reindex(df_index, method="ffill")
-    elif sym in GOLD_SYMBOLS or "GLD" in sym:
-        gld_closes = bars["close"].astype(float)
-    else:
-        gld_closes = bars["close"].astype(float)
-
-    # 200-day trend score
     win_trend = min(TREND_WINDOW, max(10, len(gld_closes)))
     sma200 = gld_closes.rolling(win_trend, min_periods=min(15, win_trend)).mean()
-    trend_score = pd.Series(np.where(gld_closes >= sma200, 1.0, -1.0), index=df_index)
+    trend_score = pd.Series(np.where(gld_closes >= sma200, 1.0, -1.0), index=calc_index)
     trend_regime = pd.Series(
         np.where(trend_score > 0, "bullish_above_sma200", "bearish_below_sma200"),
-        index=df_index,
+        index=calc_index,
     )
 
-    # 2. Rates score from TLT (rising TLT = falling yields = bullish for gold)
-    tlt_df = mb.get("TLT")
-    if tlt_df is not None and not tlt_df.empty and "close" in tlt_df.columns:
-        tlt_closes = tlt_df["close"].astype(float).reindex(df_index, method="ffill")
-        fast_step = min(RATES_FAST_PERIODS, max(2, len(tlt_closes) - 1))
-        slow_step = min(RATES_SLOW_PERIODS, max(5, len(tlt_closes) - 1))
-        fast_mom = (tlt_closes / tlt_closes.shift(fast_step) - 1.0) / RATES_FAST_SCALE
-        slow_mom = (tlt_closes / tlt_closes.shift(slow_step) - 1.0) / RATES_SLOW_SCALE
+    def _calc_mom_series(frame: pd.DataFrame | None) -> pd.Series | None:
+        closes = _daily_closes(frame)
+        if closes is None:
+            return None
+        fast_mom = (closes / closes.shift(RATES_FAST_PERIODS) - 1.0) / RATES_FAST_SCALE
+        slow_mom = (closes / closes.shift(RATES_SLOW_PERIODS) - 1.0) / RATES_SLOW_SCALE
         fast_clipped = fast_mom.clip(-1.0, 1.0)
         slow_clipped = slow_mom.clip(-1.0, 1.0)
         parts_sum = fast_clipped.fillna(0.0) + slow_clipped.fillna(0.0)
         parts_cnt = (fast_clipped.notna().astype(float) + slow_clipped.notna().astype(float)).replace(0, np.nan)
-        rates_score = (parts_sum / parts_cnt).clip(-1.0, 1.0)
-    else:
-        rates_score = pd.Series(np.nan, index=df_index)
+        return (parts_sum / parts_cnt).clip(-1.0, 1.0)
 
-    yield_trend = pd.Series("neutral", index=df_index)
+    tlt_rates = _calc_mom_series(mb.get("TLT"))
+    tip_rates = _calc_mom_series(mb.get("TIP"))
+    if tip_rates is not None and tlt_rates is not None:
+        rates_score = (tip_rates * 0.65 + tlt_rates * 0.35).clip(-1.0, 1.0)
+    elif tip_rates is not None:
+        rates_score = tip_rates
+    elif tlt_rates is not None:
+        rates_score = tlt_rates
+    else:
+        rates_score = pd.Series(np.nan, index=calc_index)
+    yield_trend = pd.Series("neutral", index=calc_index)
     yield_trend[rates_score > 0.25] = "falling_yields"
     yield_trend[rates_score < -0.25] = "rising_yields"
 
-    # 3. Gold / Silver ratio z-score & score
-    slv_df = mb.get("SLV")
-    if slv_df is not None and not slv_df.empty and "close" in slv_df.columns:
-        slv_closes = slv_df["close"].astype(float).reindex(df_index, method="ffill")
-    elif sym in SILVER_SYMBOLS:
-        slv_closes = bars["close"].astype(float)
-    else:
-        slv_closes = None
-
-    if slv_closes is not None and gld_closes is not None:
-        raw_gsr = (gld_closes / slv_closes.replace(0, np.nan)).dropna()
-        gsr = raw_gsr.reindex(df_index, method="ffill")
+    slv_closes = _daily_closes(mb.get("SLV"))
+    if slv_closes is None and sym in SILVER_SYMBOLS:
+        slv_closes = _daily_closes(bars)
+    if slv_closes is not None:
+        gsr = (gld_closes / slv_closes.replace(0, np.nan)).ffill()
         win_gsr = min(GSR_Z_WINDOW, max(15, len(gsr)))
         gsr_mean = gsr.rolling(win_gsr, min_periods=min(10, win_gsr)).mean()
         gsr_std = gsr.rolling(win_gsr, min_periods=min(10, win_gsr)).std().replace(0, np.nan)
         gsr_z = (gsr - gsr_mean) / gsr_std
         gsr_score = (gsr_z / GSR_Z_SCALE).clip(-1.0, 1.0)
     else:
-        gsr_z = pd.Series(np.nan, index=df_index)
-        gsr_score = pd.Series(np.nan, index=df_index)
+        gsr_z = pd.Series(np.nan, index=calc_index)
+        gsr_score = pd.Series(np.nan, index=calc_index)
 
-    # 4. Dollar score from UUP
-    uup_df = mb.get("UUP")
-    if uup_df is not None and not uup_df.empty and "close" in uup_df.columns:
-        uup_closes = uup_df["close"].astype(float).reindex(df_index, method="ffill")
+    uup_closes = _daily_closes(mb.get("UUP"))
+    if uup_closes is not None:
         win_uup = min(DOLLAR_Z_WINDOW, max(10, len(uup_closes)))
         uup_mean = uup_closes.rolling(win_uup, min_periods=min(8, win_uup)).mean()
         uup_std = uup_closes.rolling(win_uup, min_periods=min(8, win_uup)).std().replace(0, np.nan)
-        uup_z = (uup_closes - uup_mean) / uup_std
-        dollar_score = (-uup_z / DOLLAR_Z_SCALE).clip(-1.0, 1.0)
+        dollar_score = (-((uup_closes - uup_mean) / uup_std) / DOLLAR_Z_SCALE).clip(-1.0, 1.0)
     else:
-        dollar_score = pd.Series(np.nan, index=df_index)
-
-    dollar_trend = pd.Series("neutral", index=df_index)
+        dollar_score = pd.Series(np.nan, index=calc_index)
+    dollar_trend = pd.Series("neutral", index=calc_index)
     dollar_trend[dollar_score > 0.25] = "falling"
     dollar_trend[dollar_score < -0.25] = "rising"
     dollar_mixed = (dollar_trend == "neutral") | (dollar_score.abs() <= 0.25) | dollar_score.isna()
 
-    # 5. Composite macro score combining all available factors
-    # Weights: rates: 0.40, gsr: 0.35, trend: 0.15, dollar: 0.10
-    w_rates = FACTOR_WEIGHTS["rates"]
-    w_gsr = FACTOR_WEIGHTS["gsr"]
-    w_trend = FACTOR_WEIGHTS["trend"]
-    w_dollar = FACTOR_WEIGHTS["dollar"]
-
-    has_rates = rates_score.notna()
-    has_gsr = gsr_score.notna()
-    has_trend = trend_score.notna()
-    has_dollar = dollar_score.notna()
-
     total_w = (
-        has_rates.astype(float) * w_rates
-        + has_gsr.astype(float) * w_gsr
-        + has_trend.astype(float) * w_trend
-        + has_dollar.astype(float) * w_dollar
+        rates_score.notna().astype(float) * FACTOR_WEIGHTS["rates"]
+        + gsr_score.notna().astype(float) * FACTOR_WEIGHTS["gsr"]
+        + trend_score.notna().astype(float) * FACTOR_WEIGHTS["trend"]
+        + dollar_score.notna().astype(float) * FACTOR_WEIGHTS["dollar"]
     ).replace(0, np.nan)
-
     weighted_val = (
-        rates_score.fillna(0.0) * w_rates
-        + gsr_score.fillna(0.0) * w_gsr
-        + trend_score.fillna(0.0) * w_trend
-        + dollar_score.fillna(0.0) * w_dollar
+        rates_score.fillna(0.0) * FACTOR_WEIGHTS["rates"]
+        + gsr_score.fillna(0.0) * FACTOR_WEIGHTS["gsr"]
+        + trend_score.fillna(0.0) * FACTOR_WEIGHTS["trend"]
+        + dollar_score.fillna(0.0) * FACTOR_WEIGHTS["dollar"]
     )
     macro_score = np.round((weighted_val / total_w).fillna(0.0) * SCORE_SCALE, 2)
-    metals_bias = [classify_bias(float(s)) for s in macro_score]
-
-    return pd.DataFrame(
+    daily_result = pd.DataFrame(
         {
             "macro_composite_score": macro_score,
-            "metals_macro_bias": metals_bias,
+            "metals_macro_bias": [classify_bias(float(s)) for s in macro_score],
             "trend_regime": trend_regime,
             "yield_trend": yield_trend,
             "dollar_trend": dollar_trend,
@@ -400,8 +419,16 @@ def compute_historical_macro_series(
             "gsr_score": gsr_score.round(3),
             "trend_score": trend_score.round(3),
         },
-        index=df_index,
+        index=calc_index,
     )
+    # A daily close is only known after that trading session finishes.  For an
+    # intraday replay, expose the *previous* completed daily reading throughout
+    # the current session; otherwise early bars would see that day's close.
+    if len(execution_days.unique()) < len(df_index):
+        daily_result = daily_result.shift(1)
+    result = daily_result.reindex(execution_days, method="ffill")
+    result.index = df_index
+    return result
 
 
 def _fetch_closes(
@@ -452,6 +479,7 @@ def fetch_metals_macro_context(
     _, slv_close = _fetch_closes(service, silver_sym, _METAL_BAR_LIMIT)
     _, uup_close = _fetch_closes(service, "UUP", _MACRO_BAR_LIMIT)
     _, tlt_close = _fetch_closes(service, "TLT", _MACRO_BAR_LIMIT)
+    _, tip_close = _fetch_closes(service, "TIP", _MACRO_BAR_LIMIT)
     _, gdx_close = _fetch_closes(service, "GDX", _MACRO_BAR_LIMIT)
 
     # 4. Gold/Silver ratio history and relative valuation
@@ -502,7 +530,7 @@ def fetch_metals_macro_context(
             logger.debug("Failed computing historical GSR: %s", exc)
 
     # 5. Factor scores
-    rates_score = score_rates(tlt_close)
+    rates_score = score_rates(tlt_close, tip_closes=tip_close)
     gsr_score = score_gsr(gsr_z_score)
     dollar_z = zscore(uup_close, DOLLAR_Z_WINDOW)
     dollar_score = score_dollar(dollar_z)
@@ -627,9 +655,10 @@ def fetch_metals_macro_context(
         "dollar_trend": dollar_trend,
         "dollar_mixed": dollar_mixed,
         "dollar_economic_data_status": "mixed" if dollar_mixed else dollar_trend,
-        "short_reversal_to_long": bool(dollar_mixed),
+        "short_reversal_to_long": False,
+        "close_short_to_cash": bool(dollar_mixed),
         "short_reversal_reason": (
-            "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
+            "US Dollar Index momentum / economic data is mixed (neutral); close short to cash (do not force long without technical pullback confirmation)"
             if dollar_mixed
             else None
         ),
@@ -726,7 +755,7 @@ def protect_metals_position_before_event(
     stop_buffer_pct: float = 0.8,
     limit_offset_pct: float = 0.5,
     synthetic_handler: Any = None,
-    reversal_buy: bool = True,
+    reversal_buy: bool = False,
 ) -> dict[str, Any] | None:
     """Set or tighten a protective Stop-Limit order 5 minutes before an economic event.
 
@@ -863,4 +892,3 @@ def protect_metals_position_before_event(
         current_price,
     )
     return armed_info
-

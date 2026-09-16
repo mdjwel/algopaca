@@ -219,7 +219,13 @@ class TestAiBacktestEngine(unittest.TestCase):
 
         state = AppState(user_id="test_ai_exec")
         service = MagicMock()
-        service.get_bars_range.return_value = self.bull_bars
+        fresh_bars = self.bull_bars.copy()
+        fresh_bars.index = pd.date_range(
+            end=pd.Timestamp.now(tz="America/New_York").normalize() + pd.Timedelta(hours=16),
+            periods=len(fresh_bars),
+            freq="B",
+        )
+        service.get_bars_range.return_value = fresh_bars
 
         with patch("bot.web_state.AlpacaService", return_value=service):
             res = state._run_ai_backtest(
@@ -236,6 +242,79 @@ class TestAiBacktestEngine(unittest.TestCase):
         self.assertIn("trades", res)
         self.assertIn("total_return_pct", res)
 
+    def test_evaluation_start_excludes_indicator_warmup_from_results(self) -> None:
+        """Pre-window bars may seed indicators but cannot generate P&L."""
+        boundary = self.bull_bars.index[100]
+        res = run_ai_backtest(
+            self.bull_bars,
+            symbol="GLD",
+            params=AiBacktestParams(preset="gold_silver_macro"),
+            evaluation_start=boundary,
+        )
+        self.assertEqual(res["start"], boundary.isoformat())
+        self.assertGreaterEqual(res["warmup_bars"], 100)
+        self.assertTrue(
+            all(pd.Timestamp(t["entry_time"]) >= boundary for t in res["trade_log"])
+        )
+
+    def test_portfolio_evaluation_start_excludes_indicator_warmup(self) -> None:
+        """The shared-cash book must use the same evaluation boundary."""
+        boundary = self.bull_bars.index[100]
+        res = run_ai_portfolio_backtest(
+            {"GLD": self.bull_bars, "SLV": self.bull_bars},
+            params=AiBacktestParams(preset="gold_silver_macro", max_positions=2),
+            evaluation_start=boundary,
+        )
+        self.assertEqual(res["start"], boundary.isoformat())
+        self.assertTrue(
+            all(pd.Timestamp(t["entry_time"]) >= boundary for t in res["trade_log"])
+        )
+
+    def test_portfolio_result_is_invariant_to_symbol_input_order(self) -> None:
+        """Position-slot selection ranks confluence; typed symbol order is irrelevant."""
+        frames = {
+            "GLD": self.bear_bars,
+            "SLV": self.bear_bars * [1, 1, 1, 1, 1],
+            "GLL": self.bull_bars,
+        }
+        params = AiBacktestParams(
+            preset="gold_silver_macro", min_confidence=0.65, max_positions=2
+        )
+        left = run_ai_portfolio_backtest(frames, params=params)
+        right = run_ai_portfolio_backtest(
+            {"GLL": frames["GLL"], "SLV": frames["SLV"], "GLD": frames["GLD"]},
+            params=params,
+        )
+        self.assertEqual(left["total_return_pct"], right["total_return_pct"])
+        self.assertEqual(left["trades"], right["trades"])
+
+    def test_portfolio_final_equity_includes_end_of_data_close(self) -> None:
+        """Forced final closes must be reflected in final equity and every leg."""
+        from unittest.mock import patch
+
+        flat = self.bull_bars.copy()
+        flat.loc[:, ["open", "high", "low", "close"]] = 100.0
+        params = AiBacktestParams(
+            preset="gold_silver_macro",
+            min_confidence=0.70,
+            max_positions=1,
+            initial_cash=10_000.0,
+        )
+        with patch(
+            "bot.ai_backtest.evaluate_ai_signal",
+            return_value=(Signal.BUY, 0.90, "test entry"),
+        ):
+            result = run_ai_portfolio_backtest({"GLD": flat}, params=params)
+
+        self.assertTrue(result["trade_log"])
+        self.assertEqual(result["trade_log"][-1]["exit_reason"], "end_of_data")
+        self.assertAlmostEqual(
+            result["final_equity"], result["initial_cash"] + result["realized_pnl"], places=2
+        )
+        self.assertAlmostEqual(
+            result["results"][0]["final_equity"], result["results"][0]["initial_cash"] + result["results"][0]["realized_pnl"], places=2
+        )
+
     def test_gold_silver_macro_bull_pullback(self) -> None:
         """Verify GLD macro playbook captures pullbacks inside bull regime without premature shakeouts."""
         params = AiBacktestParams(
@@ -251,7 +330,10 @@ class TestAiBacktestEngine(unittest.TestCase):
         # Check that trades had gold/silver macro thesis
         for trade in res["trade_log"]:
             self.assertIn("Gold/Silver Macro", trade["thesis"])
-            self.assertIn(trade["exit_reason"], ("take_profit", "stop_loss", "trailing_stop", "regime_flip", "trend_break", "end_of_data"))
+            self.assertTrue(
+                trade["exit_reason"].startswith("take_profit")
+                or trade["exit_reason"] in ("stop_loss", "trailing_stop", "regime_flip", "trend_break", "end_of_data")
+            )
 
     def test_gold_silver_macro_inverse_etf(self) -> None:
         """Verify inverse metal ETF logic (e.g. GLL, DUST, GDXD)."""
@@ -352,71 +434,66 @@ class TestAiBacktestEngine(unittest.TestCase):
         exit_reasons = [t["exit_reason"] for t in res["trade_log"]]
         self.assertIn("regime_flip", exit_reasons)
 
-    def test_gdxu_unshortable_in_bear_regime(self) -> None:
-        """Verify GDXU (3x leveraged bull ETN) is never sold short in backtesting."""
+    def test_gdxu_and_gdxd_strictly_excluded(self) -> None:
+        """Verify GDXU and GDXD are strictly excluded from gold_silver_macro in backtesting."""
         bear_bars = _generate_synthetic_daily_bars(days=120, trend="bear", start_price=200.0, seed=101)
         params = AiBacktestParams(
             preset="gold_silver_macro",
             min_confidence=0.55,
             allow_short=True,
         )
-        res = run_ai_backtest(bear_bars, symbol="GDXU", params=params)
-        # GDXU must never initiate a short trade
-        for t in res["trade_log"]:
-            self.assertEqual(t["side"], "long", f"GDXU had invalid short trade: {t}")
-        for t in res["trade_list"]:
-            self.assertIn(t["side"], ("buy", "sell"), f"GDXU had short leg: {t}")
-            self.assertNotIn(t["side"], ("short", "cover"), f"GDXU had short leg: {t}")
+        res_u = run_ai_backtest(bear_bars, symbol="GDXU", params=params)
+        self.assertEqual(len(res_u["trade_log"]), 0)
+        res_d = run_ai_backtest(bear_bars, symbol="GDXD", params=params)
+        self.assertEqual(len(res_d["trade_log"]), 0)
 
         # Direct bar check
         frame = compute_ai_indicator_frame(bear_bars)
         last_row = frame.iloc[-1]
         prev_row = frame.iloc[-2]
-        sig, conf, thesis = evaluate_ai_signal(last_row, prev_row, params, allow_short=True, symbol="GDXU")
-        self.assertNotEqual(sig, Signal.SELL, "GDXU in bear regime must never return Signal.SELL")
-        self.assertEqual(sig, Signal.HOLD)
-        self.assertIn("unshortable", thesis.lower())
+        for sym in ("GDXU", "GDXD"):
+            sig, conf, thesis = evaluate_ai_signal(last_row, prev_row, params, allow_short=True, symbol=sym)
+            self.assertEqual(sig, Signal.HOLD)
+            self.assertIn("strictly excluded", thesis)
 
-    def test_gdxd_inverse_etf_trading(self) -> None:
-        """Verify GDXD (3x inverse ETN) trades by BUYING when miners fall, never shorting."""
-        # Bullish trend in GDXD (rising GDXD means miners are dropping)
-        bull_gdxd_bars = _generate_synthetic_daily_bars(days=120, trend="bull", start_price=20.0, seed=202)
+    def test_gll_inverse_etf_trading(self) -> None:
+        """Verify GLL (inverse gold ETF) trades by BUYING when gold falls, never shorting."""
+        bull_gll_bars = _generate_synthetic_daily_bars(days=120, trend="bull", start_price=20.0, seed=202)
         params = AiBacktestParams(
             preset="gold_silver_macro",
             min_confidence=0.60,
             allow_short=True,
         )
-        res = run_ai_backtest(bull_gdxd_bars, symbol="GDXD", params=params)
-        # All GDXD trades must be LONG (bought to express bear view on miners)
+        res = run_ai_backtest(bull_gll_bars, symbol="GLL", params=params)
+        # All GLL trades must be LONG (bought to express bear view on gold)
         for t in res["trade_log"]:
             self.assertEqual(t["side"], "long")
         if res["trade_log"]:
             self.assertTrue(any("Inverse ETF" in t.get("thesis", "") for t in res["trade_log"]))
 
-    def test_gdxu_gdxd_portfolio_mutual_exclusion(self) -> None:
-        """Verify GDXU (3x bull) and GDXD (3x inverse) are never held concurrently."""
-        gdxu_bars = _generate_synthetic_daily_bars(days=120, trend="bull", start_price=100.0, seed=303)
-        gdxd_bars = _generate_synthetic_daily_bars(days=120, trend="bear", start_price=30.0, seed=303)
+    def test_gld_gll_portfolio_mutual_exclusion(self) -> None:
+        """Verify GLD (gold) and GLL (inverse gold) are never held concurrently in portfolio backtest."""
+        gld_bars = _generate_synthetic_daily_bars(days=120, trend="bull", start_price=100.0, seed=303)
+        gll_bars = _generate_synthetic_daily_bars(days=120, trend="bear", start_price=30.0, seed=303)
         params = AiBacktestParams(
             preset="gold_silver_macro",
             min_confidence=0.60,
             max_positions=2,
             initial_cash=20_000.0,
         )
-        port = run_ai_portfolio_backtest({"GDXU": gdxu_bars, "GDXD": gdxd_bars}, params=params)
+        port = run_ai_portfolio_backtest({"GLD": gld_bars, "GLL": gll_bars}, params=params)
 
         # Check overlapping holding periods in trade_log
         trades = port["trade_log"]
         for i, t1 in enumerate(trades):
             for t2 in trades[i + 1:]:
-                if {t1["symbol"], t2["symbol"]} == {"GDXU", "GDXD"}:
-                    # Assert no overlap: t1 must exit before t2 enters, or vice versa
+                if {t1["symbol"], t2["symbol"]} == {"GLD", "GLL"}:
                     t1_in = pd.Timestamp(t1["entry_time"])
                     t1_out = pd.Timestamp(t1["exit_time"])
                     t2_in = pd.Timestamp(t2["entry_time"])
                     t2_out = pd.Timestamp(t2["exit_time"])
                     overlap = max(t1_in, t2_in) < min(t1_out, t2_out)
-                    self.assertFalse(overlap, f"GDXU and GDXD overlapped: {t1} vs {t2}")
+                    self.assertFalse(overlap, f"GLD and GLL overlapped: {t1} vs {t2}")
 
     def test_portfolio_missing_bars_no_phantom_drawdown(self) -> None:
         """Verify that when one symbol has missing timestamps, open position values are preserved and no phantom 90%+ drawdown occurs."""
@@ -456,4 +533,3 @@ class TestAiBacktestEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

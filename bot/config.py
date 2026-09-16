@@ -254,7 +254,7 @@ class Config:
     # the trigger so the exit refuses a worse print (long: below stop; short: above).
     stop_limit_offset_pct: float = 0.0
     stop_loss_24h: bool = True
-    metals_reversal_buy_on_stop: bool = True
+    metals_reversal_buy_on_stop: bool = False
     lang: str = DEFAULT_LANG  # desk language; the AI writes thesis / risks in it
     # Options overlay — every strategy cycle maps its equity view onto Alpaca options.
     options_enabled: bool = True
@@ -971,7 +971,7 @@ class Config:
         ai_reversal_conf_bump: float = 0.15,
         stop_limit_offset_pct: float = 0.0,
         stop_loss_24h: bool = True,
-        metals_reversal_buy_on_stop: bool = True,
+        metals_reversal_buy_on_stop: bool = False,
         lang: str = DEFAULT_LANG,
         risk_engine_enabled: bool = True,
         options_enabled: bool = True,
@@ -1414,7 +1414,7 @@ class Config:
             ),
             stop_loss_24h=_e("STOP_LOSS_24H", "true").lower() in ("1", "true", "yes"),
             metals_reversal_buy_on_stop=_e(
-                "METALS_REVERSAL_BUY_ON_STOP", "true"
+                "METALS_REVERSAL_BUY_ON_STOP", "false"
             ).lower() in ("1", "true", "yes"),
             ai_max_spread_bps=max(
                 0.0, min(1000.0, float(_e("AI_MAX_SPREAD_BPS", "25")))

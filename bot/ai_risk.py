@@ -139,6 +139,7 @@ def entry_gates(
     *,
     open_positions: int,
     day_pl_pct: float | None,
+    action: str | None = None,
 ) -> Gate:
     """Portfolio- and cost-level checks applied before any new position opens.
 
@@ -179,6 +180,7 @@ def entry_gates(
     if preset_id == "gold_silver_macro":
         symbol = str(context.get("symbol") or "").upper().strip()
         metals_intel = context.get("precious_metals_intel") or {}
+        technicals = context.get("technicals") or {}
         try:
             val_macro = metals_intel.get("macro_composite_score")
             macro_score = float(val_macro) if val_macro is not None else 0.0
@@ -191,8 +193,15 @@ def entry_gates(
         except (ValueError, TypeError):
             gsr_z = 0.0
 
+        # Strictly exclude miner & leveraged ETFs from AI Gold & Silver Macro
+        if symbol in {"GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"}:
+            return Gate(
+                False,
+                f"{symbol} is strictly excluded from AI Gold & Silver Macro playbook to avoid leverage decay and equity drag.",
+            )
+
         # 1. Late-session entry filter on inverse ETFs (hour >= 19 UTC / 3 PM ET)
-        if symbol in {"GLL", "GDXD"}:
+        if symbol in {"GLL", "ZSL", "JDST"}:
             now_utc = datetime.now(timezone.utc)
             if now_utc.hour >= 19:
                 return Gate(
@@ -200,20 +209,101 @@ def entry_gates(
                     f"Late-session entry on inverse ETF {symbol} blocked ({now_utc.strftime('%H:%M')} UTC >= 19:00 UTC) to avoid overnight gap risk.",
                 )
 
-        # 2. GLD / bullion macro gate (macro_composite_score >= 0.0)
-        if symbol in {"GLD", "IAU", "BAR", "OUNZ", "PHYS"}:
-            if macro_score < 0.0:
+        # Determine target side / action (default to long if opening new position and action not specified or buy)
+        act = str(action or context.get("action") or "buy").lower().strip()
+        is_short = act in {"sell", "short", "sell_short"}
+
+        # 2. Dollar Mixed / Neutral Short Gate:
+        if is_short or symbol in {"GLL", "ZSL", "JDST"}:
+            dollar_mixed = bool(metals_intel.get("dollar_mixed") or metals_intel.get("dollar_trend") == "neutral")
+            if dollar_mixed:
                 return Gate(
                     False,
-                    f"GLD macro score ({macro_score:+.2f} < 0.00) is negative — waiting for constructive macro backdrop.",
+                    f"Short / inverse entry on {symbol} strictly prohibited: US Dollar Index data is mixed or neutral.",
                 )
 
-        # 3. SLV / silver catch-up gate (macro >= 0.2 or gsr_z >= 0.8)
+        # 3. GLD / bullion macro & regime gate (macro_composite_score >= 0.0, trend_regime is bullish)
+        if symbol in {"GLD", "IAU", "BAR", "OUNZ", "PHYS"}:
+            if not is_short:
+                if macro_score < 0.0:
+                    return Gate(
+                        False,
+                        f"GLD macro score ({macro_score:+.2f} < 0.00) is negative — waiting for constructive macro backdrop.",
+                    )
+                trend_regime = str(metals_intel.get("trend_regime") or "")
+                price = float(technicals.get("price") or (context.get("mark") or {}).get("price") or 0.0)
+                smas = technicals.get("sma") or {}
+                sma200 = float(smas.get("200") or 0.0)
+                sma50 = float(smas.get("50") or 0.0)
+                if sma200 > 0 and price > 0 and price < sma200:
+                    return Gate(
+                        False,
+                        f"GLD price (${price:.2f}) is below 200 SMA (${sma200:.2f}) — long entries strictly prohibited in bear regime.",
+                    )
+                if trend_regime == "bearish_below_sma200":
+                    return Gate(
+                        False,
+                        f"GLD trend regime is '{trend_regime}' — long entries strictly prohibited in bear regime.",
+                    )
+
+        # 4. SLV / silver catch-up & regime gate (macro >= 0.2 or gsr_z >= 0.8)
         if symbol in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}:
-            if macro_score < 0.2 and gsr_z < 0.8:
+            if not is_short:
+                if macro_score < 0.2 and gsr_z < 0.8:
+                    return Gate(
+                        False,
+                        f"SLV macro score ({macro_score:+.2f} < 0.20) and GSR z ({gsr_z:+.2f} < 0.80) are unsupportive for silver catch-up.",
+                    )
+                trend_regime = str(metals_intel.get("trend_regime") or "")
+                price = float(technicals.get("price") or (context.get("mark") or {}).get("price") or 0.0)
+                smas = technicals.get("sma") or {}
+                sma200 = float(smas.get("200") or 0.0)
+                if sma200 > 0 and price > 0 and price < sma200:
+                    return Gate(
+                        False,
+                        f"SLV price (${price:.2f}) is below 200 SMA (${sma200:.2f}) — long entries strictly prohibited in bear regime.",
+                    )
+                if trend_regime == "bearish_below_sma200":
+                    return Gate(
+                        False,
+                        f"SLV trend regime is '{trend_regime}' — long entries strictly prohibited in bear regime.",
+                    )
+
+        # 5. RSI Pullback Zone Gate for Long Bullion (prevent chasing overextended breakouts):
+        if symbol in {"GLD", "SLV", "IAU", "BAR", "PHYS"} and not is_short:
+            rsi = technicals.get("rsi_14")
+            adx = technicals.get("adx_14")
+            if rsi is not None and float(rsi) > 0:
+                rsi_f = float(rsi)
+                adx_f = float(adx or 20.0)
+                strong_bull = (adx_f >= 25.0) or (macro_score >= 1.5)
+                pullback_rsi_max = 65.0 if strong_bull else 58.0
+                price = float(technicals.get("price") or (context.get("mark") or {}).get("price") or 0.0)
+                smas = technicals.get("sma") or {}
+                sma20 = float(smas.get("20") or 0.0)
+                pullback_sma_thresh = (sma20 * 1.015) if strong_bull else (sma20 * 1.01) if sma20 > 0 else price
+                in_pullback = (38.0 <= rsi_f <= pullback_rsi_max) or (sma20 > 0 and price <= pullback_sma_thresh)
+                if not in_pullback and rsi_f > pullback_rsi_max and (sma20 > 0 and price > pullback_sma_thresh):
+                    return Gate(
+                        False,
+                        f"{symbol} RSI ({rsi_f:.1f}) is extended above pullback zone (max {pullback_rsi_max:.1f}) — breakout chase prohibited.",
+                    )
+
+        # 6. Overextended Move Gate (dist_sma50_atr > 3.2 for long or < -3.2 for short):
+        dist_sma50 = technicals.get("dist_sma50_atr")
+        if dist_sma50 is None:
+            dist_sma50 = technicals.get("dist_sma50")
+        if dist_sma50 is not None:
+            dist_f = float(dist_sma50)
+            if not is_short and dist_f > 3.2:
                 return Gate(
                     False,
-                    f"SLV macro score ({macro_score:+.2f} < 0.20) and GSR z ({gsr_z:+.2f} < 0.80) are unsupportive for silver catch-up.",
+                    f"{symbol} dist_sma50_atr ({dist_f:+.2f}) is overextended > +3.20 ATR — long entry prohibited.",
+                )
+            if is_short and dist_f < -3.2:
+                return Gate(
+                    False,
+                    f"{symbol} dist_sma50_atr ({dist_f:+.2f}) is overextended < -3.20 ATR — short entry prohibited.",
                 )
 
     return ALLOW
@@ -328,6 +418,48 @@ def should_scale_out(
     if target <= 0 or already_scaled or r is None:
         return False
     return float(r) >= target
+
+
+def should_scale_out_tier(
+    config: Any,
+    *,
+    r: float | None,
+    scale_tier: int,
+    adx: float | None = None,
+    macro_score: float | None = None,
+) -> tuple[bool, int, float, str]:
+    """Evaluate multi-tier profit scaling for precious metals and legacy presets.
+
+    Returns:
+        (should_scale, next_tier, trim_fraction, reason)
+    """
+    if r is None or float(r) <= 0:
+        return False, scale_tier, 0.0, ""
+
+    r_f = float(r)
+    preset_id = getattr(config, "ai_preset", "")
+
+    if preset_id != "gold_silver_macro":
+        target_r = float(getattr(config, "ai_take_profit_r", 2.0) or 2.0)
+        if scale_tier == 0 and r_f >= target_r:
+            return True, 1, 0.5, f"Take-profit reached @ +{r_f:.1f}R"
+        return False, scale_tier, 0.0, ""
+
+    # Precious Metals (gold_silver_macro) 3-Tier Scaling:
+    base_tp_r = float(getattr(config, "ai_take_profit_r", 3.2) or 3.2)
+    is_strong = (adx is not None and float(adx) >= 28.0) or (macro_score is not None and float(macro_score) >= 1.5)
+    tier2_target_r = 4.0 if is_strong else base_tp_r
+
+    # Tier 1: at 2.0R, scale out 25% of initial, lock stop at breakeven
+    if scale_tier == 0 and r_f >= 2.0:
+        return True, 1, 0.25, "Tier 1 (+2.0R): Lock 25% profit and ratchet stop to breakeven"
+
+    # Tier 2: at 3.2R (or 4.0R if strong trend), scale out another 25% of initial (~33% of remaining)
+    if scale_tier == 1 and r_f >= tier2_target_r:
+        tag = f"ADX={float(adx):.1f} expanded " if is_strong and adx else ""
+        return True, 2, 0.3333, f"Tier 2 (+{tier2_target_r:.1f}R): Scale out 25% at {tag}take-profit target"
+
+    return False, scale_tier, 0.0, ""
 
 
 def confidence_scaled_qty(

@@ -140,7 +140,7 @@ function applyBtAiPreset(presetId) {
   if (presetId === "gold_silver_macro") {
     const symInput = form.elements.symbols || form.elements.symbol;
     if (symInput && (!symInput.value || symInput.value.trim() === "AAPL")) {
-      symInput.value = "GLD, SLV, GDXU, GLL, GDXD";
+      symInput.value = "GLD, SLV, GLL";
     }
   }
 }

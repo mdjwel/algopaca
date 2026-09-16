@@ -18,6 +18,7 @@ from bot.ai_risk import (
     load_trade_state,
     save_trade_state,
     should_scale_out,
+    should_scale_out_tier,
 )
 from bot.ai_backtest import OPPOSING_METALS_PAIRS, UNSHORTABLE_SYMBOLS
 from bot.client import AlpacaService
@@ -216,7 +217,7 @@ class AiTradingBot:
 
         preset_id = getattr(self.config, "ai_preset", "")
         sym_upper = symbol.upper().strip()
-        if preset_id == "gold_silver_macro" and sym_upper in {"GDX", "GDXJ", "DUST", "UGL"}:
+        if preset_id == "gold_silver_macro" and sym_upper in {"GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"}:
             if float(context.get("position_qty") or 0) == 0:
                 logger.info("%s is strictly excluded from AI Gold & Silver Macro playbook", symbol)
                 return {
@@ -245,6 +246,7 @@ class AiTradingBot:
                 context,
                 open_positions=self._open_positions,
                 day_pl_pct=day_pl_pct,
+                action=decision.action,
             )
 
             # Portfolio guards only ever block *new* risk — closing and covering stay open.
@@ -420,16 +422,14 @@ class AiTradingBot:
                     payload["intent"] = "cover"
                     self._open_positions = max(0, self._open_positions - 1)
 
-                    # If this cover was part of a reversal to long (e.g. mixed dollar index data on metals or explicit reversal),
-                    # immediately enter the Long position so the desk is not left flat.
+                    # If this cover was part of an explicit reversal to long (e.g. explicit reverse_to_long),
+                    # enter the Long position. If covered due to mixed dollar data, remain in cash unless explicit reverse_to_long was requested.
                     metals_intel = context.get("precious_metals_intel") or {}
                     is_dollar_mixed = bool(metals_intel.get("dollar_mixed"))
                     thesis_text = (str(decision.thesis or "") + " " + str(decision.thesis_en or "")).lower()
                     wants_long_reversal = (
-                        is_dollar_mixed
-                        or bool(decision.raw.get("reverse_to_long"))
-                        or "long" in thesis_text
-                        or "revers" in thesis_text
+                        bool(decision.raw.get("reverse_to_long"))
+                        or ("revers" in thesis_text and "long" in thesis_text and not is_dollar_mixed)
                     )
                     if wants_long_reversal:
                         long_sized = self._qty_for_session(qty if qty > 0 else abs(position_qty))
@@ -455,11 +455,15 @@ class AiTradingBot:
                                 logger.warning("Failed to submit long order on reversal for %s: %s", symbol, rev_err)
             elif decision.action == Signal.BUY.value and position_qty == 0:
                 sym_upper = symbol.upper()
-                opp_sym = OPPOSING_METALS_PAIRS.get(sym_upper)
-                if opp_sym and self.service.get_position_qty(opp_sym) != 0:
-                    payload["reason"] += f" | skipped: opposing leveraged position in {opp_sym} is currently open"
-                    logger.info("AI BUY skipped for %s: opposing %s position is active", symbol, opp_sym)
-                    return payload
+                opp_syms = OPPOSING_METALS_PAIRS.get(sym_upper)
+                if opp_syms:
+                    if isinstance(opp_syms, str):
+                        opp_syms = {opp_syms}
+                    active_opp = next((o for o in opp_syms if self.service.get_position_qty(o) != 0), None)
+                    if active_opp:
+                        payload["reason"] += f" | skipped: opposing leveraged position in {active_opp} is currently open"
+                        logger.info("AI BUY skipped for %s: opposing %s position is active", symbol, active_opp)
+                        return payload
                 sized = self._qty_for_session(qty)
                 if sized is None:
                     payload["reason"] += " | skipped: qty"
@@ -624,19 +628,53 @@ class AiTradingBot:
         if r is not None:
             state["peak_r"] = max(float(state.get("peak_r") or 0.0), float(r))
 
-        # 1) Scale out half at the take-profit multiple, once per position.
-        if should_scale_out(self.config, r=r, already_scaled=state.get("scaled_out")):
-            trimmed = self._scale_out(symbol, position)
-            if trimmed:
-                state["scaled_out"] = True
-                out["scale_out"] = trimmed
-                actions.append(
-                    f"scaled out {trimmed['qty']:g} @ +{float(r):.1f}R"
-                )
+        # 1) Multi-tier scale out logic (3-Tier for gold_silver_macro, 1-tier for others)
+        scale_tier = int(state.get("scale_tier", 0) or (1 if state.get("scaled_out") else 0))
+        technicals = context.get("technicals") or {}
+        metals_intel = context.get("precious_metals_intel") or {}
+        adx_val = technicals.get("adx_14")
+        macro_sc = metals_intel.get("macro_composite_score")
+
+        should_trim, next_tier, trim_fraction, trim_reason = should_scale_out_tier(
+            self.config,
+            r=r,
+            scale_tier=scale_tier,
+            adx=adx_val,
+            macro_score=macro_sc,
+        )
+        if should_trim:
+            pos_qty = abs(float(position.get("qty") or 0))
+            if pos_qty >= 2:
+                trim_shares = max(1.0, min(pos_qty - 1.0, round(pos_qty * trim_fraction)))
+                trimmed = self._scale_out(symbol, position, trim_qty=trim_shares)
+                if trimmed:
+                    state["scale_tier"] = next_tier
+                    state["scaled_out"] = True
+                    out["scale_out"] = trimmed
+                    actions.append(
+                        f"{trim_reason} (trimmed {trimmed['qty']:g} shares @ +{float(r):.1f}R)"
+                    )
+            elif next_tier == 1 and not state.get("breakeven_armed"):
+                # Single-share position cannot be partially trimmed without full exit, but stop still ratchets to breakeven
+                state["scale_tier"] = next_tier
+                state["breakeven_armed"] = True
+                actions.append(f"{trim_reason} (single-share hold)")
+
+            if next_tier == 1:
+                # Tier 1: Ratchet stop to breakeven immediately
+                entry_p = float(position.get("avg_entry") or 0)
+                if entry_p > 0:
+                    try:
+                        armed = self.service.replace_stop_loss(symbol, entry_p)
+                        if armed:
+                            actions.append(f"stop ratcheted to breakeven @${entry_p:.2f}")
+                            position["stop_price"] = entry_p
+                    except Exception as stop_exc:
+                        logger.warning("Could not ratchet stop to breakeven for %s: %s", symbol, stop_exc)
 
         # 2) Inverse ETF volatility decay protection (GLL, GDXD, etc.)
         sym_upper = symbol.upper().strip()
-        if sym_upper in {"GLL", "GDXD", "ZSL", "JDST"} and side == "long" and not out.get("scale_out"):
+        if sym_upper in {"GLL", "ZSL", "JDST"} and side == "long" and not out.get("scale_out"):
             rsi = (context.get("technicals") or {}).get("rsi_14")
             if rsi is not None and float(rsi) >= 65.0 and not state.get("decay_trimmed"):
                 trimmed = self._scale_out(symbol, position)
@@ -714,15 +752,22 @@ class AiTradingBot:
         return out
 
     def _scale_out(
-        self, symbol: str, position: dict[str, Any]
+        self,
+        symbol: str,
+        position: dict[str, Any],
+        trim_qty: float | None = None,
     ) -> dict[str, Any] | None:
-        """Trim half the position at the take-profit target."""
+        """Trim half the position at the take-profit target, or custom trim_qty."""
         qty = abs(float(position.get("qty") or 0))
         if qty <= 0:
             return None
-        trim = qty / 2
-        # Whole shares only when the remainder must stay shortable / stoppable.
-        trim = float(int(trim)) if qty >= 2 else 0.0
+        if trim_qty is not None and trim_qty > 0:
+            trim = float(int(trim_qty)) if qty >= 2 else 0.0
+            trim = min(trim, qty - 1.0) if qty >= 2 else 0.0
+        else:
+            trim = qty / 2
+            # Whole shares only when the remainder must stay shortable / stoppable.
+            trim = float(int(trim)) if qty >= 2 else 0.0
         if trim <= 0:
             return None
         session_info = self.service.market_session()

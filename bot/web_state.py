@@ -2070,8 +2070,13 @@ class AppState:
         days_i: int,
         end: datetime,
         start_cutoff: datetime | None = None,
+        warmup_days: int = 150,
     ) -> pd.DataFrame:
-        """Trim to the requested evaluation window but keep warmup rows."""
+        """Trim to the requested evaluation window but keep calendar-time warmup.
+
+        Calendar time, rather than a fixed number of rows, preserves a 250-day
+        macro window when the execution timeframe is intraday.
+        """
         cutoff = (
             start_cutoff
             if start_cutoff is not None
@@ -2086,7 +2091,8 @@ class AppState:
         if window.empty:
             keep = min(len(bars), max(days_i, 40))
             return bars.tail(keep + 80)
-        warmup_keep = pre.tail(150)
+        warmup_start = cutoff - timedelta(days=max(1, int(warmup_days)))
+        warmup_keep = pre[pre.index >= warmup_start]
         return pd.concat([warmup_keep, window]) if not warmup_keep.empty else window
 
     def _run_pair_backtest(
@@ -2628,7 +2634,14 @@ class AppState:
                 qty=trade_qty,
             )
 
-        pad = 120 if tf == "1Day" else max(days_i, 14)
+        is_metals_run = (
+            preset_id == "gold_silver_macro"
+            or any(is_precious_metal(sym) for sym in symbol_list)
+        )
+        # 250 trading days need roughly 400 calendar days.  Use the same
+        # history for hourly execution so GSR and trend retain daily meaning.
+        warmup_days = 400 if is_metals_run else 150
+        pad = warmup_days if tf == "1Day" else max(days_i, warmup_days)
         start = start_cutoff - timedelta(days=days_i + pad)
 
         service = AlpacaService(self._base_config())
@@ -2640,7 +2653,11 @@ class AppState:
                 if bars.empty:
                     raise ValueError(f"No bar data returned for {sym}")
                 bars_by_symbol[sym] = self._trim_backtest_bars(
-                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+                    bars,
+                    days_i=days_i,
+                    end=end,
+                    start_cutoff=start_cutoff,
+                    warmup_days=warmup_days,
                 )
             except Exception as exc:  # noqa: BLE001
                 errors.append({"symbol": sym, "error": str(exc)})
@@ -2651,22 +2668,24 @@ class AppState:
 
         macro_bars: dict[str, pd.DataFrame] | None = None
         calendar_events: list[dict[str, Any]] | None = None
-        is_metals_run = (
-            preset_id == "gold_silver_macro"
-            or any(is_precious_metal(s) for s in symbol_list)
-        )
         if is_metals_run:
-            macro_syms = ["TLT", "UUP", "GLD", "SLV"]
+            macro_syms = ["TIP", "TLT", "UUP", "GLD", "SLV"]
             macro_bars = {}
             for msym in macro_syms:
                 if msym in bars_by_symbol:
                     macro_bars[msym] = bars_by_symbol[msym]
                 else:
                     try:
-                        mb = service.get_bars_range(msym, start=start, end=end, timeframe=tf)
+                        # Macro inputs always use daily closes even when the
+                        # execution engine evaluates hourly bars.
+                        mb = service.get_bars_range(msym, start=start, end=end, timeframe="1Day")
                         if not mb.empty:
                             macro_bars[msym] = self._trim_backtest_bars(
-                                mb, days_i=days_i, end=end, start_cutoff=start_cutoff
+                                mb,
+                                days_i=days_i,
+                                end=end,
+                                start_cutoff=start_cutoff,
+                                warmup_days=warmup_days,
                             )
                     except Exception:
                         pass
@@ -2703,6 +2722,7 @@ class AppState:
                 params=params,
                 macro_bars=macro_bars,
                 calendar_events=calendar_events,
+                evaluation_start=start_cutoff,
             )
             res.update({**meta, "symbol": sym, "errors": errors})
             return res
@@ -2714,6 +2734,7 @@ class AppState:
                 params=params,
                 macro_bars=macro_bars,
                 calendar_events=calendar_events,
+                evaluation_start=start_cutoff,
             )
             legs = list(book.get("results") or [])
             for leg in legs:
@@ -2753,6 +2774,7 @@ class AppState:
                     params=params,
                     macro_bars=macro_bars,
                     calendar_events=calendar_events,
+                    evaluation_start=start_cutoff,
                 )
                 one.update(
                     {
@@ -6049,8 +6071,6 @@ class AppState:
         ext_hours = True if extended_hours is None else bool(extended_hours)
         service_config = self._base_config().override(stop_loss_24h=ext_hours)
         service = AlpacaService(service_config)
-        if not ext_hours and action not in {"cancel_stops", "cancel_take_profit", "cancel_all"}:
-            self._cancel_synthetic_orders_for_symbol(symbol)
 
         # Handle cancellation actions first
         if action == "cancel_stops":
@@ -6106,6 +6126,39 @@ class AppState:
         # under the mark whenever Alpaca had no entry price.
         avg_entry = service.get_avg_entry_price(symbol)
         entry_price = avg_entry or mark_price
+
+        # A dip hunt is explicitly a long re-buy after a long stop-out. Validate
+        # it before changing any broker orders so an unsupported request cannot
+        # replace the position's existing protection and then fail afterward.
+        dip_hunt_plan = None
+        if isinstance(dip_hunt, dict) and dip_hunt.get("enabled"):
+            dip_hunt_plan = self.normalize_dip_hunt_request(
+                dip_hunt, side="sell" if is_short else "buy"
+            )
+            if action == "take_profit":
+                raise ValueError(
+                    "Dip hunt after stop-loss requires a protective stop loss order."
+                )
+            if action == "bracket" and not (
+                (stop_price and float(stop_price) > 0)
+                or (stop_pct and float(stop_pct) > 0)
+                or use_trailing
+                or (trail_percent and float(trail_percent) > 0)
+                or (trail_price and float(trail_price) > 0)
+            ):
+                raise ValueError(
+                    "Re-buy after dip requires a protective stop loss order."
+                )
+
+        if not ext_hours and action in {
+            "breakeven",
+            "price",
+            "stop_loss",
+            "trail",
+            "trailing_stop",
+            "bracket",
+        }:
+            self._cancel_synthetic_orders_for_symbol(symbol)
 
         # Helper to compute and validate stop target
         def _resolve_stop_target(p_stop: float | None, p_pct: float | None) -> float:
@@ -6310,21 +6363,15 @@ class AppState:
                 "mark": mark_price,
             }
 
-        # Handle dip-hunt automation for position exit strategies
-        dip_hunt_plan = None
+        # Handle dip-hunt automation for position exit strategies. Enabled
+        # requests were prevalidated above, before broker state could change.
         if dip_hunt is not None:
-            if isinstance(dip_hunt, dict) and dip_hunt.get("enabled"):
-                dip_hunt_plan = self.normalize_dip_hunt_request(
-                    dip_hunt, side="buy"
-                )
-            elif isinstance(dip_hunt, dict) and not dip_hunt.get("enabled"):
+            if isinstance(dip_hunt, dict) and not dip_hunt.get("enabled"):
                 self._cancel_dip_hunt_plans_for_symbol(
                     symbol, message="Dip hunt disabled in exit strategy."
                 )
 
         if dip_hunt_plan is not None:
-            if action == "take_profit":
-                raise ValueError("Dip hunt after stop-loss requires a protective stop loss order.")
             if not stop_id:
                 stop_id = service.open_protective_stop_id(symbol) or None
 

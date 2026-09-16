@@ -4269,16 +4269,7 @@ button.ghost.ghost-danger:focus-visible {
 }
 
 .env-banner {
-  margin: 0 0 1rem;
-  padding: 0.7rem 1rem;
-  border: 1px solid rgba(194, 59, 59, 0.55);
-  border-radius: var(--radius-md);
-  background: var(--danger-bg);
-  color: var(--sell);
-  font-family: var(--mono);
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  display: none !important;
 }
 
 .eyebrow.is-live {

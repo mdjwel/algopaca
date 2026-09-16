@@ -417,24 +417,62 @@ class TestExitStrategy(unittest.TestCase):
         self.assertIn(res["dip_hunt"]["id"], self.state.dip_hunt_plans)
 
     @patch("bot.web_state.AlpacaService")
-    def test_manage_position_stop_with_dip_hunt_short_supported(self, mock_service_cls):
-        """Short position setting dip hunt arms the dip hunt plan."""
+    def test_manage_position_stop_rejects_dip_hunt_for_short(self, mock_service_cls):
+        """A re-buy dip hunt cannot be armed from a short position's stop-out."""
         mock_service = MagicMock()
         mock_service_cls.return_value = mock_service
         mock_service.get_position_qty.return_value = -10.0  # Short
         mock_service.get_mark_price.return_value = {"price": 100.0}
         mock_service.replace_stop_loss.return_value = {"id": "ord_sl_short", "stop_price": 105.0}
 
-        res = self.state.manage_position_stop(
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="price",
+                stop_price=105.0,
+                dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+            )
+
+        self.assertIn("only attaches to a buy", str(ctx.exception))
+        mock_service.replace_stop_loss.assert_not_called()
+
+    @patch("bot.web_state.AlpacaService")
+    def test_dip_hunt_without_a_bracket_stop_is_refused_before_orders_change(self, mock_service_cls):
+        """A target-only bracket cannot promise a re-buy after a stop-out."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+
+        with self.assertRaises(ValueError) as ctx:
+            self.state.manage_position_stop(
+                symbol="AAPL",
+                action="bracket",
+                take_profit_price=110.0,
+                dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+            )
+
+        self.assertIn("requires a protective stop", str(ctx.exception))
+        mock_service.arm_bracket_exit.assert_not_called()
+
+    @patch("bot.web_state.AlpacaService")
+    def test_take_profit_does_not_disable_existing_extended_stop(self, mock_service_cls):
+        """The target-only action has no extended-hours setting to apply."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.arm_take_profit.return_value = {"id": "ord_tp", "limit_price": 110.0}
+        self.state._cancel_synthetic_orders_for_symbol = MagicMock()
+
+        self.state.manage_position_stop(
             symbol="AAPL",
-            action="price",
-            stop_price=105.0,
-            dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+            action="take_profit",
+            take_profit_price=110.0,
+            extended_hours=False,
         )
-        self.assertIn("dip_hunt", res)
-        self.assertEqual(res["dip_hunt"]["symbol"], "AAPL")
-        self.assertEqual(res["dip_hunt"]["qty"], 10.0)
-        self.assertEqual(res["dip_hunt"]["status"], "watching_stop")
+
+        self.state._cancel_synthetic_orders_for_symbol.assert_not_called()
 
     @patch("bot.web_state.AlpacaService")
     def test_manage_position_stop_with_dip_hunt_disabled_cancels_existing(self, mock_service_cls):
@@ -1007,5 +1045,3 @@ class TestArmBracketExit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

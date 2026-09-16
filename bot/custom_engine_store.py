@@ -17,15 +17,15 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
     {
         "id": "blueprint_ai_gold_silver",
         "name": "AI Real-Time Gold & Silver Macro Momentum",
-        "description": "Calibrated macro strategy for GLD, SLV, GDXU & inverse short ETFs (GLL, GDXD): buys pullbacks inside confirmed gold uptrends, gated by a rates- and GSR-weighted macro score, with a wide ATR trail that lets trends run.",
+        "description": "Gold and silver macro strategy with a conditional GLL hedge: it buys GLD/SLV pullbacks in confirmed uptrends and permits GLL only in an independently confirmed bearish metals regime. Uses daily macro factors, 3-tier profit scaling, and an ATR trail.",
         "base_engine": "ai",
         "is_blueprint": True,
         "instructions": (
-            "Specialized Gold & Silver (GLD, SLV, GDXU, GLL, GDXD) macro playbook, calibrated on 2007-2025 GLD forward returns.\n"
-            "LONG gates: trend_regime 'bullish_above_sma200' AND macro_composite_score >= 0.0. Enter on a PULLBACK (RSI 38-58 or price at/below SMA20) — gold's 5-20 day momentum is negatively correlated with next-month returns, so fresh breakouts are a measured losing entry. Step up to GDXU only when score is >= +1.5. SLV catch-up trigger: gsr_z_score >= +0.8 or macro >= +0.2 (size boosted 25%).\n"
-            "SHORT & INVERSE gates: trend_regime 'bearish_below_sma200' AND macro_composite_score <= -0.5, ideally with rising yields. Size smaller than an equivalent long — shorting gold fights a positive long-run drift. Keep inverse ETFs (GLL, GDXD) short-dated (max ~5 trading days or inverse RSI >= 65); skip late-session entry (hour >= 19 UTC / 3 PM ET) to avoid overnight gap risk.\n"
-            "RISK & SAFETY: Hold into high-impact FOMC/CPI release windows (within 45 mins) to avoid whipsaws. Rates (0.40) and the Gold/Silver ratio (0.35) drive the macro score; miner leadership has no measured predictive power — treat it as colour only. GDX, GDXJ, DUST, and UGL are strictly excluded.\n"
-            "PATIENCE: overtrading is what destroys returns in this asset. On an open, working position the default answer is HOLD; exit on a regime flip or a macro score below -1.0, not on a shallow pullback."
+            "Gold & Silver (GLD, SLV) macro playbook with conditional GLL hedge, calibrated on 2007-2025 GLD forward returns.\n"
+            "LONG gates: trend_regime 'bullish_above_sma200' AND macro_composite_score >= 0.0. Enter on a PULLBACK (RSI 38-58, or up to 65 in strong bull trends with ADX >= 25) — gold's short-term momentum mean-reverts, so fresh breakouts are a losing entry. Focus on pure commodity vehicles: GLD, SLV, IAU, PHYS. GDX, GDXJ, DUST, UGL, GDXU, and GDXD are strictly excluded. SLV catch-up trigger: gsr_z_score >= +0.8 or macro >= +0.2 (size boosted 25%).\n"
+            "SHORT & INVERSE gates: GLL is a short-dated hedge only after a bearish regime, macro <= -0.5, rising yields, and a non-neutral dollar; it cannot overlap a GLD/IAU position and skips late-session entry (hour >= 19 UTC / 3 PM ET).\n"
+            "RISK & SAFETY: Hold into high-impact FOMC/CPI release windows (within 45 mins) to avoid whipsaws. Rates/real yields (0.40) and the Gold/Silver ratio (0.35) drive the macro score; miner leadership has no measured predictive power — treat it as colour only. GDX, GDXJ, DUST, UGL, GDXU, and GDXD are strictly excluded. On mixed dollar data, close shorts to cash (do not force long). Never auto-reverse a stopped short without a fresh confirmed long signal.\n"
+            "PATIENCE & 3-TIER EXITS: 25% scale-out at 2.0R with stop to breakeven, 25% at 3.2R, and 50% trailing runner for multi-week super-trend capture."
         ),
         "choices": {
             "strategy_mode": "ai",
@@ -33,7 +33,7 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
             "ai_preset": "gold_silver_macro",
             "ai_min_confidence": 0.70,
             "symbol": "GLD",
-            "symbols": "GLD, SLV, GDXU, GLL, GDXD",
+            "symbols": "GLD, SLV, GLL",
             "bar_timeframe": "1Hour",
             "size_mode": "notional",
             "trade_qty": 2.0,
@@ -42,7 +42,7 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
             "risk_engine_enabled": True,
             "ai_risk_pct": 1.8,
             "ai_atr_stop_mult": 1.6,
-            "ai_take_profit_r": 4.0,
+            "ai_take_profit_r": 3.2,
             "ai_trail_after_r": 2.0,
             "ai_max_positions": 2,
             "ai_daily_loss_limit_pct": 3.0,
@@ -50,6 +50,7 @@ STARTER_BLUEPRINTS: list[dict[str, Any]] = [
             "ai_cooldown_minutes": 45,
             "ai_max_spread_bps": 25.0,
             "stop_limit_offset_pct": 0.08,
+            "metals_reversal_buy_on_stop": False,
             "options_enabled": False,
             "options_style": "vertical",
             "options_dte_min": 30,

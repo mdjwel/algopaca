@@ -874,7 +874,7 @@ function applyAccount(account) {
   renderMastheadAccount(account);
 
   if (account) {
-    // The account payload knows the environment. Keep the banner in sync with
+    // The account payload knows the environment. Keep the environment cue in sync with
     // whatever the last status poll reported for live_authorized.
     applyTradingEnv({
       mode: account.trading_mode || (account.paper === false ? "live" : "paper"),
@@ -1203,31 +1203,9 @@ function applyTradingEnv(info) {
       : tx("paper_trading", "Paper trading");
   }
 
-  let banner = $("env-banner");
-  if (!banner) {
-    const app = document.querySelector(".app");
-    if (app) {
-      banner = document.createElement("div");
-      banner.id = "env-banner";
-      banner.className = "env-banner";
-      banner.setAttribute("role", "status");
-      const toast = $("toast");
-      if (toast) app.insertBefore(banner, toast);
-      else app.insertBefore(banner, app.firstChild?.nextSibling || null);
-    }
-  }
+  const banner = $("env-banner");
   if (banner) {
-    if (isLive) {
-      banner.hidden = false;
-      banner.dataset.kind = "live";
-      banner.textContent = tx(
-        "live_banner_authorized",
-        "LIVE TRADING — real money. Orders will reach the live account."
-      );
-    } else {
-      banner.hidden = true;
-      banner.textContent = "";
-    }
+    banner.remove();
   }
 }
 

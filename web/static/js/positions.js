@@ -1259,29 +1259,16 @@ function openExitStrategyModal(pos, initialMode = null) {
 
   const symBadge = $("pos-exit-symbol-badge");
   const sideBadge = $("pos-exit-side-badge");
-  const heldQtyEl = $("pos-exit-held-qty");
-  const avgEntryEl = $("pos-exit-avg-entry");
-  const currPriceEl = $("pos-exit-curr-price");
-  const unrlEl = $("pos-exit-unrealized-pnl");
   const errEl = $("pos-exit-error");
 
   const isShort = String(pos.side || "").toLowerCase() === "short";
   const currPx = Number(pos.current_price || 0);
   const entryPx = Number(pos.avg_entry_price || 0);
-  const upl = Number(pos.unrealized_pl || 0);
 
   if (symBadge) symBadge.textContent = pos.symbol;
   if (sideBadge) {
     sideBadge.className = `side-badge ${isShort ? "short" : "long"}`;
     sideBadge.textContent = positionSideLabel(isShort ? "short" : "long");
-  }
-  if (heldQtyEl) heldQtyEl.textContent = formatPositionQty(pos.qty);
-  if (avgEntryEl) avgEntryEl.textContent = `$${entryPx.toFixed(2)}`;
-  if (currPriceEl) currPriceEl.textContent = `$${currPx.toFixed(2)}`;
-  if (unrlEl) {
-    const pctText = formatPnlPct(pos.unrealized_pct);
-    unrlEl.textContent = pctText ? `${formatPnl(upl)} (${pctText})` : formatPnl(upl);
-    setPnlTone(unrlEl, upl);
   }
   const isAutoTrading = !!pos.is_auto_trading;
   const submitBtn = $("btn-exit-modal-submit");
@@ -1340,6 +1327,9 @@ function openExitStrategyModal(pos, initialMode = null) {
         ? tx("status_protected_ext", "Protected (Extended)")
         : tx("status_protected", "Protected");
       statusIndicator.className = "pos-exit-status-indicator pos";
+    } else if (hasTp) {
+      statusIndicator.textContent = tx("status_tp_active", "Take Profit Active");
+      statusIndicator.className = "pos-exit-status-indicator pos";
     } else {
       statusIndicator.textContent = tx("status_unprotected", "Unprotected");
       statusIndicator.className = "pos-exit-status-indicator neg";
@@ -1347,13 +1337,13 @@ function openExitStrategyModal(pos, initialMode = null) {
   }
 
   if (currSl) {
-    currSl.textContent = pos.stop_loss_price != null ? `$${Number(pos.stop_loss_price).toFixed(2)}` : tx("none", "None");
+    currSl.textContent = pos.stop_loss_price != null ? formatExitPrice(pos.stop_loss_price) : tx("none", "None");
   }
   if (currTp) {
-    currTp.textContent = pos.take_profit_price != null ? `$${Number(pos.take_profit_price).toFixed(2)}` : tx("none", "None");
+    currTp.textContent = pos.take_profit_price != null ? formatExitPrice(pos.take_profit_price) : tx("none", "None");
   }
   if (currDist) {
-    currDist.textContent = pos.stop_distance_pct != null ? `${Math.abs(pos.stop_distance_pct).toFixed(1)}%` : "—";
+    currDist.textContent = (hasSl && pos.stop_distance_pct != null) ? `${Math.abs(pos.stop_distance_pct).toFixed(1)}%` : "—";
   }
 
   const currDhSub = $("pos-exit-stat-sub-diphunt");
@@ -1378,7 +1368,8 @@ function openExitStrategyModal(pos, initialMode = null) {
     ? Number(pos.stop_loss_price)
     : (isShort ? currPx * 1.03 : currPx * 0.97);
   const slInput = $("pos-exit-sl-price");
-  if (slInput) slInput.value = defaultSlPx.toFixed(2);
+  if (slInput) slInput.value = formatExitInputPrice(defaultSlPx);
+  if (slInput) slInput.setAttribute("aria-invalid", "false");
 
   // Default take profit price (5% default target, ensuring valid level)
   const hasValidTp = pos.take_profit_price != null && (
@@ -1388,33 +1379,50 @@ function openExitStrategyModal(pos, initialMode = null) {
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.95 : currPx * 1.05);
   const tpInput = $("pos-exit-tp-price");
-  if (tpInput) tpInput.value = defaultTpPx.toFixed(2);
+  if (tpInput) tpInput.value = formatExitInputPrice(defaultTpPx);
+  if (tpInput) tpInput.setAttribute("aria-invalid", "false");
 
   const trailInput = $("pos-exit-trail-pct");
   if (trailInput) trailInput.value = "3.0";
 
   const bracketSl = $("pos-exit-bracket-sl");
-  if (bracketSl) bracketSl.value = defaultSlPx.toFixed(2);
+  if (bracketSl) bracketSl.value = formatExitInputPrice(defaultSlPx);
 
   const bracketDefaultTpPx = hasValidTp
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.90 : currPx * 1.10);
   const bracketTp = $("pos-exit-bracket-tp");
-  if (bracketTp) bracketTp.value = bracketDefaultTpPx.toFixed(2);
+  if (bracketTp) bracketTp.value = formatExitInputPrice(bracketDefaultTpPx);
+
+  // Alpaca permits four-decimal stock prices below $1. Keep both the defaults
+  // and number-input steppers at that precision rather than silently rounding
+  // a valid penny-stock protection level to two decimals.
+  const priceStep = currPx > 0 && currPx < 1 ? "0.0001" : "0.01";
+  [slInput, tpInput, bracketSl, bracketTp].forEach((input) => {
+    if (input) input.step = priceStep;
+  });
 
   // Breakeven target level
   const beLevel = $("pos-exit-be-level");
   const bePnl = $("pos-exit-be-pnl");
-  const beTarget = isShort ? entryPx + 0.01 : Math.max(0.01, entryPx - 0.01);
-  if (beLevel) beLevel.textContent = `$${beTarget.toFixed(2)}`;
-  if (bePnl) {
-    const isProfitable = isShort ? currPx < entryPx : currPx > entryPx;
-    if (isProfitable) {
-      bePnl.textContent = `$0.00 (0.0%)`;
-      bePnl.className = "mono pos";
-    } else {
-      bePnl.textContent = tx("be_underwater_note", "Position currently underwater");
+  if (entryPx <= 0) {
+    if (beLevel) beLevel.textContent = "—";
+    if (bePnl) {
+      bePnl.textContent = tx("be_no_entry_price", "No average entry price available");
       bePnl.className = "mono neg";
+    }
+  } else {
+    const beTarget = isShort ? entryPx + 0.01 : Math.max(0.01, entryPx - 0.01);
+    if (beLevel) beLevel.textContent = formatExitPrice(beTarget);
+    if (bePnl) {
+      const isUnderwater = isShort ? currPx >= (entryPx + 0.01) : currPx <= (entryPx - 0.01);
+      if (isUnderwater) {
+        bePnl.textContent = tx("be_underwater_note", "Position currently underwater");
+        bePnl.className = "mono neg";
+      } else {
+        bePnl.textContent = `$0.00 (0.0%)`;
+        bePnl.className = "mono pos";
+      }
     }
   }
 
@@ -1481,28 +1489,37 @@ function openExitStrategyModal(pos, initialMode = null) {
     document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c.dataset.bracketTpPct === "10"));
   }
 
+  // Smart initial mode selection based on active exits
+  let modeToOpen = initialMode;
+  if (!modeToOpen) {
+    if (hasSl && hasTp) modeToOpen = "bracket";
+    else if (hasTp && !hasSl) modeToOpen = "take_profit";
+    else modeToOpen = "stop_loss";
+  }
+
   // Initialize Strategy Sizing (Shares / Qty)
   const heldQty = Math.abs(Number(pos.qty || 0));
   const exitQtyInput = $("pos-exit-qty-input");
+  const allowsFractional = (modeToOpen === "take_profit" && !isShort);
   if (exitQtyInput) {
     exitQtyInput.value = heldQty;
     exitQtyInput.max = String(heldQty);
-    exitQtyInput.min = "1";
-    exitQtyInput.step = Number.isInteger(heldQty) ? "1" : "any";
+    exitQtyInput.min = allowsFractional ? "0.0001" : "1";
+    exitQtyInput.step = allowsFractional ? "any" : (Number.isInteger(heldQty) ? "1" : "any");
   }
   document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
     c.classList.toggle("is-active", c.dataset.exitQtyPct === "100");
   });
   syncExitQtyUi(heldQty, heldQty);
 
-  // Initialize Dip Hunt accordion & inputs
+  // Initialize Dip Hunt accordion & inputs (Long positions only)
   const dhGroup = $("pos-exit-dip-hunt-group");
   const dhToggle = $("pos-exit-dip-hunt-enabled");
   const dhWait = $("pos-exit-dip-hunt-wait");
   const dhPct = $("pos-exit-dip-hunt-pct");
 
   if (dhToggle) {
-    dhToggle.checked = hasDh;
+    dhToggle.checked = hasDh && !isShort;
   }
   if (dhWait) {
     dhWait.value = String(dhPlan?.wait_minutes ?? 10);
@@ -1511,7 +1528,7 @@ function openExitStrategyModal(pos, initialMode = null) {
     dhPct.value = String(dhPlan?.dip_pct ?? 5);
   }
   if (dhGroup) {
-    dhGroup.open = hasDh;
+    dhGroup.open = hasDh && !isShort;
   }
 
   // Reset extended hours option to checked by default
@@ -1520,13 +1537,11 @@ function openExitStrategyModal(pos, initialMode = null) {
     extHoursCheckbox.checked = true;
   }
 
-  // Smart initial mode selection based on active exits
-  let modeToOpen = initialMode;
-  if (!modeToOpen) {
-    if (hasSl && hasTp) modeToOpen = "bracket";
-    else if (hasTp && !hasSl) modeToOpen = "take_profit";
-    else modeToOpen = "stop_loss";
-  }
+  // Reset Clear Exits checkboxes to checked
+  const clearStopsCheck = $("pos-clear-stops-check");
+  if (clearStopsCheck) clearStopsCheck.checked = true;
+  const clearTpCheck = $("pos-clear-tp-check");
+  if (clearTpCheck) clearTpCheck.checked = true;
 
   setExitMode(modeToOpen);
   openPosModal("pos-exit-modal");
@@ -1545,17 +1560,22 @@ function syncExitQtyUi(qty, heldQty) {
     pctBadge.textContent = `${pct}%`;
   }
   if (hintEl) {
-    if (qty >= heldQty) {
-      hintEl.textContent = tx("protecting_all_shares", "Protecting all {total} shares (100%)", {
-        total: formatPositionQty(heldQty),
-      });
+    const isShort = activeExitPosition ? String(activeExitPosition.side || "").toLowerCase() === "short" : false;
+    const isTp = activeExitMode === "take_profit";
+    const allowsFractional = isTp && !isShort;
+
+    if (!allowsFractional && heldQty < 1 && activeExitMode !== "clear") {
+      hintEl.textContent = tx("err_fractional_stop_unsupported", "Protective stops require at least 1 whole share. Alpaca does not accept fractional stops.");
+      hintEl.classList.add("warn");
+    } else if (qty >= heldQty) {
+      hintEl.textContent = isTp
+        ? tx("exiting_all_shares", "Exiting all {total} shares (100%)", { total: formatPositionQty(heldQty) })
+        : tx("protecting_all_shares", "Protecting all {total} shares (100%)", { total: formatPositionQty(heldQty) });
       hintEl.classList.remove("warn");
     } else if (qty > 0) {
-      hintEl.textContent = tx("protecting_shares_hint", "Protecting {qty} of {total} shares ({pct}%)", {
-        qty: formatPositionQty(qty),
-        total: formatPositionQty(heldQty),
-        pct: String(pct),
-      });
+      hintEl.textContent = isTp
+        ? tx("exiting_shares_hint", "Exiting {qty} of {total} shares ({pct}%)", { qty: formatPositionQty(qty), total: formatPositionQty(heldQty), pct: String(pct) })
+        : tx("protecting_shares_hint", "Protecting {qty} of {total} shares ({pct}%)", { qty: formatPositionQty(qty), total: formatPositionQty(heldQty), pct: String(pct) });
       hintEl.classList.remove("warn");
     } else {
       hintEl.textContent = tx("err_invalid_exit_qty", "Enter a valid share quantity greater than 0");
@@ -1574,10 +1594,22 @@ function formatExitPrice(value) {
   })}`;
 }
 
+function formatExitInputPrice(value) {
+  const price = Number(value);
+  if (!Number.isFinite(price)) return "";
+  return price.toFixed(Math.abs(price) < 1 ? 4 : 2);
+}
+
+function syncExitChipAccessibility() {
+  document.querySelectorAll("#pos-exit-modal .chip, #pos-exit-modal .pos-portion-chip").forEach((chip) => {
+    chip.setAttribute("aria-pressed", chip.classList.contains("is-active") ? "true" : "false");
+  });
+}
+
 function syncExitDipHuntUI(resolvedStopPx) {
   if (!activeExitPosition) return;
   const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
-  const isSupportedMode = ["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode);
+  const isSupportedMode = ["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode) && !isShort;
   const shouldShow = isSupportedMode;
 
   const group = $("pos-exit-dip-hunt-group");
@@ -1635,6 +1667,7 @@ function setExitMode(mode) {
     const on = tab.dataset.exitMode === mode;
     tab.classList.toggle("is-active", on);
     tab.setAttribute("aria-selected", on ? "true" : "false");
+    tab.tabIndex = on ? 0 : -1;
   });
 
   // Update panes
@@ -1651,15 +1684,50 @@ function setExitMode(mode) {
     if (el) el.hidden = key !== mode;
   });
 
+  // Synchronize stop loss and take profit values across tabs
+  const slInput = $("pos-exit-sl-price");
+  const tpInput = $("pos-exit-tp-price");
+  const bracketSl = $("pos-exit-bracket-sl");
+  const bracketTp = $("pos-exit-bracket-tp");
+
+  if (mode === "bracket") {
+    if (slInput && bracketSl && Number(slInput.value) > 0) {
+      bracketSl.value = slInput.value;
+    }
+    if (tpInput && bracketTp && Number(tpInput.value) > 0) {
+      bracketTp.value = tpInput.value;
+    }
+  } else if (mode === "stop_loss") {
+    if (bracketSl && slInput && Number(bracketSl.value) > 0) {
+      slInput.value = bracketSl.value;
+    }
+  } else if (mode === "take_profit") {
+    if (bracketTp && tpInput && Number(bracketTp.value) > 0) {
+      tpInput.value = bracketTp.value;
+    }
+  }
+
   // Toggle sizing & extended hours card visibility & update label based on exit mode
   const sizingCard = $("pos-exit-sizing-card");
   const extHoursWrap = $("pos-exit-extended-hours-wrap");
   const sizingLabel = $("pos-exit-qty-label");
+  const exitQtyInput = $("pos-exit-qty-input");
+  const isShort = activeExitPosition ? String(activeExitPosition.side || "").toLowerCase() === "short" : false;
+  const allowsFractional = mode === "take_profit" && !isShort;
+
+  if (exitQtyInput) {
+    exitQtyInput.min = allowsFractional ? "0.0001" : "1";
+    exitQtyInput.step = allowsFractional ? "any" : "1";
+  }
+
   if (sizingCard) {
     sizingCard.hidden = mode === "clear";
   }
   if (extHoursWrap) {
-    extHoursWrap.hidden = mode === "clear";
+    // A stand-alone profit target is a native GTC limit order. It has no
+    // synthetic/extended-hours setting, so avoid implying that this switch
+    // applies to it (or carrying an unrelated preference into the request).
+    extHoursWrap.hidden = mode === "clear" || mode === "take_profit";
   }
   if (sizingLabel) {
     if (mode === "take_profit") {
@@ -1671,23 +1739,63 @@ function setExitMode(mode) {
     }
   }
 
-  // Update submit button text
+  // Refresh Breakeven target preview when entering breakeven tab
+  if (mode === "breakeven" && activeExitPosition) {
+    const beLevel = $("pos-exit-be-level");
+    const bePnl = $("pos-exit-be-pnl");
+    const curr = Number(activeExitPosition.current_price || 0);
+    const entry = Number(activeExitPosition.avg_entry_price || 0);
+    if (entry <= 0) {
+      if (beLevel) beLevel.textContent = "—";
+      if (bePnl) {
+        bePnl.textContent = tx("be_no_entry_price", "No average entry price available");
+        bePnl.className = "mono neg";
+      }
+    } else {
+      const beTarget = isShort ? entry + 0.01 : Math.max(0.01, entry - 0.01);
+      if (beLevel) beLevel.textContent = formatExitPrice(beTarget);
+      if (bePnl) {
+        const underwater = isShort ? curr >= (entry + 0.01) : curr <= (entry - 0.01);
+        if (underwater) {
+          bePnl.textContent = tx("be_underwater_note", "Position currently underwater");
+          bePnl.className = "mono neg";
+        } else {
+          bePnl.textContent = `$0.00 (0.0%)`;
+          bePnl.className = "mono pos";
+        }
+      }
+    }
+  }
+
+  // Update submit button text and state
   const submitBtn = $("btn-exit-modal-submit");
   if (submitBtn) {
+    const isAutoTrading = !!(activeExitPosition && activeExitPosition.is_auto_trading);
+    const heldQty = Math.abs(Number(activeExitPosition?.qty || 0));
+    let isDisabled = isAutoTrading;
+    let disabledTitle = isAutoTrading ? tx("err_ticker_in_autotrade", "Stop auto-trade for {symbol} before changing exit strategies by hand — auto trade manages its own exits.", { symbol: activeExitPosition?.symbol || "" }) : "";
+
+    if (!isDisabled && heldQty < 1 && !allowsFractional && mode !== "clear") {
+      isDisabled = true;
+      disabledTitle = tx("err_fractional_stop_unsupported", "Protective stops require at least 1 whole share. Alpaca does not accept fractional stops.");
+    }
+
     if (mode === "stop_loss") {
       submitBtn.textContent = tx("apply_stop_loss", "Arm Stop Loss");
       submitBtn.className = "primary";
     } else if (mode === "breakeven") {
       submitBtn.textContent = tx("apply_breakeven", "Move to Breakeven");
       submitBtn.className = "primary";
-      if (activeExitPosition) {
+      if (!isDisabled && activeExitPosition) {
         const curr = Number(activeExitPosition.current_price || 0);
         const entry = Number(activeExitPosition.avg_entry_price || 0);
-        const short = String(activeExitPosition.side || "").toLowerCase() === "short";
-        const underwater = short ? curr >= entry : curr <= entry;
-        if (underwater) {
-          submitBtn.disabled = true;
-          submitBtn.title = tx("be_underwater_note", "Position currently underwater");
+        const underwater = isShort ? curr >= (entry + 0.01) : curr <= (entry - 0.01);
+        if (entry <= 0) {
+          isDisabled = true;
+          disabledTitle = tx("be_no_entry_price", "No average entry price available");
+        } else if (underwater) {
+          isDisabled = true;
+          disabledTitle = tx("be_underwater_note", "Position currently underwater");
         }
       }
     } else if (mode === "trailing") {
@@ -1702,10 +1810,16 @@ function setExitMode(mode) {
     } else if (mode === "clear") {
       submitBtn.textContent = tx("apply_clear_exits", "Cancel Exit Orders");
       submitBtn.className = "primary primary-danger";
+      const clearStops = !!$("pos-clear-stops-check")?.checked;
+      const clearTp = !!$("pos-clear-tp-check")?.checked;
+      if (!isDisabled && !clearStops && !clearTp) {
+        isDisabled = true;
+        disabledTitle = tx("err_select_cancellation", "Select at least one order type to cancel");
+      }
     }
-    if (activeExitPosition && activeExitPosition.is_auto_trading) {
-      submitBtn.disabled = true;
-    }
+
+    submitBtn.disabled = isDisabled;
+    submitBtn.title = disabledTitle;
   }
 
   syncExitDipHuntUI();
@@ -1800,6 +1914,7 @@ function updateExitCalculations() {
     }
   }
 
+  syncExitChipAccessibility();
   syncExitDipHuntUI(stopPx);
 }
 
@@ -1836,6 +1951,7 @@ async function submitExitStrategy() {
   try {
     const isShort = String(pos.side || "").toLowerCase() === "short";
     const currPx = Number(pos.current_price || 0);
+    const entryPx = Number(pos.avg_entry_price || 0);
     const heldQty = Math.abs(Number(pos.qty || 0));
 
     const payload = { symbol: pos.symbol };
@@ -1858,23 +1974,29 @@ async function submitExitStrategy() {
       }
       payload.qty = chosenQty;
 
-      const extHoursCheckbox = $("pos-exit-extended-hours");
-      payload.extended_hours = extHoursCheckbox ? extHoursCheckbox.checked : true;
+      if (["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode)) {
+        const extHoursCheckbox = $("pos-exit-extended-hours");
+        payload.extended_hours = extHoursCheckbox ? extHoursCheckbox.checked : true;
+      }
     }
 
     if (activeExitMode === "stop_loss") {
       const slPx = Number($("pos-exit-sl-price")?.value || 0);
       if (slPx <= 0) throw new Error(tx("err_invalid_stop_price", "Enter a valid stop price greater than 0"));
       if (!isShort && slPx >= currPx) {
-        throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+        throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
       }
       if (isShort && slPx <= currPx) {
-        throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+        throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
       }
       payload.action = "price";
       payload.stop_price = slPx;
     } else if (activeExitMode === "breakeven") {
-      const isUnderwater = isShort ? currPx >= entryPx : currPx <= entryPx;
+      if (entryPx <= 0) {
+        throw new Error(tx("be_no_entry_price", "No average entry price available"));
+      }
+      const breakevenPx = isShort ? entryPx + 0.01 : Math.max(0.01, entryPx - 0.01);
+      const isUnderwater = isShort ? currPx >= breakevenPx : currPx <= breakevenPx;
       if (isUnderwater) {
         throw new Error(tx("err_be_underwater", "Cannot move to breakeven: Position is currently underwater"));
       }
@@ -1888,10 +2010,10 @@ async function submitExitStrategy() {
       const tpPx = Number($("pos-exit-tp-price")?.value || 0);
       if (tpPx <= 0) throw new Error(tx("err_invalid_target_price", "Enter a valid take profit price greater than 0"));
       if (!isShort && tpPx <= currPx) {
-        throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+        throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
       }
       if (isShort && tpPx >= currPx) {
-        throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+        throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
       }
       payload.action = "take_profit";
       payload.take_profit_price = tpPx;
@@ -1901,18 +2023,18 @@ async function submitExitStrategy() {
       if (slPx <= 0 && tpPx <= 0) throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
       if (slPx > 0) {
         if (!isShort && slPx >= currPx) {
-          throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+          throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
         }
         if (isShort && slPx <= currPx) {
-          throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+          throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
         }
       }
       if (tpPx > 0) {
         if (!isShort && tpPx <= currPx) {
-          throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: currPx.toFixed(2) }));
+          throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
         }
         if (isShort && tpPx >= currPx) {
-          throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: currPx.toFixed(2) }));
+          throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
         }
       }
       if (slPx > 0 && tpPx > 0) {
@@ -3498,10 +3620,24 @@ function initPositionsUi() {
     tab.addEventListener("click", () => {
       setExitMode(tab.dataset.exitMode);
     });
+    tab.addEventListener("keydown", (event) => {
+      const tabs = Array.from(document.querySelectorAll(".pos-exit-tab"));
+      const current = tabs.indexOf(tab);
+      let next = null;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (current + 1) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (current - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      if (next == null) return;
+      event.preventDefault();
+      const nextTab = tabs[next];
+      setExitMode(nextTab.dataset.exitMode);
+      nextTab.focus();
+    });
   });
 
   // Exit Strategy Modal: Inputs live calculations
-  $("pos-exit-sl-price")?.addEventListener("input", () => {
+  $("pos-exit-sl-price")?.addEventListener("input", (e) => {
     if (activeExitPosition) {
       const currPx = Number(activeExitPosition.current_price || 0);
       const slPx = Number($("pos-exit-sl-price")?.value || 0);
@@ -3509,9 +3645,23 @@ function initPositionsUi() {
       const distBadge = $("pos-exit-sl-dist-badge");
       const customWrap = $("pos-exit-sl-custom-wrap");
       const customInput = $("pos-exit-sl-custom-input");
+      const slHint = $("pos-exit-sl-hint");
       if (slPx > 0 && currPx > 0) {
         const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
+        e.target.setAttribute("aria-invalid", diffPct <= 0 ? "true" : "false");
         if (distBadge) distBadge.textContent = diffPct > 0 ? `${diffPct.toFixed(1)}%` : "—";
+        if (diffPct <= 0) {
+          if (slHint) {
+            slHint.textContent = isShort
+              ? tx("err_stop_must_be_above", "Stop loss for short must sit above current price (${price})", { price: formatExitPrice(currPx) })
+              : tx("err_stop_must_be_below", "Stop loss for long must sit below current price (${price})", { price: formatExitPrice(currPx) });
+            slHint.classList.add("warn");
+          }
+        } else if (slHint) {
+          slHint.textContent = tx("stop_loss_desc", "Replaces existing protective stops with a GTC Stop order at this price level.");
+          slHint.classList.remove("warn");
+        }
+
         let matchedChip = null;
         document.querySelectorAll("[data-sl-pct]").forEach((c) => {
           const p = Number(c.dataset.slPct);
@@ -3532,7 +3682,12 @@ function initPositionsUi() {
           if (customWrap) customWrap.classList.remove("is-active");
         }
       } else {
+        e.target.setAttribute("aria-invalid", "false");
         if (distBadge) distBadge.textContent = "—";
+        if (slHint) {
+          slHint.textContent = tx("stop_loss_desc", "Replaces existing protective stops with a GTC Stop order at this price level.");
+          slHint.classList.remove("warn");
+        }
         document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
         if (customWrap) customWrap.classList.remove("is-active");
       }
@@ -3554,14 +3709,33 @@ function initPositionsUi() {
     const tpPx = Number(e.target.value || 0);
     const currPx = Number(activeExitPosition.current_price || 0);
     const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    const tpHint = $("pos-exit-tp-hint");
     if (tpPx > 0 && currPx > 0) {
       const diffPct = isShort ? ((currPx - tpPx) / currPx) * 100 : ((tpPx - currPx) / currPx) * 100;
+      e.target.setAttribute("aria-invalid", diffPct <= 0 ? "true" : "false");
+      if (diffPct <= 0) {
+        if (tpHint) {
+          tpHint.textContent = isShort
+            ? tx("err_target_must_be_below", "Take profit for short must sit below current price (${price})", { price: formatExitPrice(currPx) })
+            : tx("err_target_must_be_above", "Take profit for long must sit above current price (${price})", { price: formatExitPrice(currPx) });
+          tpHint.classList.add("warn");
+        }
+      } else if (tpHint) {
+        tpHint.textContent = tx("take_profit_desc", "Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.");
+        tpHint.classList.remove("warn");
+      }
+
       let matched = null;
       document.querySelectorAll("[data-tp-pct]").forEach((c) => {
         if (Math.abs(Number(c.dataset.tpPct) - diffPct) < 0.05) matched = c;
       });
       document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
     } else {
+      e.target.setAttribute("aria-invalid", "false");
+      if (tpHint) {
+        tpHint.textContent = tx("take_profit_desc", "Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.");
+        tpHint.classList.remove("warn");
+      }
       document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.remove("is-active"));
     }
     updateExitCalculations();
@@ -3610,9 +3784,9 @@ function initPositionsUi() {
       const pct = Number(chip.dataset.slPct || 3);
       const currPx = Number(activeExitPosition.current_price || 0);
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
-      const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+      const target = Math.max(0.01, isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100));
       const slInput = $("pos-exit-sl-price");
-      if (slInput) slInput.value = target.toFixed(2);
+      if (slInput) slInput.value = formatExitInputPrice(target);
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       const customWrap = $("pos-exit-sl-custom-wrap");
       if (customWrap) customWrap.classList.remove("is-active");
@@ -3620,6 +3794,11 @@ function initPositionsUi() {
       if (customInput) customInput.value = "";
       const distBadge = $("pos-exit-sl-dist-badge");
       if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
+      const slHint = $("pos-exit-sl-hint");
+      if (slHint) {
+        slHint.textContent = tx("stop_loss_desc", "Replaces existing protective stops with a GTC Stop order at this price level.");
+        slHint.classList.remove("warn");
+      }
       updateExitCalculations();
     });
   });
@@ -3639,15 +3818,44 @@ function initPositionsUi() {
     const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
     const distBadge = $("pos-exit-sl-dist-badge");
     if (pct > 0 && currPx > 0) {
-      const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
+      const target = Math.max(0.01, isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100));
       const slInput = $("pos-exit-sl-price");
-      if (slInput) slInput.value = target.toFixed(2);
+      if (slInput) slInput.value = formatExitInputPrice(target);
       if (distBadge) distBadge.textContent = `${pct.toFixed(1)}%`;
+      const slHint = $("pos-exit-sl-hint");
+      if (slHint) {
+        slHint.textContent = tx("stop_loss_desc", "Replaces existing protective stops with a GTC Stop order at this price level.");
+        slHint.classList.remove("warn");
+      }
       updateExitCalculations();
     } else if (distBadge) {
       distBadge.textContent = "—";
     }
   });
+
+  // Clear Exits checkboxes live validation toggle
+  const onClearCheckChange = () => {
+    if (activeExitMode === "clear") {
+      const clearStops = !!$("pos-clear-stops-check")?.checked;
+      const clearTp = !!$("pos-clear-tp-check")?.checked;
+      const submitBtn = $("btn-exit-modal-submit");
+      const isAutoTrading = !!(activeExitPosition && activeExitPosition.is_auto_trading);
+      if (submitBtn) {
+        if (isAutoTrading) {
+          submitBtn.disabled = true;
+          submitBtn.title = tx("err_ticker_in_autotrade", "Stop auto-trade for {symbol} before changing exit strategies by hand — auto trade manages its own exits.", { symbol: activeExitPosition?.symbol || "" });
+        } else if (!clearStops && !clearTp) {
+          submitBtn.disabled = true;
+          submitBtn.title = tx("err_select_cancellation", "Select at least one order type to cancel");
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.title = "";
+        }
+      }
+    }
+  };
+  $("pos-clear-stops-check")?.addEventListener("change", onClearCheckChange);
+  $("pos-clear-tp-check")?.addEventListener("change", onClearCheckChange);
 
   // Exit Strategy Modal: Quantity percentage chips
   document.querySelectorAll("[data-exit-qty-pct]").forEach((chip) => {
@@ -3701,7 +3909,7 @@ function initPositionsUi() {
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const target = isShort ? currPx * (1 - pct / 100) : currPx * (1 + pct / 100);
       const tpInput = $("pos-exit-tp-price");
-      if (tpInput) tpInput.value = target.toFixed(2);
+      if (tpInput) tpInput.value = formatExitInputPrice(target);
       document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
     });
@@ -3715,7 +3923,7 @@ function initPositionsUi() {
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
       const slInput = $("pos-exit-bracket-sl");
-      if (slInput) slInput.value = target.toFixed(2);
+      if (slInput) slInput.value = formatExitInputPrice(target);
       document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
     });
@@ -3729,7 +3937,7 @@ function initPositionsUi() {
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const target = isShort ? currPx * (1 - pct / 100) : currPx * (1 + pct / 100);
       const tpInput = $("pos-exit-bracket-tp");
-      if (tpInput) tpInput.value = target.toFixed(2);
+      if (tpInput) tpInput.value = formatExitInputPrice(target);
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
     });

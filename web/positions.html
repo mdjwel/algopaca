@@ -791,26 +791,6 @@
         </div>
 
         <div class="pos-modal-body pos-exit-body">
-          <!-- Position Context Strip -->
-          <div class="pos-modal-meta-grid pos-exit-meta-grid">
-            <div class="pos-modal-meta-item">
-              <span data-i18n="shares_qty">Shares / Qty</span>
-              <strong id="pos-exit-held-qty" class="mono">0</strong>
-            </div>
-            <div class="pos-modal-meta-item">
-              <span data-i18n="avg_entry_label">Avg entry</span>
-              <strong id="pos-exit-avg-entry" class="mono">$0.00</strong>
-            </div>
-            <div class="pos-modal-meta-item">
-              <span data-i18n="current_price_label">Current price</span>
-              <strong id="pos-exit-curr-price" class="mono">$0.00</strong>
-            </div>
-            <div class="pos-modal-meta-item">
-              <span data-i18n="unrealized_pnl">Unrealized P&amp;L</span>
-              <strong id="pos-exit-unrealized-pnl" class="mono">$0.00</strong>
-            </div>
-          </div>
-
           <!-- Active Protection Status Box -->
           <div id="pos-exit-active-status" class="pos-exit-status-card">
             <div class="pos-exit-status-head">
@@ -844,23 +824,23 @@
 
           <!-- Strategy Mode Selector Tabs -->
           <div class="pos-exit-tabs" role="tablist" aria-label="Exit Strategy Mode">
-            <button type="button" class="pos-exit-tab is-active" role="tab" data-exit-mode="stop_loss" aria-selected="true" data-i18n="tab_stop_loss">Stop Loss</button>
-            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="breakeven" aria-selected="false" data-i18n="tab_breakeven">Breakeven</button>
-            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="trailing" aria-selected="false" data-i18n="tab_trailing">Trailing Stop</button>
-            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="take_profit" aria-selected="false" data-i18n="tab_take_profit">Take Profit</button>
-            <button type="button" class="pos-exit-tab" role="tab" data-exit-mode="bracket" aria-selected="false" data-i18n="tab_bracket">Bracket</button>
-            <button type="button" class="pos-exit-tab tab-danger" role="tab" data-exit-mode="clear" aria-selected="false" data-i18n="tab_clear_exits">Clear</button>
+            <button type="button" id="pos-exit-tab-stop-loss" class="pos-exit-tab is-active" role="tab" data-exit-mode="stop_loss" aria-controls="pos-exit-pane-stop-loss" aria-selected="true" tabindex="0" data-i18n="tab_stop_loss">Stop Loss</button>
+            <button type="button" id="pos-exit-tab-breakeven" class="pos-exit-tab" role="tab" data-exit-mode="breakeven" aria-controls="pos-exit-pane-breakeven" aria-selected="false" tabindex="-1" data-i18n="tab_breakeven">Breakeven</button>
+            <button type="button" id="pos-exit-tab-trailing" class="pos-exit-tab" role="tab" data-exit-mode="trailing" aria-controls="pos-exit-pane-trailing" aria-selected="false" tabindex="-1" data-i18n="tab_trailing">Trailing Stop</button>
+            <button type="button" id="pos-exit-tab-take-profit" class="pos-exit-tab" role="tab" data-exit-mode="take_profit" aria-controls="pos-exit-pane-take-profit" aria-selected="false" tabindex="-1" data-i18n="tab_take_profit">Take Profit</button>
+            <button type="button" id="pos-exit-tab-bracket" class="pos-exit-tab" role="tab" data-exit-mode="bracket" aria-controls="pos-exit-pane-bracket" aria-selected="false" tabindex="-1" data-i18n="tab_bracket">Bracket</button>
+            <button type="button" id="pos-exit-tab-clear" class="pos-exit-tab tab-danger" role="tab" data-exit-mode="clear" aria-controls="pos-exit-pane-clear" aria-selected="false" tabindex="-1" data-i18n="tab_clear_exits">Clear</button>
           </div>
 
           <!-- Tab Pane 1: Fixed Stop Loss -->
-          <div id="pos-exit-pane-stop-loss" class="pos-exit-pane">
+          <div id="pos-exit-pane-stop-loss" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-stop-loss">
             <div class="pos-exit-field">
               <label class="pos-modal-label" for="pos-exit-sl-price">
                 <span data-i18n="stop_loss_price">Stop Loss Price ($)</span>
               </label>
               <div class="pos-input-box">
                 <span class="pos-input-prefix">$</span>
-                <input type="number" id="pos-exit-sl-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                <input type="number" id="pos-exit-sl-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" aria-describedby="pos-exit-sl-hint" />
                 <span class="pos-input-suffix">USD</span>
               </div>
             </div>
@@ -880,13 +860,15 @@
                 </div>
               </div>
             </div>
-            <p class="field-help" id="pos-exit-sl-hint" data-i18n="stop_loss_desc">Replaces existing protective stops with a GTC Stop order at this price level.</p>
+            <p class="field-help" id="pos-exit-sl-hint" aria-live="polite" data-i18n="stop_loss_desc">Replaces existing protective stops with a GTC Stop order at this price level.</p>
           </div>
 
           <!-- Tab Pane 2: Breakeven -->
-          <div id="pos-exit-pane-breakeven" class="pos-exit-pane" hidden>
+          <div id="pos-exit-pane-breakeven" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-breakeven" hidden>
             <div class="pos-exit-be-banner">
-              <div class="pos-exit-be-icon">🛡️</div>
+              <div class="pos-exit-be-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
               <div class="pos-exit-be-info">
                 <h4 data-i18n="move_to_breakeven_title">Zero-Risk Breakeven Stop</h4>
                 <p data-i18n="move_to_breakeven_desc">Moves your protective stop to average entry price ($entry ± $0.01) so you cannot lose capital if the market reverses.</p>
@@ -905,7 +887,7 @@
           </div>
 
           <!-- Tab Pane 3: Trailing Stop -->
-          <div id="pos-exit-pane-trailing" class="pos-exit-pane" hidden>
+          <div id="pos-exit-pane-trailing" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-trailing" hidden>
             <div class="pos-exit-field">
               <label class="pos-modal-label" for="pos-exit-trail-pct">
                 <span data-i18n="trail_percent">Trail Distance (%)</span>
@@ -929,14 +911,14 @@
           </div>
 
           <!-- Tab Pane 4: Take Profit -->
-          <div id="pos-exit-pane-take-profit" class="pos-exit-pane" hidden>
+          <div id="pos-exit-pane-take-profit" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-take-profit" hidden>
             <div class="pos-exit-field">
               <label class="pos-modal-label" for="pos-exit-tp-price">
                 <span data-i18n="take_profit_target_price">Take Profit Target ($)</span>
               </label>
               <div class="pos-input-box">
                 <span class="pos-input-prefix">$</span>
-                <input type="number" id="pos-exit-tp-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                <input type="number" id="pos-exit-tp-price" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" aria-describedby="pos-exit-tp-hint" />
                 <span class="pos-input-suffix">USD</span>
               </div>
             </div>
@@ -950,11 +932,11 @@
                 <button type="button" class="chip" data-tp-pct="25">+25%</button>
               </div>
             </div>
-            <p class="field-help" data-i18n="take_profit_desc">Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.</p>
+            <p class="field-help" id="pos-exit-tp-hint" aria-live="polite" data-i18n="take_profit_desc">Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.</p>
           </div>
 
           <!-- Tab Pane 5: Bracket (SL + TP) -->
-          <div id="pos-exit-pane-bracket" class="pos-exit-pane" hidden>
+          <div id="pos-exit-pane-bracket" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-bracket" hidden>
             <div class="pos-exit-bracket-grid">
               <div class="pos-exit-subcard pos-exit-subcard-sl">
                 <div class="pos-exit-subcard-head">
@@ -990,7 +972,7 @@
           </div>
 
           <!-- Tab Pane 6: Clear Exits -->
-          <div id="pos-exit-pane-clear" class="pos-exit-pane" hidden>
+          <div id="pos-exit-pane-clear" class="pos-exit-pane" role="tabpanel" aria-labelledby="pos-exit-tab-clear" hidden>
             <div class="pos-danger-banner">
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" class="danger-icon">
                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
@@ -1034,13 +1016,13 @@
           <!-- Extended Hours Protection Option -->
           <div class="pos-exit-extended-card" id="pos-exit-extended-hours-wrap">
             <label class="check" for="pos-exit-extended-hours">
-              <input type="checkbox" id="pos-exit-extended-hours" name="extended_hours" checked />
+              <input type="checkbox" id="pos-exit-extended-hours" name="extended_hours" checked aria-describedby="pos-exit-extended-hours-help" />
               <span class="pos-exit-extended-content">
                 <span class="pos-exit-extended-title-row">
                   <strong data-i18n="extended_hours">Extended hours</strong>
                   <span class="badge badge-subtle" data-i18n="synthetic_extended">Synthetic Extended</span>
                 </span>
-                <span class="field-help" data-i18n="help_exit_extended_hours">Apply exit strategy and synthetic protection in pre-market, after-hours, and overnight.</span>
+                <span id="pos-exit-extended-hours-help" class="field-help" data-i18n="help_exit_extended_hours">Apply exit strategy and synthetic protection in pre-market, after-hours, and overnight.</span>
               </span>
             </label>
           </div>
