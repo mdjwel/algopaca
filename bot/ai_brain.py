@@ -309,18 +309,7 @@ class AiBrain:
             price = float(mark["price"])
         atr = technicals.get("atr_14") if technicals.get("ok") else None
         distancer = getattr(self.config, "ai_stop_distance", None)
-        preset_id = getattr(self.config, "ai_preset", "")
-        sym_u = str(symbol).upper().strip()
-        if (
-            preset_id == "gold_silver_macro"
-            and sym_u in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}
-            and atr
-            and float(atr) > 0
-        ):
-            stop_mult = max(1.8, float(getattr(self.config, "ai_atr_stop_mult", 1.6) or 1.6))
-            stop_distance = float(atr) * stop_mult
-        else:
-            stop_distance = distancer(price, atr) if callable(distancer) else 0.0
+        stop_distance = distancer(price, atr) if callable(distancer) else 0.0
         avg_entry = position.get("avg_entry")
         open_r = r_multiple(
             side=position_side,
@@ -506,17 +495,18 @@ class AiBrain:
                 "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
                 "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
                 "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
-                "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, UGL, GDXU, and GDXD are strictly excluded from the metals playbook.\n"
+                "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, and UGL are strictly excluded from the metals playbook.\n"
                 "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
                 "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
-                "- INVERSE DECAY GUARD & TIMING: Inverse ETF GLL is a short-dated hold (max ~5 days or RSI >= 65); never hold long-term.\n"
+                "- INVERSE DECAY GUARD & TIMING: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
                 "  Skip late-session entry (hour >= 19 UTC / 3 PM ET) on inverse ETFs to avoid overnight gap risk.\n"
                 "- If macro_risk_level is 'imminent_release' (high-impact FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
                 "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
                 "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"
                 "  (precious_metals_intel.dollar_trend is 'neutral', dollar_mixed is True, or macro releases are conflicting):\n"
                 "  * If currently holding an open SELL/SHORT position (position_qty < 0): you MUST immediately CLOSE/COVER\n"
-                "    the short position to CASH to avoid short-squeeze risk. Do NOT force an immediate long buy unless gold meets all technical pullback criteria.\n"
+                "    the short position and reverse/enter a LONG position (action='buy'). A mixed dollar backdrop undermines\n"
+                "    the bearish thesis and creates severe upward squeeze risk for metals.\n"
                 "  * If flat (position_qty == 0): prefer taking a LONG position (BUY) on pullbacks rather than initiating any short.\n"
                 "\n"
                 if context.get("precious_metals_intel")

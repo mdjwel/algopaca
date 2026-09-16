@@ -701,6 +701,78 @@ class SyntheticExtendedOrdersTestCase(unittest.TestCase):
             self.assertTrue(sell_res["order_id"].startswith("synth_"))
             self.assertEqual(sell_res["submitted_type"], "synthetic_stop_limit")
 
+    def test_sync_strategy_take_profit(self):
+        """sync_strategy_take_profit registers and updates 24h synthetic take profit orders."""
+        res = self.state.sync_strategy_take_profit(
+            symbol="AAPL",
+            side="sell",
+            qty=10.0,
+            limit_price=160.0,
+            source="test_tp",
+        )
+        self.assertIsNotNone(res)
+        order_id = res["id"]
+        self.assertEqual(res["order_type"], "take_profit")
+        self.assertEqual(res["limit_price"], 160.0)
+        self.assertTrue(res["extended_hours"])
+        self.assertEqual(res["status"], "waiting")
+        self.assertIn(order_id, self.state.synthetic_orders)
+
+        # Update existing take profit order
+        updated = self.state.sync_strategy_take_profit(
+            symbol="AAPL",
+            side="sell",
+            qty=10.0,
+            limit_price=165.0,
+            source="test_tp_update",
+        )
+        self.assertEqual(updated["id"], order_id)
+        self.assertEqual(updated["limit_price"], 165.0)
+
+    def test_advance_synthetic_take_profit_triggered(self):
+        """Synthetic take profit triggers when mark price hits target price in extended hours."""
+        synth = self.state._register_synthetic_order(
+            symbol="NVDA",
+            side="sell",
+            qty=5.0,
+            order_type="take_profit",
+            time_in_force="gtc",
+            limit_price=120.0,
+        )
+        order_id = synth["id"]
+
+        with patch("bot.web_state.AlpacaService") as MockService:
+            service_instance = MockService.return_value
+            service_instance.get_position_qty.return_value = 5.0
+            # Price below target: should not trigger
+            service_instance.get_mark_price.return_value = {"price": 118.0}
+            self.state._advance_synthetic_order(order_id)
+            self.assertEqual(self.state.synthetic_orders[order_id]["status"], "waiting")
+            service_instance.trading.submit_order.assert_not_called()
+
+            # Price rises above target: triggers!
+            service_instance.get_mark_price.return_value = {"price": 121.0}
+            fake_submitted = MagicMock()
+            fake_submitted.id = "alp_tp_sub_123"
+            service_instance.trading.submit_order.return_value = fake_submitted
+
+            self.state._advance_synthetic_order(order_id)
+
+            service_instance.trading.submit_order.assert_called_once()
+            called_req = service_instance.trading.submit_order.call_args[0][0]
+            self.assertEqual(called_req.symbol, "NVDA")
+            self.assertEqual(called_req.qty, 5.0)
+            self.assertEqual(called_req.side, OrderSide.SELL)
+            self.assertEqual(called_req.limit_price, 120.0)
+            self.assertEqual(called_req.time_in_force, TimeInForce.DAY)
+            self.assertTrue(called_req.extended_hours)
+
+            order = self.state.synthetic_orders[order_id]
+            self.assertEqual(order["status"], "triggered")
+            self.assertEqual(order["alpaca_order_id"], "alp_tp_sub_123")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

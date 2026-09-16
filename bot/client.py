@@ -2906,13 +2906,29 @@ class AlpacaService:
             limit_price=limit_price,
         )
         submitted = self._submit_exit_order_with_retry(order, symbol)
-        return {
+        res = {
             "id": str(submitted.id),
             "limit_price": limit_price,
             "qty": order_qty,
             "side": "buy" if is_short else "sell",
             "type": "take_profit",
         }
+        if getattr(self.config, "stop_loss_24h", True):
+            handler = self._get_synthetic_handler()
+            if handler and hasattr(handler, "sync_strategy_take_profit"):
+                try:
+                    synth = handler.sync_strategy_take_profit(
+                        symbol=symbol,
+                        side="buy" if is_short else "sell",
+                        qty=order_qty,
+                        limit_price=limit_price,
+                        source="strategy_take_profit",
+                    )
+                    if synth:
+                        res["synthetic_order_id"] = synth.get("id")
+                except Exception as exc:
+                    logger.debug("Could not sync synthetic take profit for %s: %s", symbol, exc)
+        return res
 
     def arm_bracket_exit(
         self,
@@ -3040,19 +3056,33 @@ class AlpacaService:
 
             if getattr(self.config, "stop_loss_24h", True):
                 handler = self._get_synthetic_handler()
-                if handler and hasattr(handler, "sync_strategy_stop"):
-                    try:
-                        synth = handler.sync_strategy_stop(
-                            symbol=symbol,
-                            side="buy" if is_short else "sell",
-                            qty=order_qty,
-                            stop_price=resolved_stop,
-                            source="strategy_stop",
-                        )
-                        if synth:
-                            stop_info["synthetic_order_id"] = synth.get("id")
-                    except Exception as exc:
-                        logger.debug("Could not sync synthetic stop for %s: %s", symbol, exc)
+                if handler:
+                    if hasattr(handler, "sync_strategy_stop"):
+                        try:
+                            synth = handler.sync_strategy_stop(
+                                symbol=symbol,
+                                side="buy" if is_short else "sell",
+                                qty=order_qty,
+                                stop_price=resolved_stop,
+                                source="strategy_stop",
+                            )
+                            if synth:
+                                stop_info["synthetic_order_id"] = synth.get("id")
+                        except Exception as exc:
+                            logger.debug("Could not sync synthetic stop for %s: %s", symbol, exc)
+                    if resolved_tp is not None and hasattr(handler, "sync_strategy_take_profit"):
+                        try:
+                            synth_tp = handler.sync_strategy_take_profit(
+                                symbol=symbol,
+                                side="buy" if is_short else "sell",
+                                qty=order_qty,
+                                limit_price=resolved_tp,
+                                source="strategy_bracket_tp",
+                            )
+                            if synth_tp:
+                                tp_info["synthetic_order_id"] = synth_tp.get("id")
+                        except Exception as exc:
+                            logger.debug("Could not sync synthetic bracket take profit for %s: %s", symbol, exc)
 
             return {
                 "symbol": symbol,

@@ -2070,13 +2070,8 @@ class AppState:
         days_i: int,
         end: datetime,
         start_cutoff: datetime | None = None,
-        warmup_days: int = 150,
     ) -> pd.DataFrame:
-        """Trim to the requested evaluation window but keep calendar-time warmup.
-
-        Calendar time, rather than a fixed number of rows, preserves a 250-day
-        macro window when the execution timeframe is intraday.
-        """
+        """Trim to the requested evaluation window but keep warmup rows."""
         cutoff = (
             start_cutoff
             if start_cutoff is not None
@@ -2091,8 +2086,7 @@ class AppState:
         if window.empty:
             keep = min(len(bars), max(days_i, 40))
             return bars.tail(keep + 80)
-        warmup_start = cutoff - timedelta(days=max(1, int(warmup_days)))
-        warmup_keep = pre[pre.index >= warmup_start]
+        warmup_keep = pre.tail(150)
         return pd.concat([warmup_keep, window]) if not warmup_keep.empty else window
 
     def _run_pair_backtest(
@@ -2634,14 +2628,7 @@ class AppState:
                 qty=trade_qty,
             )
 
-        is_metals_run = (
-            preset_id == "gold_silver_macro"
-            or any(is_precious_metal(sym) for sym in symbol_list)
-        )
-        # 250 trading days need roughly 400 calendar days.  Use the same
-        # history for hourly execution so GSR and trend retain daily meaning.
-        warmup_days = 400 if is_metals_run else 150
-        pad = warmup_days if tf == "1Day" else max(days_i, warmup_days)
+        pad = 120 if tf == "1Day" else max(days_i, 14)
         start = start_cutoff - timedelta(days=days_i + pad)
 
         service = AlpacaService(self._base_config())
@@ -2653,11 +2640,7 @@ class AppState:
                 if bars.empty:
                     raise ValueError(f"No bar data returned for {sym}")
                 bars_by_symbol[sym] = self._trim_backtest_bars(
-                    bars,
-                    days_i=days_i,
-                    end=end,
-                    start_cutoff=start_cutoff,
-                    warmup_days=warmup_days,
+                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
                 )
             except Exception as exc:  # noqa: BLE001
                 errors.append({"symbol": sym, "error": str(exc)})
@@ -2668,24 +2651,22 @@ class AppState:
 
         macro_bars: dict[str, pd.DataFrame] | None = None
         calendar_events: list[dict[str, Any]] | None = None
+        is_metals_run = (
+            preset_id == "gold_silver_macro"
+            or any(is_precious_metal(s) for s in symbol_list)
+        )
         if is_metals_run:
-            macro_syms = ["TIP", "TLT", "UUP", "GLD", "SLV"]
+            macro_syms = ["TLT", "UUP", "GLD", "SLV"]
             macro_bars = {}
             for msym in macro_syms:
                 if msym in bars_by_symbol:
                     macro_bars[msym] = bars_by_symbol[msym]
                 else:
                     try:
-                        # Macro inputs always use daily closes even when the
-                        # execution engine evaluates hourly bars.
-                        mb = service.get_bars_range(msym, start=start, end=end, timeframe="1Day")
+                        mb = service.get_bars_range(msym, start=start, end=end, timeframe=tf)
                         if not mb.empty:
                             macro_bars[msym] = self._trim_backtest_bars(
-                                mb,
-                                days_i=days_i,
-                                end=end,
-                                start_cutoff=start_cutoff,
-                                warmup_days=warmup_days,
+                                mb, days_i=days_i, end=end, start_cutoff=start_cutoff
                             )
                     except Exception:
                         pass
@@ -2722,7 +2703,6 @@ class AppState:
                 params=params,
                 macro_bars=macro_bars,
                 calendar_events=calendar_events,
-                evaluation_start=start_cutoff,
             )
             res.update({**meta, "symbol": sym, "errors": errors})
             return res
@@ -2734,7 +2714,6 @@ class AppState:
                 params=params,
                 macro_bars=macro_bars,
                 calendar_events=calendar_events,
-                evaluation_start=start_cutoff,
             )
             legs = list(book.get("results") or [])
             for leg in legs:
@@ -2774,7 +2753,6 @@ class AppState:
                     params=params,
                     macro_bars=macro_bars,
                     calendar_events=calendar_events,
-                    evaluation_start=start_cutoff,
                 )
                 one.update(
                     {
@@ -6070,7 +6048,7 @@ class AppState:
 
         ext_hours = True if extended_hours is None else bool(extended_hours)
         service_config = self._base_config().override(stop_loss_24h=ext_hours)
-        service = AlpacaService(service_config)
+        service = AlpacaService(service_config, synthetic_order_handler=self)
 
         # Handle cancellation actions first
         if action == "cancel_stops":
@@ -6078,12 +6056,18 @@ class AppState:
                 symbol, message="Stop loss orders cancelled."
             )
             cancelled = service.cancel_open_stop_orders(symbol)
-            synth_cancelled = self._cancel_synthetic_orders_for_symbol(symbol)
+            synth_cancelled = self._cancel_synthetic_orders_for_symbol(
+                symbol, order_types={"stop_limit", "trailing_stop"}
+            )
             cancelled = (cancelled if isinstance(cancelled, int) else 0) + synth_cancelled
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
         if action == "cancel_take_profit":
             cancelled = service.cancel_open_take_profit_orders(symbol)
+            synth_cancelled = self._cancel_synthetic_orders_for_symbol(
+                symbol, order_types={"take_profit"}
+            )
+            cancelled = (cancelled if isinstance(cancelled, int) else 0) + synth_cancelled
             self._invalidate_manual_heat()
             return {"symbol": symbol, "action": action, "cancelled_count": cancelled}
         if action == "cancel_all":
@@ -6150,15 +6134,17 @@ class AppState:
                     "Re-buy after dip requires a protective stop loss order."
                 )
 
-        if not ext_hours and action in {
-            "breakeven",
-            "price",
-            "stop_loss",
-            "trail",
-            "trailing_stop",
-            "bracket",
-        }:
-            self._cancel_synthetic_orders_for_symbol(symbol)
+        if not ext_hours:
+            if action in {"breakeven", "price", "stop_loss", "trail", "trailing_stop"}:
+                self._cancel_synthetic_orders_for_symbol(
+                    symbol, order_types={"stop_limit", "trailing_stop"}
+                )
+            elif action == "take_profit":
+                self._cancel_synthetic_orders_for_symbol(
+                    symbol, order_types={"take_profit"}
+                )
+            elif action == "bracket":
+                self._cancel_synthetic_orders_for_symbol(symbol)
 
         # Helper to compute and validate stop target
         def _resolve_stop_target(p_stop: float | None, p_pct: float | None) -> float:
@@ -10113,6 +10099,90 @@ class AppState:
         )
         return registered
 
+    def sync_strategy_take_profit(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float,
+        limit_price: float,
+        source: str = "strategy_take_profit",
+    ) -> dict[str, Any] | None:
+        """Register or update a 24-hour synthetic take profit limit order for an exit strategy."""
+        cfg_24h = getattr(self.settings, "stop_loss_24h", True)
+        if not cfg_24h:
+            return None
+        sym = str(symbol or "").upper().strip()
+        side_clean = str(side or "sell").lower().strip()
+        qty_flt = float(qty or 0.0)
+        limit_px = float(limit_price or 0.0)
+        if not sym or qty_flt <= 0 or limit_px <= 0:
+            return None
+
+        try:
+            limit_px = normalize_stock_order_price(limit_px, field="limit_price")
+        except ValueError:
+            return None
+
+        updated_order = None
+        with self.lock:
+            existing_id = None
+            for oid, o in self.synthetic_orders.items():
+                if (
+                    o.get("symbol") == sym
+                    and o.get("side") == side_clean
+                    and o.get("order_type") == "take_profit"
+                    and o.get("status") in synthetic_order_store.ACTIVE_STATUSES
+                ):
+                    existing_id = oid
+                    break
+
+            if existing_id:
+                live = self.synthetic_orders[existing_id]
+                live["limit_price"] = limit_px
+                live["qty"] = qty_flt
+                live["order_type"] = "take_profit"
+                live["message"] = f"24h take profit target updated ({source}) to ${limit_px:.2f}."
+                updated_order = dict(live)
+
+        if updated_order:
+            self._persist_synthetic_orders()
+            self._start_synthetic_order_watcher()
+            logger.info(
+                "Updated 24h synthetic take profit %s for %s %s qty=%s @ $%.2f",
+                updated_order.get("id"),
+                side_clean,
+                sym,
+                qty_flt,
+                limit_px,
+            )
+            return updated_order
+
+        registered = self._register_synthetic_order(
+            symbol=sym,
+            side=side_clean,
+            qty=qty_flt,
+            order_type="take_profit",
+            time_in_force="gtc",
+            limit_price=limit_px,
+            client_order_id=f"strat_tp_{sym}_{int(time.time())}",
+        )
+        with self.lock:
+            if registered["id"] in self.synthetic_orders:
+                self.synthetic_orders[registered["id"]]["message"] = (
+                    f"24h take profit target active ({source}) @ ${limit_px:.2f}."
+                )
+        self._persist_synthetic_orders()
+        logger.info(
+            "Registered new 24h synthetic take profit %s for %s %s qty=%s @ $%.2f",
+            registered["id"],
+            side_clean,
+            sym,
+            qty_flt,
+            limit_px,
+        )
+        return registered
+
     def cancel_synthetic_stop_for_symbol(self, symbol: str) -> int:
         """Cancel all open synthetic stops for `symbol`."""
         return self._cancel_synthetic_orders_for_symbol(symbol)
@@ -10213,7 +10283,8 @@ class AppState:
                     if o.get("status") in synthetic_order_store.ACTIVE_STATUSES
                 ]
             if not pending:
-                return
+                self._synthetic_order_stop.wait(3.0)
+                continue
             for order_id in pending:
                 if self._synthetic_order_stop.is_set():
                     return
@@ -10341,7 +10412,11 @@ class AppState:
 
         if otype == "stop_limit":
             stop_price = float(snapshot.get("stop_price") or 0)
-            limit_to_send = float(snapshot.get("limit_price") or 0)
+            raw_limit = snapshot.get("limit_price")
+            if raw_limit is not None and float(raw_limit) > 0:
+                limit_to_send = float(raw_limit)
+            else:
+                limit_to_send = round(current_price * 0.995, 2) if side == "sell" else round(current_price * 1.005, 2)
             if side == "sell" and current_price <= stop_price:
                 triggered = True
             elif side == "buy" and current_price >= stop_price:
@@ -10391,6 +10466,17 @@ class AppState:
                     triggered = True
                     limit_to_send = snapshot.get("limit_price") or round(current_price * 1.005, 2)
 
+        elif otype == "take_profit":
+            target_px = float(snapshot.get("limit_price") or 0)
+            if target_px > 0:
+                limit_to_send = target_px
+                # For long exit (side == "sell"), trigger when market reaches or exceeds target price
+                if side == "sell" and current_price >= target_px:
+                    triggered = True
+                # For short exit (side == "buy"), trigger when market drops to or below target price
+                elif side == "buy" and current_price <= target_px:
+                    triggered = True
+
         if triggered and limit_to_send is not None and limit_to_send > 0:
             self._execute_synthetic_trigger(
                 order_id=order_id,
@@ -10432,6 +10518,19 @@ class AppState:
             except Exception as exc:
                 logger.debug("Could not cancel resting stops before synthetic trigger: %s", exc)
 
+            # Also cancel any resting broker exit orders (take profits, limits) on the exit side that hold shares
+            try:
+                exit_side_order = OrderSide.BUY if side == "buy" else OrderSide.SELL
+                for open_ord in service._open_orders(symbol):
+                    try:
+                        o_side = getattr(open_ord, "side", None)
+                        if o_side == exit_side_order:
+                            service.trading.cancel_order_by_id(open_ord.id)
+                    except Exception:
+                        continue
+            except Exception as exc:
+                logger.debug("Could not cancel resting broker exit orders before synthetic trigger: %s", exc)
+
             # Cap qty at actual position size if position shrank
             try:
                 raw_pos = service.get_position_qty(symbol)
@@ -10461,6 +10560,15 @@ class AppState:
                     order["message"] = (
                         f"Triggered at ${current_price:.2f}. Limit order submitted: {sub_id}"
                     )
+                for other_id, other_ord in self.synthetic_orders.items():
+                    if (
+                        other_id != order_id
+                        and other_ord.get("symbol") == symbol
+                        and other_ord.get("status") in synthetic_order_store.ACTIVE_STATUSES
+                    ):
+                        other_ord["status"] = "cancelled"
+                        other_ord["message"] = f"Counterpart synthetic order settled after {order_id} triggered."
+                        other_ord["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
             self._persist_synthetic_orders()
             logger.info(
                 "Synthetic order %s successfully submitted Alpaca limit order %s",
@@ -10634,7 +10742,9 @@ class AppState:
         self._persist_synthetic_orders()
         return True
 
-    def _cancel_synthetic_orders_for_symbol(self, symbol: str = "") -> int:
+    def _cancel_synthetic_orders_for_symbol(
+        self, symbol: str = "", *, order_types: set[str] | None = None
+    ) -> int:
         symbol = str(symbol or "").upper().strip()
         cancelled = 0
         alpaca_ids_to_cancel: list[str] = []
@@ -10643,6 +10753,8 @@ class AppState:
                 if (not symbol or order.get("symbol") == symbol) and order.get(
                     "status"
                 ) in synthetic_order_store.ACTIVE_STATUSES:
+                    if order_types and order.get("order_type") not in order_types:
+                        continue
                     alp_id = order.get("alpaca_order_id")
                     if alp_id:
                         alpaca_ids_to_cancel.append(alp_id)
@@ -10650,7 +10762,7 @@ class AppState:
                     order["message"] = (
                         "Cancelled by user (cancel all)."
                         if not symbol
-                        else f"Cancelled all open orders for {symbol}."
+                        else f"Cancelled open orders for {symbol}."
                     )
                     order["settled_at_iso"] = datetime.now(timezone.utc).isoformat()
                     cancelled += 1
@@ -11092,6 +11204,20 @@ class AppState:
                 )
             ]
 
+            # Also check active synthetic take profit orders
+            synth_tps = [
+                o
+                for o in self.synthetic_orders.values()
+                if str(o.get("symbol", "")).upper() == sym
+                and (
+                    str(o.get("status", "")).lower() in synthetic_order_store.ACTIVE_STATUSES
+                    or str(o.get("status", "")).lower() in {"active", "held", "pending", "waiting"}
+                )
+                and str(o.get("side", "")).lower().replace("orderside.", "") == exit_side
+                and str(o.get("order_type", "")).lower() == "take_profit"
+                and float(o.get("limit_price") or 0) > 0
+            ]
+
             stop_candidates = [
                 float(o.get("stop_price"))
                 for o in stops
@@ -11118,12 +11244,114 @@ class AppState:
                 for o in limits
                 if o.get("limit_price") is not None and float(o.get("limit_price") or 0) > 0
             ]
-            p["has_take_profit"] = bool(limit_candidates or limits)
+            if not limit_candidates and synth_tps:
+                synth_tp_prices = [
+                    float(o.get("limit_price"))
+                    for o in synth_tps
+                    if o.get("limit_price") is not None and float(o.get("limit_price") or 0) > 0
+                ]
+                if synth_tp_prices:
+                    limit_candidates = synth_tp_prices
+
+            p["has_take_profit"] = bool(limit_candidates or limits or synth_tps)
+            p["has_synthetic_take_profit"] = bool(synth_tps)
+            p["has_synthetic_exit"] = bool(synth_stops or synth_tps)
             if limit_candidates:
                 p["take_profit_price"] = max(limit_candidates) if pos_side == "short" else min(limit_candidates)
             else:
                 p["take_profit_price"] = None
-            p["open_orders_count"] = len(sym_orders) + len(synth_stops)
+
+            # Determine protected/exit quantity from active orders
+            p["stop_loss_qty"] = None
+            if p["has_stop_loss"]:
+                matching_stop = None
+                if p["stop_loss_price"] is not None:
+                    matching_stop = next(
+                        (
+                            o
+                            for o in stops
+                            if o.get("stop_price") is not None
+                            and float(o.get("stop_price") or 0) == p["stop_loss_price"]
+                            and o.get("qty") is not None
+                            and float(o.get("qty") or 0) > 0
+                        ),
+                        None,
+                    )
+                if not matching_stop:
+                    matching_stop = next(
+                        (o for o in stops if o.get("qty") is not None and float(o.get("qty") or 0) > 0),
+                        None,
+                    )
+                if matching_stop:
+                    p["stop_loss_qty"] = float(matching_stop["qty"])
+                elif synth_stops:
+                    matching_synth = None
+                    if p["stop_loss_price"] is not None:
+                        matching_synth = next(
+                            (
+                                o
+                                for o in synth_stops
+                                if float(o.get("stop_price") or 0) == p["stop_loss_price"]
+                                and o.get("qty") is not None
+                                and float(o.get("qty") or 0) > 0
+                            ),
+                            None,
+                        )
+                    if not matching_synth and synth_stops:
+                        matching_synth = next(
+                            (o for o in synth_stops if o.get("qty") is not None and float(o.get("qty") or 0) > 0),
+                            None,
+                        )
+                    if matching_synth and matching_synth.get("qty") is not None:
+                        p["stop_loss_qty"] = float(matching_synth["qty"])
+
+            p["take_profit_qty"] = None
+            if p["has_take_profit"]:
+                matching_limit = None
+                if p["take_profit_price"] is not None:
+                    matching_limit = next(
+                        (
+                            o
+                            for o in limits
+                            if o.get("limit_price") is not None
+                            and float(o.get("limit_price") or 0) == p["take_profit_price"]
+                            and o.get("qty") is not None
+                            and float(o.get("qty") or 0) > 0
+                        ),
+                        None,
+                    )
+                if not matching_limit:
+                    matching_limit = next(
+                        (o for o in limits if o.get("qty") is not None and float(o.get("qty") or 0) > 0),
+                        None,
+                    )
+                if matching_limit:
+                    p["take_profit_qty"] = float(matching_limit["qty"])
+                elif synth_tps:
+                    matching_synth_tp = None
+                    if p["take_profit_price"] is not None:
+                        matching_synth_tp = next(
+                            (
+                                o
+                                for o in synth_tps
+                                if float(o.get("limit_price") or 0) == p["take_profit_price"]
+                                and o.get("qty") is not None
+                                and float(o.get("qty") or 0) > 0
+                            ),
+                            None,
+                        )
+                    if not matching_synth_tp and synth_tps:
+                        matching_synth_tp = next(
+                            (o for o in synth_tps if o.get("qty") is not None and float(o.get("qty") or 0) > 0),
+                            None,
+                        )
+                    if matching_synth_tp and matching_synth_tp.get("qty") is not None:
+                        p["take_profit_qty"] = float(matching_synth_tp["qty"])
+
+            # Overall active exit quantity (prefers stop_loss_qty, falls back to take_profit_qty)
+            p["exit_qty"] = p["stop_loss_qty"] if p["stop_loss_qty"] is not None else p["take_profit_qty"]
+
+            p["open_orders_count"] = len(sym_orders) + len(synth_stops) + len(synth_tps)
 
             # How much room is left before the stop fires — the number that
             # actually tells you whether a holding is protected or cornered.

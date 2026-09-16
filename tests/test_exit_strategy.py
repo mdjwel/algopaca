@@ -457,7 +457,7 @@ class TestExitStrategy(unittest.TestCase):
 
     @patch("bot.web_state.AlpacaService")
     def test_take_profit_does_not_disable_existing_extended_stop(self, mock_service_cls):
-        """The target-only action has no extended-hours setting to apply."""
+        """Take profit with extended_hours=False only cancels synthetic take profit, not protective stops."""
         mock_service = MagicMock()
         mock_service_cls.return_value = mock_service
         mock_service.get_position_qty.return_value = 10.0
@@ -472,7 +472,39 @@ class TestExitStrategy(unittest.TestCase):
             extended_hours=False,
         )
 
-        self.state._cancel_synthetic_orders_for_symbol.assert_not_called()
+        self.state._cancel_synthetic_orders_for_symbol.assert_called_once_with(
+            "AAPL", order_types={"take_profit"}
+        )
+
+    @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_take_profit_extended_hours(self, mock_service_cls):
+        """Take profit exit option supports extended_hours toggle."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.arm_take_profit.return_value = {"id": "ord_tp", "limit_price": 110.0}
+
+        # 1. Default (extended_hours omitted -> True)
+        res_default = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="take_profit",
+            take_profit_price=110.0,
+        )
+        self.assertTrue(res_default.get("extended_hours"))
+        config_passed = mock_service_cls.call_args[0][0]
+        self.assertTrue(getattr(config_passed, "stop_loss_24h", False))
+
+        # 2. Explicit extended_hours=False
+        res_off = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="take_profit",
+            take_profit_price=110.0,
+            extended_hours=False,
+        )
+        self.assertFalse(res_off.get("extended_hours"))
+        config_passed_off = mock_service_cls.call_args[0][0]
+        self.assertFalse(getattr(config_passed_off, "stop_loss_24h", True))
 
     @patch("bot.web_state.AlpacaService")
     def test_manage_position_stop_with_dip_hunt_disabled_cancels_existing(self, mock_service_cls):
@@ -809,9 +841,67 @@ class TestArmBracketExit(unittest.TestCase):
             self.assertEqual(pos["stop_loss_price"], 1777.78)
             self.assertTrue(pos["has_take_profit"])
             self.assertEqual(pos["take_profit_price"], 1553.40)
+            self.assertEqual(pos["stop_loss_qty"], 2.0)
+            self.assertEqual(pos["take_profit_qty"], 2.0)
+            self.assertEqual(pos["exit_qty"], 2.0)
             self.assertIsNotNone(pos["stop_distance_pct"])
             # For short, gap = (1726 - 1777.78) / 1726 * 100 = -3.00%, distance = -gap = +3.00%
             self.assertAlmostEqual(pos["stop_distance_pct"], 3.00, places=1)
+
+    def test_positions_overview_preserves_exit_quantities(self):
+        mock_service = MagicMock()
+        mock_service.get_all_positions.return_value = [
+            {
+                "symbol": "AAPL",
+                "side": "long",
+                "qty": 10.0,
+                "avg_entry_price": 150.0,
+                "current_price": 155.0,
+                "market_value": 1550.0,
+                "unrealized_pl": 50.0,
+            }
+        ]
+        # Partial bracket exit protecting 4 shares out of 10
+        mock_service.get_open_orders_summary.return_value = {
+            "AAPL": [
+                {
+                    "id": "ord_tp",
+                    "type": "limit",
+                    "side": "sell",
+                    "qty": 4.0,
+                    "stop_price": None,
+                    "limit_price": 170.0,
+                    "is_stop": False,
+                    "order_class": "oco",
+                },
+                {
+                    "id": "ord_sl",
+                    "type": "stop",
+                    "side": "sell",
+                    "qty": 4.0,
+                    "stop_price": 145.0,
+                    "limit_price": None,
+                    "is_stop": True,
+                    "order_class": "oco",
+                },
+            ]
+        }
+        mock_service.get_account.return_value = {"equity": 50000.0}
+        state = AppState(user_id="test_user")
+        state.multi_trader = MagicMock()
+        state.multi_trader.get_runner_summary.return_value = None
+        state.loop_running = False
+
+        with patch("bot.web_state.AlpacaService", return_value=mock_service):
+            overview = state.positions_overview()
+            pos = overview["positions"][0]
+            self.assertTrue(pos["has_stop_loss"])
+            self.assertEqual(pos["stop_loss_price"], 145.0)
+            self.assertEqual(pos["stop_loss_qty"], 4.0)
+            self.assertTrue(pos["has_take_profit"])
+            self.assertEqual(pos["take_profit_price"], 170.0)
+            self.assertEqual(pos["take_profit_qty"], 4.0)
+            self.assertEqual(pos["exit_qty"], 4.0)
 
     def test_get_open_orders_summary_normalizes_enums_and_legs(self):
         from alpaca.trading.enums import OrderSide, OrderType, OrderClass

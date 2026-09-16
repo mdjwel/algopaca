@@ -70,6 +70,7 @@ const POS_MODAL_IDS = [
 
 let activeExitPosition = null;
 let activeExitMode = "stop_loss";
+const savedExitQtyBySymbol = new Map();
 let activeLotsSymbol = null;
 let lotsRequestSeq = 0;
 let activeLotsData = null;
@@ -734,7 +735,10 @@ function protectionMarkup(pos) {
   }
   if (pos.has_take_profit && pos.take_profit_price != null) {
     const tp = `$${Number(pos.take_profit_price).toFixed(2)}`;
-    parts.push(`<span class="pos-prot-badge tp" title="${escapeHtml(tx("take_profit", "Take profit"))} ${tp}">🎯 ${tp}</span>`);
+    const tpExtSuffix = pos.has_synthetic_take_profit ? " · 24h" : "";
+    parts.push(
+      `<span class="pos-prot-badge tp" title="${escapeHtml(`${tx("take_profit", "Take profit")} ${tp}${pos.has_synthetic_take_profit ? " (Extended / 24h)" : ""}`)}">🎯 ${escapeHtml(tp)}${tpExtSuffix}</span>`
+    );
   }
   if (pos.has_dip_hunt) {
     const dh = pos.dip_hunt_plan;
@@ -1312,7 +1316,8 @@ function openExitStrategyModal(pos, initialMode = null) {
   const dhPlan = pos.dip_hunt_plan;
 
   if (statusIndicator) {
-    const extSuffix = pos.has_synthetic_stop ? " (24h)" : "";
+    const isExt = pos.has_synthetic_stop || pos.has_synthetic_take_profit;
+    const extSuffix = isExt ? " (24h)" : "";
     if (hasSl && hasTp && hasDh) {
       statusIndicator.textContent = tx("status_bracket_dip_active", "Bracket + Re-buy Active") + extSuffix;
       statusIndicator.className = "pos-exit-status-indicator pos";
@@ -1328,7 +1333,9 @@ function openExitStrategyModal(pos, initialMode = null) {
         : tx("status_protected", "Protected");
       statusIndicator.className = "pos-exit-status-indicator pos";
     } else if (hasTp) {
-      statusIndicator.textContent = tx("status_tp_active", "Take Profit Active");
+      statusIndicator.textContent = pos.has_synthetic_take_profit
+        ? tx("status_tp_ext_active", "Take Profit (Extended)")
+        : tx("status_tp_active", "Take Profit Active");
       statusIndicator.className = "pos-exit-status-indicator pos";
     } else {
       statusIndicator.textContent = tx("status_unprotected", "Unprotected");
@@ -1360,22 +1367,18 @@ function openExitStrategyModal(pos, initialMode = null) {
     }
   }
 
-  // Default stop loss price (3% default distance, ensuring valid level)
-  const hasValidSl = pos.stop_loss_price != null && (
-    isShort ? Number(pos.stop_loss_price) > currPx : Number(pos.stop_loss_price) < currPx
-  );
-  const defaultSlPx = hasValidSl
+  // Default stop loss price (preserve existing user-set SL if present, otherwise 3% default distance)
+  const hasExistingSl = pos.stop_loss_price != null && Number(pos.stop_loss_price) > 0;
+  const defaultSlPx = hasExistingSl
     ? Number(pos.stop_loss_price)
     : (isShort ? currPx * 1.03 : currPx * 0.97);
   const slInput = $("pos-exit-sl-price");
   if (slInput) slInput.value = formatExitInputPrice(defaultSlPx);
   if (slInput) slInput.setAttribute("aria-invalid", "false");
 
-  // Default take profit price (5% default target, ensuring valid level)
-  const hasValidTp = pos.take_profit_price != null && (
-    isShort ? Number(pos.take_profit_price) < currPx : Number(pos.take_profit_price) > currPx
-  );
-  const defaultTpPx = hasValidTp
+  // Default take profit price (preserve existing user-set TP if present, otherwise 5% default target)
+  const hasExistingTp = pos.take_profit_price != null && Number(pos.take_profit_price) > 0;
+  const defaultTpPx = hasExistingTp
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.95 : currPx * 1.05);
   const tpInput = $("pos-exit-tp-price");
@@ -1388,7 +1391,7 @@ function openExitStrategyModal(pos, initialMode = null) {
   const bracketSl = $("pos-exit-bracket-sl");
   if (bracketSl) bracketSl.value = formatExitInputPrice(defaultSlPx);
 
-  const bracketDefaultTpPx = hasValidTp
+  const bracketDefaultTpPx = hasExistingTp
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.90 : currPx * 1.10);
   const bracketTp = $("pos-exit-bracket-tp");
@@ -1440,7 +1443,7 @@ function openExitStrategyModal(pos, initialMode = null) {
   const actualSlPx = pos.stop_loss_price != null ? Number(pos.stop_loss_price) : null;
   if (actualSlPx != null && currPx > 0) {
     const calculatedPct = isShort ? ((actualSlPx - currPx) / currPx) * 100 : ((currPx - actualSlPx) / currPx) * 100;
-    if (distBadge) distBadge.textContent = calculatedPct > 0 ? `${calculatedPct.toFixed(1)}%` : "—";
+    if (distBadge) distBadge.textContent = calculatedPct >= 0 ? `${calculatedPct.toFixed(1)}%` : "—";
     let matchedChip = null;
     document.querySelectorAll("[data-sl-pct]").forEach((c) => {
       const p = Number(c.dataset.slPct);
@@ -1450,7 +1453,7 @@ function openExitStrategyModal(pos, initialMode = null) {
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedChip));
       if (customWrap) customWrap.classList.remove("is-active");
       if (customInput) customInput.value = "";
-    } else if (calculatedPct > 0) {
+    } else if (calculatedPct >= 0) {
       document.querySelectorAll("[data-sl-pct]").forEach((c) => c.classList.remove("is-active"));
       if (customWrap) customWrap.classList.add("is-active");
       if (customInput) customInput.value = calculatedPct.toFixed(1);
@@ -1501,16 +1504,45 @@ function openExitStrategyModal(pos, initialMode = null) {
   const heldQty = Math.abs(Number(pos.qty || 0));
   const exitQtyInput = $("pos-exit-qty-input");
   const allowsFractional = (modeToOpen === "take_profit" && !isShort);
+
+  // Look up any previously configured exit quantity (from active broker orders or session cache)
+  let targetQty = null;
+  if (modeToOpen === "bracket") {
+    targetQty = pos.exit_qty ?? pos.stop_loss_qty ?? pos.take_profit_qty ?? savedExitQtyBySymbol.get(pos.symbol);
+  } else if (modeToOpen === "take_profit") {
+    targetQty = pos.take_profit_qty ?? pos.exit_qty ?? savedExitQtyBySymbol.get(pos.symbol);
+  } else {
+    targetQty = pos.stop_loss_qty ?? pos.exit_qty ?? savedExitQtyBySymbol.get(pos.symbol);
+  }
+
+  if (targetQty != null) {
+    targetQty = Number(targetQty);
+    if (!Number.isFinite(targetQty) || targetQty <= 0 || targetQty > heldQty) {
+      targetQty = null;
+    }
+  }
+
+  const selectedQty = targetQty != null ? targetQty : heldQty;
+
   if (exitQtyInput) {
-    exitQtyInput.value = heldQty;
+    exitQtyInput.value = selectedQty;
     exitQtyInput.max = String(heldQty);
     exitQtyInput.min = allowsFractional ? "0.0001" : "1";
     exitQtyInput.step = allowsFractional ? "any" : (Number.isInteger(heldQty) ? "1" : "any");
   }
+
+  const calculatedQtyPct = heldQty > 0 ? (selectedQty / heldQty) * 100 : 0;
+  let matchedQtyChip = null;
   document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
-    c.classList.toggle("is-active", c.dataset.exitQtyPct === "100");
+    const chipPct = Number(c.dataset.exitQtyPct);
+    if (Math.abs(chipPct - calculatedQtyPct) < 0.1) {
+      matchedQtyChip = c;
+    }
   });
-  syncExitQtyUi(heldQty, heldQty);
+  document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => {
+    c.classList.toggle("is-active", c === matchedQtyChip);
+  });
+  syncExitQtyUi(selectedQty, heldQty);
 
   // Initialize Dip Hunt accordion & inputs (Long positions only)
   const dhGroup = $("pos-exit-dip-hunt-group");
@@ -1531,10 +1563,14 @@ function openExitStrategyModal(pos, initialMode = null) {
     dhGroup.open = hasDh && !isShort;
   }
 
-  // Reset extended hours option to checked by default
+  // Reset extended hours option to match active protection or default to true
   const extHoursCheckbox = $("pos-exit-extended-hours");
   if (extHoursCheckbox) {
-    extHoursCheckbox.checked = true;
+    if (hasSl || hasTp) {
+      extHoursCheckbox.checked = !!(pos.has_synthetic_stop || pos.has_synthetic_take_profit);
+    } else {
+      extHoursCheckbox.checked = true;
+    }
   }
 
   // Reset Clear Exits checkboxes to checked
@@ -1724,10 +1760,7 @@ function setExitMode(mode) {
     sizingCard.hidden = mode === "clear";
   }
   if (extHoursWrap) {
-    // A stand-alone profit target is a native GTC limit order. It has no
-    // synthetic/extended-hours setting, so avoid implying that this switch
-    // applies to it (or carrying an unrelated preference into the request).
-    extHoursWrap.hidden = mode === "clear" || mode === "take_profit";
+    extHoursWrap.hidden = mode === "clear";
   }
   if (sizingLabel) {
     if (mode === "take_profit") {
@@ -1822,6 +1855,10 @@ function setExitMode(mode) {
     submitBtn.title = disabledTitle;
   }
 
+  const currentExitQtyVal = parseFloat(exitQtyInput?.value) || 0;
+  const currentHeld = activeExitPosition ? Math.abs(Number(activeExitPosition.qty || 0)) : 0;
+  syncExitQtyUi(currentExitQtyVal, currentHeld);
+
   syncExitDipHuntUI();
   updateExitCalculations();
 }
@@ -1839,6 +1876,7 @@ function updateExitCalculations() {
   const qty = (Number.isFinite(parsedQty) && parsedQty > 0 && parsedQty <= heldQty) ? parsedQty : heldQty;
 
   const riskRow = $("pos-exit-risk-row");
+  const riskLabel = $("pos-exit-risk-label");
   const rewardRow = $("pos-exit-reward-row");
   const rrRow = $("pos-exit-rr-row");
   const riskEl = $("pos-exit-preview-risk");
@@ -1892,6 +1930,14 @@ function updateExitCalculations() {
   if (riskRow) riskRow.hidden = riskAmount == null;
   if (rewardRow) rewardRow.hidden = rewardAmount == null;
 
+  if (riskLabel) {
+    if (riskAmount != null && riskAmount < 0) {
+      riskLabel.textContent = tx("protected_profit_at_stop", "Protected Gain (at Stop)");
+    } else {
+      riskLabel.textContent = tx("max_downside_risk", "Max Downside Risk");
+    }
+  }
+
   if (riskEl && riskAmount != null) {
     const sign = riskAmount > 0 ? "-" : "+";
     riskEl.textContent = `${sign}$${Math.abs(riskAmount).toFixed(2)} (${sign}${Math.abs(riskPct).toFixed(1)}%)`;
@@ -1908,7 +1954,16 @@ function updateExitCalculations() {
     if (riskAmount != null && rewardAmount != null && riskAmount > 0 && rewardAmount > 0) {
       rrRow.hidden = false;
       const ratio = (rewardAmount / riskAmount).toFixed(2);
-      if (rrEl) rrEl.textContent = `1 : ${ratio}`;
+      if (rrEl) {
+        rrEl.textContent = `1 : ${ratio}`;
+        rrEl.className = "mono";
+      }
+    } else if (riskAmount != null && rewardAmount != null && riskAmount <= 0 && rewardAmount > 0) {
+      rrRow.hidden = false;
+      if (rrEl) {
+        rrEl.textContent = tx("risk_free_trade", "Risk-Free (Profitable)");
+        rrEl.className = "mono pos";
+      }
     } else {
       rrRow.hidden = true;
     }
@@ -1974,7 +2029,7 @@ async function submitExitStrategy() {
       }
       payload.qty = chosenQty;
 
-      if (["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode)) {
+      if (["stop_loss", "breakeven", "trailing", "take_profit", "bracket"].includes(activeExitMode)) {
         const extHoursCheckbox = $("pos-exit-extended-hours");
         payload.extended_hours = extHoursCheckbox ? extHoursCheckbox.checked : true;
       }
@@ -2095,6 +2150,35 @@ async function submitExitStrategy() {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    if (pos && pos.symbol) {
+      if (activeExitMode === "clear") {
+        savedExitQtyBySymbol.delete(pos.symbol);
+        pos.exit_qty = null;
+        if (payload.action === "cancel_all") {
+          pos.stop_loss_qty = null;
+          pos.take_profit_qty = null;
+        } else if (payload.action === "cancel_stops") {
+          pos.stop_loss_qty = null;
+          pos.exit_qty = pos.take_profit_qty || null;
+        } else if (payload.action === "cancel_take_profit") {
+          pos.take_profit_qty = null;
+          pos.exit_qty = pos.stop_loss_qty || null;
+        }
+      } else if (payload.qty != null && Number(payload.qty) > 0) {
+        const savedQty = Number(payload.qty);
+        savedExitQtyBySymbol.set(pos.symbol, savedQty);
+        pos.exit_qty = savedQty;
+        if (payload.action === "bracket") {
+          pos.stop_loss_qty = savedQty;
+          pos.take_profit_qty = savedQty;
+        } else if (payload.action === "take_profit") {
+          pos.take_profit_qty = savedQty;
+        } else {
+          pos.stop_loss_qty = savedQty;
+        }
+      }
     }
 
     closeExitStrategyModal();
@@ -3872,6 +3956,9 @@ function initPositionsUi() {
       const qtyInput = $("pos-exit-qty-input");
       if (qtyInput) qtyInput.value = q;
       document.querySelectorAll("[data-exit-qty-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      if (activeExitPosition.symbol) {
+        savedExitQtyBySymbol.set(activeExitPosition.symbol, q);
+      }
       syncExitQtyUi(q, heldQty);
       updateExitCalculations();
     });
@@ -3887,6 +3974,9 @@ function initPositionsUi() {
       const chipPct = Number(c.dataset.exitQtyPct);
       c.classList.toggle("is-active", Math.abs(chipPct - pct) < 0.1);
     });
+    if (activeExitPosition.symbol && val > 0) {
+      savedExitQtyBySymbol.set(activeExitPosition.symbol, val);
+    }
     syncExitQtyUi(val, heldQty);
     updateExitCalculations();
   });

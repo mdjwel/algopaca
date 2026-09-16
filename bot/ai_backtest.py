@@ -43,17 +43,15 @@ UNSHORTABLE_SYMBOLS: set[str] = {
 }
 
 # Opposing leveraged bull / inverse pairs: holding both simultaneously creates mutual drag and counter-decay.
-OPPOSING_METALS_PAIRS: dict[str, set[str]] = {
-    "GLD": {"GLL"},
-    "IAU": {"GLL"},
-    "GLL": {"GLD", "IAU", "UGL"},
-    "UGL": {"GLL"},
-    "GDXU": {"GDXD"},
-    "GDXD": {"GDXU"},
-    "NUGT": {"DUST"},
-    "DUST": {"NUGT"},
-    "AGQ": {"ZSL"},
-    "ZSL": {"AGQ"},
+OPPOSING_METALS_PAIRS: dict[str, str] = {
+    "GDXU": "GDXD",
+    "GDXD": "GDXU",
+    "NUGT": "DUST",
+    "DUST": "NUGT",
+    "UGL": "GLL",
+    "GLL": "UGL",
+    "AGQ": "ZSL",
+    "ZSL": "AGQ",
 }
 
 
@@ -74,14 +72,12 @@ class AiBacktestParams:
     allow_short: bool = True
     ai_provider: str | None = None
     ai_model: str | None = None
-    # A stopped short alone is not a validated long signal. Reversal buys are
-    # opt-in for event-specific experiments, never the default portfolio rule.
-    reversal_buy_on_stop: bool = False
+    reversal_buy_on_stop: bool = True
 
     def __post_init__(self) -> None:
         if self.preset == "gold_silver_macro":
             if self.take_profit_r == 2.0:
-                self.take_profit_r = 3.2
+                self.take_profit_r = 4.0
             if self.trail_after_r == 1.0:
                 self.trail_after_r = 2.0
             if self.min_confidence == 0.55:
@@ -127,7 +123,6 @@ class _OpenPosition:
     thesis: str = ""
     trail_armed: bool = False
     scaled_out: bool = False
-    scale_tier: int = 0
     event_protected: bool = False
 
 
@@ -156,37 +151,6 @@ def _sharpe_sortino(equity: list[float], period_returns_per_year: float = 252.0)
     sharpe = round(((mean - rf) / std) * math.sqrt(period_returns_per_year), 2)
     sortino = round(((mean - rf) / downside_std) * math.sqrt(period_returns_per_year), 2)
     return sharpe, sortino
-
-
-def _periods_per_year(equity_curve: list[dict[str, Any]]) -> float:
-    """Infer annualisation frequency from the marked equity timestamps."""
-    stamps = pd.to_datetime(
-        [point.get("t") for point in equity_curve if point.get("t")],
-        utc=True,
-        errors="coerce",
-    ).dropna()
-    if len(stamps) < 3:
-        return 252.0
-    deltas = stamps.to_series().diff().dropna().dt.total_seconds()
-    median_seconds = float(deltas.median()) if not deltas.empty else 0.0
-    # US regular trading sessions last 6.5 hours.  Daily and longer bars retain
-    # the conventional 252-period annualisation.
-    if 0.0 < median_seconds < 12 * 60 * 60:
-        return min(252.0 * 390.0, 252.0 * 6.5 * 3600.0 / median_seconds)
-    return 252.0
-
-
-def _elapsed_years(start_time: str, end_time: str, fallback_periods: int, periods_per_year: float) -> float:
-    """Calendar-time duration for CAGR, with a safe bar-count fallback."""
-    try:
-        start = pd.Timestamp(start_time)
-        end = pd.Timestamp(end_time)
-        seconds = (end - start).total_seconds()
-        if seconds > 0:
-            return max(1.0 / 365.25, seconds / (365.25 * 24.0 * 60.0 * 60.0))
-    except (TypeError, ValueError):
-        pass
-    return max(1.0 / periods_per_year, fallback_periods / periods_per_year)
 
 
 def compute_ai_indicator_frame(
@@ -319,22 +283,22 @@ def evaluate_ai_signal(
     if sym in UNSHORTABLE_SYMBOLS:
         allow_short = False
 
-    if preset_id == "gold_silver_macro" and sym in {"GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"}:
+    if preset_id == "gold_silver_macro" and sym in {"GDX", "GDXJ", "DUST", "UGL"}:
         return Signal.HOLD, 0.0, f"{sym} is strictly excluded from the AI Gold & Silver Macro playbook"
 
     close = float(row["close"])
-    sma10 = float(row["sma10"]) if ("sma10" in row and not np.isnan(row["sma10"])) else close
-    sma20 = float(row["sma20"]) if ("sma20" in row and not np.isnan(row["sma20"])) else close
-    sma50 = float(row["sma50"]) if ("sma50" in row and not np.isnan(row["sma50"])) else close
-    sma200 = float(row["sma200"]) if ("sma200" in row and not np.isnan(row["sma200"])) else close
-    rsi = float(row["rsi14"]) if ("rsi14" in row and not np.isnan(row["rsi14"])) else 50.0
-    adx = float(row["adx14"]) if ("adx14" in row and not np.isnan(row["adx14"])) else 20.0
-    atr_pct = float(row["atr_pct"]) if ("atr_pct" in row and not np.isnan(row["atr_pct"])) else 2.0
-    dist_sma50 = float(row["dist_sma50_atr"]) if ("dist_sma50_atr" in row and not np.isnan(row["dist_sma50_atr"])) else 0.0
-    macd_hist = float(row["macd_hist"]) if ("macd_hist" in row and not np.isnan(row["macd_hist"])) else 0.0
-    prev_hist = float(prev_row["macd_hist"]) if (prev_row is not None and "macd_hist" in prev_row and not np.isnan(prev_row["macd_hist"])) else macd_hist
-    vol_ratio = float(row["vol_ratio"]) if ("vol_ratio" in row and not np.isnan(row["vol_ratio"])) else 1.0
-    pct_b = float(row["bb_pct_b"]) if ("bb_pct_b" in row and not np.isnan(row["bb_pct_b"])) else 0.5
+    sma10 = float(row["sma10"]) if not np.isnan(row["sma10"]) else close
+    sma20 = float(row["sma20"]) if not np.isnan(row["sma20"]) else close
+    sma50 = float(row["sma50"]) if not np.isnan(row["sma50"]) else close
+    sma200 = float(row["sma200"]) if not np.isnan(row["sma200"]) else close
+    rsi = float(row["rsi14"]) if not np.isnan(row["rsi14"]) else 50.0
+    adx = float(row["adx14"]) if not np.isnan(row["adx14"]) else 20.0
+    atr_pct = float(row["atr_pct"]) if not np.isnan(row["atr_pct"]) else 2.0
+    dist_sma50 = float(row["dist_sma50_atr"]) if not np.isnan(row["dist_sma50_atr"]) else 0.0
+    macd_hist = float(row["macd_hist"]) if not np.isnan(row["macd_hist"]) else 0.0
+    prev_hist = float(prev_row["macd_hist"]) if prev_row is not None and not np.isnan(prev_row["macd_hist"]) else macd_hist
+    vol_ratio = float(row["vol_ratio"]) if not np.isnan(row["vol_ratio"]) else 1.0
+    pct_b = float(row["bb_pct_b"]) if not np.isnan(row["bb_pct_b"]) else 0.5
 
     # 1. Hard global safety gates
     if atr_pct > 6.5:
@@ -393,12 +357,12 @@ def evaluate_ai_signal(
             return Signal.SELL, min(conf, 0.90), f"Trend+ATR Short: Bearish structure (ADX={adx:.1f}, price < SMA20)"
 
     elif preset_id == "gold_silver_macro":
-        # Strictly exclude GDX, GDXJ, DUST, UGL, GDXU, and GDXD from the AI Gold & Silver Macro playbook
-        if sym in {"GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"}:
+        # Strictly exclude GDX, GDXJ, DUST, and UGL from the AI Gold & Silver Macro playbook
+        if sym in {"GDX", "GDXJ", "DUST", "UGL"}:
             return Signal.HOLD, 0.0, f"{sym} is strictly excluded from the AI Gold & Silver Macro playbook"
 
-        is_inverse = sym in {"GLL", "ZSL", "JDST"}
-        is_leveraged_bull = sym in {"UGL", "AGQ", "NUGT", "JNUG"}
+        is_inverse = sym in {"GLL", "GDXD", "ZSL", "JDST"}
+        is_leveraged_bull = sym in {"GDXU", "UGL", "AGQ", "NUGT", "JNUG"}
         is_silver = sym in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}
         is_miner = False
 
@@ -417,15 +381,8 @@ def evaluate_ai_signal(
         dollar_trend = str(row.get("dollar_trend") or "neutral")
         dollar_mixed = bool(row.get("dollar_mixed", False) or dollar_trend == "neutral")
 
-        # 1. Inverse ETFs (e.g. GLL, ZSL): express bear view by BUYING long
+        # 1. Inverse ETFs (e.g. GDXD, GLL, ZSL): express bear view by BUYING long
         if is_inverse:
-            if dollar_mixed:
-                return Signal.HOLD, 0.20, f"Dollar is mixed/neutral; no inverse ETF entry on {sym}"
-            if macro_score is not None and macro_score >= 0.0:
-                return Signal.HOLD, 0.20, f"Macro score ({macro_score:+.2f} >= 0.0) is constructive; inverse ETF {sym} stands aside"
-            if not is_bear_regime and (macro_score is None or macro_score > -0.5):
-                return Signal.HOLD, 0.30, f"Inverse ETF {sym} stands aside: bullion is not in confirmed bear regime"
-
             dt = getattr(row, "name", None)
             if dt is not None and hasattr(dt, "hour"):
                 try:
@@ -459,11 +416,8 @@ def evaluate_ai_signal(
         held_trend_support = (close >= sma50) or (dist_sma50 >= -0.85)
 
         # Pullback Entry Rule 2:
-        # Dynamic RSI Pullback Band: In strong bull trend (ADX >= 25 or macro_score >= 1.5), relax RSI limit to 65.0
-        strong_bull = (adx >= 25.0) or (macro_score is not None and macro_score >= 1.5)
-        pullback_rsi_max = 65.0 if strong_bull else 58.0
-        pullback_sma_thresh = (sma20 * 1.015) if strong_bull else (sma20 * 1.01)
-        pullback_zone = (38.0 <= rsi <= pullback_rsi_max) or (close <= pullback_sma_thresh)
+        # RSI between 38 and 58, OR price at/near/below 20-day SMA (no breakout chasing)
+        pullback_zone = (38.0 <= rsi <= 58.0) or (close <= sma20 * 1.01)
         pullback_ok = pullback_zone and bullish_candle and rsi_stabilizing and held_trend_support
         not_overextended = dist_sma50 <= 3.2
 
@@ -555,15 +509,8 @@ def run_ai_backtest(
     params: AiBacktestParams | None = None,
     macro_bars: dict[str, pd.DataFrame] | None = None,
     calendar_events: list[dict[str, Any]] | None = None,
-    evaluation_start: datetime | pd.Timestamp | None = None,
 ) -> dict[str, Any]:
-    """Replay the AI Trader engine walk-forward over historical bars.
-
-    ``evaluation_start`` keeps pre-window bars available for indicators without
-    allowing them to contribute trades or returns.  It is particularly important
-    for intraday metals tests, which need roughly 250 prior trading days for the
-    daily macro factors.
-    """
+    """Replay the AI Trader engine walk-forward over historical bars."""
     p = params or AiBacktestParams()
     if p.preset == "gold_silver_macro":
         if p.take_profit_r == 2.0:
@@ -583,15 +530,6 @@ def run_ai_backtest(
     df = bars.sort_index().copy()
     n = len(df)
     warmup = 35 if n < 100 else (50 if n < 300 else 60)
-    if evaluation_start is not None:
-        boundary = pd.Timestamp(evaluation_start)
-        if df.index.tz is None:
-            boundary = boundary.tz_localize(None) if boundary.tzinfo else boundary
-        elif boundary.tzinfo is None:
-            boundary = boundary.tz_localize(df.index.tz)
-        else:
-            boundary = boundary.tz_convert(df.index.tz)
-        warmup = max(warmup, int(df.index.searchsorted(boundary, side="left")))
     if n <= warmup + 2:
         raise ValueError(f"AI backtest needs more than {warmup + 2} bars, got {n}")
 
@@ -721,13 +659,11 @@ def run_ai_backtest(
                     fill_p = position.stop if bar_open >= position.stop else bar_open
                     reason = "trailing_stop" if position.trail_armed else ("event_stop_loss" if position.event_protected else "stop_loss")
                     _close_position(i, fill_p, reason)
-                # Check Take Profit target & Tiered Scale-out (Tier 1: 2.0R, Tier 2: 3.2R, Tier 3: Runner trails)
-                elif p.preset == "gold_silver_macro":
-                    # Tier 1 scale out: At 2.0R, trim 25% and ratchet stop to breakeven
-                    if gain_r >= 2.0 and position.scale_tier == 0 and position.qty >= 2.0:
-                        trim_qty = round(position.qty * 0.25, 4)
-                        fill_p = (position.entry_price + position.stop_distance * 2.0)
-                        fill_p = fill_p if bar_open <= fill_p else bar_open
+                # Check Take Profit target & Scale-out (Rule 7: Scale-out 50% at 4.0R, runner trails)
+                elif position.target > 0 and (bar_high >= position.target or (p.preset == "gold_silver_macro" and gain_r >= p.take_profit_r)):
+                    if p.preset == "gold_silver_macro" and not position.scaled_out and position.qty >= 2.0:
+                        trim_qty = round(position.qty / 2.0, 4)
+                        fill_p = position.target if bar_open <= position.target else bar_open
                         exit_p = _fill(fill_p, "long", "out")
                         pnl = round((exit_p - position.entry_price) * trim_qty, 2)
                         pnl_pct = round(((exit_p / position.entry_price) - 1.0) * 100.0, 2)
@@ -745,76 +681,71 @@ def run_ai_backtest(
                                 pnl=pnl,
                                 pnl_pct=pnl_pct,
                                 r_multiple=r_mult,
-                                exit_reason="take_profit_tier1_2.0r",
+                                exit_reason="take_profit_scale_out_4.0r",
                                 entry_reason=position.entry_reason,
                                 confidence=position.confidence,
                                 thesis=position.thesis,
                             )
                         )
                         position.qty = round(position.qty - trim_qty, 4)
-                        position.scale_tier = 1
-                        position.stop = max(position.stop, position.entry_price)
-                    # Tier 2 scale out: At 3.2R / 4.0R (effective_tp_r), trim another 25% of initial (~33% of remaining)
-                    elif p.preset == "gold_silver_macro" and gain_r >= (4.0 if ((float(curr_row["adx14"]) if ("adx14" in curr_row and not pd.isna(curr_row["adx14"])) else 0.0) >= 28.0 or (float(curr_row["macro_composite_score"]) if ("macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"])) else 0.0) >= 1.5) else p.take_profit_r) and position.scale_tier == 1 and position.qty >= 1.0:
-                        adx_v = float(curr_row["adx14"]) if ("adx14" in curr_row and not pd.isna(curr_row["adx14"])) else 0.0
-                        macro_v = float(curr_row["macro_composite_score"]) if ("macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"])) else 0.0
-                        eff_tp_r = 4.0 if (adx_v >= 28.0 or macro_v >= 1.5) else p.take_profit_r
-                        trim_qty = round(position.qty * 0.3333, 4)
-                        fill_p = (position.entry_price + position.stop_distance * eff_tp_r)
-                        fill_p = fill_p if bar_open <= fill_p else bar_open
-                        exit_p = _fill(fill_p, "long", "out")
-                        pnl = round((exit_p - position.entry_price) * trim_qty, 2)
-                        pnl_pct = round(((exit_p / position.entry_price) - 1.0) * 100.0, 2)
-                        r_mult = round(pnl / (position.stop_distance * trim_qty), 2) if position.stop_distance > 0 else 0.0
-                        cash = round(cash + trim_qty * position.entry_price + pnl, 2)
-                        trades.append(
-                            AiBacktestTrade(
-                                symbol=symbol,
-                                side="long",
-                                entry_time=position.entry_time,
-                                entry_price=position.entry_price,
-                                exit_time=str(frame.index[i]),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason=f"take_profit_tier2_{eff_tp_r:.1f}r",
-                                entry_reason=position.entry_reason,
-                                confidence=position.confidence,
-                                thesis=position.thesis,
-                            )
-                        )
-                        position.qty = round(position.qty - trim_qty, 4)
-                        position.scale_tier = 2
-                        position.target = 0.0  # Let remaining 50% runner trail with ATR stop
-                    elif position.target > 0 and bar_high >= position.target and position.scale_tier >= 2:
+                        position.scaled_out = True
+                        position.target = 0.0  # Let remaining 50% trail with ATR stop
+                    else:
                         fill_p = position.target if bar_open <= position.target else bar_open
                         _close_position(i, fill_p, "take_profit")
-                    # Regime flip, inverse decay protection or macro exit for Gold/Silver
-                    else:
-                        has_200 = not np.isnan(curr_row["sma200"])
-                        macro_sc = float(curr_row["macro_composite_score"]) if "macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"]) else None
-                        is_inv = symbol.upper() in {"GLL", "ZSL"}
-                        bars_held = i - position.entry_bar
-                        if is_inv and (float(curr_row["rsi14"]) >= 65.0 or bars_held >= 35):
-                            _close_position(i, bar_close, "inverse_decay_protection")
-                        elif has_200 and curr_row["close"] < curr_row["sma200"] and curr_row["close"] < curr_row["sma50"]:
-                            _close_position(i, bar_close, "regime_flip")
-                        elif macro_sc is not None and macro_sc < -1.0:
-                            _close_position(i, bar_close, "regime_flip")
-                elif position.target > 0 and bar_high >= position.target:
-                    fill_p = position.target if bar_open <= position.target else bar_open
-                    _close_position(i, fill_p, "take_profit")
+                # Regime flip, inverse decay protection or macro exit for Gold/Silver
+                elif p.preset == "gold_silver_macro":
+                    has_200 = not np.isnan(curr_row["sma200"])
+                    macro_sc = float(curr_row["macro_composite_score"]) if "macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"]) else None
+                    is_inv = symbol.upper() in {"GLL", "GDXD", "ZSL", "JDST"}
+                    bars_held = i - position.entry_bar
+                    if is_inv and (float(curr_row["rsi14"]) >= 65.0 or bars_held >= 35):
+                        _close_position(i, bar_close, "inverse_decay_protection")
+                    elif has_200 and curr_row["close"] < curr_row["sma200"] and curr_row["close"] < curr_row["sma50"]:
+                        _close_position(i, bar_close, "regime_flip")
+                    elif macro_sc is not None and macro_sc < -1.0:
+                        _close_position(i, bar_close, "regime_flip")
                 # Strategy trend break exit for general presets (close below SMA20 + MACD flipping negative)
                 elif curr_row["close"] < curr_row["sma20"] and curr_row["macd_hist"] < 0 and prev_row is not None and prev_row["macd_hist"] >= 0:
                     _close_position(i, bar_close, "trend_break")
 
             elif position.side == "short":
-                # Rule 4: Mixed Dollar Protection (Close short to cash, no forced long buy)
+                # Rule 4: Mixed Dollar Reversal
+                # If US Dollar index or economic data is Mixed/Neutral, immediately cover short and reverse to long!
                 dollar_is_mixed = bool(curr_row.get("dollar_mixed", False) or str(curr_row.get("dollar_trend", "")).lower() == "neutral")
                 if p.preset == "gold_silver_macro" and dollar_is_mixed:
-                    _close_position(i, bar_close, "dollar_mixed_cover_to_cash")
+                    stopped_qty = position.qty
+                    _close_position(i, bar_close, "dollar_mixed_reversal")
+                    # Immediately reverse to Long position
+                    side = "long"
+                    entry_p = _fill(bar_close, side, "in")
+                    stop_dist = max(0.01, bar_atr * max(0.5, p.atr_stop_mult))
+                    risk_budget = equity * (max(0.1, p.risk_pct) / 100.0)
+                    target_qty = risk_budget / stop_dist if stop_dist > 0 else stopped_qty
+                    if p.qty is not None and p.qty > 0:
+                        target_qty = float(p.qty)
+                    max_qty = (cash * 0.98) / entry_p if entry_p > 0 else 0.0
+                    qty = min(target_qty, max_qty) if max_qty > 0 else target_qty
+                    qty = round(max(1.0 if qty >= 1.0 else 0.01, qty), 4)
+                    if entry_p > 0 and qty > 0 and qty * entry_p <= cash * 1.05:
+                        stop_price = round(entry_p - stop_dist, 2)
+                        target_price = round(entry_p + stop_dist * p.take_profit_r, 2) if p.take_profit_r > 0 else 0.0
+                        cash = round(cash - qty * entry_p, 2)
+                        position = _OpenPosition(
+                            side=side,
+                            entry_price=entry_p,
+                            entry_time=str(stamp),
+                            entry_bar=i,
+                            qty=qty,
+                            stop=stop_price,
+                            target=target_price,
+                            stop_distance=stop_dist,
+                            peak_price=entry_p,
+                            trough_price=entry_p,
+                            entry_reason=f"[{p.preset}] Dollar Mixed Reversal to Long",
+                            confidence=0.85,
+                            thesis="US Dollar data is mixed/neutral; closed short and reversed to long to avoid squeeze.",
+                        )
 
                 if position is not None and position.side == "short":
                     # Trailing stop arming & ratcheting (Rule 7)
@@ -857,73 +788,40 @@ def run_ai_backtest(
                                     thesis="Short stopped out; executed instant reversal buy with -0.8% protective stop.",
                                 )
 
-                    # Check Take Profit target & 3-Tier Scale-out for Gold/Silver
-                    elif p.preset == "gold_silver_macro" and gain_r >= 2.0 and position.scale_tier == 0 and position.qty >= 2.0:
-                        trim_qty = round(position.qty * 0.25, 4)
-                        fill_p = position.entry_price - position.stop_distance * 2.0
-                        fill_p = fill_p if bar_open >= fill_p else bar_open
-                        exit_p = _fill(fill_p, "short", "out")
-                        pnl = round((position.entry_price - exit_p) * trim_qty, 2)
-                        pnl_pct = round(((position.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
-                        r_mult = round(pnl / (position.stop_distance * trim_qty), 2) if position.stop_distance > 0 else 0.0
-                        cash = round(cash + pnl, 2)
-                        trades.append(
-                            AiBacktestTrade(
-                                symbol=symbol,
-                                side="short",
-                                entry_time=position.entry_time,
-                                entry_price=position.entry_price,
-                                exit_time=str(frame.index[i]),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason="take_profit_tier1_2.0r",
-                                entry_reason=position.entry_reason,
-                                confidence=position.confidence,
-                                thesis=position.thesis,
+                    # Check Take Profit target & Scale-out (Rule 7: Scale-out 50% at 4.0R, runner trails)
+                    elif position.target > 0 and (bar_low <= position.target or (p.preset == "gold_silver_macro" and gain_r >= p.take_profit_r)):
+                        if p.preset == "gold_silver_macro" and not position.scaled_out and position.qty >= 2.0:
+                            trim_qty = round(position.qty / 2.0, 4)
+                            fill_p = position.target if bar_open >= position.target else bar_open
+                            exit_p = _fill(fill_p, "short", "out")
+                            pnl = round((position.entry_price - exit_p) * trim_qty, 2)
+                            pnl_pct = round(((position.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
+                            r_mult = round(pnl / (position.stop_distance * trim_qty), 2) if position.stop_distance > 0 else 0.0
+                            cash = round(cash + pnl, 2)
+                            trades.append(
+                                AiBacktestTrade(
+                                    symbol=symbol,
+                                    side="short",
+                                    entry_time=position.entry_time,
+                                    entry_price=position.entry_price,
+                                    exit_time=str(frame.index[i]),
+                                    exit_price=exit_p,
+                                    qty=trim_qty,
+                                    pnl=pnl,
+                                    pnl_pct=pnl_pct,
+                                    r_multiple=r_mult,
+                                    exit_reason="take_profit_scale_out_4.0r",
+                                    entry_reason=position.entry_reason,
+                                    confidence=position.confidence,
+                                    thesis=position.thesis,
+                                )
                             )
-                        )
-                        position.qty = round(position.qty - trim_qty, 4)
-                        position.scale_tier = 1
-                        position.stop = min(position.stop, position.entry_price)
-                    elif p.preset == "gold_silver_macro" and gain_r >= (4.0 if ((float(curr_row["adx14"]) if ("adx14" in curr_row and not pd.isna(curr_row["adx14"])) else 0.0) >= 28.0 or (float(curr_row["macro_composite_score"]) if ("macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"])) else 0.0) >= 1.5) else p.take_profit_r) and position.scale_tier == 1 and position.qty >= 1.0:
-                        adx_v = float(curr_row["adx14"]) if ("adx14" in curr_row and not pd.isna(curr_row["adx14"])) else 0.0
-                        macro_v = float(curr_row["macro_composite_score"]) if ("macro_composite_score" in curr_row and not pd.isna(curr_row["macro_composite_score"])) else 0.0
-                        eff_tp_r = 4.0 if (adx_v >= 28.0 or macro_v >= 1.5) else p.take_profit_r
-                        trim_qty = round(position.qty * 0.3333, 4)
-                        fill_p = position.entry_price - position.stop_distance * eff_tp_r
-                        fill_p = fill_p if bar_open >= fill_p else bar_open
-                        exit_p = _fill(fill_p, "short", "out")
-                        pnl = round((position.entry_price - exit_p) * trim_qty, 2)
-                        pnl_pct = round(((position.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
-                        r_mult = round(pnl / (position.stop_distance * trim_qty), 2) if position.stop_distance > 0 else 0.0
-                        cash = round(cash + pnl, 2)
-                        trades.append(
-                            AiBacktestTrade(
-                                symbol=symbol,
-                                side="short",
-                                entry_time=position.entry_time,
-                                entry_price=position.entry_price,
-                                exit_time=str(frame.index[i]),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason=f"take_profit_tier2_{eff_tp_r:.1f}r",
-                                entry_reason=position.entry_reason,
-                                confidence=position.confidence,
-                                thesis=position.thesis,
-                            )
-                        )
-                        position.qty = round(position.qty - trim_qty, 4)
-                        position.scale_tier = 2
-                        position.target = 0.0
-                    elif position.target > 0 and (bar_low <= position.target or (p.preset != "gold_silver_macro" and gain_r >= p.take_profit_r)):
-                        fill_p = position.target if bar_open >= position.target else bar_open
-                        _close_position(i, fill_p, "take_profit")
+                            position.qty = round(position.qty - trim_qty, 4)
+                            position.scaled_out = True
+                            position.target = 0.0
+                        else:
+                            fill_p = position.target if bar_open >= position.target else bar_open
+                            _close_position(i, fill_p, "take_profit")
                     # Regime flip exit for Gold/Silver
                     elif p.preset == "gold_silver_macro":
                         has_200 = not np.isnan(curr_row["sma200"])
@@ -954,8 +852,7 @@ def run_ai_backtest(
             signals_approved += 1
             side = "long" if sig is Signal.BUY else "short"
             entry_p = _fill(bar_close, side, "in")
-            stop_mult = max(1.8, p.atr_stop_mult) if (p.preset == "gold_silver_macro" and symbol.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}) else p.atr_stop_mult
-            stop_dist = max(0.01, bar_atr * max(0.5, stop_mult))
+            stop_dist = max(0.01, bar_atr * max(0.5, p.atr_stop_mult))
 
             # Risk-based sizing: risk_pct of current equity / stop distance
             risk_budget = equity * (max(0.1, p.risk_pct) / 100.0)
@@ -1117,14 +1014,12 @@ def _score_ai_results(
         )
 
     eq_vals = [e["equity"] for e in equity_curve]
-    periods_per_year = _periods_per_year(equity_curve)
-    sharpe, sortino = _sharpe_sortino(eq_vals, periods_per_year)
+    sharpe, sortino = _sharpe_sortino(eq_vals)
     max_dd = _max_drawdown_pct(eq_vals)
 
-    # Annualized return (CAGR) uses elapsed calendar time; hourly bars must not
-    # be treated as if each were a trading day.
+    # Annualized return (CAGR) assuming ~252 trading days per year
     eval_bars = max(1, total_bars - warmup_bars)
-    years = _elapsed_years(start_time, end_time, eval_bars, periods_per_year)
+    years = max(1.0 / 252.0, eval_bars / 252.0)
     if final_equity > 0 and params.initial_cash > 0:
         annualized_return_pct = round(((final_equity / params.initial_cash) ** (1.0 / years) - 1.0) * 100.0, 2)
     else:
@@ -1218,13 +1113,8 @@ def run_ai_portfolio_backtest(
     params: AiBacktestParams | None = None,
     macro_bars: dict[str, pd.DataFrame] | None = None,
     calendar_events: list[dict[str, Any]] | None = None,
-    evaluation_start: datetime | pd.Timestamp | None = None,
 ) -> dict[str, Any]:
-    """Simulate a shared-cash portfolio backtest across multiple symbols.
-
-    Earlier bars may initialise indicators only; return accounting starts at
-    ``evaluation_start`` when one is supplied.
-    """
+    """Simulate a shared-cash portfolio backtest across multiple symbols."""
     p = params or AiBacktestParams()
     symbols = [s for s, b in bars_by_symbol.items() if b is not None and not b.empty and "close" in b.columns]
     if not symbols:
@@ -1236,18 +1126,6 @@ def run_ai_portfolio_backtest(
         b = bars_by_symbol[s].sort_index()
         frames[s] = compute_ai_indicator_frame(b, symbol=s, macro_bars=macro_bars)
         warmups[s] = 35 if len(b) < 100 else 50
-        if evaluation_start is not None:
-            boundary = pd.Timestamp(evaluation_start)
-            index = frames[s].index
-            if index.tz is None:
-                boundary = boundary.tz_localize(None) if boundary.tzinfo else boundary
-            elif boundary.tzinfo is None:
-                boundary = boundary.tz_localize(index.tz)
-            else:
-                boundary = boundary.tz_convert(index.tz)
-            warmups[s] = max(
-                warmups[s], int(index.searchsorted(boundary, side="left"))
-            )
 
     # Parse high-impact calendar events
     parsed_events: list[tuple[datetime, str]] = []
@@ -1266,19 +1144,8 @@ def run_ai_portfolio_backtest(
             except Exception:
                 pass
 
-    # Unified timestamp timeline.  Do not trade, measure equity, or calculate
-    # buy-and-hold from the indicator warm-up segment.
+    # Unified timestamp timeline
     all_stamps = sorted({ts for f in frames.values() for ts in f.index})
-    if evaluation_start is not None:
-        boundary = pd.Timestamp(evaluation_start)
-        index_tz = next((f.index.tz for f in frames.values() if f.index.tz is not None), None)
-        if index_tz is None:
-            boundary = boundary.tz_localize(None) if boundary.tzinfo else boundary
-        elif boundary.tzinfo is None:
-            boundary = boundary.tz_localize(index_tz)
-        else:
-            boundary = boundary.tz_convert(index_tz)
-        all_stamps = [stamp for stamp in all_stamps if stamp >= boundary]
     if len(all_stamps) < 40:
         raise ValueError("Insufficient overlapping timeline for AI portfolio backtest")
 
@@ -1430,13 +1297,11 @@ def run_ai_portfolio_backtest(
                     exit_p = _fill(fill_p, "long", "out")
                     reason = "trailing_stop" if pos.trail_armed else ("event_stop_loss" if pos.event_protected else "stop_loss")
                     _close_pos(s, exit_p, _ts_str(stamp), reason)
-                # Check Take Profit target & Tiered Scale-out (Tier 1: 2.0R, Tier 2: 3.2R, Tier 3: Runner trails)
-                elif p.preset == "gold_silver_macro":
-                    # Tier 1 scale out: At 2.0R, trim 25% and ratchet stop to breakeven
-                    if gain_r >= 2.0 and pos.scale_tier == 0 and pos.qty >= 2.0:
-                        trim_qty = round(pos.qty * 0.25, 4)
-                        fill_p = (pos.entry_price + pos.stop_distance * 2.0)
-                        fill_p = fill_p if bar_open <= fill_p else bar_open
+                # Check Take Profit target & Scale-out (Rule 7: Scale-out 50% at 4.0R, runner trails)
+                elif pos.target > 0 and (bar_high >= pos.target or (p.preset == "gold_silver_macro" and gain_r >= p.take_profit_r)):
+                    if p.preset == "gold_silver_macro" and not pos.scaled_out and pos.qty >= 2.0:
+                        trim_qty = round(pos.qty / 2.0, 4)
+                        fill_p = pos.target if bar_open <= pos.target else bar_open
                         exit_p = _fill(fill_p, "long", "out")
                         pnl = round((exit_p - pos.entry_price) * trim_qty, 2)
                         pnl_pct = round(((exit_p / pos.entry_price) - 1.0) * 100.0, 2)
@@ -1455,74 +1320,35 @@ def run_ai_portfolio_backtest(
                                 pnl=pnl,
                                 pnl_pct=pnl_pct,
                                 r_multiple=r_mult,
-                                exit_reason="take_profit_tier1_2.0r",
+                                exit_reason="take_profit_scale_out_4.0r",
                                 entry_reason=pos.entry_reason,
                                 confidence=pos.confidence,
                                 thesis=pos.thesis,
                             )
                         )
                         pos.qty = round(pos.qty - trim_qty, 4)
-                        pos.scale_tier = 1
-                        pos.stop = max(pos.stop, pos.entry_price)
-                    # Tier 2 scale out: At 3.2R / 4.0R (effective_tp_r), trim another 25% of initial (~33% of remaining)
-                    elif gain_r >= (4.0 if ((float(row["adx14"]) if ("adx14" in row and not pd.isna(row["adx14"])) else 0.0) >= 28.0 or (float(row["macro_composite_score"]) if ("macro_composite_score" in row and not pd.isna(row["macro_composite_score"])) else 0.0) >= 1.5) else p.take_profit_r) and pos.scale_tier == 1 and pos.qty >= 1.0:
-                        adx_v = float(row["adx14"]) if ("adx14" in row and not pd.isna(row["adx14"])) else 0.0
-                        macro_v = float(row["macro_composite_score"]) if ("macro_composite_score" in row and not pd.isna(row["macro_composite_score"])) else 0.0
-                        eff_tp_r = 4.0 if (adx_v >= 28.0 or macro_v >= 1.5) else p.take_profit_r
-                        trim_qty = round(pos.qty * 0.3333, 4)
-                        fill_p = (pos.entry_price + pos.stop_distance * eff_tp_r)
-                        fill_p = fill_p if bar_open <= fill_p else bar_open
-                        exit_p = _fill(fill_p, "long", "out")
-                        pnl = round((exit_p - pos.entry_price) * trim_qty, 2)
-                        pnl_pct = round(((exit_p / pos.entry_price) - 1.0) * 100.0, 2)
-                        r_mult = round(pnl / (pos.stop_distance * trim_qty), 2) if pos.stop_distance > 0 else 0.0
-                        cash = round(cash + trim_qty * pos.entry_price + pnl, 2)
-                        leg_realized_pnls[s] = round(leg_realized_pnls[s] + pnl, 2)
-                        all_trades.append(
-                            AiBacktestTrade(
-                                symbol=s,
-                                side="long",
-                                entry_time=pos.entry_time,
-                                entry_price=pos.entry_price,
-                                exit_time=_ts_str(stamp),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason=f"take_profit_tier2_{eff_tp_r:.1f}r",
-                                entry_reason=pos.entry_reason,
-                                confidence=pos.confidence,
-                                thesis=pos.thesis,
-                            )
-                        )
-                        pos.qty = round(pos.qty - trim_qty, 4)
-                        pos.scale_tier = 2
-                        pos.target = 0.0  # Remaining 50% runner trails with ATR stop
-                    elif pos.target > 0 and bar_high >= pos.target and pos.scale_tier >= 2:
+                        pos.scaled_out = True
+                        pos.target = 0.0
+                    else:
                         fill_p = pos.target if bar_open <= pos.target else bar_open
                         exit_p = _fill(fill_p, "long", "out")
                         _close_pos(s, exit_p, _ts_str(stamp), "take_profit")
-                    else:
-                        has_200 = not np.isnan(row["sma200"])
-                        loc_now = frames[s].index.get_loc(stamp)
-                        prev_hist = float(frames[s].iloc[loc_now - 1]["macd_hist"]) if isinstance(loc_now, int) and loc_now > 0 else 0.0
-                        macro_sc = float(row["macro_composite_score"]) if "macro_composite_score" in row and not pd.isna(row["macro_composite_score"]) else None
-                        is_inv = s.upper() in {"GLL", "ZSL"}
-                        bars_held = (loc_now - pos.entry_bar) if isinstance(loc_now, int) else 0
-                        if is_inv and (float(row["rsi14"]) >= 65.0 or bars_held >= 35):
-                            exit_p = _fill(bar_close, "long", "out")
-                            _close_pos(s, exit_p, _ts_str(stamp), "inverse_decay_protection")
-                        elif has_200 and bar_close < float(row["sma200"]) and bar_close < float(row["sma50"]):
-                            exit_p = _fill(bar_close, "long", "out")
-                            _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
-                        elif macro_sc is not None and macro_sc < -1.0:
-                            exit_p = _fill(bar_close, "long", "out")
-                            _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
-                elif pos.target > 0 and bar_high >= pos.target:
-                    fill_p = pos.target if bar_open <= pos.target else bar_open
-                    exit_p = _fill(fill_p, "long", "out")
-                    _close_pos(s, exit_p, _ts_str(stamp), "take_profit")
+                elif p.preset == "gold_silver_macro":
+                    has_200 = not np.isnan(row["sma200"])
+                    loc_now = frames[s].index.get_loc(stamp)
+                    prev_hist = float(frames[s].iloc[loc_now - 1]["macd_hist"]) if isinstance(loc_now, int) and loc_now > 0 else 0.0
+                    macro_sc = float(row["macro_composite_score"]) if "macro_composite_score" in row and not pd.isna(row["macro_composite_score"]) else None
+                    is_inv = s.upper() in {"GLL", "GDXD", "ZSL", "JDST"}
+                    bars_held = (loc_now - pos.entry_bar) if isinstance(loc_now, int) else 0
+                    if is_inv and (float(row["rsi14"]) >= 65.0 or bars_held >= 35):
+                        exit_p = _fill(bar_close, "long", "out")
+                        _close_pos(s, exit_p, _ts_str(stamp), "inverse_decay_protection")
+                    elif has_200 and bar_close < float(row["sma200"]) and bar_close < float(row["sma50"]):
+                        exit_p = _fill(bar_close, "long", "out")
+                        _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
+                    elif macro_sc is not None and macro_sc < -1.0:
+                        exit_p = _fill(bar_close, "long", "out")
+                        _close_pos(s, exit_p, _ts_str(stamp), "regime_flip")
                 elif float(row["close"]) < float(row["sma20"]) and float(row["macd_hist"]) < 0:
                     loc_now = frames[s].index.get_loc(stamp)
                     if isinstance(loc_now, int) and loc_now > 0 and float(frames[s].iloc[loc_now - 1]["macd_hist"]) >= 0:
@@ -1530,11 +1356,44 @@ def run_ai_portfolio_backtest(
                         _close_pos(s, exit_p, _ts_str(stamp), "trend_break")
 
             elif pos.side == "short":
-                # Rule 4: Mixed Dollar Protection (Close short to cash, no forced long buy)
+                # Rule 4: Mixed Dollar Reversal
                 dollar_is_mixed = bool(row.get("dollar_mixed", False) or str(row.get("dollar_trend", "")).lower() == "neutral")
                 if p.preset == "gold_silver_macro" and dollar_is_mixed:
+                    stopped_qty = pos.qty
                     exit_p = _fill(bar_close, "short", "out")
-                    _close_pos(s, exit_p, _ts_str(stamp), "dollar_mixed_cover_to_cash")
+                    _close_pos(s, exit_p, _ts_str(stamp), "dollar_mixed_reversal")
+                    # Immediately reverse to Long position
+                    side = "long"
+                    entry_p = _fill(bar_close, side, "in")
+                    bar_atr = float(row["atr14"]) if not np.isnan(row["atr14"]) and float(row["atr14"]) > 0 else bar_close * 0.02
+                    stop_dist = max(0.01, bar_atr * max(0.5, p.atr_stop_mult))
+                    risk_budget = port_equity * (max(0.1, p.risk_pct) / 100.0)
+                    target_qty = risk_budget / stop_dist if stop_dist > 0 else stopped_qty
+                    if p.qty is not None and p.qty > 0:
+                        target_qty = float(p.qty)
+                    max_qty = (cash * 0.95) / entry_p if entry_p > 0 else 0.0
+                    qty = min(target_qty, max_qty) if max_qty > 0 else target_qty
+                    qty = round(max(0.01, qty), 4)
+                    if entry_p > 0 and qty > 0 and qty * entry_p <= cash:
+                        stop_price = round(entry_p - stop_dist, 2)
+                        target_price = round(entry_p + stop_dist * p.take_profit_r, 2) if p.take_profit_r > 0 else 0.0
+                        cash = round(cash - qty * entry_p, 2)
+                        loc_now = frames[s].index.get_loc(stamp)
+                        positions[s] = _OpenPosition(
+                            side=side,
+                            entry_price=entry_p,
+                            entry_time=_ts_str(stamp),
+                            entry_bar=loc_now if isinstance(loc_now, int) else 0,
+                            qty=qty,
+                            stop=stop_price,
+                            target=target_price,
+                            stop_distance=stop_dist,
+                            peak_price=entry_p,
+                            trough_price=entry_p,
+                            entry_reason=f"[{p.preset}] Dollar Mixed Reversal to Long",
+                            confidence=0.85,
+                            thesis="US Dollar data is mixed/neutral; closed short and reversed to long to avoid squeeze.",
+                        )
 
                 if positions[s] is not None and positions[s].side == "short":
                     pos = positions[s]
@@ -1575,76 +1434,41 @@ def run_ai_portfolio_backtest(
                                     confidence=0.80,
                                     thesis="Short stopped out; immediately reversed into protective long position.",
                                 )
-                    # Check Take Profit target & 3-Tier Scale-out for Gold/Silver
-                    elif p.preset == "gold_silver_macro" and gain_r >= 2.0 and pos.scale_tier == 0 and pos.qty >= 2.0:
-                        trim_qty = round(pos.qty * 0.25, 4)
-                        fill_p = pos.entry_price - pos.stop_distance * 2.0
-                        fill_p = fill_p if bar_open >= fill_p else bar_open
-                        exit_p = _fill(fill_p, "short", "out")
-                        pnl = round((pos.entry_price - exit_p) * trim_qty, 2)
-                        pnl_pct = round(((pos.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
-                        r_mult = round(pnl / (pos.stop_distance * trim_qty), 2) if pos.stop_distance > 0 else 0.0
-                        cash = round(cash + pnl, 2)
-                        leg_realized_pnls[s] = round(leg_realized_pnls[s] + pnl, 2)
-                        all_trades.append(
-                            AiBacktestTrade(
-                                symbol=s,
-                                side="short",
-                                entry_time=pos.entry_time,
-                                entry_price=pos.entry_price,
-                                exit_time=_ts_str(stamp),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason="take_profit_tier1_2.0r",
-                                entry_reason=pos.entry_reason,
-                                confidence=pos.confidence,
-                                thesis=pos.thesis,
+                    elif pos.target > 0 and (bar_low <= pos.target or (p.preset == "gold_silver_macro" and gain_r >= p.take_profit_r)):
+                        if p.preset == "gold_silver_macro" and not pos.scaled_out and pos.qty >= 2.0:
+                            trim_qty = round(pos.qty / 2.0, 4)
+                            fill_p = pos.target if bar_open >= pos.target else bar_open
+                            exit_p = _fill(fill_p, "short", "out")
+                            pnl = round((pos.entry_price - exit_p) * trim_qty, 2)
+                            pnl_pct = round(((pos.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
+                            r_mult = round(pnl / (pos.stop_distance * trim_qty), 2) if pos.stop_distance > 0 else 0.0
+                            cash = round(cash + pnl, 2)
+                            leg_realized_pnls[s] = round(leg_realized_pnls[s] + pnl, 2)
+                            all_trades.append(
+                                AiBacktestTrade(
+                                    symbol=s,
+                                    side="short",
+                                    entry_time=pos.entry_time,
+                                    entry_price=pos.entry_price,
+                                    exit_time=_ts_str(stamp),
+                                    exit_price=exit_p,
+                                    qty=trim_qty,
+                                    pnl=pnl,
+                                    pnl_pct=pnl_pct,
+                                    r_multiple=r_mult,
+                                    exit_reason="take_profit_scale_out_4.0r",
+                                    entry_reason=pos.entry_reason,
+                                    confidence=pos.confidence,
+                                    thesis=pos.thesis,
+                                )
                             )
-                        )
-                        pos.qty = round(pos.qty - trim_qty, 4)
-                        pos.scale_tier = 1
-                        pos.stop = min(pos.stop, pos.entry_price)
-                    elif p.preset == "gold_silver_macro" and gain_r >= (4.0 if ((float(row["adx14"]) if ("adx14" in row and not pd.isna(row["adx14"])) else 0.0) >= 28.0 or (float(row["macro_composite_score"]) if ("macro_composite_score" in row and not pd.isna(row["macro_composite_score"])) else 0.0) >= 1.5) else p.take_profit_r) and pos.scale_tier == 1 and pos.qty >= 1.0:
-                        adx_v = float(row["adx14"]) if ("adx14" in row and not pd.isna(row["adx14"])) else 0.0
-                        macro_v = float(row["macro_composite_score"]) if ("macro_composite_score" in row and not pd.isna(row["macro_composite_score"])) else 0.0
-                        eff_tp_r = 4.0 if (adx_v >= 28.0 or macro_v >= 1.5) else p.take_profit_r
-                        trim_qty = round(pos.qty * 0.3333, 4)
-                        fill_p = pos.entry_price - pos.stop_distance * eff_tp_r
-                        fill_p = fill_p if bar_open >= fill_p else bar_open
-                        exit_p = _fill(fill_p, "short", "out")
-                        pnl = round((pos.entry_price - exit_p) * trim_qty, 2)
-                        pnl_pct = round(((pos.entry_price / exit_p) - 1.0) * 100.0, 2) if exit_p > 0 else 0.0
-                        r_mult = round(pnl / (pos.stop_distance * trim_qty), 2) if pos.stop_distance > 0 else 0.0
-                        cash = round(cash + pnl, 2)
-                        leg_realized_pnls[s] = round(leg_realized_pnls[s] + pnl, 2)
-                        all_trades.append(
-                            AiBacktestTrade(
-                                symbol=s,
-                                side="short",
-                                entry_time=pos.entry_time,
-                                entry_price=pos.entry_price,
-                                exit_time=_ts_str(stamp),
-                                exit_price=exit_p,
-                                qty=trim_qty,
-                                pnl=pnl,
-                                pnl_pct=pnl_pct,
-                                r_multiple=r_mult,
-                                exit_reason=f"take_profit_tier2_{eff_tp_r:.1f}r",
-                                entry_reason=pos.entry_reason,
-                                confidence=pos.confidence,
-                                thesis=pos.thesis,
-                            )
-                        )
-                        pos.qty = round(pos.qty - trim_qty, 4)
-                        pos.scale_tier = 2
-                        pos.target = 0.0
-                    elif pos.target > 0 and (bar_low <= pos.target or (p.preset != "gold_silver_macro" and gain_r >= p.take_profit_r)):
-                        fill_p = pos.target if bar_open >= pos.target else bar_open
-                        exit_p = _fill(fill_p, "short", "out")
-                        _close_pos(s, exit_p, _ts_str(stamp), "take_profit")
+                            pos.qty = round(pos.qty - trim_qty, 4)
+                            pos.scaled_out = True
+                            pos.target = 0.0
+                        else:
+                            fill_p = pos.target if bar_open >= pos.target else bar_open
+                            exit_p = _fill(fill_p, "short", "out")
+                            _close_pos(s, exit_p, _ts_str(stamp), "take_profit")
                     elif p.preset == "gold_silver_macro":
                         has_200 = not np.isnan(row["sma200"])
                         loc_now = frames[s].index.get_loc(stamp)
@@ -1688,37 +1512,12 @@ def run_ai_portfolio_backtest(
 
         # 2. Entries if under max_positions
         if open_pos_count < max(1, p.max_positions):
-            # A portfolio's result must not depend on the order in which a
-            # user typed its symbols.  When simultaneous signals compete for
-            # scarce position slots, evaluate the strongest confluence first.
-            entry_priority: dict[str, float] = {}
-            for candidate in symbols:
-                if positions[candidate] is not None or stamp not in frames[candidate].index:
-                    continue
-                loc = frames[candidate].index.get_loc(stamp)
-                if isinstance(loc, slice) or not isinstance(loc, int) or loc < warmups[candidate]:
-                    continue
-                row = frames[candidate].iloc[loc]
-                prev = frames[candidate].iloc[loc - 1] if loc > 0 else None
-                sig, conf, _ = evaluate_ai_signal(
-                    row,
-                    prev,
-                    p,
-                    allow_short=p.allow_short,
-                    symbol=candidate,
-                    gsr_z=gsr_z_map.get(stamp),
-                    event_imminent_45m=event_45m,
-                )
-                entry_priority[candidate] = (
-                    conf if sig in (Signal.BUY, Signal.SELL) and conf >= p.min_confidence else -1.0
-                )
-
-            for s in sorted(symbols, key=lambda item: (-entry_priority.get(item, -1.0), item)):
+            for s in symbols:
                 if positions[s] is not None or stamp not in frames[s].index:
                     continue
-                # Opposing leveraged/hedge pair check: do not hold opposing directions simultaneously (e.g. GLD and GLL)
-                opp_syms = OPPOSING_METALS_PAIRS.get(s.upper(), set())
-                if any(positions.get(opp) is not None for opp in opp_syms):
+                # Opposing leveraged pair check: do not hold GDXU and GDXD simultaneously
+                opp_sym = OPPOSING_METALS_PAIRS.get(s.upper())
+                if opp_sym and positions.get(opp_sym) is not None:
                     continue
                 loc = frames[s].index.get_loc(stamp)
                 if isinstance(loc, slice) or not isinstance(loc, int) or loc < warmups[s]:
@@ -1740,8 +1539,7 @@ def run_ai_portfolio_backtest(
                     bar_atr = float(row["atr14"]) if not np.isnan(row["atr14"]) and float(row["atr14"]) > 0 else float(row["close"]) * 0.02
                     side = "long" if sig is Signal.BUY else "short"
                     entry_p = _fill(float(row["close"]), side, "in")
-                    stop_mult = max(1.8, p.atr_stop_mult) if (p.preset == "gold_silver_macro" and s.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"}) else p.atr_stop_mult
-                    stop_dist = max(0.01, bar_atr * max(0.5, stop_mult))
+                    stop_dist = max(0.01, bar_atr * max(0.5, p.atr_stop_mult))
 
                     risk_budget = port_equity * (max(0.1, p.risk_pct) / 100.0)
                     if p.preset == "gold_silver_macro" and s.upper() in {"SLV", "AGQ", "SIL", "SILJ", "PSLV"} and (gsr_z_map.get(stamp) or 0.0) >= 0.8:
@@ -1797,29 +1595,7 @@ def run_ai_portfolio_backtest(
         if pos is not None:
             last_px = float(frames[s]["close"].iloc[-1])
             exit_p = _fill(last_px, pos.side, "out")
-            _close_pos(s, exit_p, _ts_str(frames[s].index[-1]), "end_of_data")
-
-    # End-of-data closes are real fills.  Include them in the marked curves so
-    # final equity, drawdown, Sharpe, and each leg's metrics agree with P&L.
-    final_stamp = _ts_str(all_stamps[-1])
-    for s in symbols:
-        leg_final_equity = round(max(0.0, hold_alloc + leg_realized_pnls[s]), 2)
-        leg_equity_curves[s].append(
-            {
-                "t": final_stamp,
-                "equity": leg_final_equity,
-                "cash": leg_final_equity,
-                "positions": 0,
-            }
-        )
-    equity_curve.append(
-        {
-            "t": final_stamp,
-            "equity": round(max(0.0, cash), 2),
-            "cash": round(cash, 2),
-            "positions": 0,
-        }
-    )
+            _close_pos(s, exit_p, _ts_str(all_stamps[-1]), "end_of_data")
 
     # Equal-weight buy & hold return of all symbols in the portfolio
     last_prices = {s: float(frames[s]["close"].iloc[-1]) if len(frames[s]) else 0.0 for s in symbols}

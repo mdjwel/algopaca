@@ -101,7 +101,7 @@ def _sanitize(order: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if side not in {"buy", "sell"}:
         return None
-    if otype not in {"stop_limit", "trailing_stop"}:
+    if otype not in {"stop_limit", "trailing_stop", "take_profit"}:
         return None
 
     out = {key: order.get(key) for key in _PERSISTED_FIELDS if key in order}
@@ -123,6 +123,11 @@ def _sanitize(order: dict[str, Any]) -> dict[str, Any] | None:
             if stop_price <= 0 or limit_price <= 0:
                 return None
             out["stop_price"] = stop_price
+            out["limit_price"] = limit_price
+        elif otype == "take_profit":
+            limit_price = float(out.get("limit_price") or 0)
+            if limit_price <= 0:
+                return None
             out["limit_price"] = limit_price
         elif otype == "trailing_stop":
             trail_pct = out.get("trail_percent")
@@ -179,16 +184,20 @@ def save_orders(
     rows.sort(key=lambda o: float(o.get("created_at") or 0.0), reverse=True)
     rows = rows[:MAX_PLANS]
 
-    tmp = path.with_suffix(f"{path.suffix}.tmp")
+    import tempfile
+
+    tmp_path: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(rows, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False, encoding="utf-8") as f:
+            f.write(json.dumps(rows, indent=2) + "\n")
+            tmp_path = Path(f.name)
+        tmp_path.replace(path)
     except Exception as exc:
         logger.warning("could not persist synthetic orders to %s: %s", path, exc)
         try:
-            if tmp.exists():
-                tmp.unlink()
+            if tmp_path is not None and tmp_path.exists():
+                tmp_path.unlink()
         except OSError:
             pass
 

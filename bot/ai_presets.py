@@ -259,27 +259,27 @@ _PRESETS: tuple[AiPreset, ...] = (
     AiPreset(
         id="gold_silver_macro",
         label="AI Gold & Silver Macro Momentum",
-        summary="Calibrated macro & Gold/Silver Ratio playbook: buys pullbacks in confirmed gold uptrends across GLD, SLV & inverse hedge ETF (GLL), with 3-tier profit scaling (2.0R / 3.2R-4.0R / trailing runner) and wide ATR stops (1.6x GLD, 1.8x SLV).",
+        summary="Calibrated macro & Gold/Silver Ratio playbook: buys pullbacks in confirmed gold uptrends across GLD, SLV, GDXU & inverse short ETFs (GLL, GDXD), with a wide ATR stop that lets trends run.",
         min_confidence=0.70,
-        # Calibrated risk management: 1.6 ATR stop for GLD (1.8 ATR cushion for SLV) gives breathing room without excessive loss.
-        # Trailing stop armed at 2.0R ratchets to breakeven (Tier 1), take-profit at 3.2R (expands to 4.0R when ADX >= 28 or macro >= 1.5) (Tier 2),
-        # and 50% runner trails for multi-week trend capture (Tier 3).
+        # Calibrated risk management: 1.6 ATR stop gives breathing room without excessive loss.
+        # Trailing stop armed at 2.0R ratchets to breakeven, and take-profit scale-out target at 4.0R
+        # secures partial profits while the runner trails for multi-week trend capture.
         atr_stop_mult=1.6,
-        take_profit_r=3.2,
+        take_profit_r=4.0,
         trail_after_r=2.0,
         max_positions=2,
         risk_pct=1.8,
         instructions=(
-            "Specialized Gold & Silver (GLD, SLV, GLL, IAU, PHYS) macro playbook.\n"
+            "Specialized Gold & Silver (GLD, SLV, GDXU, GLL, GDXD) macro playbook.\n"
             "This playbook is calibrated against 2007-2025 forward-return studies on GLD, not on folklore. "
             "Three findings drive it, and they overrule intuition when the two conflict:\n"
             "(a) Gold's SHORT-TERM momentum is mean-reverting. 5-20 day momentum has a NEGATIVE correlation "
             "with the next month's return. Buying a fresh breakout in gold is a measured losing edge — buy "
             "pullbacks inside an established uptrend instead.\n"
-            "(b) Falling real yields (TIPS) and a stretched Gold/Silver ratio are the only macro factors with a "
+            "(b) Falling real yields and a stretched Gold/Silver ratio are the only macro factors with a "
             "durable edge. The US Dollar is far weaker than commonly claimed, and gold-miner leadership has "
             "NO measurable predictive power at all — treat miners_signal as colour, never as a reason. "
-            "GDX, GDXJ, DUST, UGL, GDXU, and GDXD are strictly excluded from this playbook to avoid equity beta, counterparty decay, and leveraged drag.\n"
+            "GDX, GDXJ, DUST, and UGL are strictly excluded from this playbook to avoid equity beta and leveraged drag.\n"
             "(c) Overtrading is what destroys returns here. Every fast timing rule tested underperformed "
             "simply holding gold. Time in the trend beats frequency of trades. Never scalp or take small micro-profits.\n"
             "LONG gates (all must hold):\n"
@@ -288,12 +288,12 @@ _PRESETS: tuple[AiPreset, ...] = (
             "2. Macro: macro_composite_score >= 0.0 (constructive/neutral macro bias). The "
             "score is a calibrated -3..+3 blend; scores below -0.5 preceded NEGATIVE average forward returns, "
             "so treat that band as a hard no-buy, not a discount.\n"
-            "3. Entry timing: prefer entering on a PULLBACK — RSI between 38 and 58 (or up to 65 in strong bull regimes with ADX >= 25 or macro >= 1.5), "
-            "or price at or below SMA20 while the higher-timeframe trend stays up. Do NOT require price above EMA9 or a positive "
+            "3. Entry timing: prefer entering on a PULLBACK — RSI between 38 and 58, or price at or below "
+            "SMA20 while the higher-timeframe trend stays up. Do NOT require price above EMA9 or a positive "
             "MACD histogram to go long; demanding short-term strength is the mean-reversion trap in (a).\n"
-            "4. Vehicle: default to pure commodity vehicles (GLD, SLV, IAU, PHYS). "
-            "GDX, GDXJ, DUST, UGL, GDXU, and GDXD are strictly excluded. "
-            "SLV uses an automatic 1.8x ATR stop cushion to accommodate silver's higher volatility beta.\n"
+            "4. Vehicle: default to GLD. Only step up to GDXU (3x miners) when macro_composite_score is "
+            ">= +1.5 (ADX >= 20.0) AND trend_regime is bullish — GDX, GDXJ, DUST, and UGL are strictly excluded. "
+            "GDXU is a long-only bull vehicle (unshortable at Alpaca); NEVER initiate a short/sell to open on it.\n"
             "5. Relative value: when gsr_z_score >= +0.8 or macro_composite_score >= +0.2 the ratio is stretched or supportive. "
             "Historically this marked a risk-off bid that lifted the whole complex AND set up silver catch-up, so SLV is the higher-beta "
             "expression of a bullish call (size boosted). When gsr_z_score <= -1.2 the ratio is compressed — a risk-on tell "
@@ -302,8 +302,8 @@ _PRESETS: tuple[AiPreset, ...] = (
             "1. Regime: trend_regime is 'bearish_below_sma200' and macro_composite_score <= -0.5.\n"
             "2. Confirmation: rising yields (yield_trend 'rising_yields') is the factor that matters most.\n"
             "3. Shorting gold fights a positive long-run drift. Require a clearly bearish macro score and "
-            "size smaller than an equivalent long. Inverse ETF GLL expresses the bearish view without margin "
-            "borrow by BUYING long (action='buy'). DUST, GDXD, and GDXU are strictly excluded. "
+            "size smaller than an equivalent long. Inverse ETFs (GLL, GDXD) express the bearish view without margin "
+            "borrow by BUYING long (action='buy'). DUST is strictly excluded. Never short GDXD or GDXU directly, and never hold opposing pairs like GDXU and GDXD simultaneously. "
             "Do NOT initiate or maintain shorts when US Dollar Index economic data is mixed or dollar_trend is 'neutral'. "
             "Skip late-session entry (hour >= 19 UTC) on inverse ETFs to avoid overnight gap risk.\n"
             "RISK & VOLATILITY GATES:\n"
@@ -311,18 +311,17 @@ _PRESETS: tuple[AiPreset, ...] = (
             "- HARD SKIP when spread_bps > 25.\n"
             "- Do not chase overextended moves when dist_sma50_atr is beyond +3.2 (long) or -3.2 (short).\n"
             "EXITS & RUNNERS:\n"
-            "- Gold's edge is captured by holding trends, so the default answer on an open, working position is HOLD.\n"
-            "- 3-Tier Profit Harvesting:\n"
-            "  * Tier 1 (2.0R): Scale out 25% of position to lock initial profit and ratchet stop to breakeven (entry price).\n"
-            "  * Tier 2 (3.2R - 4.0R): Scale out another 25% of position at take-profit target (dynamically expanded to 4.0R when ADX >= 28 or macro >= 1.5).\n"
-            "  * Tier 3 (50% Runner): Let remaining 50% trail with the ATR trailing stop for multi-week trend capture.\n"
-            "- INVERSE DECAY GUARD: For inverse ETF GLL, never hold longer than ~5 trading days or when inverse RSI reaches >= 65.0 to guard against leveraged volatility decay.\n"
+            "- Gold's edge is captured by holding trends, so the default answer on an open, working position "
+            "is HOLD. Never scalp or cut winners early. Ratchet the stop to breakeven after 2.0R and let the ATR trail do the work for large multi-week gains.\n"
+            "- Scale out at the 4.0R take-profit target; let the remainder trail for multi-week commodity upside.\n"
+            "- INVERSE DECAY GUARD: For inverse ETFs (GLL, GDXD), never hold longer than ~5 trading days or when inverse RSI reaches >= 65.0 to guard against leveraged volatility decay.\n"
             "- Exit early ONLY on a confirmed regime flip (loss of trend_regime), a macro score that has "
             "crossed below -1.0, or a major contradicting catalyst. Do not exit on short-term weakness alone "
             "— shallow pullbacks inside an uptrend are entries, not exits.\n"
             "- REVERSAL RULE: If analysis shows economic data for the US Dollar Index is mixed or neutral "
             "(dollar_trend 'neutral' or dollar_mixed is True), immediately CLOSE/COVER any open sell/short "
-            "position to CASH to avoid squeeze risk. Do NOT force an immediate long buy unless gold meets all technical pullback gates.\n"
+            "position and reverse into a LONG position (action='buy'). Shorting into mixed dollar data carries "
+            "severe squeeze risk; flip to long exposure instead.\n"
             + _SHARED_EXIT
         ),
     ),

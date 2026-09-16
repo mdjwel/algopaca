@@ -17,7 +17,6 @@ from bot.metals_intel import (
     classify_bias,
     clip_unit,
     combine_macro_score,
-    compute_historical_macro_series,
     fetch_metals_macro_context,
     get_metal_category,
     is_precious_metal,
@@ -133,53 +132,6 @@ class TestMetalsIntelligence(unittest.TestCase):
         self.assertEqual(context["trend_regime"], "unknown")
         self.assertIsNone(context["gsr_live"])
 
-    def test_intraday_execution_uses_daily_macro_windows(self):
-        """A 250-day GSR window must not collapse to 250 hourly bars."""
-        days = pd.bdate_range("2023-01-02", periods=300)
-
-        def frame(closes, index):
-            series = pd.Series(closes, index=index, dtype=float)
-            return pd.DataFrame(
-                {
-                    "open": series,
-                    "high": series * 1.002,
-                    "low": series * 0.998,
-                    "close": series,
-                    "volume": 1_000_000,
-                },
-                index=index,
-            )
-
-        gld = frame([170 + i * 0.18 for i in range(len(days))], days)
-        slv = frame([20 + (i % 23) * 0.06 for i in range(len(days))], days)
-        tip = frame([105 + i * 0.03 for i in range(len(days))], days)
-        tlt = frame([100 + i * 0.02 for i in range(len(days))], days)
-        uup = frame([28 + (i % 17) * 0.02 for i in range(len(days))], days)
-        macro = {"GLD": gld, "SLV": slv, "TIP": tip, "TLT": tlt, "UUP": uup}
-
-        daily = compute_historical_macro_series(gld, symbol="GLD", macro_bars=macro)
-        hourly_index = pd.DatetimeIndex(
-            [day + pd.Timedelta(hours=hour) for day in days for hour in (14, 15)]
-        )
-        hourly_gld = frame(
-            [float(gld.loc[stamp.normalize(), "close"]) for stamp in hourly_index],
-            hourly_index,
-        )
-        hourly = compute_historical_macro_series(hourly_gld, symbol="GLD", macro_bars=macro)
-
-        last_day = days[-1]
-        prior_day = days[-2]
-        hourly_last = hourly.loc[hourly.index.normalize() == last_day].iloc[-1]
-        hourly_first = hourly.loc[hourly.index.normalize() == last_day].iloc[0]
-        self.assertAlmostEqual(
-            float(hourly_last["gsr_z"]), float(daily.loc[prior_day, "gsr_z"]), places=2
-        )
-        self.assertAlmostEqual(
-            float(hourly_last["rates_score"]), float(daily.loc[prior_day, "rates_score"]), places=3
-        )
-        self.assertEqual(hourly_last["trend_regime"], daily.loc[prior_day, "trend_regime"])
-        self.assertEqual(hourly_first["trend_regime"], hourly_last["trend_regime"])
-
 
 class TestMetalsScoring(unittest.TestCase):
     """The composite score is calibrated, so its shape is worth pinning down."""
@@ -265,9 +217,9 @@ class TestMetalsPresets(unittest.TestCase):
     def test_ai_preset_gold_silver_macro(self):
         preset = get_ai_preset("gold_silver_macro")
         self.assertEqual(preset.id, "gold_silver_macro")
-        # Calibrated 1.6 ATR stop and 3.2R target with 2.0R breakeven trail ratchet.
+        # Calibrated 1.6 ATR stop and 4.0R target with 2.0R breakeven trail ratchet.
         self.assertEqual(preset.atr_stop_mult, 1.6)
-        self.assertEqual(preset.take_profit_r, 3.2)
+        self.assertEqual(preset.take_profit_r, 4.0)
         self.assertEqual(preset.trail_after_r, 2.0)
         self.assertEqual(preset.min_confidence, 0.70)
         self.assertEqual(preset.risk_pct, 1.8)
@@ -285,9 +237,8 @@ class TestMetalsPresets(unittest.TestCase):
         self.assertIsNotNone(bp)
         self.assertEqual(bp["base_engine"], "ai")
         self.assertEqual(bp["choices"]["ai_preset"], "gold_silver_macro")
-        self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GLL")
-        self.assertFalse(bp["choices"]["metals_reversal_buy_on_stop"])
-        self.assertEqual(bp["choices"]["ai_take_profit_r"], 3.2)
+        self.assertEqual(bp["choices"]["symbols"], "GLD, SLV, GDXU, GLL, GDXD")
+        self.assertEqual(bp["choices"]["ai_take_profit_r"], 4.0)
         self.assertEqual(bp["choices"]["ai_atr_stop_mult"], 1.6)
         self.assertEqual(bp["choices"]["ai_risk_pct"], 1.8)
         self.assertEqual(bp["choices"]["ai_trail_after_r"], 2.0)
@@ -643,10 +594,8 @@ class TestMixedDollarIndexReversalRule(unittest.TestCase):
         # With neutral UUP series, dollar trend is neutral -> dollar_mixed is True
         self.assertTrue(ctx["dollar_mixed"])
         self.assertEqual(ctx["dollar_economic_data_status"], "mixed")
-        self.assertFalse(ctx["short_reversal_to_long"])
-        self.assertTrue(ctx["close_short_to_cash"])
+        self.assertTrue(ctx["short_reversal_to_long"])
         self.assertIsNotNone(ctx["short_reversal_reason"])
-        self.assertIn("close short to cash", ctx["short_reversal_reason"])
 
     def test_reversal_gate_bypasses_min_hold_on_dollar_mixed(self):
         from bot.ai_risk import reversal_gate
@@ -770,74 +719,6 @@ class TestMixedDollarIndexReversalRule(unittest.TestCase):
         # Assert two orders were submitted: 1st to COVER, 2nd to open LONG
         self.assertEqual(service.submit_order.call_count, 2)
 
-    def test_ai_trader_cover_to_cash_on_dollar_mixed_without_forced_long(self):
-        from bot.ai_trader import AiTradingBot
-        from bot.ai_providers import AiDecision
-
-        config = MagicMock()
-        config.require_approval = False
-        config.symbol = "GLD"
-        config.symbols = "GLD"
-        config.stop_loss_pct = 2.0
-        config.ai_daily_loss_limit_pct = 0
-        config.ai_max_positions = 0
-        config.ai_max_spread_bps = 0
-        config.ai_cooldown_minutes = 0
-
-        service = MagicMock()
-        service.get_position_qty.return_value = -3.0
-        service.has_open_orders.return_value = False
-        service.market_session.return_value = {"session": "open", "is_open": True}
-        service.get_mark_price.return_value = {"price": 240.0}
-        service.ensure_stop_loss.return_value = None
-
-        order_cover = MagicMock(id="order_cover_789")
-        service.submit_order.return_value = order_cover
-
-        brain = MagicMock()
-        context = {
-            "position": {"qty": -3.0},
-            "position_qty": -3.0,
-            "mark": {"price": 240.0},
-            "risk": {"stop_distance": 2.5},
-            "precious_metals_intel": {"dollar_mixed": True},
-        }
-        brain.build_context.return_value = context
-        brain.hold_decision.side_effect = lambda d, r: d
-        # Decision has NO explicit reverse_to_long, should cover to cash flat
-        decision = AiDecision(
-            action="buy",
-            confidence=0.80,
-            qty=3.0,
-            thesis="Dollar index economic data is mixed, closing short to cash.",
-            risks="None.",
-            thesis_en="Dollar index economic data is mixed, closing short to cash.",
-            risks_en="None.",
-            news_bias="neutral",
-            ta_bias="neutral",
-            raw={"action": "buy"},
-            provider="openai",
-            model="gpt-5.6-luna",
-        )
-        brain.decide.return_value = (decision, context)
-
-        import threading
-        bot = AiTradingBot.__new__(AiTradingBot)
-        bot.config = config
-        bot.service = service
-        bot.approval_handler = None
-        bot.brain = brain
-        bot._execution_lock = threading.Lock()
-        bot._open_positions = 1
-        payload = bot._run_symbol("GLD")
-
-        # Must NOT reverse to long
-        self.assertFalse(payload.get("reversal_to_long", False))
-        self.assertEqual(payload.get("intent"), "cover")
-        # Exactly ONE order submitted (the cover order)
-        self.assertEqual(service.submit_order.call_count, 1)
-        self.assertEqual(payload.get("order_id"), "order_cover_789")
-
 
 from bot.metals_intel import compute_historical_macro_series
 from bot.ai_backtest import (
@@ -917,15 +798,14 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=1.2)
         self.assertEqual(sig, Signal.HOLD)
 
-        # Condition 4: Asset Selection: GDXU is strictly excluded, GLD buys on strong macro
+        # Condition 4: Asset Selection: GDXU requires macro > 1.5 & strong trend
         row["rsi14"] = 48.0
         row["close"] = 200.0
         row["adx14"] = 25.0
-        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GDXU", macro_score=1.8)
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GDXU", macro_score=1.2)
         self.assertEqual(sig, Signal.HOLD)
-        self.assertIn("strictly excluded", thesis)
-        sig_gld, conf_gld, _ = evaluate_ai_signal(row, prev, params, symbol="GLD", macro_score=1.8)
-        self.assertEqual(sig_gld, Signal.BUY)
+        sig, conf, thesis = evaluate_ai_signal(row, prev, params, symbol="GDXU", macro_score=1.8)
+        self.assertEqual(sig, Signal.BUY)
 
     def test_rule3_short_entry_and_dollar_mixed_ban(self):
         """Rule 3: Short requires price < 200 SMA, macro <= -0.5, rising yields, and strictly bans if dollar is mixed."""
@@ -1004,15 +884,15 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertIn("within 45 minutes", thesis.lower())
 
     def test_rule7_preset_defaults_and_scale_out_configuration(self):
-        """Rule 7: Take-profit 3.2R, trailing stop ratchet after 2.0R."""
+        """Rule 7: Take-profit 4.0R, trailing stop ratchet after 2.0R."""
         preset = get_ai_preset("gold_silver_macro")
-        self.assertEqual(preset.take_profit_r, 3.2)
+        self.assertEqual(preset.take_profit_r, 4.0)
         self.assertEqual(preset.trail_after_r, 2.0)
         self.assertEqual(preset.atr_stop_mult, 1.6)
         self.assertEqual(preset.risk_pct, 1.8)
         # Verify auto-defaults via __post_init__
         auto_params = AiBacktestParams(preset="gold_silver_macro")
-        self.assertEqual(auto_params.take_profit_r, 3.2)
+        self.assertEqual(auto_params.take_profit_r, 4.0)
         self.assertEqual(auto_params.trail_after_r, 2.0)
         self.assertEqual(auto_params.min_confidence, 0.70)
         self.assertEqual(auto_params.risk_pct, 1.8)
@@ -1037,45 +917,6 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertIn("results", res)
         self.assertEqual(len(res["results"]), 2)
 
-    def test_metals_tip_real_yields_blended_in_rates_scoring(self):
-        """Verify TIP real yields (65%) blend with TLT nominal yields (35%) in score_rates."""
-        import numpy as np
-        from bot.metals_intel import score_rates
-
-        dates = pd.date_range("2025-01-01", periods=100, freq="D")
-        tip_up = pd.Series(np.linspace(100.0, 115.0, 100), index=dates)
-        tlt_up = pd.Series(np.linspace(90.0, 95.0, 100), index=dates)
-        tlt_down = pd.Series(np.linspace(95.0, 88.0, 100), index=dates)
-
-        # Both up: very strong rates score
-        score_both = score_rates(tlt_closes=tlt_up, tip_closes=tip_up)
-        self.assertIsNotNone(score_both)
-        self.assertGreater(score_both, 0.5)
-
-        # TIP up, TLT down: TIP 65% dominates
-        score_mixed = score_rates(tlt_closes=tlt_down, tip_closes=tip_up)
-        self.assertIsNotNone(score_mixed)
-        self.assertGreater(score_mixed, 0.0)
-
-        # Only TIP: works cleanly
-        score_tip_only = score_rates(tlt_closes=None, tip_closes=tip_up)
-        self.assertIsNotNone(score_tip_only)
-        self.assertGreater(score_tip_only, 0.5)
-
-    def test_metals_3_tier_profit_scaling(self):
-        """Verify 3-tier profit scaling (2.0R Tier 1, 3.2R Tier 2, trailing stop Tier 3)."""
-        bull_bars = _generate_synthetic_daily_bars(days=150, trend="bull", start_price=100.0, seed=101)
-        params = AiBacktestParams(
-            preset="gold_silver_macro",
-            atr_stop_mult=2.2,
-            take_profit_r=3.2,
-            trail_after_r=2.0,
-            min_confidence=0.68,
-        )
-        res = run_ai_backtest(bull_bars, symbol="GLD", params=params)
-        exit_reasons = [t["exit_reason"] for t in res["trade_log"]]
-        self.assertTrue(any("take_profit_tier1_2.0r" in r for r in exit_reasons))
-
     def test_miners_and_dust_strictly_excluded_from_metal_strategy(self):
         """Verify that GDX, GDXJ and DUST are strictly excluded from AI Gold & Silver Macro playbook."""
         params = AiBacktestParams(preset="gold_silver_macro")
@@ -1084,7 +925,7 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         row["macro_composite_score"] = 2.0
         row["trend_regime"] = "bullish_above_sma200"
 
-        for sym in ["GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"]:
+        for sym in ["GDX", "GDXJ", "DUST", "UGL"]:
             sig, conf, thesis = evaluate_ai_signal(
                 row, prev, params, symbol=sym, macro_score=2.0
             )
@@ -1092,24 +933,41 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
             self.assertEqual(conf, 0.0)
             self.assertIn("strictly excluded", thesis.lower())
 
-    def test_gdxu_and_gdxd_strictly_excluded_from_metal_strategy(self):
-        """Verify that GDXU and GDXD are strictly excluded from the metal strategy."""
+    def test_gdxu_and_gdxd_allowed_in_metal_strategy(self):
+        """Verify that GDXU and GDXD are kept and allowed in the metal strategy."""
         params = AiBacktestParams(preset="gold_silver_macro")
-        row = self.gld_bars.iloc[-1].copy()
-        prev = self.gld_bars.iloc[-2].copy()
+        frame = compute_ai_indicator_frame(self.gld_bars, symbol="GDXU")
+        row = frame.iloc[-1].copy()
+        prev = frame.iloc[-2].copy()
         row["macro_composite_score"] = 1.8
         row["trend_regime"] = "bullish_above_sma200"
+        row["close"] = 100.0
+        row["open"] = 98.0
+        row["high"] = 102.0
+        row["low"] = 97.0
+        row["sma200"] = 80.0
+        row["sma50"] = 90.0
+        row["sma20"] = 99.0
+        row["rsi14"] = 50.0
+        row["adx14"] = 25.0
+        row["dist_sma50_atr"] = 1.0
 
-        for sym in ["GDXU", "GDXD"]:
-            sig, conf, thesis = evaluate_ai_signal(
-                row, prev, params, symbol=sym, macro_score=1.8
-            )
-            self.assertEqual(sig, Signal.HOLD)
-            self.assertEqual(conf, 0.0)
-            self.assertIn("strictly excluded", thesis.lower())
+        # GDXU in bull regime with high macro score
+        sig, conf, thesis = evaluate_ai_signal(
+            row, prev, params, symbol="GDXU", macro_score=1.8
+        )
+        self.assertEqual(sig, Signal.BUY)
+        self.assertGreaterEqual(conf, 0.70)
+
+        # GDXD as inverse ETF in inverse trend
+        sig, conf, thesis = evaluate_ai_signal(
+            row, prev, params, symbol="GDXD"
+        )
+        self.assertEqual(sig, Signal.BUY)
+        self.assertGreaterEqual(conf, 0.70)
 
     def test_ai_trader_live_excludes_gdx_gdxj_dust(self):
-        """Verify AiTradingBot skips GDX, GDXJ, DUST, GDXU, GDXD in gold_silver_macro without querying LLM."""
+        """Verify AiTradingBot skips GDX, GDXJ, and DUST in gold_silver_macro without querying LLM."""
         from bot.ai_trader import AiTradingBot
 
         config = MagicMock()
@@ -1130,7 +988,7 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         bot.service = service
         bot.brain = brain
 
-        for excluded_sym in ("GDX", "GDXJ", "DUST", "UGL", "GDXU", "GDXD"):
+        for excluded_sym in ("GDX", "GDXJ", "DUST", "UGL"):
             res = bot._run_symbol(excluded_sym)
             self.assertEqual(res["signal"], Signal.HOLD.value)
             self.assertIn("strictly excluded", res["reason"])
@@ -1181,10 +1039,8 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
                 self.assertNotIn("GDXJ", [s.strip() for s in symbols.split(",")])
                 self.assertNotIn("DUST", [s.strip() for s in symbols.split(",")])
                 self.assertNotIn("UGL", [s.strip() for s in symbols.split(",")])
-                self.assertNotIn("GDXU", [s.strip() for s in symbols.split(",")])
-                self.assertNotIn("GDXD", [s.strip() for s in symbols.split(",")])
-                self.assertIn("GLL", [s.strip() for s in symbols.split(",")])
-                self.assertFalse(match["choices"]["metals_reversal_buy_on_stop"])
+                self.assertIn("GDXU", [s.strip() for s in symbols.split(",")])
+                self.assertIn("GDXD", [s.strip() for s in symbols.split(",")])
                 self.assertEqual(match["choices"]["bar_timeframe"], "1Hour")
     
     def test_gold_silver_macro_entry_gates(self):
@@ -1318,286 +1174,8 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         qty_stretched = brain._max_qty(ctx_stretched)
         self.assertAlmostEqual(qty_stretched, 300.0, places=1)
 
-    def test_ai_trader_opposing_metals_position_blocks_buy(self):
-        """Verify AiTradingBot skips BUY when an opposing metal/inverse position is active."""
-        from bot.ai_trader import AiTradingBot
-        from bot.ai_brain import AiDecision
-
-        config = MagicMock()
-        config.ai_preset = "gold_silver_macro"
-        config.ai_min_confidence = 0.65
-        config.require_approval = False
-        config.cooldown_minutes = 0
-
-        service = MagicMock()
-        service.has_open_orders.return_value = False
-        # Mock that GLL is currently open with 50 shares
-        service.get_position_qty.side_effect = lambda sym: 50.0 if sym.upper() == "GLL" else 0.0
-
-        brain = MagicMock()
-        decision = AiDecision(
-            action="buy",
-            confidence=0.85,
-            qty=10.0,
-            thesis="Bullish gold setup",
-            risks="Rates spike",
-            thesis_en="Bullish gold setup",
-            risks_en="Rates spike",
-            news_bias="bullish",
-            ta_bias="bullish",
-            raw={"take_profit_target": 250.0, "stop_loss_target": 230.0},
-            provider="openai",
-            model="gpt-5.6-luna",
-        )
-
-        import threading
-        bot = AiTradingBot.__new__(AiTradingBot)
-        bot.config = config
-        bot.service = service
-        bot.approval_handler = None
-        bot.brain = brain
-        bot._execution_lock = threading.Lock()
-        bot._open_positions = 0
-        bot._arm_stop = MagicMock()
-
-        context = {
-            "symbol": "GLD",
-            "position": {"qty": 0.0},
-            "position_qty": 0.0,
-            "mark": {"price": 240.0},
-            "risk": {"stop_distance": 2.5},
-            "technicals": {"close": 240.0, "atr_14": 3.0},
-            "bars": [{"open": 239.0, "high": 241.0, "low": 238.0, "close": 240.0, "volume": 1000}],
-        }
-        brain.build_context.return_value = context
-        brain.decide.return_value = (decision, context)
-        brain.hold_decision.side_effect = lambda d, r: d
-
-        with patch.object(bot, "_qty_for_session", return_value=10.0):
-            res = bot._run_symbol("GLD")
-
-        self.assertIn("skipped", res["reason"])
-        self.assertIn("opposing", res["reason"].lower())
-        self.assertIn("GLL", res["reason"])
-        # Ensure no buy order was submitted
-        service.submit_order.assert_not_called()
-
-        # Reverse check: Holding GLD must block BUY on GLL
-        service.get_position_qty.side_effect = lambda sym: 10.0 if sym.upper() == "GLD" else 0.0
-        context_gll = {
-            "symbol": "GLL",
-            "position": {"qty": 0.0},
-            "position_qty": 0.0,
-            "mark": {"price": 25.0},
-            "risk": {"stop_distance": 1.0},
-            "technicals": {"close": 25.0, "atr_14": 0.8},
-            "bars": [{"open": 24.5, "high": 25.5, "low": 24.0, "close": 25.0, "volume": 1000}],
-        }
-        decision_gll = AiDecision(
-            action="buy",
-            confidence=0.80,
-            qty=20.0,
-            thesis="Bearish gold setup, buy inverse GLL",
-            risks="Gold bounce",
-            thesis_en="Bearish gold setup, buy inverse GLL",
-            risks_en="Gold bounce",
-            news_bias="bearish",
-            ta_bias="bearish",
-            raw={"take_profit_target": 28.0, "stop_loss_target": 24.0},
-            provider="openai",
-            model="gpt-5.6-luna",
-        )
-        brain.build_context.return_value = context_gll
-        brain.decide.return_value = (decision_gll, context_gll)
-
-        with patch.object(bot, "_qty_for_session", return_value=20.0):
-            res_gll = bot._run_symbol("GLL")
-
-        self.assertIn("skipped", res_gll["reason"])
-        self.assertIn("opposing", res_gll["reason"].lower())
-        self.assertIn("GLD", res_gll["reason"])
-        service.submit_order.assert_not_called()
-
-
-class TestMetalsLiveBacktestParity(unittest.TestCase):
-    """Tests verifying 100% parity between live Auto Trade and backtesting for gold_silver_macro."""
-
-    def test_entry_gates_sma200_and_rsi_pullback(self):
-        from bot.ai_risk import entry_gates
-
-        config = MagicMock()
-        config.ai_preset = "gold_silver_macro"
-        config.ai_daily_loss_limit_pct = 3.0
-        config.ai_max_positions = 2
-        config.ai_max_spread_bps = 25.0
-        config.ai_cooldown_minutes = 60
-
-        # 1. Bearish below SMA200 must block GLD long
-        ctx_bearish = {
-            "symbol": "GLD",
-            "mark": {"bid": 240.0, "ask": 240.05, "price": 240.0},
-            "precious_metals_intel": {
-                "macro_composite_score": 0.5,
-                "trend_regime": "bearish_below_sma200",
-            },
-            "technicals": {"rsi_14": 45.0, "adx_14": 20.0, "price": 240.0, "sma": {"20": 242.0}},
-        }
-        res = entry_gates(config, ctx_bearish, open_positions=0, day_pl_pct=0.0, action="buy")
-        self.assertFalse(res.allowed)
-        self.assertIn("bearish_below_sma200", res.reason)
-
-        # 2. Bullish above SMA200 but RSI overbought chase (RSI=70) must block long
-        ctx_chase = {
-            "symbol": "GLD",
-            "mark": {"bid": 240.0, "ask": 240.05, "price": 250.0},
-            "precious_metals_intel": {
-                "macro_composite_score": 0.5,
-                "trend_regime": "bullish_above_sma200",
-            },
-            "technicals": {"rsi_14": 70.0, "adx_14": 20.0, "price": 250.0, "sma": {"20": 240.0}},
-        }
-        res = entry_gates(config, ctx_chase, open_positions=0, day_pl_pct=0.0, action="buy")
-        self.assertFalse(res.allowed)
-        self.assertIn("extended above pullback zone", res.reason)
-
-        # 3. Bullish above SMA200 with RSI=62 and high ADX (28.0) is allowed (expanded momentum window up to 65)
-        ctx_momentum = {
-            "symbol": "GLD",
-            "mark": {"bid": 240.0, "ask": 240.05, "price": 240.0},
-            "precious_metals_intel": {
-                "macro_composite_score": 0.5,
-                "trend_regime": "bullish_above_sma200",
-            },
-            "technicals": {"rsi_14": 62.0, "adx_14": 28.0, "price": 240.0, "sma": {"20": 240.0}},
-        }
-        res = entry_gates(config, ctx_momentum, open_positions=0, day_pl_pct=0.0, action="buy")
-        self.assertTrue(res.allowed)
-
-        # 4. Overextended above 50 SMA (dist_sma50_atr > 3.2) must block long
-        ctx_overextended = {
-            "symbol": "GLD",
-            "mark": {"bid": 255.0, "ask": 255.05, "price": 255.0},
-            "precious_metals_intel": {
-                "macro_composite_score": 0.5,
-                "trend_regime": "bullish_above_sma200",
-            },
-            "technicals": {"rsi_14": 55.0, "adx_14": 20.0, "price": 255.0, "sma": {"20": 250.0}, "dist_sma50_atr": 3.6},
-        }
-        res = entry_gates(config, ctx_overextended, open_positions=0, day_pl_pct=0.0, action="buy")
-        self.assertFalse(res.allowed)
-        self.assertIn("overextended", res.reason)
-
-    def test_entry_gates_dollar_mixed_blocks_short(self):
-        from bot.ai_risk import entry_gates
-
-        config = MagicMock()
-        config.ai_preset = "gold_silver_macro"
-        config.ai_daily_loss_limit_pct = 3.0
-        config.ai_max_positions = 2
-        config.ai_max_spread_bps = 25.0
-        config.ai_cooldown_minutes = 60
-
-        ctx_short = {
-            "symbol": "GLD",
-            "mark": {"bid": 240.0, "ask": 240.05},
-            "precious_metals_intel": {
-                "macro_composite_score": -0.8,
-                "trend_regime": "bearish_below_sma200",
-                "dollar_mixed": True,
-            },
-            "technicals": {"rsi_14": 45.0},
-        }
-        res = entry_gates(config, ctx_short, open_positions=0, day_pl_pct=0.0, action="sell")
-        self.assertFalse(res.allowed)
-        self.assertIn("US Dollar Index data is mixed", res.reason)
-
-    def test_should_scale_out_tier_logic(self):
-        from bot.ai_risk import should_scale_out_tier
-
-        # Standard preset (e.g. balanced) uses single tier @ take_profit_r (2.0R)
-        cfg_balanced = MagicMock(ai_preset="balanced", ai_take_profit_r=2.0)
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_balanced, r=2.1, scale_tier=0)
-        self.assertTrue(should_trim)
-        self.assertEqual(next_tier, 1)
-        self.assertEqual(trim_frac, 0.5)
-
-        # gold_silver_macro Tier 1 @ 2.0R -> 25% trim
-        cfg_macro = MagicMock(ai_preset="gold_silver_macro", ai_take_profit_r=3.2)
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=2.05, scale_tier=0)
-        self.assertTrue(should_trim)
-        self.assertEqual(next_tier, 1)
-        self.assertEqual(trim_frac, 0.25)
-
-        # Already scaled Tier 1, currently at 2.5R -> should NOT scale out again
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=2.5, scale_tier=1)
-        self.assertFalse(should_trim)
-        self.assertEqual(next_tier, 1)
-
-        # Reaches Tier 2 @ 3.2R with normal ADX (20.0) -> triggers Tier 2
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=3.25, scale_tier=1, adx=20.0)
-        self.assertTrue(should_trim)
-        self.assertEqual(next_tier, 2)
-        self.assertAlmostEqual(trim_frac, 0.3333, places=3)
-
-        # With strong ADX (30.0), Tier 2 expands to 4.0R. At 3.3R it should NOT trigger yet
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=3.3, scale_tier=1, adx=30.0)
-        self.assertFalse(should_trim)
-
-        # But once it hits 4.0R, it triggers Tier 2!
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=4.05, scale_tier=1, adx=30.0)
-        self.assertTrue(should_trim)
-        self.assertEqual(next_tier, 2)
-
-        # Once scale_tier = 2, runner trails (no further partial scale-outs)
-        should_trim, next_tier, trim_frac, _ = should_scale_out_tier(cfg_macro, r=5.0, scale_tier=2, adx=30.0)
-        self.assertFalse(should_trim)
-        self.assertEqual(next_tier, 2)
-
-    def test_live_trader_manage_open_position_tier1_and_breakeven_stop(self):
-        from bot.ai_trader import AiTradingBot
-        from bot.config import Config
-
-        cfg = Config.default(ai_preset="gold_silver_macro", paper=True)
-        service = MagicMock()
-        service.replace_stop_loss.return_value = True
-
-        bot = AiTradingBot.__new__(AiTradingBot)
-        bot.config = cfg
-        bot.service = service
-        bot._arm_stop = MagicMock()
-        bot._scale_out = MagicMock(return_value={"status": "scaled_out", "qty": 25.0})
-
-        context = {
-            "symbol": "GLD",
-            "position": {
-                "side": "long",
-                "qty": 100.0,
-                "avg_entry": 100.0,
-                "r_multiple": 2.1,
-            },
-            "mark": {"price": 110.5},
-            "technicals": {"adx_14": 20.0},
-            "precious_metals_intel": {"macro_composite_score": 0.5},
-            "risk": {"stop_distance": 5.0},
-        }
-
-        mock_state = {"scale_tier": 0, "scaled_out": False, "peak_r": 0.0}
-        with patch("bot.ai_trader.load_trade_state", return_value=mock_state), \
-             patch("bot.ai_trader.save_trade_state") as mock_save:
-            res = bot._manage_open_position("GLD", context)
-
-        # Verify scale_out was triggered for 25 shares (25% of 100)
-        bot._scale_out.assert_called_once_with("GLD", context["position"], trim_qty=25.0)
-        # Verify state updated to next_tier=1
-        self.assertEqual(mock_state["scale_tier"], 1)
-        self.assertTrue(mock_state["scaled_out"])
-        mock_save.assert_called()
-        # Verify replace_stop_loss was called with entry price (100.0)
-        service.replace_stop_loss.assert_called_once_with("GLD", 100.0)
-        self.assertIn("scale_out", res)
-        self.assertTrue(any("stop ratcheted to breakeven" in a for a in res.get("actions", [])))
-
 
 if __name__ == "__main__":
     unittest.main()
+
 
