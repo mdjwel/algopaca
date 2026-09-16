@@ -2687,6 +2687,12 @@ function applyResult(result) {
       bits.push(`spread ${Number(result.spread_bps).toFixed(0)}bps`);
     }
     if (result.news_count != null) bits.push(`${result.news_count} headlines`);
+    const activeCat = result.active_catalyst || result.context_summary?.active_catalyst;
+    if (activeCat) {
+      const catName = activeCat.event === "Federal Funds Rate" ? "Fed Funds" : (activeCat.event || "Macro");
+      const catAct = activeCat.action ? ` (${activeCat.action})` : "";
+      bits.push(`${catName} ${activeCat.actual || "Released"}${catAct}`);
+    }
     if (result.calendar_count != null) bits.push(`${result.calendar_count} events`);
     if (result.managed?.actions?.length) bits.push(...result.managed.actions);
     if (result.risk_blocked) bits.push("risk guard");

@@ -1174,6 +1174,65 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         qty_stretched = brain._max_qty(ctx_stretched)
         self.assertAlmostEqual(qty_stretched, 300.0, places=1)
 
+    @patch("bot.macro_releases.fetch_fomc_live_release")
+    def test_fomc_post_release_catalyst_activates_proper_regime(self, mock_fomc):
+        """When FOMC rate hike is released, macro_risk_level is post_release_catalyst, not imminent_release."""
+        mock_fomc.return_value = {
+            "title": "Federal Funds Rate",
+            "statement_title": "Federal Reserve issues FOMC statement",
+            "actual": "4.00%",
+            "action": "hike",
+            "change_bps": 25,
+            "bias": "hawkish",
+            "metals_impact": "Bearish headwind for GLD/SLV",
+            "status": "released",
+            "released": True,
+        }
+        service = MagicMock()
+        service.get_mark_price.side_effect = lambda s: {
+            "GLD": {"price": 240.0},
+            "SLV": {"price": 28.0},
+            "GDX": {"price": 35.0},
+            "UUP": {"price": 28.5},
+            "TLT": {"price": 92.0},
+        }.get(s, {"price": 100.0})
+
+        idx = pd.date_range("2024-01-01", periods=60, freq="B", tz="UTC")
+        series = pd.Series(100.0, index=idx)
+        service.get_bars.return_value = pd.DataFrame(
+            {"close": series, "open": series, "high": series, "low": series, "volume": 1000}
+        )
+
+        now = datetime.now(timezone.utc)
+        calendar = [
+            {
+                "title": "Federal Funds Rate",
+                "impact": "High",
+                "when_utc": (now - timedelta(minutes=15)).isoformat(),
+                "forecast": "4.00%",
+                "previous": "3.75%",
+                "actual": "4.00%",
+                "status": "released",
+                "released": True,
+            },
+            {
+                "title": "FOMC Press Conference",
+                "impact": "High",
+                "when_utc": (now + timedelta(minutes=15)).isoformat(),
+                "rate_already_released": True,
+                "status": "released",
+                "released": True,
+            },
+        ]
+
+        context = fetch_metals_macro_context(service, "GLD", calendar=calendar)
+        self.assertEqual(context["macro_risk_level"], "post_release_catalyst")
+        self.assertIsNotNone(context.get("active_catalyst"))
+        self.assertEqual(context["active_catalyst"]["actual"], "4.00%")
+        self.assertEqual(context["active_catalyst"]["action"], "hike")
+        self.assertLessEqual(context["factor_scores"]["rates"], -0.6)
+        self.assertEqual(context["yield_trend"], "rising_yields")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4377,6 +4377,8 @@ class AppState:
                 "ta_bias",
                 "news_count",
                 "calendar_count",
+                "active_catalyst",
+                "macro_risk_level",
                 "earnings_stance",
                 "earnings_result",
                 "earnings_blackout",

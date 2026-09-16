@@ -317,6 +317,8 @@ class AiTradingBot:
                 "ta_bias": decision.ta_bias,
                 "news_count": len(context.get("news") or []),
                 "calendar_count": len(context.get("economic_calendar") or []),
+                "active_catalyst": (context.get("precious_metals_intel") or {}).get("active_catalyst"),
+                "macro_risk_level": (context.get("precious_metals_intel") or {}).get("macro_risk_level"),
                 "earnings_stance": (context.get("earnings") or {}).get("stance"),
                 "earnings_result": (context.get("earnings") or {}).get("last_result"),
                 "earnings_blackout": bool((context.get("earnings") or {}).get("blackout")),
@@ -326,6 +328,7 @@ class AiTradingBot:
                     "trend": (context.get("technicals") or {}).get("trend_bias"),
                     "sma10": (context.get("technicals") or {}).get("sma", {}).get("10"),
                     "sma50": (context.get("technicals") or {}).get("sma", {}).get("50"),
+                    "active_catalyst": (context.get("precious_metals_intel") or {}).get("active_catalyst"),
                     "earnings": {
                         "stance": (context.get("earnings") or {}).get("stance"),
                         "blackout": (context.get("earnings") or {}).get("blackout"),
@@ -333,14 +336,34 @@ class AiTradingBot:
                         "next": (context.get("earnings") or {}).get("next"),
                         "last_result": (context.get("earnings") or {}).get("last_result"),
                     },
+                    "released_events": [
+                        {
+                            "title": e.get("title"),
+                            "when_et": e.get("when_et"),
+                            "impact": e.get("impact"),
+                            "actual": e.get("actual"),
+                            "status": e.get("status", "released"),
+                            "outcome": e.get("outcome"),
+                        }
+                        for e in (context.get("economic_calendar") or [])
+                        if e.get("released")
+                        or e.get("status") == "released"
+                        or str(e.get("actual") or "").strip()
+                    ][:5],
                     "upcoming_events": [
                         {
                             "title": e.get("title"),
                             "when_et": e.get("when_et"),
                             "impact": e.get("impact"),
+                            "minutes_away": e.get("minutes_away"),
                         }
-                        for e in (context.get("economic_calendar") or [])[:5]
-                    ],
+                        for e in (context.get("economic_calendar") or [])
+                        if not (
+                            e.get("released")
+                            or e.get("status") == "released"
+                            or str(e.get("actual") or "").strip()
+                        )
+                    ][:5],
                     "headlines": [n.get("title") for n in (context.get("news") or [])[:5]],
                 },
             }

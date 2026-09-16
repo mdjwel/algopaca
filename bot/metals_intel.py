@@ -30,6 +30,7 @@ import pandas as pd
 
 from bot.client import AlpacaService
 from bot.econ_calendar import fetch_economic_calendar
+from bot.macro_releases import get_active_macro_catalyst
 
 logger = logging.getLogger(__name__)
 
@@ -591,15 +592,56 @@ def fetch_metals_macro_context(
                         when_dt = when_dt.replace(tzinfo=timezone.utc)
                     minutes_diff = (when_dt - now_utc).total_seconds() / 60.0
                     event_copy["minutes_away"] = round(minutes_diff, 1)
-                    if 0 <= minutes_diff <= 45 and impact == "High":
+                    # Only unreleased events in the near future constitute imminent surprise risk
+                    is_unreleased = (
+                        not ev.get("released")
+                        and not str(ev.get("actual") or "").strip()
+                        and not ev.get("rate_already_released")
+                    )
+                    if is_unreleased and 0.0 < minutes_diff <= 45.0 and impact == "High":
                         imminent_risk = True
-                    if 0.0 <= minutes_diff <= 5.0:
+                    if is_unreleased and 0.0 < minutes_diff <= 5.0:
                         events_5m_imminent.append(event_copy)
                 except Exception:
                     pass
             relevant_events.append(event_copy)
 
-    macro_risk_level = "imminent_release" if imminent_risk else ("elevated" if relevant_events else "normal")
+    # Check for active recently released macro catalyst (e.g. FOMC rate decision today)
+    active_catalyst = get_active_macro_catalyst(relevant_events, now_utc=now_utc)
+    if active_catalyst:
+        action = str(active_catalyst.get("action") or "").lower()
+        if action == "hike":
+            rates_score = min(rates_score if rates_score is not None else -0.6, -0.6)
+            yield_trend = "rising_yields"
+            dollar_trend = "rising"
+            dollar_score = min(dollar_score if dollar_score is not None else -0.5, -0.5)
+            dollar_mixed = False
+        elif action == "cut":
+            rates_score = max(rates_score if rates_score is not None else 0.6, 0.6)
+            yield_trend = "falling_yields"
+            dollar_trend = "falling"
+            dollar_score = max(dollar_score if dollar_score is not None else 0.5, 0.5)
+            dollar_mixed = False
+
+        # Recombine macro score incorporating real-time catalyst impact
+        macro_composite_score = combine_macro_score(
+            {
+                "rates": rates_score,
+                "gsr": gsr_score,
+                "trend": trend_score,
+                "dollar": dollar_score,
+            }
+        )
+        metals_macro_bias = classify_bias(macro_composite_score)
+
+    if imminent_risk:
+        macro_risk_level = "imminent_release"
+    elif active_catalyst:
+        macro_risk_level = "post_release_catalyst"
+    elif relevant_events:
+        macro_risk_level = "elevated"
+    else:
+        macro_risk_level = "normal"
 
     factor_scores = {
         "rates": None if rates_score is None else round(rates_score, 3),
@@ -608,6 +650,10 @@ def fetch_metals_macro_context(
         "dollar": None if dollar_score is None else round(dollar_score, 3),
         "miners_unweighted": None if miners_z is None else round(clip_unit(miners_z / MINERS_Z_SCALE), 3),
     }
+
+    is_reversal = bool(
+        dollar_mixed and not (active_catalyst and active_catalyst.get("action") == "hike")
+    )
 
     return {
         "is_precious_metal": True,
@@ -627,10 +673,10 @@ def fetch_metals_macro_context(
         "dollar_trend": dollar_trend,
         "dollar_mixed": dollar_mixed,
         "dollar_economic_data_status": "mixed" if dollar_mixed else dollar_trend,
-        "short_reversal_to_long": bool(dollar_mixed),
+        "short_reversal_to_long": is_reversal,
         "short_reversal_reason": (
             "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
-            if dollar_mixed
+            if is_reversal
             else None
         ),
         "yield_trend": yield_trend,
@@ -642,6 +688,7 @@ def fetch_metals_macro_context(
         "macro_composite_score": macro_composite_score,
         "metals_macro_bias": metals_macro_bias,
         "macro_risk_level": macro_risk_level,
+        "active_catalyst": active_catalyst,
         "relevant_macro_events": relevant_events[:5],
         "events_5m_imminent": events_5m_imminent,
     }
@@ -668,12 +715,15 @@ def check_imminent_economic_events(
         when_utc_str = ev.get("when_utc")
         if not when_utc_str:
             continue
+        # Skip events that are already released or whose primary rate decision is already out
+        if (ev.get("released") and str(ev.get("actual") or "").strip()) or ev.get("rate_already_released"):
+            continue
         try:
             when_dt = datetime.fromisoformat(str(when_utc_str).replace("Z", "+00:00"))
             if when_dt.tzinfo is None:
                 when_dt = when_dt.replace(tzinfo=timezone.utc)
             minutes_diff = (when_dt - now_utc).total_seconds() / 60.0
-            if 0.0 <= minutes_diff <= float(window_minutes):
+            if 0.0 < minutes_diff <= float(window_minutes):
                 ev_copy = dict(ev)
                 ev_copy["minutes_away"] = round(minutes_diff, 1)
                 imminent.append(ev_copy)

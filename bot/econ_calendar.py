@@ -21,7 +21,7 @@ _ET = ZoneInfo("America/New_York")
 # Keep high-impact / USD-focused events that move equities.
 _IMPACT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Holiday": 0}
 
-_CAL_CACHE_TTL = 15 * 60  # 15 minutes
+_CAL_CACHE_TTL = 3 * 60  # 3 minutes for faster economic calendar updates
 _RAW_CAL_CACHE: tuple[float, list[dict[str, Any]]] | None = None
 _CAL_LOCK = threading.Lock()
 
@@ -94,7 +94,12 @@ def fetch_economic_calendar(
         )
 
     out.sort(key=lambda x: x["when_utc"])
-    return out[:25]
+    try:
+        from bot.macro_releases import enrich_economic_calendar_realtime
+        return enrich_economic_calendar_realtime(out[:25], now_utc=now)
+    except Exception as exc:
+        logger.debug("Failed enriching economic calendar in real time: %s", exc)
+        return out[:25]
 
 
 def _parse_when(value: Any) -> datetime | None:
