@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -471,6 +472,17 @@ class AppState:
         self._live_session_authorized: bool = bool(creds.get("live_authorized"))
         self.bootstrap_settings()
         self.bootstrap_synthetic_orders()
+        self.auto_trade_desired: bool = False
+        self._resumed_from_restart: bool = False
+        self._auto_recovery_count: int = 0
+        self._last_auto_recovery_at: float | None = None
+        self._last_auto_restart_attempt: float = 0.0
+        self._auto_restart_backoff: float = 5.0
+        self._auto_trade_state_path = self.workspace_dir / ".auto_trade_state.json"
+        self._watchdog_stop = threading.Event()
+        self._watchdog_thread: threading.Thread | None = None
+        self.bootstrap_auto_trade()
+        self._ensure_watchdog_started()
 
     def _bound_worker(self, fn):
         return fn
@@ -502,6 +514,7 @@ class AppState:
                 self.loop_sessions.appendleft(self._active_loop_session)
 
     def snapshot(self) -> dict[str, Any]:
+        self._ensure_watchdog_started()
         with self.lock:
             self._sync_approvals_locked()
             key_status = self._key_status_locked()
@@ -551,6 +564,10 @@ class AppState:
                 "ai_models": catalog_payload(),
                 "active_auto_trades": self.multi_trader.list_active() if hasattr(self, "multi_trader") else [],
                 "active_auto_trades_count": len(self.multi_trader.list_active()) if hasattr(self, "multi_trader") else 0,
+                "auto_trade_desired": getattr(self, "auto_trade_desired", False),
+                "auto_recovery_active": True,
+                "auto_recovery_count": getattr(self, "_auto_recovery_count", 0),
+                "last_auto_recovery_at": getattr(self, "_last_auto_recovery_at", None),
             }
 
     def loop_state(self) -> dict[str, Any]:
@@ -559,6 +576,7 @@ class AppState:
         A full snapshot rebuilds presets, model catalogs and history, which is
         far too much payload for a sub-second poll.
         """
+        self._ensure_watchdog_started()
         with self.lock:
             started = self.loop_started_at
             elapsed = None
@@ -569,6 +587,8 @@ class AppState:
                 "loop_stopping": self.loop_stopping,
                 "loop_elapsed_seconds": elapsed,
                 "loop_last_duration_seconds": self.loop_last_duration_seconds,
+                "auto_trade_desired": getattr(self, "auto_trade_desired", False),
+                "auto_recovery_count": getattr(self, "_auto_recovery_count", 0),
                 "error": self.error,
             }
 
@@ -5978,6 +5998,7 @@ class AppState:
         take_profit_r: float | None = None,
         use_trailing: bool | None = False,
         qty: float | None = None,
+        extended_hours: bool | None = True,
         dip_hunt: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Configure or move exit strategy orders on an open position.
@@ -6025,7 +6046,11 @@ class AppState:
             )
         self._require_live_execution()
 
-        service = AlpacaService(self._base_config())
+        ext_hours = True if extended_hours is None else bool(extended_hours)
+        service_config = self._base_config().override(stop_loss_24h=ext_hours)
+        service = AlpacaService(service_config)
+        if not ext_hours and action not in {"cancel_stops", "cancel_take_profit", "cancel_all"}:
+            self._cancel_synthetic_orders_for_symbol(symbol)
 
         # Handle cancellation actions first
         if action == "cancel_stops":
@@ -6290,7 +6315,7 @@ class AppState:
         if dip_hunt is not None:
             if isinstance(dip_hunt, dict) and dip_hunt.get("enabled"):
                 dip_hunt_plan = self.normalize_dip_hunt_request(
-                    dip_hunt, side="buy" if not is_short else "sell"
+                    dip_hunt, side="buy"
                 )
             elif isinstance(dip_hunt, dict) and not dip_hunt.get("enabled"):
                 self._cancel_dip_hunt_plans_for_symbol(
@@ -6321,6 +6346,7 @@ class AppState:
             )
             res["dip_hunt"] = armed_hunt
 
+        res["extended_hours"] = ext_hours
         return res
 
     def manual_order_status(self, order_id: str) -> dict[str, Any]:
@@ -9196,7 +9222,7 @@ class AppState:
                 if self._desk_plan_should_wait_for_successor(stop, stop_id):
                     return
                 position = float(service.get_position_qty(symbol) or 0)
-                if position > 0:
+                if abs(position) > 0:
                     discovered = service.open_protective_stop_id(symbol)
                     if discovered and discovered != stop_id:
                         self._note_dip_hunt(
@@ -9218,7 +9244,7 @@ class AppState:
             return
 
         position = float(service.get_position_qty(symbol) or 0)
-        if position <= 0 and buy_id:
+        if abs(position) <= 0 and buy_id:
             buy = self._follow_replaced_order(
                 service, service.get_order_snapshot(buy_id)
             )
@@ -10652,17 +10678,21 @@ class AppState:
             "message": synth.get("message"),
         }
 
-    def start_loop(self) -> None:
+    def start_loop(self, from_watchdog: bool = False) -> None:
         self._require_live_execution()
         with self.lock:
             if self.loop_running or (self._thread and self._thread.is_alive()):
                 return
+            if not from_watchdog:
+                self.auto_trade_desired = True
             self.loop_running = True
             self.loop_stopping = False
             self.loop_started_at = time.time()
             self.loop_last_duration_seconds = None
             self._begin_loop_session_locked()
             self._stop.clear()
+        if not from_watchdog:
+            self._save_auto_trade_state()
         self._thread = threading.Thread(
             target=self._bound_worker(self._loop_worker), daemon=True
         )
@@ -10680,6 +10710,159 @@ class AppState:
         with self.lock:
             self.last_ai_results = None
             self.loop_stopping = self.loop_running
+            self.auto_trade_desired = False
+        self._save_auto_trade_state()
+
+    def _save_auto_trade_state(self) -> None:
+        """Persist user's auto-trade desired state and active multi-runners to disk."""
+        try:
+            path = self._auto_trade_state_path
+            multi_info = []
+            if hasattr(self, "multi_trader") and self.multi_trader:
+                multi_info = self.multi_trader.get_active_runners_config()
+            data = {
+                "auto_trade_desired": bool(getattr(self, "auto_trade_desired", False)),
+                "strategy_mode": self.settings.strategy_mode if hasattr(self, "settings") else "sma",
+                "updated_at": time.time(),
+                "multi_runners": multi_info,
+            }
+            tmp = path.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            tmp.replace(path)
+        except Exception as exc:
+            logger.debug("Failed saving auto-trade state for user %s: %s", self.user_id, exc)
+
+    def _load_auto_trade_state(self) -> dict[str, Any]:
+        """Load persisted auto-trade desired state from disk."""
+        path = self._auto_trade_state_path
+        if not path.is_file():
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as exc:
+            logger.debug("Failed loading auto-trade state for user %s: %s", self.user_id, exc)
+            return {}
+
+    def bootstrap_auto_trade(self) -> None:
+        """Load persisted auto-trade desired state and restore runners after restart."""
+        data = self._load_auto_trade_state()
+        if not data:
+            return
+        if data.get("auto_trade_desired"):
+            with self.lock:
+                self.auto_trade_desired = True
+                self._resumed_from_restart = True
+            logger.info("Restored desired auto-trade state (ON) for user %s", self.user_id)
+
+        multi_runners = data.get("multi_runners")
+        if isinstance(multi_runners, list) and multi_runners and hasattr(self, "multi_trader"):
+            try:
+                restored = self.multi_trader.restore_from_config(multi_runners)
+                logger.info(
+                    "Restored %d multi-auto-trade runners for user %s",
+                    len(restored),
+                    self.user_id,
+                )
+            except Exception as exc:
+                logger.warning("Failed restoring multi-auto-trade runners for user %s: %s", self.user_id, exc)
+
+    def _ensure_watchdog_started(self) -> None:
+        """Ensure the background watchdog supervisor thread is running."""
+        with self.lock:
+            if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
+                return
+            self._watchdog_stop.clear()
+            self._watchdog_thread = threading.Thread(
+                target=self._bound_worker(self._auto_trade_watchdog_worker),
+                name=f"AutoTradeWatchdog-{self.user_id}",
+                daemon=True,
+            )
+            self._watchdog_thread.start()
+
+    def stop_watchdog(self) -> None:
+        """Signal and wait for the watchdog thread to terminate."""
+        self._watchdog_stop.set()
+        thread = self._watchdog_thread
+        if thread and thread.is_alive() and threading.current_thread() != thread:
+            thread.join(timeout=2.0)
+
+    def _auto_trade_watchdog_worker(self) -> None:
+        """Background watchdog thread that continuously ensures auto-trade stays active."""
+        # Initial grace period on startup
+        self._watchdog_stop.wait(2.0)
+        while not self._watchdog_stop.is_set():
+            try:
+                self._check_and_recover_auto_trade()
+            except Exception as exc:
+                logger.exception("Unexpected error in auto-trade watchdog for user %s: %s", self.user_id, exc)
+            self._watchdog_stop.wait(3.0)
+
+    def _record_watchdog_event(self, reason: str, symbol: str | None = None) -> None:
+        now = datetime.now(timezone.utc)
+        iso = now.isoformat(timespec="seconds")
+        event = {
+            "iso": iso,
+            "symbol": symbol,
+            "mode": self.settings.strategy_mode if hasattr(self, "settings") else "watchdog",
+            "kind": "watchdog",
+            "reason": reason[:120],
+        }
+        with self.lock:
+            self.desk_events.appendleft(event)
+
+    def _check_and_recover_auto_trade(self) -> None:
+        """Supervise both the main loop and multi-runners against unexpected termination."""
+        now = time.time()
+        # 1. Main strategy loop supervision
+        should_recover_main = False
+        with self.lock:
+            if (
+                getattr(self, "auto_trade_desired", False)
+                and not self.loop_running
+                and not self.loop_stopping
+                and not (self._thread and self._thread.is_alive())
+            ):
+                if now - self._last_auto_restart_attempt >= self._auto_restart_backoff:
+                    should_recover_main = True
+                    self._last_auto_restart_attempt = now
+
+        if should_recover_main:
+            is_restart = getattr(self, "_resumed_from_restart", False)
+            self._resumed_from_restart = False
+            try:
+                if is_restart:
+                    logger.info(
+                        "Auto-trade watchdog: resuming loop after server restart for user %s.",
+                        self.user_id,
+                    )
+                    self._record_watchdog_event("Auto-trade loop resumed automatically after server restart.")
+                else:
+                    logger.warning(
+                        "Auto-trade watchdog: loop was stopped unexpectedly while desired state is ON for user %s. Auto-restarting...",
+                        self.user_id,
+                    )
+                    self._record_watchdog_event("Auto-trade loop stopped unexpectedly; automatically restarted by watchdog.")
+                self.start_loop(from_watchdog=True)
+                with self.lock:
+                    self._auto_recovery_count += 1
+                    self._last_auto_recovery_at = time.time()
+                    self._auto_restart_backoff = 5.0
+            except Exception as exc:
+                logger.error("Auto-trade watchdog failed to restart loop for user %s: %s", self.user_id, exc)
+                with self.lock:
+                    self.error = f"Watchdog restart failed: {exc}"
+                    self._auto_restart_backoff = min(30.0, self._auto_restart_backoff * 1.5)
+
+        # 2. Multi auto-trade runners supervision
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            recovered_syms = self.multi_trader.check_and_recover_runners()
+            for sym in recovered_syms:
+                self._record_watchdog_event(
+                    f"Runner for {sym} stopped unexpectedly; automatically restarted by watchdog.",
+                    symbol=sym,
+                )
 
     def _cycle_cancelled(self) -> bool:
         """Cooperative cancel signal handed to the engines mid-cycle.
@@ -10728,6 +10911,11 @@ class AppState:
                 # after Stop. Run once still populates this independently.
                 self.last_ai_results = None
                 self._finish_loop_session_locked(duration)
+            if getattr(self, "auto_trade_desired", False) and not self._stop.is_set():
+                logger.warning(
+                    "Auto-trade loop worker terminated unexpectedly for user %s while desired state is ON. Watchdog will recover it.",
+                    self.user_id,
+                )
 
     def positions_overview(self) -> dict[str, Any]:
         """Aggregate all open positions and account metrics for the Positions page."""
@@ -10845,9 +11033,16 @@ class AppState:
                 o
                 for o in self.synthetic_orders.values()
                 if str(o.get("symbol", "")).upper() == sym
-                and str(o.get("status", "")).lower() in {"active", "held", "pending"}
+                and (
+                    str(o.get("status", "")).lower() in synthetic_order_store.ACTIVE_STATUSES
+                    or str(o.get("status", "")).lower() in {"active", "held", "pending", "waiting"}
+                )
                 and str(o.get("side", "")).lower().replace("orderside.", "") == exit_side
-                and float(o.get("stop_price") or 0) > 0
+                and (
+                    float(o.get("stop_price") or 0) > 0
+                    or float(o.get("trail_percent") or 0) > 0
+                    or float(o.get("trail_price") or 0) > 0
+                )
             ]
 
             stop_candidates = [
@@ -10856,9 +11051,16 @@ class AppState:
                 if o.get("stop_price") is not None and float(o.get("stop_price") or 0) > 0
             ]
             if not stop_candidates and synth_stops:
-                stop_candidates = [float(synth_stops[0].get("stop_price"))]
+                synth_stop_prices = [
+                    float(o.get("stop_price"))
+                    for o in synth_stops
+                    if o.get("stop_price") is not None and float(o.get("stop_price") or 0) > 0
+                ]
+                if synth_stop_prices:
+                    stop_candidates = synth_stop_prices
 
             p["has_stop_loss"] = bool(stop_candidates or stops or synth_stops)
+            p["has_synthetic_stop"] = bool(synth_stops)
             if stop_candidates:
                 p["stop_loss_price"] = min(stop_candidates) if pos_side == "short" else max(stop_candidates)
             else:
@@ -11685,8 +11887,34 @@ class UserStateRegistry:
             if state:
                 if state.loop_running:
                     state.stop_loop()
+                if hasattr(state, "stop_watchdog"):
+                    state.stop_watchdog()
                 if hasattr(state, "multi_trader"):
                     state.multi_trader.stop_all()
+
+    def resume_all_desired(self) -> list[int]:
+        """Scan existing user workspaces and resume auto-trade if desired."""
+        resumed = []
+        workspaces_dir = DB_DIR / "workspaces"
+        if not workspaces_dir.is_dir():
+            return resumed
+        for user_dir in workspaces_dir.iterdir():
+            if user_dir.is_dir() and user_dir.name.startswith("user_"):
+                part = user_dir.name.removeprefix("user_")
+                if not part.isdigit():
+                    continue
+                try:
+                    user_id = int(part)
+                    state_file = user_dir / ".auto_trade_state.json"
+                    if state_file.is_file():
+                        with open(state_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if data.get("auto_trade_desired") or data.get("multi_runners"):
+                            self.get(user_id)
+                            resumed.append(user_id)
+                except Exception as exc:
+                    logger.debug("Failed scanning workspace %s for auto-trade restore: %s", user_dir, exc)
+        return resumed
 
 
 USER_STATE_REGISTRY = UserStateRegistry()

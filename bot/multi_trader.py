@@ -140,6 +140,9 @@ class TickerRunner:
             self.timeframe = resolve_day_timeframe(self.timeframe)
 
         self.status = "idle"  # idle | running | stopping | stopped | error
+        self.desired_running: bool = False
+        self._last_restart_attempt: float = 0.0
+        self._restart_backoff: float = 5.0
         self.created_at = time.time()
         self.started_at: float | None = None
         self.stopped_at: float | None = None
@@ -164,11 +167,13 @@ class TickerRunner:
                 and self._thread.is_alive()
             )
 
-    def start(self) -> None:
+    def start(self, from_watchdog: bool = False) -> None:
         """Start the background runner thread."""
         with self._lock:
             if self.is_running:
                 return
+            if not from_watchdog:
+                self.desired_running = True
             self._stop_event.clear()
             self.status = "running"
             self.started_at = time.time()
@@ -181,13 +186,15 @@ class TickerRunner:
             )
             self._thread.start()
             logger.info(
-                "Started multi-auto-trade runner for %s [%s]",
+                "%s multi-auto-trade runner for %s [%s]",
+                "Restarted (watchdog)" if from_watchdog else "Started",
                 self.symbol,
                 self.engine_name,
             )
 
     def stop(self, wait: bool = True, timeout: float = 3.0) -> None:
         """Signal the runner to stop and optionally wait for termination."""
+        self.desired_running = False
         self._stop_event.set()
         with self._lock:
             if self.status == "running":
@@ -364,6 +371,7 @@ class TickerRunner:
                 "custom_engine_id": self.custom_engine_id,
                 "status": self.status,
                 "is_running": running,
+                "desired_running": self.desired_running,
                 "timeframe": self.timeframe,
                 "poll_seconds": self.poll_seconds,
                 "created_at": self.created_at,
@@ -435,6 +443,11 @@ class MultiTradeManager:
         with self._lock:
             self._runners[sym] = runner
         runner.start()
+        if hasattr(self.app_state, "_save_auto_trade_state"):
+            try:
+                self.app_state._save_auto_trade_state()
+            except Exception:
+                pass
         return runner
 
     def start_batch(
@@ -479,6 +492,11 @@ class MultiTradeManager:
 
         if runner_to_stop:
             runner_to_stop.stop(wait=wait)
+            if hasattr(self.app_state, "_save_auto_trade_state"):
+                try:
+                    self.app_state._save_auto_trade_state()
+                except Exception:
+                    pass
             return True
 
         return False
@@ -486,10 +504,16 @@ class MultiTradeManager:
     def stop_all(self, wait: bool = True) -> int:
         """Stop all active auto-trade runners."""
         with self._lock:
-            runners_to_stop = [r for r in self._runners.values() if r.is_running]
+            runners_to_stop = [r for r in self._runners.values() if r.is_running or r.desired_running]
 
         for runner in runners_to_stop:
             runner.stop(wait=wait)
+
+        if hasattr(self.app_state, "_save_auto_trade_state"):
+            try:
+                self.app_state._save_auto_trade_state()
+            except Exception:
+                pass
 
         return len(runners_to_stop)
 
@@ -512,7 +536,7 @@ class MultiTradeManager:
             runner = self._runners.get(sym)
             if runner:
                 return runner.snapshot()
-        return None
+            return None
 
     def list_runners(self, active_only: bool = False) -> list[dict[str, Any]]:
         with self._lock:
@@ -545,3 +569,72 @@ class MultiTradeManager:
                 for sym, runner in self._runners.items()
                 if runner.is_running
             }
+
+    def get_active_runners_config(self) -> list[dict[str, Any]]:
+        """Return configurations of runners that are actively running or desired to run."""
+        configs = []
+        with self._lock:
+            for r in self._runners.values():
+                if r.desired_running or r.is_running:
+                    safe_settings = {
+                        k: v
+                        for k, v in r.settings.items()
+                        if not str(k).endswith("_key") and not str(k).endswith("_secret")
+                    }
+                    configs.append({
+                        "symbol": r.symbol,
+                        "strategy_mode": r.strategy_mode,
+                        "custom_engine_id": r.custom_engine_id,
+                        "engine_name": r.engine_name,
+                        "settings": safe_settings,
+                    })
+        return configs
+
+    def restore_from_config(self, configs: list[dict[str, Any]]) -> list[TickerRunner]:
+        """Restore and start runners from saved configurations."""
+        restored = []
+        for cfg in configs:
+            sym = cfg.get("symbol")
+            if not sym:
+                continue
+            try:
+                runner = self.start_runner(
+                    symbol=sym,
+                    strategy_mode=cfg.get("strategy_mode", ""),
+                    custom_engine_id=cfg.get("custom_engine_id"),
+                    engine_name=cfg.get("engine_name"),
+                    settings=cfg.get("settings"),
+                    replace_existing=True,
+                )
+                restored.append(runner)
+            except Exception as exc:
+                logger.warning("Failed restoring runner for %s: %s", sym, exc)
+        return restored
+
+    def check_and_recover_runners(self) -> list[str]:
+        """Watchdog check: restart any runners whose desired state is ON but are stopped unexpectedly."""
+        recovered = []
+        now = time.time()
+        with self._lock:
+            candidates = [
+                r for r in self._runners.values()
+                if r.desired_running and not r.is_running
+            ]
+
+        for r in candidates:
+            if now - r._last_restart_attempt < r._restart_backoff:
+                continue
+            r._last_restart_attempt = now
+            try:
+                logger.warning(
+                    "Multi-trade watchdog: runner for %s was unexpectedly stopped. Auto-restarting...",
+                    r.symbol,
+                )
+                r.start(from_watchdog=True)
+                r._restart_backoff = 5.0
+                recovered.append(r.symbol)
+            except Exception as exc:
+                logger.error("Multi-trade watchdog restart failed for %s: %s", r.symbol, exc)
+                r._restart_backoff = min(30.0, r._restart_backoff * 1.5)
+
+        return recovered

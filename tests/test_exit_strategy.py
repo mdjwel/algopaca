@@ -34,6 +34,10 @@ class TestExitStrategy(unittest.TestCase):
         self.assertEqual(m5.dip_hunt.enabled, True)
         self.assertEqual(m5.dip_hunt.wait_minutes, 15)
         self.assertEqual(m5.dip_hunt.dip_pct, 4.5)
+        self.assertTrue(m5.extended_hours)
+
+        m6 = ManageStopIn(symbol="AAPL", action="breakeven", extended_hours=False)
+        self.assertFalse(m6.extended_hours)
 
         # Invalid action should raise ValueError
         with self.assertRaises(Exception):
@@ -413,22 +417,24 @@ class TestExitStrategy(unittest.TestCase):
         self.assertIn(res["dip_hunt"]["id"], self.state.dip_hunt_plans)
 
     @patch("bot.web_state.AlpacaService")
-    def test_manage_position_stop_with_dip_hunt_short_rejected(self, mock_service_cls):
-        """Short position setting dip hunt raises ValueError."""
+    def test_manage_position_stop_with_dip_hunt_short_supported(self, mock_service_cls):
+        """Short position setting dip hunt arms the dip hunt plan."""
         mock_service = MagicMock()
         mock_service_cls.return_value = mock_service
         mock_service.get_position_qty.return_value = -10.0  # Short
         mock_service.get_mark_price.return_value = {"price": 100.0}
         mock_service.replace_stop_loss.return_value = {"id": "ord_sl_short", "stop_price": 105.0}
 
-        with self.assertRaises(ValueError) as ctx:
-            self.state.manage_position_stop(
-                symbol="AAPL",
-                action="price",
-                stop_price=105.0,
-                dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
-            )
-        self.assertIn("only attaches to a buy", str(ctx.exception))
+        res = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=105.0,
+            dip_hunt={"enabled": True, "wait_minutes": 10, "dip_pct": 5.0},
+        )
+        self.assertIn("dip_hunt", res)
+        self.assertEqual(res["dip_hunt"]["symbol"], "AAPL")
+        self.assertEqual(res["dip_hunt"]["qty"], 10.0)
+        self.assertEqual(res["dip_hunt"]["status"], "watching_stop")
 
     @patch("bot.web_state.AlpacaService")
     def test_manage_position_stop_with_dip_hunt_disabled_cancels_existing(self, mock_service_cls):
@@ -484,6 +490,36 @@ class TestExitStrategy(unittest.TestCase):
         self.assertFalse(any(p["symbol"] == "AAPL" and p["status"] == "watching_stop" for p in self.state.dip_hunt_plans.values()))
 
     @patch("bot.web_state.AlpacaService")
+    def test_manage_position_stop_extended_hours(self, mock_service_cls):
+        """Extended hours defaults to True and passes stop_loss_24h to AlpacaService config."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_position_qty.return_value = 10.0
+        mock_service.get_mark_price.return_value = {"price": 100.0}
+        mock_service.replace_stop_loss.return_value = {"id": "ord_sl_ext", "stop_price": 95.0}
+
+        # 1. Default (extended_hours omitted -> True)
+        res_default = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=95.0,
+        )
+        self.assertTrue(res_default.get("extended_hours"))
+        config_passed = mock_service_cls.call_args[0][0]
+        self.assertTrue(getattr(config_passed, "stop_loss_24h", False))
+
+        # 2. Explicit extended_hours=False
+        res_off = self.state.manage_position_stop(
+            symbol="AAPL",
+            action="price",
+            stop_price=95.0,
+            extended_hours=False,
+        )
+        self.assertFalse(res_off.get("extended_hours"))
+        config_passed_off = mock_service_cls.call_args[0][0]
+        self.assertFalse(getattr(config_passed_off, "stop_loss_24h", True))
+
+    @patch("bot.web_state.AlpacaService")
     def test_positions_overview_includes_dip_hunt_info(self, mock_service_cls):
         """positions_overview attaches has_dip_hunt and dip_hunt_plan metadata."""
         mock_service = MagicMock()
@@ -523,6 +559,43 @@ class TestExitStrategy(unittest.TestCase):
         self.assertIsNotNone(ov2["positions"][0]["dip_hunt_plan"])
         self.assertEqual(ov2["positions"][0]["dip_hunt_plan"]["wait_minutes"], 10.0)
         self.assertEqual(ov2["positions"][0]["dip_hunt_plan"]["dip_pct"], 5.0)
+
+    @patch("bot.web_state.AlpacaService")
+    def test_positions_overview_detects_synthetic_stop_loss(self, mock_service_cls):
+        """positions_overview detects 24h synthetic stop order with waiting status."""
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+        mock_service.get_all_positions.return_value = [
+            {
+                "symbol": "TSLA",
+                "qty": "10",
+                "side": "long",
+                "market_value": "2500.00",
+                "cost_basis": "2400.00",
+                "unrealized_pl": "100.00",
+                "current_price": "250.00",
+            }
+        ]
+        mock_service.account_summary.return_value = {"equity": 10000.0, "cash": 5000.0, "buying_power": 10000.0}
+        mock_service.get_open_orders_summary.return_value = {}
+
+        # Synthetic order with waiting status
+        self.state.synthetic_orders["synth_tsla_1"] = {
+            "id": "synth_tsla_1",
+            "symbol": "TSLA",
+            "side": "sell",
+            "qty": 10.0,
+            "stop_price": 240.0,
+            "status": "waiting",
+            "extended_hours": True,
+        }
+
+        ov = self.state.positions_overview()
+        pos = ov["positions"][0]
+        self.assertTrue(pos["has_stop_loss"])
+        self.assertTrue(pos["has_synthetic_stop"])
+        self.assertEqual(pos["stop_loss_price"], 240.0)
+        self.assertEqual(pos["stop_distance_pct"], 4.0)
 
     @patch("bot.web_state.AlpacaService")
     def test_close_single_position_disarms_dip_hunt(self, mock_service_cls):

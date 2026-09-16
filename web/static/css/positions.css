@@ -3017,10 +3017,15 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-card {
   max-width: 540px;
   width: 100%;
+  max-height: min(92vh, 840px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
 .pos-exit-body {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -3028,6 +3033,10 @@ a.pos-prot-badge.orders:focus-visible {
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
+
+  & > * {
+    flex-shrink: 0;
+  }
 }
 
 .pos-modal-title-wrap {
@@ -3040,14 +3049,15 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-exit-meta-grid {
   display: grid;
-  grid-template-columns: 0.85fr 1fr 1fr 1.35fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
   background: rgba(255, 255, 255, 0.022);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
-  padding: 0.6rem 0.85rem;
+  padding: 0.55rem 0.75rem;
   overflow: hidden;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .pos-exit-meta-grid .pos-modal-meta-item {
@@ -3069,6 +3079,7 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-meta-grid .pos-modal-meta-item strong {
   font-family: var(--mono);
   font-size: 0.94rem;
+  line-height: 1.3;
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -3090,6 +3101,7 @@ a.pos-prot-badge.orders:focus-visible {
   gap: 0.35rem;
   overflow: hidden;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .pos-exit-status-head {
@@ -3146,10 +3158,16 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 0.45rem;
   padding-top: 0.35rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   overflow: hidden;
+  flex-shrink: 0;
+
+  &.has-diphunt,
+  &:has(#pos-exit-stat-sub-diphunt:not([hidden])) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .pos-exit-stat-sub {
@@ -3173,6 +3191,7 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-stat-sub strong {
   font-family: var(--mono);
   font-size: 0.84rem;
+  line-height: 1.3;
   font-weight: 600;
   color: var(--text);
   overflow: hidden;
@@ -3192,6 +3211,8 @@ a.pos-prot-badge.orders:focus-visible {
   overflow: hidden;
   max-width: 100%;
   box-sizing: border-box;
+  flex-shrink: 0;
+  min-height: 38px;
 }
 
 .pos-exit-tab {
@@ -3199,6 +3220,7 @@ a.pos-prot-badge.orders:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0.45rem 0.22rem;
+  min-height: 32px;
   border: none;
   border-radius: calc(var(--radius-md) - 3px);
   background: transparent;
@@ -3211,6 +3233,26 @@ a.pos-prot-badge.orders:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   transition: all 0.15s ease;
+}
+
+.pos-exit-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pos-exit-tab.is-active {
+  color: var(--copper-text, #0c1219);
+  background: linear-gradient(180deg, var(--copper) 0%, var(--copper-deep) 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(212, 137, 76, 0.35);
+  font-weight: 700;
+}
+
+.pos-exit-tab.tab-danger.is-active {
+  color: #ffffff;
+  background: linear-gradient(180deg, var(--sell) 0%, color-mix(in srgb, var(--sell) 80%, black 20%) 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(227, 93, 93, 0.35);
 }
 
 .pos-exit-tab:hover {
@@ -3798,6 +3840,8 @@ a.pos-prot-badge.orders:focus-visible {
   padding: 0.65rem 0.85rem;
   box-sizing: border-box;
   overflow: hidden;
+  flex-shrink: 0;
+  min-height: 48px;
 }
 
 .pos-modal-preview .pos-preview-row,
@@ -3829,6 +3873,7 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-modal-preview .pos-preview-row strong,
 .pos-exit-preview .pos-preview-row strong {
   font-size: 0.94rem;
+  line-height: 1.3;
   font-weight: 700;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -3851,6 +3896,85 @@ a.pos-prot-badge.orders:focus-visible {
   color: var(--text);
 }
 
+/* Extended Hours Option in Exit Strategy Modal */
+.pos-exit-extended-card {
+  display: block;
+  width: 100%;
+  margin: 0.15rem 0;
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  flex-shrink: 0;
+
+  &[hidden] {
+    display: none !important;
+  }
+
+  & .check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.6rem 0.8rem;
+    background: rgba(255, 255, 255, 0.018);
+    border: 1px solid rgba(255, 255, 255, 0.055);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.035);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &:has(input:checked) {
+      background: rgba(212, 137, 76, 0.04);
+      border-color: rgba(212, 137, 76, 0.28);
+    }
+
+    & input {
+      margin-top: 0.15rem;
+      flex-shrink: 0;
+    }
+  }
+
+  & .pos-exit-extended-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  & .pos-exit-extended-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+
+    & strong {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--fg);
+      margin: 0;
+    }
+
+    & .badge {
+      font-size: 0.68rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+  }
+
+  & .field-help {
+    display: block;
+    font-size: 0.73rem;
+    color: var(--muted);
+    line-height: 1.35;
+    margin: 0;
+  }
+}
+
 /* Dip Hunt (Re-buy after stop-out dip) in Exit Strategy Modal */
 #pos-exit-stat-sub-diphunt {
   & strong {
@@ -3861,12 +3985,12 @@ a.pos-prot-badge.orders:focus-visible {
 .pos-exit-dip-hunt-group {
   display: block;
   width: 100%;
-  padding: 0.75rem 0.85rem;
+  padding: 0.65rem 0.85rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--surface-soft, rgba(255, 255, 255, 0.025));
-  margin-bottom: 0.75rem;
   box-sizing: border-box;
+  flex-shrink: 0;
   transition: background 160ms ease, border-color 160ms ease;
 
   &[hidden] {
@@ -4096,7 +4220,8 @@ a.pos-prot-badge.orders:focus-visible {
   .pos-exit-body {
     padding: 0.7rem 0.95rem;
     gap: 0.65rem;
-    max-height: calc(90vh - 110px);
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .pos-exit-tabs {
@@ -4118,6 +4243,11 @@ a.pos-prot-badge.orders:focus-visible {
   .pos-exit-status-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.4rem;
+
+    &.has-diphunt,
+    &:has(#pos-exit-stat-sub-diphunt:not([hidden])) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .pos-modal-preview,

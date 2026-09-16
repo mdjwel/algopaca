@@ -1559,6 +1559,25 @@ function applyAiPreset(presetId, { forceInstructions = true } = {}) {
         form.elements.bar_timeframe.value = "1Hour";
         refreshNiceSelect(form.elements.bar_timeframe);
       }
+      if (form.elements?.options_style) {
+        form.elements.options_style.value = "vertical";
+        refreshNiceSelect(form.elements.options_style);
+      }
+      if (form.elements?.options_dte_min) {
+        form.elements.options_dte_min.value = 30;
+      }
+      if (form.elements?.options_dte_max) {
+        form.elements.options_dte_max.value = 60;
+      }
+      if (form.elements?.options_otm_pct) {
+        form.elements.options_otm_pct.value = 3.5;
+      }
+      if (form.elements?.options_max_contracts) {
+        form.elements.options_max_contracts.value = 1;
+      }
+      if (form.elements?.options_max_premium_pct) {
+        form.elements.options_max_premium_pct.value = 1.0;
+      }
     }
   }
   syncPresetHint();
@@ -2957,9 +2976,23 @@ function applyLoop(running, meta = {}) {
   }
 }
 
+let lastAutoRecoveryCount = -1;
+
 function render(state, { forceSettings = false } = {}) {
   if (typeof latestState !== "undefined") {
     latestState = state;
+  }
+  if (state.auto_recovery_count != null) {
+    const recCount = Number(state.auto_recovery_count);
+    if (lastAutoRecoveryCount >= 0 && recCount > lastAutoRecoveryCount) {
+      showToast(
+        typeof tx === "function"
+          ? tx("auto_trade_recovered_toast", "Auto-trade was interrupted and automatically recovered by watchdog.")
+          : "Auto-trade was interrupted and automatically recovered by watchdog.",
+        "ok"
+      );
+    }
+    lastAutoRecoveryCount = recCount;
   }
   if (state.ai_models) {
     populateModelOptions(state.ai_models);

@@ -16,6 +16,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from bot.metals_intel import GOLD_SYMBOLS, SILVER_SYMBOLS, is_precious_metal
 from bot.options_chain import (
     dte,
     expiration_window,
@@ -497,6 +498,11 @@ def _close_underlying(
     return closed
 
 
+LEVERAGED_INVERSE_METALS = frozenset(
+    {"GDXU", "GLL", "GDXD", "DUST", "NUGT", "UGL", "ZSL", "JDST", "JNUG"}
+)
+
+
 def _open_overlay(
     config: Any,
     service: Any,
@@ -509,9 +515,44 @@ def _open_overlay(
     if spot <= 0:
         return {"action": "skip", "skipped": "no spot price"}
 
+    sym_upper = symbol.upper().strip()
+    is_metal = is_precious_metal(sym_upper) or sym_upper in LEVERAGED_INVERSE_METALS
+    if is_metal:
+        # 1. Skip leveraged and inverse ETFs (GDXU, GLL, GDXD, DUST, UGL, etc.)
+        # Options overlay focuses strictly on liquid core bullion/silver (GLD, SLV, IAU).
+        if sym_upper in LEVERAGED_INVERSE_METALS or sym_upper not in (GOLD_SYMBOLS | SILVER_SYMBOLS):
+            return {
+                "action": "skip",
+                "skipped": f"options overlay skipped for leveraged/inverse metal ETF {sym_upper} (options liquid on core GLD/SLV)",
+            }
+
+        # 2. Imminent high-impact macro event freeze (FOMC, CPI, NFP within 45m)
+        metals_intel = payload.get("precious_metals_intel")
+        if not isinstance(metals_intel, dict) and hasattr(service, "get_metals_macro_context"):
+            try:
+                metals_intel = service.get_metals_macro_context(sym_upper)
+            except Exception:
+                metals_intel = None
+        if isinstance(metals_intel, dict) and metals_intel.get("macro_risk_level") == "imminent_release":
+            return {
+                "action": "skip",
+                "skipped": "options entry frozen 45m before high-impact macro release",
+            }
+
     min_dte = int(getattr(config, "options_dte_min", 21) or 21)
     max_dte = int(getattr(config, "options_dte_max", 45) or 45)
     otm_pct = float(getattr(config, "options_otm_pct", 5.0) or 5.0)
+
+    # Adaptive tuning for precious metals when using system default unadjusted values:
+    preset_id = str(getattr(config, "ai_preset", "") or "").strip().lower()
+    if is_metal or preset_id == "gold_silver_macro":
+        if min_dte == 21:
+            min_dte = 30
+        if max_dte == 45:
+            max_dte = 60
+        if otm_pct == 5.0 and sym_upper in GOLD_SYMBOLS:
+            otm_pct = 3.5
+
     qty = max(1, int(getattr(config, "options_max_contracts", 1) or 1))
     start, end = expiration_window(min_dte=min_dte, max_dte=max_dte)
     chain = service.list_option_contracts(

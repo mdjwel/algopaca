@@ -1031,6 +1031,20 @@
             <p id="pos-exit-qty-hint" class="field-help"></p>
           </div>
 
+          <!-- Extended Hours Protection Option -->
+          <div class="pos-exit-extended-card" id="pos-exit-extended-hours-wrap">
+            <label class="check" for="pos-exit-extended-hours">
+              <input type="checkbox" id="pos-exit-extended-hours" name="extended_hours" checked />
+              <span class="pos-exit-extended-content">
+                <span class="pos-exit-extended-title-row">
+                  <strong data-i18n="extended_hours">Extended hours</strong>
+                  <span class="badge badge-subtle" data-i18n="synthetic_extended">Synthetic Extended</span>
+                </span>
+                <span class="field-help" data-i18n="help_exit_extended_hours">Apply exit strategy and synthetic protection in pre-market, after-hours, and overnight.</span>
+              </span>
+            </label>
+          </div>
+
           <!-- Buy Automation: Dip Hunt (Re-buy after a stop-out dip) -->
           <details class="field-group manual-accordion pos-exit-dip-hunt-group" id="pos-exit-dip-hunt-group" hidden>
             <summary class="manual-accordion-head">
@@ -1043,23 +1057,21 @@
                 <input type="checkbox" id="pos-exit-dip-hunt-enabled" name="dip_hunt_enabled" />
                 <strong data-i18n="dip_hunt_enable">Re-buy after a stop-out dip</strong>
               </label>
-              <p class="field-help" data-i18n="dip_hunt_help">When the stop fills, the desk waits for a further drop from that sell price. If the drop hits before the wait is up, it buys immediately. If the wait ends first, it parks a limit at the same target. The cycle repeats until you cancel it or the take-profit fills.</p>
+              <p class="field-help" data-i18n="dip_hunt_help_short">Automatically buys at a discount if price drops further after a stop-out.</p>
 
               <div id="pos-exit-dip-hunt-fields" hidden>
                 <div class="field-pair-row">
                   <label for="pos-exit-dip-hunt-wait"><span data-i18n="dip_hunt_wait">Wait (minutes)</span>
                     <input id="pos-exit-dip-hunt-wait" name="dip_hunt_wait_minutes" type="number" min="1" max="1440" step="1" value="10" inputmode="numeric" aria-describedby="help-pos-exit-dip-hunt-wait" />
-                    <p id="help-pos-exit-dip-hunt-wait" class="field-help" data-i18n="help_dip_hunt_wait">How long to watch after the stop fills before parking a limit. Skipped if the drop prints first. Max 1440 (24h).</p>
+                    <p id="help-pos-exit-dip-hunt-wait" class="field-help" data-i18n="help_dip_hunt_wait_short">Watch window before parking limit (max 24h).</p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
                   <label for="pos-exit-dip-hunt-pct"><span data-i18n="dip_hunt_pct">Further drop %</span>
                     <input id="pos-exit-dip-hunt-pct" name="dip_hunt_pct" type="number" min="0.1" max="50" step="0.1" value="5" inputmode="decimal" aria-describedby="help-pos-exit-dip-hunt-pct" />
-                    <p id="help-pos-exit-dip-hunt-pct" class="field-help" data-i18n="help_dip_hunt_pct">Buy this far below the stop-out fill. Example: stop at $10, 5% → limit at $9.50.</p>
+                    <p id="help-pos-exit-dip-hunt-pct" class="field-help" data-i18n="help_dip_hunt_pct_short">Discount below stop-out fill price.</p>
                     <p class="field-error" role="alert" hidden></p>
                   </label>
                 </div>
-                <p id="pos-exit-dip-hunt-summary" class="field-help info" aria-live="polite"></p>
-                <p class="field-help info" data-i18n="dip_hunt_runtime_note">Live hunts are saved and resume after a restart until the re-buy fills or you cancel them.</p>
               </div>
             </div>
           </details>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import datetime as dt
 import logging
 import os
@@ -57,7 +58,18 @@ class FallbackStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-app = FastAPI(title="AlgoPaca", version="2.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        resumed = USER_STATE_REGISTRY.resume_all_desired()
+        if resumed:
+            log.info("Resumed auto-trade states on startup for user(s): %s", resumed)
+    except Exception as exc:
+        log.exception("Failed resuming auto-trade states on startup: %s", exc)
+    yield
+
+
+app = FastAPI(title="AlgoPaca", version="2.0.0", lifespan=lifespan)
 if (FRONTEND_DIR / "static").is_dir():
     app.mount("/static", FallbackStaticFiles(primary_dir=FRONTEND_DIR / "static", fallback_dir=WEB_DIR / "static"), name="static")
 else:
@@ -446,6 +458,7 @@ class ManageStopIn(BaseModel):
     take_profit_r: Optional[float] = Field(None, gt=0, le=20)
     use_trailing: Optional[bool] = False
     qty: Optional[float] = Field(None, gt=0)
+    extended_hours: Optional[bool] = True
     dip_hunt: Optional[DipHuntIn] = None
 
 
@@ -2152,6 +2165,7 @@ def manage_position_stop(
             take_profit_r=body.take_profit_r,
             use_trailing=body.use_trailing,
             qty=body.qty,
+            extended_hours=body.extended_hours if body.extended_hours is not None else True,
             dip_hunt=body.dip_hunt.model_dump() if body.dip_hunt else None,
         )
         return {"ok": True, **result}
