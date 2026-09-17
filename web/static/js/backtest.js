@@ -7,6 +7,8 @@
 let smaPresets = [];
 let dipPresets = [];
 let pairPresets = [];
+let dayPresets = [];
+let aiPresets = [];
 
 function findSmaPreset(id) {
   return smaPresets.find((p) => p.id === id) || null;
@@ -18,6 +20,14 @@ function findDipPreset(id) {
 
 function findPairPreset(id) {
   return pairPresets.find((p) => p.id === id) || null;
+}
+
+function findDayPreset(id) {
+  return dayPresets.find((p) => p.id === id) || null;
+}
+
+function findAiPreset(id) {
+  return aiPresets.find((p) => p.id === id) || null;
 }
 
 function parseSymbolList(raw) {
@@ -95,20 +105,32 @@ function applyBtPairPreset(presetId) {
 }
 
 const DAY_PRESET_DEFAULTS = {
-  ai_vwap_momentum: { sub_mode: "vwap_trend", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Intraday VWAP trend & 9/21 EMA momentum with 1.2R target and 1.0 ATR stop." },
-  vwap_trend: { sub_mode: "vwap_trend", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Trend following above intraday VWAP with 9/21 EMA momentum." },
-  ai_orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with 1.5R target and 1.2 ATR stop." },
-  orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 3, summary: "15-minute Opening Range Breakout with ATR stop." },
-  ai_adaptive_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA momentum scalper with ADX regime filter." },
-  ai_metals_breakout: { sub_mode: "vwap_trend", side: "long_short", tp_r: 2.8, stop_atr: 1.3, fast: 9, slow: 21, max_trades: 4, summary: "Intraday VWAP & 9/21 EMA breakout tuned for Gold & Silver with 2.8R target and AI confirmation." },
-  momentum_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 4, summary: "Fast 9/21 EMA crossovers confirmed by RSI and ADX." },
-  vwap_fade: { sub_mode: "vwap_fade", side: "long_only", tp_r: 1.2, stop_atr: 1.0, fast: 9, slow: 21, max_trades: 3, summary: "Mean reversion bounces at lower VWAP band in range-bound sessions." },
+  ai_vwap_momentum: { sub_mode: "vwap_trend", side: "long_only", tp_r: 2.0, stop_atr: 1.5, fast: 9, slow: 21, max_trades: 5, summary: "Intraday VWAP trend & 9/21 EMA momentum filtered by real-time AI news sentiment & macro catalyst confirmation." },
+  vwap_trend: { sub_mode: "vwap_trend", side: "long_only", tp_r: 2.0, stop_atr: 1.5, fast: 9, slow: 21, max_trades: 5, summary: "Trend following above intraday VWAP with 9/21 EMA momentum and 2R profit target." },
+  ai_orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 2.5, stop_atr: 1.8, fast: 9, slow: 21, max_trades: 4, summary: "15-minute Opening Range Breakout, volume-confirmed, with AI false-breakout veto and volatility expansion detection." },
+  orb_breakout: { sub_mode: "orb", side: "long_only", tp_r: 2.5, stop_atr: 1.8, fast: 9, slow: 21, max_trades: 3, summary: "Trades volume-confirmed 15-minute opening range high breakouts with ATR trailing stop." },
+  ai_adaptive_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 8, summary: "Fast 9/21 EMA momentum scalper with ADX regime filter and AI veto on counter-trend and chop setups." },
+  ai_metals_breakout: { sub_mode: "vwap_trend", side: "long_only", tp_r: 3.8, stop_atr: 2.0, fast: 13, slow: 34, max_trades: 2, summary: "Intraday VWAP & 13/34 EMA trend momentum tuned for Gold & Silver (GLD/SLV/GDX) with 3.8R target, 2.0 ATR stop, and AI macro confirmation." },
+  momentum_scalp: { sub_mode: "momentum_scalp", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 8, summary: "Fast 9/21 EMA crossovers confirmed by RSI > 55 and an ADX trend filter for quick scalps." },
+  vwap_fade: { sub_mode: "vwap_fade", side: "long_only", tp_r: 1.5, stop_atr: 1.2, fast: 9, slow: 21, max_trades: 5, summary: "Buys confirmed oversold bounces at the lower VWAP band in range-bound sessions only, targeting the VWAP midline." },
 };
 
 function applyBtDayPreset(presetId) {
   const form = $("backtest-form");
-  const p = DAY_PRESET_DEFAULTS[presetId];
-  if (!form || !p) return;
+  if (!form) return;
+  const livePreset = findDayPreset(presetId);
+  const p = livePreset ? {
+    sub_mode: livePreset.sub_mode,
+    side: livePreset.side,
+    tp_r: livePreset.profit_target_r,
+    stop_atr: livePreset.stop_atr_mult,
+    fast: livePreset.ema_fast,
+    slow: livePreset.ema_slow,
+    max_trades: livePreset.max_trades_per_day,
+    summary: livePreset.summary,
+  } : DAY_PRESET_DEFAULTS[presetId];
+
+  if (!p) return;
   if (form.elements.day_sub_mode) form.elements.day_sub_mode.value = p.sub_mode;
   if (form.elements.day_side) form.elements.day_side.value = p.side;
   if (form.elements.day_profit_target_r) form.elements.day_profit_target_r.value = p.tp_r;
@@ -116,6 +138,21 @@ function applyBtDayPreset(presetId) {
   if (form.elements.day_ema_fast) form.elements.day_ema_fast.value = p.fast;
   if (form.elements.day_ema_slow) form.elements.day_ema_slow.value = p.slow;
   if (form.elements.day_max_trades_per_day) form.elements.day_max_trades_per_day.value = p.max_trades;
+
+  const hint = $("bt-day-hint");
+  if (hint && p.summary) {
+    hint.textContent = p.summary;
+  }
+
+  if (presetId === "ai_metals_breakout") {
+    const symInput = form.elements.symbols || form.elements.symbol;
+    if (symInput && (!symInput.value || symInput.value.trim() === "AAPL")) {
+      symInput.value = "GLD, SLV, GDX";
+    }
+    if (form.elements.bar_timeframe && form.elements.bar_timeframe.value === "1Day") {
+      form.elements.bar_timeframe.value = "15Min";
+    }
+  }
 }
 
 const AI_PRESET_DEFAULTS = {
@@ -124,24 +161,48 @@ const AI_PRESET_DEFAULTS = {
   momentum: { min_conf: 0.55, atr_stop: 2.0, tp_r: 3.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Follow strength: moving average breakouts & expanding MACD." },
   mean_reversion: { min_conf: 0.60, atr_stop: 2.5, tp_r: 1.2, trail_r: 0.0, risk_pct: 0.5, max_pos: 2, summary: "Fade stretched RSI and Bollinger washes back to the mean." },
   trend_atr: { min_conf: 0.55, atr_stop: 2.5, tp_r: 0.0, trail_r: 1.0, risk_pct: 0.5, max_pos: 3, summary: "Pure trend following with dynamic ATR trailing stop and no cap." },
-  gold_silver_macro: { min_conf: 0.70, atr_stop: 1.6, tp_r: 4.0, trail_r: 2.0, risk_pct: 1.8, max_pos: 2, summary: "GLD/SLV calibrated macro momentum: buys pullbacks in bull regime." },
+  gold_silver_macro: { min_conf: 0.70, atr_stop: 1.6, tp_r: 4.0, trail_r: 2.0, risk_pct: 1.8, max_pos: 2, summary: "Calibrated macro & Gold/Silver Ratio playbook: buys pullbacks in confirmed gold uptrends across GLD, SLV, GDXU & inverse short ETFs (GLL, GDXD), with a wide ATR stop that lets trends run." },
 };
 
 function applyBtAiPreset(presetId) {
   const form = $("backtest-form");
-  const p = AI_PRESET_DEFAULTS[presetId];
-  if (!form || !p) return;
-  if (form.elements.ai_min_confidence) form.elements.ai_min_confidence.value = p.min_conf;
-  if (form.elements.ai_atr_stop_mult) form.elements.ai_atr_stop_mult.value = p.atr_stop;
-  if (form.elements.ai_take_profit_r) form.elements.ai_take_profit_r.value = p.tp_r;
-  if (form.elements.ai_trail_after_r) form.elements.ai_trail_after_r.value = p.trail_r;
-  if (form.elements.ai_risk_pct) form.elements.ai_risk_pct.value = p.risk_pct;
-  if (form.elements.ai_max_positions) form.elements.ai_max_positions.value = p.max_pos;
+  if (!form) return;
+  const livePreset = findAiPreset(presetId);
+  const p = livePreset ? {
+    min_conf: livePreset.min_confidence,
+    atr_stop: livePreset.atr_stop_mult,
+    tp_r: livePreset.take_profit_r,
+    trail_r: livePreset.trail_after_r,
+    risk_pct: livePreset.risk_pct,
+    max_pos: livePreset.max_positions,
+    summary: livePreset.summary,
+  } : AI_PRESET_DEFAULTS[presetId];
+
+  if (!p) return;
+  if (form.elements.ai_min_confidence && p.min_conf !== undefined) form.elements.ai_min_confidence.value = p.min_conf;
+  if (form.elements.ai_atr_stop_mult && p.atr_stop !== undefined) form.elements.ai_atr_stop_mult.value = p.atr_stop;
+  if (form.elements.ai_take_profit_r && p.tp_r !== undefined) form.elements.ai_take_profit_r.value = p.tp_r;
+  if (form.elements.ai_trail_after_r && p.trail_r !== undefined) form.elements.ai_trail_after_r.value = p.trail_r;
+  if (form.elements.ai_risk_pct && p.risk_pct !== undefined) form.elements.ai_risk_pct.value = p.risk_pct;
+  if (form.elements.ai_max_positions && p.max_pos !== undefined) form.elements.ai_max_positions.value = p.max_pos;
+
+  const hint = $("bt-ai-hint");
+  if (hint && p.summary) {
+    hint.textContent = p.summary;
+  }
+
   if (presetId === "gold_silver_macro") {
     const symInput = form.elements.symbols || form.elements.symbol;
     if (symInput && (!symInput.value || symInput.value.trim() === "AAPL")) {
-      symInput.value = "GLD, SLV, GLL";
+      symInput.value = "GLD, SLV, GDXU, GLL, GDXD";
     }
+    if (form.elements.bar_timeframe && form.elements.bar_timeframe.value === "1Day") {
+      form.elements.bar_timeframe.value = "1Hour";
+    }
+  }
+  const metalsOpts = $("bt-metals-options");
+  if (metalsOpts) {
+    metalsOpts.hidden = (presetId !== "gold_silver_macro");
   }
 }
 
@@ -200,6 +261,12 @@ function syncBacktestUi() {
   if (pair && pairPreset !== "custom") applyBtPairPreset(pairPreset);
   if (day && dayPreset !== "custom") applyBtDayPreset(dayPreset);
   if (ai && aiPreset !== "custom") applyBtAiPreset(aiPreset);
+
+  const isMetals = ai && aiPreset === "gold_silver_macro";
+  const metalsOpts = $("bt-metals-options");
+  if (metalsOpts) {
+    metalsOpts.hidden = !isMetals;
+  }
 
   const modeHint = $("bt-mode-hint");
   if (modeHint) {
@@ -850,6 +917,7 @@ function backtestPayload() {
     payload.ai_trail_after_r = Number(form.elements.ai_trail_after_r?.value ?? 1.0);
     payload.ai_risk_pct = Number(form.elements.ai_risk_pct?.value || 0.5);
     payload.ai_max_positions = Number(form.elements.ai_max_positions?.value || 3);
+    payload.metals_dollar_index_only = !!form.elements.metals_dollar_index_only?.checked;
   } else {
     payload.dip_preset = form.elements.dip_preset.value || "deep";
     payload.dip_rsi_buy = Number(form.elements.dip_rsi_buy.value || 30);
@@ -920,6 +988,7 @@ function saveBacktestFormDraft() {
     ai_trail_after_r: form.elements.ai_trail_after_r?.value || "1.0",
     ai_risk_pct: form.elements.ai_risk_pct?.value || "0.5",
     ai_max_positions: form.elements.ai_max_positions?.value || "3",
+    metals_dollar_index_only: !!form.elements.metals_dollar_index_only?.checked,
   };
   try {
     localStorage.setItem(BT_FORM_STORAGE_KEY, JSON.stringify(draft));
@@ -1000,6 +1069,7 @@ function restoreBacktestFormDraft() {
   setVal("ai_trail_after_r", draft.ai_trail_after_r);
   setVal("ai_risk_pct", draft.ai_risk_pct);
   setVal("ai_max_positions", draft.ai_max_positions);
+  setCheck("metals_dollar_index_only", draft.metals_dollar_index_only);
   return true;
 }
 
@@ -1313,6 +1383,12 @@ function onDeskStatusUpdate(state, { forceSettings } = {}) {
   }
   if (Array.isArray(state.pair_presets)) {
     pairPresets = state.pair_presets;
+  }
+  if (Array.isArray(state.day_presets) && state.day_presets.length) {
+    dayPresets = state.day_presets;
+  }
+  if (Array.isArray(state.ai_presets) && state.ai_presets.length) {
+    aiPresets = state.ai_presets;
   }
   if (forceSettings) {
     syncBacktestUi();

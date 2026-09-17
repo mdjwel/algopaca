@@ -29,6 +29,18 @@ import numpy as np
 import pandas as pd
 
 from bot.client import AlpacaService
+from bot.dollar_tracker import (
+    DEFAULT_DOLLAR_SYMBOL,
+    DOLLAR_MACRO_BAR_LIMIT,
+    DOLLAR_Z_SCALE,
+    DOLLAR_Z_WINDOW,
+    blend_realtime_dollar_movement,
+    classify_dollar_trend,
+    compute_dollar_series,
+    evaluate_dollar_action,
+    fetch_live_dollar_snapshot,
+    score_dollar,
+)
 from bot.econ_calendar import fetch_economic_calendar
 from bot.macro_releases import get_active_macro_catalyst
 
@@ -54,9 +66,7 @@ RATES_SLOW_PERIODS = 60
 RATES_FAST_SCALE = 0.03
 RATES_SLOW_SCALE = 0.06
 
-# Dollar proxy: a level z-score beats the momentum test the old code used.
-DOLLAR_Z_WINDOW = 60
-DOLLAR_Z_SCALE = 1.5
+# Dollar proxy parameters (DOLLAR_Z_WINDOW, DOLLAR_Z_SCALE) are imported from bot.dollar_tracker
 
 # Regime participation filter.
 TREND_WINDOW = 200
@@ -193,11 +203,7 @@ def score_gsr(gsr_z: float | None) -> float | None:
     return clip_unit(gsr_z / GSR_Z_SCALE)
 
 
-def score_dollar(uup_z: float | None) -> float | None:
-    """A cheap dollar helps gold — weakly. Sign is inverted, weight is small."""
-    if uup_z is None:
-        return None
-    return clip_unit(-uup_z / DOLLAR_Z_SCALE)
+# score_dollar is imported from bot.dollar_tracker
 
 
 def score_trend(gld_closes: pd.Series | None) -> float | None:
@@ -247,6 +253,7 @@ def compute_historical_macro_series(
     bars: pd.DataFrame,
     symbol: str = "GLD",
     macro_bars: dict[str, pd.DataFrame] | None = None,
+    track_dollar_only: bool = False,
 ) -> pd.DataFrame:
     """Compute rolling historical macro factors and composite score for each bar.
 
@@ -359,33 +366,37 @@ def compute_historical_macro_series(
     dollar_trend[dollar_score < -0.25] = "rising"
     dollar_mixed = (dollar_trend == "neutral") | (dollar_score.abs() <= 0.25) | dollar_score.isna()
 
-    # 5. Composite macro score combining all available factors
-    # Weights: rates: 0.40, gsr: 0.35, trend: 0.15, dollar: 0.10
-    w_rates = FACTOR_WEIGHTS["rates"]
-    w_gsr = FACTOR_WEIGHTS["gsr"]
-    w_trend = FACTOR_WEIGHTS["trend"]
-    w_dollar = FACTOR_WEIGHTS["dollar"]
+    if track_dollar_only:
+        macro_score = np.round(dollar_score.fillna(0.0).clip(-1.0, 1.0) * SCORE_SCALE, 2)
+        metals_bias = [classify_bias(float(s)) for s in macro_score]
+    else:
+        # 5. Composite macro score combining all available factors
+        # Weights: rates: 0.40, gsr: 0.35, trend: 0.15, dollar: 0.10
+        w_rates = FACTOR_WEIGHTS["rates"]
+        w_gsr = FACTOR_WEIGHTS["gsr"]
+        w_trend = FACTOR_WEIGHTS["trend"]
+        w_dollar = FACTOR_WEIGHTS["dollar"]
 
-    has_rates = rates_score.notna()
-    has_gsr = gsr_score.notna()
-    has_trend = trend_score.notna()
-    has_dollar = dollar_score.notna()
+        has_rates = rates_score.notna()
+        has_gsr = gsr_score.notna()
+        has_trend = trend_score.notna()
+        has_dollar = dollar_score.notna()
 
-    total_w = (
-        has_rates.astype(float) * w_rates
-        + has_gsr.astype(float) * w_gsr
-        + has_trend.astype(float) * w_trend
-        + has_dollar.astype(float) * w_dollar
-    ).replace(0, np.nan)
+        total_w = (
+            has_rates.astype(float) * w_rates
+            + has_gsr.astype(float) * w_gsr
+            + has_trend.astype(float) * w_trend
+            + has_dollar.astype(float) * w_dollar
+        ).replace(0, np.nan)
 
-    weighted_val = (
-        rates_score.fillna(0.0) * w_rates
-        + gsr_score.fillna(0.0) * w_gsr
-        + trend_score.fillna(0.0) * w_trend
-        + dollar_score.fillna(0.0) * w_dollar
-    )
-    macro_score = np.round((weighted_val / total_w).fillna(0.0) * SCORE_SCALE, 2)
-    metals_bias = [classify_bias(float(s)) for s in macro_score]
+        weighted_val = (
+            rates_score.fillna(0.0) * w_rates
+            + gsr_score.fillna(0.0) * w_gsr
+            + trend_score.fillna(0.0) * w_trend
+            + dollar_score.fillna(0.0) * w_dollar
+        )
+        macro_score = np.round((weighted_val / total_w).fillna(0.0) * SCORE_SCALE, 2)
+        metals_bias = [classify_bias(float(s)) for s in macro_score]
 
     return pd.DataFrame(
         {
@@ -422,15 +433,17 @@ def fetch_metals_macro_context(
     service: AlpacaService,
     symbol: str,
     calendar: list[dict[str, Any]] | None = None,
+    track_dollar_only: bool = False,
 ) -> dict[str, Any]:
     """Build real-time precious metals analytics including GSR and macro catalyst checks."""
     sym = symbol.upper().strip()
     gold_sym = "GLD"
     silver_sym = "SLV"
 
-    # 1. Fetch live mark prices for GLD and SLV
+    # 1. Fetch live mark prices for GLD, SLV, and UUP (Dollar Index proxy)
     gld_price = 0.0
     slv_price = 0.0
+    uup_price = 0.0
     try:
         gld_mark = service.get_mark_price(gold_sym)
         if isinstance(gld_mark.get("price"), (int, float)):
@@ -445,13 +458,18 @@ def fetch_metals_macro_context(
     except Exception as exc:
         logger.debug("Failed to fetch SLV mark: %s", exc)
 
+    dollar_snap = fetch_live_dollar_snapshot(
+        service, DEFAULT_DOLLAR_SYMBOL, track_dollar_only=track_dollar_only, limit=_MACRO_BAR_LIMIT
+    )
+    uup_price = dollar_snap["price"]
+    uup_change_pct = dollar_snap["change_pct"]
+
     # 2. Compute live GSR
     live_gsr = calculate_gsr(gld_price, slv_price)
 
     # 3. Daily history for the factor windows
     gld_bars, gld_close = _fetch_closes(service, gold_sym, _METAL_BAR_LIMIT)
     _, slv_close = _fetch_closes(service, silver_sym, _METAL_BAR_LIMIT)
-    _, uup_close = _fetch_closes(service, "UUP", _MACRO_BAR_LIMIT)
     _, tlt_close = _fetch_closes(service, "TLT", _MACRO_BAR_LIMIT)
     _, gdx_close = _fetch_closes(service, "GDX", _MACRO_BAR_LIMIT)
 
@@ -505,45 +523,9 @@ def fetch_metals_macro_context(
     # 5. Factor scores
     rates_score = score_rates(tlt_close)
     gsr_score = score_gsr(gsr_z_score)
-    dollar_z = zscore(uup_close, DOLLAR_Z_WINDOW)
-    dollar_score = score_dollar(dollar_z)
+    dollar_z = dollar_snap["dollar_z"]
+    dollar_score = dollar_snap["dollar_score"]
     trend_score = score_trend(gld_close)
-
-    macro_composite_score = combine_macro_score(
-        {
-            "rates": rates_score,
-            "gsr": gsr_score,
-            "trend": trend_score,
-            "dollar": dollar_score,
-        }
-    )
-    metals_macro_bias = classify_bias(macro_composite_score)
-
-    # Human-readable trend labels kept for the prompt and the UI.
-    if dollar_score is None:
-        dollar_trend = "unknown"
-    elif dollar_score > 0.25:
-        dollar_trend = "falling"
-    elif dollar_score < -0.25:
-        dollar_trend = "rising"
-    else:
-        dollar_trend = "neutral"
-
-    dollar_mixed = bool(dollar_trend == "neutral" or (dollar_score is not None and abs(dollar_score) <= 0.25))
-
-    if rates_score is None:
-        yield_trend = "unknown"
-    elif rates_score > 0.25:
-        yield_trend = "falling_yields"
-    elif rates_score < -0.25:
-        yield_trend = "rising_yields"
-    else:
-        yield_trend = "neutral"
-
-    trend_regime = (
-        "unknown" if trend_score is None
-        else ("bullish_above_sma200" if trend_score > 0 else "bearish_below_sma200")
-    )
 
     # 6. Miners ratio — reported as context only. Measured IC was -0.01, so it
     # carries no weight in the score despite the folklore about miners leading.
@@ -568,62 +550,11 @@ def fetch_metals_macro_context(
         except Exception as exc:
             logger.debug("Failed computing Miners ratio metrics: %s", exc)
 
-    # 7. Filter Macro Events relevant to Precious Metals
-    cal = (
-        calendar
-        if calendar is not None
-        else fetch_economic_calendar(hours_ahead=48, hours_behind=8)
-    )
-    relevant_events: list[dict[str, Any]] = []
-    imminent_risk = False
-    events_5m_imminent: list[dict[str, Any]] = []
-    now_utc = datetime.now(timezone.utc)
-
-    for ev in cal:
-        title_lower = str(ev.get("title") or "").lower()
-        impact = str(ev.get("impact") or "Low")
-        if any(kw in title_lower for kw in _METALS_MACRO_KEYWORDS) or impact == "High":
-            event_copy = dict(ev)
-            when_utc_str = ev.get("when_utc")
-            if when_utc_str:
-                try:
-                    when_dt = datetime.fromisoformat(str(when_utc_str).replace("Z", "+00:00"))
-                    if when_dt.tzinfo is None:
-                        when_dt = when_dt.replace(tzinfo=timezone.utc)
-                    minutes_diff = (when_dt - now_utc).total_seconds() / 60.0
-                    event_copy["minutes_away"] = round(minutes_diff, 1)
-                    # Only unreleased events in the near future constitute imminent surprise risk
-                    is_unreleased = (
-                        not ev.get("released")
-                        and not str(ev.get("actual") or "").strip()
-                        and not ev.get("rate_already_released")
-                    )
-                    if is_unreleased and 0.0 < minutes_diff <= 45.0 and impact == "High":
-                        imminent_risk = True
-                    if is_unreleased and 0.0 < minutes_diff <= 5.0:
-                        events_5m_imminent.append(event_copy)
-                except Exception:
-                    pass
-            relevant_events.append(event_copy)
-
-    # Check for active recently released macro catalyst (e.g. FOMC rate decision today)
-    active_catalyst = get_active_macro_catalyst(relevant_events, now_utc=now_utc)
-    if active_catalyst:
-        action = str(active_catalyst.get("action") or "").lower()
-        if action == "hike":
-            rates_score = min(rates_score if rates_score is not None else -0.6, -0.6)
-            yield_trend = "rising_yields"
-            dollar_trend = "rising"
-            dollar_score = min(dollar_score if dollar_score is not None else -0.5, -0.5)
-            dollar_mixed = False
-        elif action == "cut":
-            rates_score = max(rates_score if rates_score is not None else 0.6, 0.6)
-            yield_trend = "falling_yields"
-            dollar_trend = "falling"
-            dollar_score = max(dollar_score if dollar_score is not None else 0.5, 0.5)
-            dollar_mixed = False
-
-        # Recombine macro score incorporating real-time catalyst impact
+    if track_dollar_only:
+        # Driven 100% by the US Dollar Index. Rates, GSR, and Trend are bypassed.
+        macro_composite_score = round(clip_unit(dollar_score if dollar_score is not None else 0.0) * SCORE_SCALE, 2)
+        metals_macro_bias = classify_bias(macro_composite_score)
+    else:
         macro_composite_score = combine_macro_score(
             {
                 "rates": rates_score,
@@ -634,26 +565,136 @@ def fetch_metals_macro_context(
         )
         metals_macro_bias = classify_bias(macro_composite_score)
 
-    if imminent_risk:
-        macro_risk_level = "imminent_release"
-    elif active_catalyst:
-        macro_risk_level = "post_release_catalyst"
-    elif relevant_events:
-        macro_risk_level = "elevated"
+    # Human-readable trend labels kept for the prompt and the UI.
+    dollar_trend = dollar_snap["dollar_trend"]
+    dollar_mixed = dollar_snap["dollar_mixed"]
+
+    if rates_score is None:
+        yield_trend = "unknown"
+    elif rates_score > 0.25:
+        yield_trend = "falling_yields"
+    elif rates_score < -0.25:
+        yield_trend = "rising_yields"
     else:
-        macro_risk_level = "normal"
+        yield_trend = "neutral"
 
-    factor_scores = {
-        "rates": None if rates_score is None else round(rates_score, 3),
-        "gsr": None if gsr_score is None else round(gsr_score, 3),
-        "trend": None if trend_score is None else round(trend_score, 3),
-        "dollar": None if dollar_score is None else round(dollar_score, 3),
-        "miners_unweighted": None if miners_z is None else round(clip_unit(miners_z / MINERS_Z_SCALE), 3),
-    }
-
-    is_reversal = bool(
-        dollar_mixed and not (active_catalyst and active_catalyst.get("action") == "hike")
+    trend_regime = (
+        "unknown" if trend_score is None
+        else ("bullish_above_sma200" if trend_score > 0 else "bearish_below_sma200")
     )
+
+    # 7. Filter Macro Events relevant to Precious Metals (Bypassed in Track Dollar Only mode)
+    relevant_events: list[dict[str, Any]] = []
+    imminent_risk = False
+    events_5m_imminent: list[dict[str, Any]] = []
+    active_catalyst: dict[str, Any] | None = None
+
+    if not track_dollar_only:
+        cal = (
+            calendar
+            if calendar is not None
+            else fetch_economic_calendar(hours_ahead=48, hours_behind=8)
+        )
+        now_utc = datetime.now(timezone.utc)
+
+        for ev in cal:
+            title_lower = str(ev.get("title") or "").lower()
+            impact = str(ev.get("impact") or "Low")
+            if any(kw in title_lower for kw in _METALS_MACRO_KEYWORDS) or impact == "High":
+                event_copy = dict(ev)
+                when_utc_str = ev.get("when_utc")
+                if when_utc_str:
+                    try:
+                        when_dt = datetime.fromisoformat(str(when_utc_str).replace("Z", "+00:00"))
+                        if when_dt.tzinfo is None:
+                            when_dt = when_dt.replace(tzinfo=timezone.utc)
+                        minutes_diff = (when_dt - now_utc).total_seconds() / 60.0
+                        event_copy["minutes_away"] = round(minutes_diff, 1)
+                        # Only unreleased events in the near future constitute imminent surprise risk
+                        is_unreleased = (
+                            not ev.get("released")
+                            and not str(ev.get("actual") or "").strip()
+                            and not ev.get("rate_already_released")
+                        )
+                        if is_unreleased and 0.0 < minutes_diff <= 45.0 and impact == "High":
+                            imminent_risk = True
+                        if is_unreleased and 0.0 < minutes_diff <= 5.0:
+                            events_5m_imminent.append(event_copy)
+                    except Exception:
+                        pass
+                relevant_events.append(event_copy)
+
+        # Check for active recently released macro catalyst (e.g. FOMC rate decision today)
+        active_catalyst = get_active_macro_catalyst(relevant_events, now_utc=now_utc)
+        if active_catalyst:
+            action = str(active_catalyst.get("action") or "").lower()
+            if action == "hike":
+                rates_score = min(rates_score if rates_score is not None else -0.6, -0.6)
+                yield_trend = "rising_yields"
+                dollar_trend = "rising"
+                dollar_score = min(dollar_score if dollar_score is not None else -0.5, -0.5)
+                dollar_mixed = False
+            elif action == "cut":
+                rates_score = max(rates_score if rates_score is not None else 0.6, 0.6)
+                yield_trend = "falling_yields"
+                dollar_trend = "falling"
+                dollar_score = max(dollar_score if dollar_score is not None else 0.5, 0.5)
+                dollar_mixed = False
+
+            # Recombine macro score incorporating real-time catalyst impact
+            macro_composite_score = combine_macro_score(
+                {
+                    "rates": rates_score,
+                    "gsr": gsr_score,
+                    "trend": trend_score,
+                    "dollar": dollar_score,
+                }
+            )
+            metals_macro_bias = classify_bias(macro_composite_score)
+
+    if track_dollar_only:
+        macro_risk_level = "normal"
+        factor_weights = {"dollar": 1.0}
+        factor_scores = {
+            "rates": None,
+            "gsr": None,
+            "trend": None,
+            "dollar": None if dollar_score is None else round(dollar_score, 3),
+            "miners_unweighted": None,
+        }
+    else:
+        factor_weights = dict(FACTOR_WEIGHTS)
+        factor_scores = {
+            "rates": None if rates_score is None else round(rates_score, 3),
+            "gsr": None if gsr_score is None else round(gsr_score, 3),
+            "trend": None if trend_score is None else round(trend_score, 3),
+            "dollar": None if dollar_score is None else round(dollar_score, 3),
+            "miners_unweighted": None if miners_z is None else round(clip_unit(miners_z / MINERS_Z_SCALE), 3),
+        }
+        if imminent_risk:
+            macro_risk_level = "imminent_release"
+        elif active_catalyst:
+            macro_risk_level = "post_release_catalyst"
+        elif relevant_events:
+            macro_risk_level = "elevated"
+        else:
+            macro_risk_level = "normal"
+
+    if track_dollar_only:
+        is_reversal = bool(dollar_snap["short_reversal_to_long"])
+        reversal_reason = dollar_snap["short_reversal_reason"]
+    else:
+        is_reversal = bool(
+            dollar_mixed and not (active_catalyst and active_catalyst.get("action") == "hike")
+        )
+        reversal_reason = (
+            "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
+            if is_reversal
+            else None
+        )
+
+    dollar_sig = dollar_snap["dollar_signal"]
+    dollar_act = dollar_snap["dollar_action"]
 
     return {
         "is_precious_metal": True,
@@ -674,23 +715,25 @@ def fetch_metals_macro_context(
         "dollar_mixed": dollar_mixed,
         "dollar_economic_data_status": "mixed" if dollar_mixed else dollar_trend,
         "short_reversal_to_long": is_reversal,
-        "short_reversal_reason": (
-            "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
-            if is_reversal
-            else None
-        ),
+        "short_reversal_reason": reversal_reason,
         "yield_trend": yield_trend,
         "trend_regime": trend_regime,
         "miners_signal": miners_signal,
         "gdx_gld_ratio": gdx_gld_ratio,
         "factor_scores": factor_scores,
-        "factor_weights": dict(FACTOR_WEIGHTS),
+        "factor_weights": factor_weights,
         "macro_composite_score": macro_composite_score,
         "metals_macro_bias": metals_macro_bias,
         "macro_risk_level": macro_risk_level,
         "active_catalyst": active_catalyst,
         "relevant_macro_events": relevant_events[:5],
         "events_5m_imminent": events_5m_imminent,
+        "track_dollar_only": track_dollar_only,
+        "dollar_only_mode": track_dollar_only,
+        "dollar_live_price": uup_price,
+        "dollar_change_pct": uup_change_pct,
+        "dollar_signal": dollar_sig,
+        "dollar_action": dollar_act,
     }
 
 
@@ -777,6 +820,7 @@ def protect_metals_position_before_event(
     limit_offset_pct: float = 0.5,
     synthetic_handler: Any = None,
     reversal_buy: bool = True,
+    track_dollar_only: bool = False,
 ) -> dict[str, Any] | None:
     """Set or tighten a protective Stop-Limit order 5 minutes before an economic event.
 
@@ -788,10 +832,14 @@ def protect_metals_position_before_event(
         limit_offset_pct: Distance in % beyond stop price for limit.
         synthetic_handler: Optional synthetic order handler (web_state) for 24h extended-hours execution.
         reversal_buy: If True and position is short, automatically reverse into a buy position when stop-loss is hit.
+        track_dollar_only: If True, news and economic events are bypassed; returns None.
 
     Returns:
         Dict with protection details or None if no action taken.
     """
+    if track_dollar_only:
+        return None
+
     sym = str(symbol).upper().strip()
     if not is_precious_metal(sym):
         return None

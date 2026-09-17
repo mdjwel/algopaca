@@ -1301,6 +1301,8 @@
         localStorage.setItem("algopaca_time_format", tf);
         document.cookie = `algopaca_timezone=${encodeURIComponent(tz)}; path=/; max-age=31536000; SameSite=Lax`;
         document.cookie = `algopaca_time_format=${encodeURIComponent(tf)}; path=/; max-age=31536000; SameSite=Lax`;
+        window.dispatchEvent(new CustomEvent("timezonechange", { detail: { timezone: tz } }));
+        window.dispatchEvent(new CustomEvent("timeformatchange", { detail: { format: tf } }));
       } catch (_) {}
 
       await savePreferencesPayload({

@@ -442,10 +442,36 @@ function formatEtDayLabel(iso) {
   return `${p.day} ${MONTHS_LONG[p.month]} ${p.year}`;
 }
 
+/** Normalizes a clock-only time string (e.g. "12:56:31", "12:56:31 PM") into a valid ISO string anchored to today. */
+function normalizeTimeToDateIso(timeStr) {
+  if (typeof timeStr !== "string") return "";
+  const trimmed = timeStr.trim();
+  const m = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([AaPp][Mm]))?$/);
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const s = m[3] || "00";
+  const ampm = (m[4] || "").toUpperCase();
+  if (ampm === "PM" && h < 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  const today = new Date();
+  const y = today.getFullYear();
+  const mon = String(today.getMonth() + 1).padStart(2, "0");
+  const d = String(today.getDate()).padStart(2, "0");
+  return `${y}-${mon}-${d}T${String(h).padStart(2, "0")}:${min}:${s}`;
+}
+
 /** Formats a clock time in active desk timezone & 12h/24h format */
 function formatDeskTime(isoString, { withSeconds = false, hour12 } = {}) {
   if (!isoString) return "";
-  const t = typeof isoString === "number" ? isoString : parseBtTime(isoString);
+  let str = String(isoString).trim();
+  const normTime = normalizeTimeToDateIso(str);
+  if (normTime) {
+    str = normTime;
+  } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(str)) {
+    str = str.replace(" ", "T");
+  }
+  const t = typeof isoString === "number" ? isoString : parseBtTime(str);
   if (!Number.isFinite(t)) return "";
   const d = new Date(t);
   const effectiveTz = getEffectiveDeskTimezone();
@@ -466,9 +492,16 @@ function formatDeskTime(isoString, { withSeconds = false, hour12 } = {}) {
 }
 
 /** Formats a date + time in active desk timezone & 12h/24h format */
-function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hour12 } = {}) {
+function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hour12, withSeconds = false } = {}) {
   if (!isoString) return "—";
-  const t = typeof isoString === "number" ? isoString : parseBtTime(isoString);
+  let str = String(isoString).trim();
+  const normTime = normalizeTimeToDateIso(str);
+  if (normTime) {
+    str = normTime;
+  } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(str)) {
+    str = str.replace(" ", "T");
+  }
+  const t = typeof isoString === "number" ? isoString : parseBtTime(str);
   if (!Number.isFinite(t)) return String(isoString || "—");
   const d = new Date(t);
   const effectiveTz = getEffectiveDeskTimezone();
@@ -482,6 +515,9 @@ function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hou
   if (withTime) {
     opts.hour = useHour12 ? "numeric" : "2-digit";
     opts.minute = "2-digit";
+    if (withSeconds) {
+      opts.second = "2-digit";
+    }
     opts.hour12 = useHour12;
   }
   if (effectiveTz) opts.timeZone = effectiveTz;
@@ -492,20 +528,11 @@ function formatDeskDateTime(isoString, { withTime = true, shortDate = false, hou
   }
 }
 
-/** Formats an order execution timestamp in desk time (12h/24h) with seconds. */
-function formatTradeExecutionTime(rawTime) {
+/** Formats an order execution timestamp in desk time (12h/24h) with seconds, optionally with date. */
+function formatTradeExecutionTime(rawTime, { withDate = false } = {}) {
   if (!rawTime) return "";
-  if (typeof rawTime === "string" && /^\d{1,2}:\d{2}(:\d{2})?$/.test(rawTime.trim())) {
-    if (typeof isDeskHour12 === "function" && isDeskHour12()) {
-      const parts = rawTime.trim().split(":");
-      let h = parseInt(parts[0], 10);
-      const m = parts[1];
-      const s = parts[2] ? `:${parts[2]}` : "";
-      const ampm = h >= 12 ? "PM" : "AM";
-      h = h % 12 || 12;
-      return `${String(h).padStart(2, "0")}:${m}${s} ${ampm}`;
-    }
-    return rawTime.trim();
+  if (withDate) {
+    return formatTradeExecutionDateTime(rawTime);
   }
   if (typeof formatDeskTime === "function") {
     try {
@@ -513,11 +540,58 @@ function formatTradeExecutionTime(rawTime) {
       if (formatted) return formatted;
     } catch (_) {}
   }
+  if (typeof rawTime === "string") {
+    const norm = normalizeTimeToDateIso(rawTime);
+    if (norm && typeof formatDeskTime === "function") {
+      try {
+        const formatted = formatDeskTime(norm, { withSeconds: true });
+        if (formatted) return formatted;
+      } catch (_) {}
+    }
+  }
   try {
     const t = typeof rawTime === "number" ? rawTime : Date.parse(rawTime);
     if (Number.isFinite(t)) {
       const d = new Date(t);
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+  } catch (_) {}
+  return String(rawTime);
+}
+
+/** Formats an order execution timestamp in desk timezone & 12h/24h format with date and seconds. */
+function formatTradeExecutionDateTime(rawTime) {
+  if (!rawTime) return "";
+  if (typeof formatDeskDateTime === "function") {
+    try {
+      const formatted = formatDeskDateTime(rawTime, { withTime: true, withSeconds: true, shortDate: true });
+      if (formatted && formatted !== "—") return formatted;
+    } catch (_) {}
+  }
+  let str = String(rawTime).trim();
+  const normTime = normalizeTimeToDateIso(str);
+  if (normTime) {
+    str = normTime;
+  } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(str)) {
+    str = str.replace(" ", "T");
+  }
+  try {
+    const t = typeof str === "number" ? str : Date.parse(str);
+    if (Number.isFinite(t)) {
+      const d = new Date(t);
+      const effectiveTz = typeof getEffectiveDeskTimezone === "function" ? getEffectiveDeskTimezone() : undefined;
+      const useHour12 = typeof isDeskHour12 === "function" ? isDeskHour12() : true;
+      const opts = {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: useHour12 ? "numeric" : "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: useHour12,
+      };
+      if (effectiveTz) opts.timeZone = effectiveTz;
+      return new Intl.DateTimeFormat(document.documentElement.lang || undefined, opts).format(d);
     }
   } catch (_) {}
   return String(rawTime);

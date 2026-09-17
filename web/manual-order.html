@@ -193,12 +193,12 @@
               <div class="manual-qty-field" id="manual-buy-sizing-block">
                 <div class="qty-field-head">
                   <div class="qty-field-copy">
-                    <label class="qty-field-label" id="manual-buy-legend" for="manual-ai-risk-pct" data-i18n="quantity">Quantity</label>
+                    <label class="qty-field-label" id="manual-buy-legend" for="manual-buy-qty" data-i18n="quantity">Quantity</label>
                     <span id="manual-buy-avail" class="qty-field-avail"></span>
                   </div>
                   <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
                     <label class="qty-unit" data-tooltip="Risk %" data-i18n-tooltip="size_by_risk">
-                      <input type="radio" name="buy_size_mode" value="risk" checked />
+                      <input type="radio" name="buy_size_mode" value="risk" />
                       <span aria-hidden="true">%</span>
                       <span class="sr-only" data-i18n="size_by_risk">Risk</span>
                     </label>
@@ -208,14 +208,14 @@
                       <span class="sr-only" data-i18n="dollars_title">Dollars</span>
                     </label>
                     <label class="qty-unit" data-tooltip="Shares" data-i18n-tooltip="shares_title">
-                      <input type="radio" name="buy_size_mode" value="qty" />
+                      <input type="radio" name="buy_size_mode" value="qty" checked />
                       <span aria-hidden="true">#</span>
                       <span class="sr-only" data-i18n="shares_title">Shares</span>
                     </label>
                   </div>
                 </div>
 
-                <div class="qty-field-input" id="manual-risk-pct-label">
+                <div class="qty-field-input" id="manual-risk-pct-label" hidden>
                   <div class="price-input-shell">
                     <input id="manual-ai-risk-pct" name="ai_risk_pct" type="number" value="0.5" min="0.05" max="10" step="0.05" inputmode="decimal" placeholder="0.5" aria-describedby="manual-buy-avail manual-size-mode-help" />
                   </div>
@@ -234,14 +234,14 @@
                   <p class="field-error" role="alert" hidden></p>
                 </div>
 
-                <div class="qty-field-input" id="manual-buy-qty-label" hidden>
+                <div class="qty-field-input" id="manual-buy-qty-label">
                   <div class="price-input-shell">
-                    <input id="manual-buy-qty" name="buy_qty" type="number" min="1" step="1" inputmode="decimal" placeholder="10" aria-describedby="manual-buy-avail manual-size-mode-help" />
+                    <input id="manual-buy-qty" name="buy_qty" type="number" value="1" min="1" step="1" inputmode="decimal" placeholder="1" aria-describedby="manual-buy-avail manual-size-mode-help" />
                   </div>
                   <p class="field-error" role="alert" hidden></p>
                 </div>
 
-                <p class="field-help" id="manual-size-mode-help" aria-live="polite" data-i18n="manual_risk_help_short">Shares are set so a stop-out costs your risk budget: equity × risk % ÷ (ATR × multiplier). More volatility means fewer shares for the same dollar risk.</p>
+                <p class="field-help" id="manual-size-mode-help" aria-live="polite" data-i18n="size_help_shares">You choose the share count; the ATR stop still sets where the trade is wrong, so watch Max risk.</p>
                 <div id="manual-inline-sizing-badge" class="manual-inline-sizing-badge" aria-live="polite" hidden></div>
               </div>
 

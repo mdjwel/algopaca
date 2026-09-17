@@ -73,6 +73,7 @@ class AiBacktestParams:
     ai_provider: str | None = None
     ai_model: str | None = None
     reversal_buy_on_stop: bool = True
+    metals_dollar_index_only: bool = False
 
     def __post_init__(self) -> None:
         if self.preset == "gold_silver_macro":
@@ -157,6 +158,7 @@ def compute_ai_indicator_frame(
     bars: pd.DataFrame,
     symbol: str = "",
     macro_bars: dict[str, pd.DataFrame] | None = None,
+    track_dollar_only: bool = False,
 ) -> pd.DataFrame:
     """Vectorized indicator pre-computation for AI rule evaluation."""
     df = bars.sort_index().copy()
@@ -247,7 +249,7 @@ def compute_ai_indicator_frame(
     sym_upper = (symbol or "").upper().strip()
     if is_precious_metal(sym_upper) or macro_bars:
         try:
-            macro_df = compute_historical_macro_series(bars, symbol=sym_upper, macro_bars=macro_bars)
+            macro_df = compute_historical_macro_series(bars, symbol=sym_upper, macro_bars=macro_bars, track_dollar_only=track_dollar_only)
             for col in macro_df.columns:
                 res[col] = macro_df[col]
         except Exception:
@@ -273,7 +275,7 @@ def evaluate_ai_signal(
     Returns:
         (Signal, confidence [0.0..1.0], thesis)
     """
-    if event_imminent_45m:
+    if event_imminent_45m and not getattr(params, "metals_dollar_index_only", False):
         return Signal.HOLD, 0.20, "Imminent high-impact macro event (within 45 minutes) — hold"
     if spread_bps > 25.0:
         return Signal.HOLD, 0.20, f"Excessive spread ({spread_bps:.1f} bps > 25 bps limit) — skip"
@@ -380,6 +382,30 @@ def evaluate_ai_signal(
         yield_trend = str(row.get("yield_trend") or "neutral")
         dollar_trend = str(row.get("dollar_trend") or "neutral")
         dollar_mixed = bool(row.get("dollar_mixed", False) or dollar_trend == "neutral")
+
+        if getattr(params, "metals_dollar_index_only", False):
+            dollar_score_val = float(row["dollar_score"]) if "dollar_score" in row and not pd.isna(row["dollar_score"]) else (macro_score if macro_score is not None else 0.0)
+            d_falling = (dollar_trend in {"falling", "falling_dollar", "bearish"}) or dollar_score_val > 0.15
+            d_rising = (dollar_trend in {"rising", "rising_dollar", "bullish"}) or dollar_score_val < -0.15
+
+            if is_inverse:
+                if d_rising:
+                    return Signal.BUY, 0.85, f"Gold/Silver Macro (Dollar Index Only): Dollar rising ({dollar_trend}) -> BUY inverse ETF {sym}"
+                elif d_falling:
+                    return Signal.SELL if allow_short else Signal.HOLD, 0.85, f"Gold/Silver Macro (Dollar Index Only): Dollar falling ({dollar_trend}) -> EXIT inverse ETF {sym}"
+                else:
+                    return Signal.HOLD, 0.40, f"Gold/Silver Macro (Dollar Index Only): Dollar neutral -> HOLD inverse ETF {sym}"
+
+            # Long precious metals (GLD, SLV, IAU, AGQ, etc.)
+            if d_falling:
+                return Signal.BUY, 0.85, f"Gold/Silver Macro (Dollar Index Only): Dollar falling ({dollar_trend}) -> BUY precious metal {sym}"
+            elif d_rising:
+                if allow_short:
+                    return Signal.SELL, 0.85, f"Gold/Silver Macro (Dollar Index Only): Dollar rising ({dollar_trend}) -> SHORT precious metal {sym}"
+                else:
+                    return Signal.SELL, 0.85, f"Gold/Silver Macro (Dollar Index Only): Dollar rising ({dollar_trend}) -> EXIT precious metal {sym}"
+            else:
+                return Signal.HOLD, 0.40, f"Gold/Silver Macro (Dollar Index Only): Dollar neutral -> HOLD {sym}"
 
         # 1. Inverse ETFs (e.g. GDXD, GLL, ZSL): express bear view by BUYING long
         if is_inverse:
@@ -533,7 +559,12 @@ def run_ai_backtest(
     if n <= warmup + 2:
         raise ValueError(f"AI backtest needs more than {warmup + 2} bars, got {n}")
 
-    frame = compute_ai_indicator_frame(df, symbol=symbol, macro_bars=macro_bars)
+    frame = compute_ai_indicator_frame(
+        df,
+        symbol=symbol,
+        macro_bars=macro_bars,
+        track_dollar_only=bool(getattr(p, "metals_dollar_index_only", False)),
+    )
     slip = max(0.0, p.slippage_bps) / 10_000.0
     cash = float(p.initial_cash)
     equity = cash
@@ -602,25 +633,25 @@ def run_ai_backtest(
         position = None
 
     for i in range(warmup, n):
-        stamp = frame.index[i]
         curr_row = frame.iloc[i]
         prev_row = frame.iloc[i - 1] if i > 0 else None
         bar_open = float(curr_row["open"])
         bar_high = float(curr_row["high"])
         bar_low = float(curr_row["low"])
         bar_close = float(curr_row["close"])
-        bar_atr = float(curr_row["atr14"]) if not np.isnan(curr_row["atr14"]) and float(curr_row["atr14"]) > 0 else bar_close * 0.02
+        bar_atr = float(curr_row["atr14"]) if not np.isnan(curr_row["atr14"]) else bar_close * 0.015
+        stamp = frame.index[i]
 
-        # Check event proximity (Rule 5 & Risk Filter)
+        # Check macro events
         event_5m = False
         event_45m = False
         if parsed_events:
             try:
-                curr_dt = stamp.to_pydatetime() if hasattr(stamp, "to_pydatetime") else stamp
-                if hasattr(curr_dt, "tzinfo") and curr_dt.tzinfo is None:
-                    curr_dt = curr_dt.replace(tzinfo=timezone.utc)
-                for ev_time, _ in parsed_events:
-                    diff_m = (ev_time - curr_dt).total_seconds() / 60.0
+                cur_dt = stamp if isinstance(stamp, datetime) else pd.to_datetime(stamp).to_pydatetime()
+                if cur_dt.tzinfo is None:
+                    cur_dt = cur_dt.replace(tzinfo=timezone.utc)
+                for ev_dt, imp in parsed_events:
+                    diff_m = (ev_dt - cur_dt).total_seconds() / 60.0
                     if 0.0 <= diff_m <= 5.0:
                         event_5m = True
                     if 0.0 <= diff_m <= 45.0:
@@ -629,7 +660,7 @@ def run_ai_backtest(
                 pass
 
         # Rule 5: 5-minute economic event protection
-        if event_5m and position is not None and p.preset == "gold_silver_macro":
+        if event_5m and position is not None and p.preset == "gold_silver_macro" and not getattr(p, "metals_dollar_index_only", False):
             if position.side == "long":
                 event_stop = round(bar_close * (1.0 - 0.008), 2)
                 if event_stop > position.stop:
@@ -1124,7 +1155,12 @@ def run_ai_portfolio_backtest(
     warmups: dict[str, int] = {}
     for s in symbols:
         b = bars_by_symbol[s].sort_index()
-        frames[s] = compute_ai_indicator_frame(b, symbol=s, macro_bars=macro_bars)
+        frames[s] = compute_ai_indicator_frame(
+            b,
+            symbol=s,
+            macro_bars=macro_bars,
+            track_dollar_only=bool(getattr(p, "metals_dollar_index_only", False)),
+        )
         warmups[s] = 35 if len(b) < 100 else 50
 
     # Parse high-impact calendar events
@@ -1253,7 +1289,7 @@ def run_ai_portfolio_backtest(
                 pass
 
         # Rule 5: 5-minute economic event protection
-        if event_5m and p.preset == "gold_silver_macro":
+        if event_5m and p.preset == "gold_silver_macro" and not getattr(p, "metals_dollar_index_only", False):
             for s in symbols:
                 pos = positions[s]
                 if pos is not None and stamp in frames[s].index:

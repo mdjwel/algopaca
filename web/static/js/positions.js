@@ -70,6 +70,7 @@ const POS_MODAL_IDS = [
 
 let activeExitPosition = null;
 let activeExitMode = "stop_loss";
+let activeBracketSlMode = "fixed";
 const savedExitQtyBySymbol = new Map();
 let activeLotsSymbol = null;
 let lotsRequestSeq = 0;
@@ -720,13 +721,22 @@ function updateSelectedBatchButton() {
 function protectionMarkup(pos) {
   const parts = [];
   if (pos.has_stop_loss) {
-    const px = pos.stop_loss_price != null ? `$${Number(pos.stop_loss_price).toFixed(2)}` : tx("protection", "SL");
+    const isTrailing = Boolean(pos.has_trailing_stop);
+    let px;
+    if (isTrailing && pos.trail_percent != null) {
+      px = `${Number(pos.trail_percent).toFixed(1)}% Trail`;
+    } else {
+      px = pos.stop_loss_price != null ? `$${Number(pos.stop_loss_price).toFixed(2)}` : tx("protection", "SL");
+    }
     const dist = pos.stop_distance_pct;
-    const distText = dist != null ? tx("pos_stop_distance", "{pct}% away", { pct: Math.abs(dist).toFixed(1) }) : "";
+    const distText = dist != null && !isTrailing ? tx("pos_stop_distance", "{pct}% away", { pct: Math.abs(dist).toFixed(1) }) : "";
     const tone = dist != null && dist < 2 ? "sl-tight" : "sl";
     const extSuffix = pos.has_synthetic_stop ? " · 24h" : "";
+    const titleText = isTrailing
+      ? `${tx("trailing_stop", "Trailing Stop")} ${px}${pos.stop_loss_price != null ? ` (${formatExitPrice(pos.stop_loss_price)})` : ""}${pos.has_synthetic_stop ? " (Extended / 24h)" : ""}`
+      : `${tx("protection", "Protection")} ${px} ${distText}${pos.has_synthetic_stop ? " (Extended / 24h)" : ""}`;
     parts.push(
-      `<span class="pos-prot-badge ${tone}" title="${escapeHtml(`${tx("protection", "Protection")} ${px} ${distText}${pos.has_synthetic_stop ? " (Extended / 24h)" : ""}`)}">🛡️ ${escapeHtml(px)}${extSuffix}${distText ? `<em>${escapeHtml(distText)}</em>` : ""}</span>`
+      `<span class="pos-prot-badge ${tone}" title="${escapeHtml(titleText)}">🛡️ ${escapeHtml(px)}${extSuffix}${distText ? `<em>${escapeHtml(distText)}</em>` : ""}</span>`
     );
   } else {
     parts.push(
@@ -815,9 +825,12 @@ function renderPositionsTable(positions) {
       const currPx = Number(pos.current_price || 0);
       const flashClass = getTickFlashClass(sym, currPx, upl);
       const qtyAvail = Number(pos.qty_available != null ? pos.qty_available : qty);
+      const isCloseDisabled = loopRunning || isAutoTrading;
       const closeTitle = loopRunning
         ? tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually")
-        : tx("close_position", "Close");
+        : (isAutoTrading
+            ? tx("pos_autotrade_locked_short", "Stop Auto-Trade for this ticker to close manually")
+            : tx("close_position", "Close"));
 
       return `
       <tr class="pos-table-row ${isSelected ? "is-selected" : ""} ${flashClass}" data-symbol="${escapeHtml(sym)}" data-side="${escapeHtml(side)}">
@@ -866,7 +879,7 @@ function renderPositionsTable(positions) {
             <button type="button" class="pos-act pos-act-exit btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
               ${escapeHtml(tx("nav_exit", "Exit"))}
             </button>
-            <button type="button" class="pos-act pos-act-close btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""} title="${escapeHtml(closeTitle)}">
+            <button type="button" class="pos-act pos-act-close btn-pos-close" data-symbol="${escapeHtml(sym)}" ${isCloseDisabled ? "disabled" : ""} title="${escapeHtml(closeTitle)}">
               ${escapeHtml(tx("close_position", "Close"))}
             </button>
             <button type="button" class="pos-act btn-pos-lots" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("pos_lots_hint", "See the individual share lots behind this holding"))}">
@@ -911,6 +924,13 @@ function renderPositionsCards(positions) {
       const upl = Number(pos.unrealized_pl || 0);
       const ipl = Number(pos.unrealized_intraday_pl || 0);
       const qty = Number(pos.qty || 0);
+
+      const isCloseDisabled = loopRunning || isAutoTrading;
+      const closeTitle = loopRunning
+        ? tx("pos_loop_locked_short", "Stop the Auto Trade loop to close manually")
+        : (isAutoTrading
+            ? tx("pos_autotrade_locked_short", "Stop Auto-Trade for this ticker to close manually")
+            : tx("close_position", "Close"));
 
       return `
       <div class="pos-card ${isSelected ? "is-selected" : ""}" role="listitem" data-symbol="${escapeHtml(sym)}">
@@ -971,7 +991,7 @@ function renderPositionsCards(positions) {
           <button type="button" class="ghost btn-pos-exit" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("exit_strategy_hint", "Configure Stop Loss, Breakeven, Trailing Stop, or Profit Target"))}">
             ${escapeHtml(tx("exit_strategy_btn", "Exit Strategy"))}
           </button>
-          <button type="button" class="ghost ghost-danger btn-pos-close" data-symbol="${escapeHtml(sym)}" ${loopRunning ? "disabled" : ""}>
+          <button type="button" class="ghost ghost-danger btn-pos-close" data-symbol="${escapeHtml(sym)}" ${isCloseDisabled ? "disabled" : ""} title="${escapeHtml(closeTitle)}">
             ${escapeHtml(tx("close_position", "Close"))}
           </button>
           <button type="button" class="ghost btn-pos-lots" data-symbol="${escapeHtml(sym)}">
@@ -1343,8 +1363,19 @@ function openExitStrategyModal(pos, initialMode = null) {
     }
   }
 
+  const slLabel = $("pos-exit-stat-label-sl");
+  if (slLabel) {
+    slLabel.textContent = pos.has_trailing_stop ? tx("trailing_stop", "Trailing Stop") : tx("stop_loss", "Stop Loss");
+  }
+
   if (currSl) {
-    currSl.textContent = pos.stop_loss_price != null ? formatExitPrice(pos.stop_loss_price) : tx("none", "None");
+    if (pos.has_trailing_stop) {
+      const trailPctStr = pos.trail_percent != null ? `${Number(pos.trail_percent).toFixed(1)}% Trail` : "Trail";
+      const priceStr = pos.stop_loss_price != null ? ` (${formatExitPrice(pos.stop_loss_price)})` : "";
+      currSl.textContent = `${trailPctStr}${priceStr}`;
+    } else {
+      currSl.textContent = pos.stop_loss_price != null ? formatExitPrice(pos.stop_loss_price) : tx("none", "None");
+    }
   }
   if (currTp) {
     currTp.textContent = pos.take_profit_price != null ? formatExitPrice(pos.take_profit_price) : tx("none", "None");
@@ -1385,17 +1416,41 @@ function openExitStrategyModal(pos, initialMode = null) {
   if (tpInput) tpInput.value = formatExitInputPrice(defaultTpPx);
   if (tpInput) tpInput.setAttribute("aria-invalid", "false");
 
+  const existingTrailPct = (pos.has_trailing_stop && pos.trail_percent != null)
+    ? String(pos.trail_percent)
+    : "3.0";
+
   const trailInput = $("pos-exit-trail-pct");
-  if (trailInput) trailInput.value = "3.0";
+  if (trailInput) trailInput.value = existingTrailPct;
+
+  const bracketTrail = $("pos-exit-bracket-trail-pct");
+  if (bracketTrail) {
+    bracketTrail.value = existingTrailPct;
+    bracketTrail.setAttribute("aria-invalid", "false");
+    $("pos-exit-bracket-trail-box")?.classList.remove("is-invalid");
+  }
 
   const bracketSl = $("pos-exit-bracket-sl");
-  if (bracketSl) bracketSl.value = formatExitInputPrice(defaultSlPx);
+  if (bracketSl) {
+    bracketSl.value = formatExitInputPrice(defaultSlPx);
+    bracketSl.setAttribute("aria-invalid", "false");
+    $("pos-exit-bracket-sl-box")?.classList.remove("is-invalid");
+  }
 
   const bracketDefaultTpPx = hasExistingTp
     ? Number(pos.take_profit_price)
     : (isShort ? currPx * 0.90 : currPx * 1.10);
   const bracketTp = $("pos-exit-bracket-tp");
-  if (bracketTp) bracketTp.value = formatExitInputPrice(bracketDefaultTpPx);
+  if (bracketTp) {
+    bracketTp.value = formatExitInputPrice(bracketDefaultTpPx);
+    bracketTp.setAttribute("aria-invalid", "false");
+    $("pos-exit-bracket-tp-box")?.classList.remove("is-invalid");
+  }
+
+  $("pos-exit-sl-price")?.closest(".pos-input-box")?.classList.remove("is-invalid");
+  $("pos-exit-tp-price")?.closest(".pos-input-box")?.classList.remove("is-invalid");
+
+  switchBracketSlMode(pos.has_trailing_stop ? "trailing" : "fixed");
 
   // Alpaca permits four-decimal stock prices below $1. Keep both the defaults
   // and number-input steppers at that precision rather than silently rounding
@@ -1441,7 +1496,7 @@ function openExitStrategyModal(pos, initialMode = null) {
   if (customBtn) customBtn.classList.remove("is-active");
 
   const actualSlPx = pos.stop_loss_price != null ? Number(pos.stop_loss_price) : null;
-  if (actualSlPx != null && currPx > 0) {
+  if (actualSlPx != null && currPx > 0 && !pos.has_trailing_stop) {
     const calculatedPct = isShort ? ((actualSlPx - currPx) / currPx) * 100 : ((currPx - actualSlPx) / currPx) * 100;
     if (distBadge) distBadge.textContent = calculatedPct >= 0 ? `${calculatedPct.toFixed(1)}%` : "—";
     let matchedChip = null;
@@ -1472,6 +1527,19 @@ function openExitStrategyModal(pos, initialMode = null) {
     if (customInput) customInput.value = "";
   }
 
+  const actualTrailPct = (pos.has_trailing_stop && pos.trail_percent != null) ? Number(pos.trail_percent) : 3.0;
+  let matchedBracketTrail = null;
+  document.querySelectorAll("[data-bracket-trail-pct]").forEach((c) => {
+    if (Math.abs(Number(c.dataset.bracketTrailPct) - actualTrailPct) < 0.05) matchedBracketTrail = c;
+  });
+  document.querySelectorAll("[data-bracket-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedBracketTrail));
+
+  let matchedTrail = null;
+  document.querySelectorAll("[data-trail-pct]").forEach((c) => {
+    if (Math.abs(Number(c.dataset.trailPct) - actualTrailPct) < 0.05) matchedTrail = c;
+  });
+  document.querySelectorAll("[data-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === matchedTrail));
+
   // Sync Take Profit and Bracket TP chips
   const actualTpPx = pos.take_profit_price != null ? Number(pos.take_profit_price) : null;
   if (actualTpPx != null && currPx > 0) {
@@ -1497,6 +1565,7 @@ function openExitStrategyModal(pos, initialMode = null) {
   if (!modeToOpen) {
     if (hasSl && hasTp) modeToOpen = "bracket";
     else if (hasTp && !hasSl) modeToOpen = "take_profit";
+    else if (pos.has_trailing_stop) modeToOpen = "trailing";
     else modeToOpen = "stop_loss";
   }
 
@@ -1636,8 +1705,49 @@ function formatExitInputPrice(value) {
   return price.toFixed(Math.abs(price) < 1 ? 4 : 2);
 }
 
+function switchBracketSlMode(mode) {
+  activeBracketSlMode = mode === "trailing" ? "trailing" : "fixed";
+  const isTrailing = activeBracketSlMode === "trailing";
+
+  $("btn-bracket-sl-fixed")?.classList.toggle("is-active", !isTrailing);
+  $("btn-bracket-sl-fixed")?.setAttribute("aria-pressed", !isTrailing ? "true" : "false");
+  $("btn-bracket-sl-trailing")?.classList.toggle("is-active", isTrailing);
+  $("btn-bracket-sl-trailing")?.setAttribute("aria-pressed", isTrailing ? "true" : "false");
+
+  const slBox = $("pos-exit-bracket-sl-box");
+  const slChips = $("pos-exit-bracket-sl-chips");
+  const trailBox = $("pos-exit-bracket-trail-box");
+  const trailChips = $("pos-exit-bracket-trail-chips");
+  const slLabel = $("pos-exit-bracket-sl-label");
+
+  if (slBox) slBox.hidden = isTrailing;
+  if (slChips) slChips.hidden = isTrailing;
+  if (trailBox) trailBox.hidden = !isTrailing;
+  if (trailChips) trailChips.hidden = !isTrailing;
+
+  if (slLabel) {
+    if (isTrailing) {
+      slLabel.textContent = tx("trail_percent", "Trail Distance (%)");
+      slLabel.setAttribute("for", "pos-exit-bracket-trail-pct");
+    } else {
+      slLabel.textContent = tx("stop_loss", "Stop Loss ($)");
+      slLabel.setAttribute("for", "pos-exit-bracket-sl");
+    }
+  }
+
+  const slTag = $("pos-exit-bracket-sl-tag");
+  if (slTag) {
+    const tooltipText = isTrailing ? tx("trail_percent", "Trail Distance (%)") : tx("stop_loss", "Stop Loss ($)");
+    slTag.setAttribute("data-tooltip", tooltipText);
+    slTag.setAttribute("title", tooltipText);
+    slTag.setAttribute("aria-label", tooltipText);
+  }
+
+  updateExitCalculations();
+}
+
 function syncExitChipAccessibility() {
-  document.querySelectorAll("#pos-exit-modal .chip, #pos-exit-modal .pos-portion-chip").forEach((chip) => {
+  document.querySelectorAll("#pos-exit-modal .chip, #pos-exit-modal .pos-portion-chip, #pos-exit-modal .pos-bracket-mode-btn").forEach((chip) => {
     chip.setAttribute("aria-pressed", chip.classList.contains("is-active") ? "true" : "false");
   });
 }
@@ -1696,6 +1806,7 @@ function closeExitStrategyModal() {
 }
 
 function setExitMode(mode) {
+  const prevMode = activeExitMode;
   activeExitMode = mode;
 
   // Update tabs
@@ -1720,26 +1831,48 @@ function setExitMode(mode) {
     if (el) el.hidden = key !== mode;
   });
 
-  // Synchronize stop loss and take profit values across tabs
+  // Synchronize stop loss, trailing percent and take profit values across tabs
   const slInput = $("pos-exit-sl-price");
   const tpInput = $("pos-exit-tp-price");
+  const trailInput = $("pos-exit-trail-pct");
   const bracketSl = $("pos-exit-bracket-sl");
   const bracketTp = $("pos-exit-bracket-tp");
+  const bracketTrail = $("pos-exit-bracket-trail-pct");
 
   if (mode === "bracket") {
+    if (prevMode === "trailing") {
+      switchBracketSlMode("trailing");
+    } else if (prevMode === "stop_loss") {
+      switchBracketSlMode("fixed");
+    } else if (!prevMode && activeExitPosition) {
+      switchBracketSlMode(activeExitPosition.has_trailing_stop ? "trailing" : "fixed");
+    }
     if (slInput && bracketSl && Number(slInput.value) > 0) {
       bracketSl.value = slInput.value;
+      bracketSl.dispatchEvent(new Event("input", { bubbles: true }));
     }
     if (tpInput && bracketTp && Number(tpInput.value) > 0) {
       bracketTp.value = tpInput.value;
+      bracketTp.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    if (trailInput && bracketTrail && Number(trailInput.value) > 0) {
+      bracketTrail.value = trailInput.value;
+      bracketTrail.dispatchEvent(new Event("input", { bubbles: true }));
     }
   } else if (mode === "stop_loss") {
     if (bracketSl && slInput && Number(bracketSl.value) > 0) {
       slInput.value = bracketSl.value;
+      slInput.dispatchEvent(new Event("input", { bubbles: true }));
     }
   } else if (mode === "take_profit") {
     if (bracketTp && tpInput && Number(bracketTp.value) > 0) {
       tpInput.value = bracketTp.value;
+      tpInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  } else if (mode === "trailing") {
+    if (bracketTrail && trailInput && Number(bracketTrail.value) > 0) {
+      trailInput.value = bracketTrail.value;
+      trailInput.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
 
@@ -1907,7 +2040,12 @@ function updateExitCalculations() {
   } else if (activeExitMode === "take_profit") {
     targetPx = Number($("pos-exit-tp-price")?.value || 0);
   } else if (activeExitMode === "bracket") {
-    stopPx = Number($("pos-exit-bracket-sl")?.value || 0);
+    if (activeBracketSlMode === "trailing") {
+      const trailPct = Number($("pos-exit-bracket-trail-pct")?.value || 3.0);
+      stopPx = isShort ? currPx * (1 + trailPct / 100) : currPx * (1 - trailPct / 100);
+    } else {
+      stopPx = Number($("pos-exit-bracket-sl")?.value || 0);
+    }
     targetPx = Number($("pos-exit-bracket-tp")?.value || 0);
   }
 
@@ -2073,36 +2211,63 @@ async function submitExitStrategy() {
       payload.action = "take_profit";
       payload.take_profit_price = tpPx;
     } else if (activeExitMode === "bracket") {
-      const slPx = Number($("pos-exit-bracket-sl")?.value || 0);
+      const isTrailing = activeBracketSlMode === "trailing";
       const tpPx = Number($("pos-exit-bracket-tp")?.value || 0);
-      if (slPx <= 0 && tpPx <= 0) throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
-      if (slPx > 0) {
-        if (!isShort && slPx >= currPx) {
-          throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
+
+      if (isTrailing) {
+        const trailPct = Number($("pos-exit-bracket-trail-pct")?.value || 0);
+        if (trailPct <= 0 && tpPx <= 0) {
+          throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
         }
-        if (isShort && slPx <= currPx) {
-          throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
+        if (trailPct <= 0) {
+          throw new Error(tx("err_invalid_trail_percent", "Trailing stop percentage must be greater than 0%"));
         }
+        if (trailPct > 50) {
+          throw new Error(tx("err_trail_too_large", "Trailing stop cannot exceed 50%"));
+        }
+        if (tpPx > 0) {
+          if (!isShort && tpPx <= currPx) {
+            throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+          if (isShort && tpPx >= currPx) {
+            throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+        }
+        payload.action = "bracket";
+        payload.use_trailing = true;
+        payload.trail_percent = trailPct;
+        if (tpPx > 0) payload.take_profit_price = tpPx;
+      } else {
+        const slPx = Number($("pos-exit-bracket-sl")?.value || 0);
+        if (slPx <= 0 && tpPx <= 0) throw new Error(tx("err_bracket_needs_levels", "Enter at least a stop loss or take profit price"));
+        if (slPx > 0) {
+          if (!isShort && slPx >= currPx) {
+            throw new Error(tx("err_stop_above_market", "Stop loss for a long position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+          if (isShort && slPx <= currPx) {
+            throw new Error(tx("err_stop_below_market", "Stop loss for a short position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+        }
+        if (tpPx > 0) {
+          if (!isShort && tpPx <= currPx) {
+            throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+          if (isShort && tpPx >= currPx) {
+            throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
+          }
+        }
+        if (slPx > 0 && tpPx > 0) {
+          if (!isShort && slPx >= tpPx) {
+            throw new Error(tx("err_bracket_cross", "Stop loss must sit below take profit target"));
+          }
+          if (isShort && slPx <= tpPx) {
+            throw new Error(tx("err_bracket_cross_short", "Stop loss must sit above take profit target for a short position"));
+          }
+        }
+        payload.action = "bracket";
+        if (slPx > 0) payload.stop_price = slPx;
+        if (tpPx > 0) payload.take_profit_price = tpPx;
       }
-      if (tpPx > 0) {
-        if (!isShort && tpPx <= currPx) {
-          throw new Error(tx("err_target_below_market", "Take profit for a long position must sit above current price (${price})", { price: formatExitPrice(currPx) }));
-        }
-        if (isShort && tpPx >= currPx) {
-          throw new Error(tx("err_target_above_market", "Take profit for a short position must sit below current price (${price})", { price: formatExitPrice(currPx) }));
-        }
-      }
-      if (slPx > 0 && tpPx > 0) {
-        if (!isShort && slPx >= tpPx) {
-          throw new Error(tx("err_bracket_cross", "Stop loss must sit below take profit target"));
-        }
-        if (isShort && slPx <= tpPx) {
-          throw new Error(tx("err_bracket_cross_short", "Stop loss must sit above take profit target for a short position"));
-        }
-      }
-      payload.action = "bracket";
-      if (slPx > 0) payload.stop_price = slPx;
-      if (tpPx > 0) payload.take_profit_price = tpPx;
     } else if (activeExitMode === "clear") {
       const clearStops = !!$("pos-clear-stops-check")?.checked;
       const clearTp = !!$("pos-clear-tp-check")?.checked;
@@ -2117,7 +2282,10 @@ async function submitExitStrategy() {
       const isDipHuntSupported = ["stop_loss", "breakeven", "trailing", "bracket"].includes(activeExitMode);
 
       if (isDipHuntSupported && dhToggle && dhToggle.checked) {
-        if (activeExitMode === "bracket" && (!(Number($("pos-exit-bracket-sl")?.value) > 0))) {
+        const hasBracketStop = activeBracketSlMode === "trailing"
+          ? Number($("pos-exit-bracket-trail-pct")?.value) > 0
+          : Number($("pos-exit-bracket-sl")?.value) > 0;
+        if (activeExitMode === "bracket" && !hasBracketStop) {
           throw new Error(tx("err_dip_hunt_requires_stop", "Re-buy after dip requires a protective stop loss order"));
         }
         const waitMinutes = Number($("pos-exit-dip-hunt-wait")?.value);
@@ -2159,24 +2327,63 @@ async function submitExitStrategy() {
         if (payload.action === "cancel_all") {
           pos.stop_loss_qty = null;
           pos.take_profit_qty = null;
+          pos.has_stop_loss = false;
+          pos.has_take_profit = false;
+          pos.has_trailing_stop = false;
+          pos.trail_percent = null;
+          pos.stop_order_type = null;
         } else if (payload.action === "cancel_stops") {
           pos.stop_loss_qty = null;
+          pos.has_stop_loss = false;
+          pos.has_trailing_stop = false;
+          pos.trail_percent = null;
+          pos.stop_order_type = null;
           pos.exit_qty = pos.take_profit_qty || null;
         } else if (payload.action === "cancel_take_profit") {
           pos.take_profit_qty = null;
+          pos.has_take_profit = false;
           pos.exit_qty = pos.stop_loss_qty || null;
         }
-      } else if (payload.qty != null && Number(payload.qty) > 0) {
-        const savedQty = Number(payload.qty);
+      } else {
+        const savedQty = (payload.qty != null && Number(payload.qty) > 0) ? Number(payload.qty) : heldQty;
         savedExitQtyBySymbol.set(pos.symbol, savedQty);
         pos.exit_qty = savedQty;
+
         if (payload.action === "bracket") {
           pos.stop_loss_qty = savedQty;
           pos.take_profit_qty = savedQty;
+          pos.has_stop_loss = true;
+          if (payload.use_trailing) {
+            pos.has_trailing_stop = true;
+            pos.trail_percent = Number(payload.trail_percent);
+            pos.stop_order_type = "trailing_stop";
+          } else {
+            pos.has_trailing_stop = false;
+            pos.trail_percent = null;
+            pos.stop_order_type = "stop_loss";
+            if (payload.stop_price) pos.stop_loss_price = Number(payload.stop_price);
+          }
+          if (payload.take_profit_price) {
+            pos.has_take_profit = true;
+            pos.take_profit_price = Number(payload.take_profit_price);
+          }
+        } else if (payload.action === "trail") {
+          pos.stop_loss_qty = savedQty;
+          pos.has_stop_loss = true;
+          pos.has_trailing_stop = true;
+          pos.trail_percent = Number(payload.trail_percent);
+          pos.stop_order_type = "trailing_stop";
         } else if (payload.action === "take_profit") {
           pos.take_profit_qty = savedQty;
+          pos.has_take_profit = true;
+          pos.take_profit_price = Number(payload.take_profit_price);
         } else {
           pos.stop_loss_qty = savedQty;
+          pos.has_stop_loss = true;
+          pos.has_trailing_stop = false;
+          pos.trail_percent = null;
+          pos.stop_order_type = "stop_loss";
+          if (payload.stop_price) pos.stop_loss_price = Number(payload.stop_price);
         }
       }
     }
@@ -3097,20 +3304,77 @@ function syncSizingModeUI(mode) {
   const select = $("pos-autotrade-sizing-mode");
   const lbl = $("pos-autotrade-size-label");
   const chips = $("pos-notional-chips");
+  const sizeInp = $("pos-autotrade-size-input");
   if (select && mode) select.value = mode;
   const currentMode = select ? select.value : mode;
   if (currentMode === "notional") {
     if (lbl) lbl.textContent = tx("trade_notional", "Trade Notional ($)");
     if (chips) {
       chips.hidden = false;
-      const curVal = parseFloat($("pos-autotrade-size-input")?.value || "0");
+      const curVal = parseFloat(sizeInp?.value || "0");
       chips.querySelectorAll(".btn-notional-chip").forEach((btn) => {
         btn.classList.toggle("is-active", parseFloat(btn.dataset.val) === curVal);
       });
     }
+    if (sizeInp) sizeInp.disabled = false;
+  } else if (currentMode === "ai") {
+    if (lbl) lbl.textContent = tx("ai_risk_sizing", "AI Risk Sizing");
+    if (chips) chips.hidden = true;
+    if (sizeInp) sizeInp.disabled = true;
   } else {
     if (lbl) lbl.textContent = tx("trade_qty", "Trade Quantity");
     if (chips) chips.hidden = true;
+    if (sizeInp) sizeInp.disabled = false;
+  }
+}
+
+function adaptStrategyOptionsToUI() {
+  const stdSelect = $("pos-standard-strategy-select");
+  const tfSelect = $("pos-autotrade-timeframe");
+  const sizingSelect = $("pos-autotrade-sizing-mode");
+  const aiOption = sizingSelect?.querySelector('option[value="ai"]');
+  const dayOption = tfSelect?.querySelector('option[value="1Day"]');
+  const strat = stdSelect ? stdSelect.value : "sma";
+
+  // 1. Sizing Mode options: AI sizing is only available in AI mode
+  if (aiOption) {
+    if (strat === "ai") {
+      aiOption.hidden = false;
+    } else {
+      aiOption.hidden = true;
+      if (sizingSelect && sizingSelect.value === "ai") {
+        sizingSelect.value = "qty";
+        syncSizingModeUI("qty");
+      }
+    }
+  }
+
+  // 2. Timeframe options:
+  // - "day" requires intraday timeframes (hide/disable 1Day)
+  // - "ls" requires 1Day timeframe (auto-select 1Day and lock/disable others)
+  if (strat === "day") {
+    if (dayOption) dayOption.hidden = true;
+    if (tfSelect) {
+      if (tfSelect.value === "1Day") tfSelect.value = "15Min";
+      Array.from(tfSelect.options).forEach((opt) => {
+        opt.disabled = opt.value === "1Day";
+      });
+    }
+  } else if (strat === "ls") {
+    if (dayOption) dayOption.hidden = false;
+    if (tfSelect) {
+      tfSelect.value = "1Day";
+      Array.from(tfSelect.options).forEach((opt) => {
+        opt.disabled = opt.value !== "1Day";
+      });
+    }
+  } else {
+    if (dayOption) dayOption.hidden = false;
+    if (tfSelect) {
+      Array.from(tfSelect.options).forEach((opt) => {
+        opt.disabled = false;
+      });
+    }
   }
 }
 
@@ -3172,9 +3436,14 @@ async function setAutoTradeTab(tab, selectedCustomId = null) {
 }
 
 async function openAutoTradeModal(symbols) {
-  const list = Array.isArray(symbols) ? symbols : [symbols];
+  const list = Array.isArray(symbols) ? symbols : (symbols ? [symbols] : []);
   activeAutoTradeSymbols = list.filter(Boolean);
-  if (activeAutoTradeSymbols.length === 0) return;
+  if (activeAutoTradeSymbols.length === 0) {
+    const inputSyms = window.prompt(tx("enter_tickers_prompt", "Enter ticker symbol(s) separated by commas: (e.g. AAPL, NVDA, TSLA)"));
+    if (!inputSyms) return;
+    activeAutoTradeSymbols = inputSyms.replace(/[;,]/g, " ").split(/\s+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    if (activeAutoTradeSymbols.length === 0) return;
+  }
 
   const titleEl = $("pos-autotrade-modal-title");
   const symBadge = $("pos-autotrade-symbol-badge");
@@ -3206,11 +3475,16 @@ async function openAutoTradeModal(symbols) {
   const activeRunners = (positionsData?.active_auto_trades || []).filter((r) =>
     activeAutoTradeSymbols.includes(r.symbol)
   );
-  const isRunning = activeRunners.length > 0;
+  const isRunning = isSingle && activeRunners.length > 0;
 
   if (statusBadge) {
-    statusBadge.hidden = !isRunning;
-    statusBadge.textContent = isRunning ? tx("autotrade_running_badge", "Running") : "";
+    if (isSingle) {
+      statusBadge.hidden = !isRunning;
+      statusBadge.textContent = isRunning ? tx("autotrade_running_badge", "Running") : "";
+    } else {
+      statusBadge.hidden = activeRunners.length === 0;
+      statusBadge.textContent = activeRunners.length > 0 ? `${activeRunners.length} Running` : "";
+    }
   }
 
   if (activeCard) {
@@ -3297,11 +3571,17 @@ async function openAutoTradeModal(symbols) {
     if (sizeInp) sizeInp.value = defQty;
   }
 
+  adaptStrategyOptionsToUI();
+
   if (submitBtn) {
     submitBtn.disabled = false;
-    submitBtn.textContent = isRunning
-      ? tx("update_autotrade", "Update Auto-Trade")
-      : tx("start_autotrade", "Start Auto-Trade");
+    if (isSingle) {
+      submitBtn.textContent = isRunning
+        ? tx("update_autotrade", "Update Auto-Trade")
+        : tx("start_autotrade", "Start Auto-Trade");
+    } else {
+      submitBtn.textContent = tx("start_batch_autotrade", "Start Batch Auto-Trade");
+    }
   }
 
   openPosModal("pos-autotrade-modal");
@@ -3732,7 +4012,9 @@ function initPositionsUi() {
       const slHint = $("pos-exit-sl-hint");
       if (slPx > 0 && currPx > 0) {
         const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
-        e.target.setAttribute("aria-invalid", diffPct <= 0 ? "true" : "false");
+        const isInvalid = diffPct <= 0;
+        e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+        $("pos-exit-sl-price")?.closest(".pos-input-box")?.classList.toggle("is-invalid", isInvalid);
         if (distBadge) distBadge.textContent = diffPct > 0 ? `${diffPct.toFixed(1)}%` : "—";
         if (diffPct <= 0) {
           if (slHint) {
@@ -3767,6 +4049,7 @@ function initPositionsUi() {
         }
       } else {
         e.target.setAttribute("aria-invalid", "false");
+        $("pos-exit-sl-price")?.closest(".pos-input-box")?.classList.remove("is-invalid");
         if (distBadge) distBadge.textContent = "—";
         if (slHint) {
           slHint.textContent = tx("stop_loss_desc", "Replaces existing protective stops with a GTC Stop order at this price level.");
@@ -3780,6 +4063,9 @@ function initPositionsUi() {
   });
   $("pos-exit-trail-pct")?.addEventListener("input", (e) => {
     const trailVal = Number(e.target.value || 0);
+    const isInvalid = trailVal <= 0 || trailVal > 50;
+    e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+    $("pos-exit-trail-pct")?.closest(".pos-input-box")?.classList.toggle("is-invalid", isInvalid);
     let matched = null;
     document.querySelectorAll("[data-trail-pct]").forEach((c) => {
       if (Math.abs(Number(c.dataset.trailPct) - trailVal) < 0.05) matched = c;
@@ -3796,7 +4082,9 @@ function initPositionsUi() {
     const tpHint = $("pos-exit-tp-hint");
     if (tpPx > 0 && currPx > 0) {
       const diffPct = isShort ? ((currPx - tpPx) / currPx) * 100 : ((tpPx - currPx) / currPx) * 100;
-      e.target.setAttribute("aria-invalid", diffPct <= 0 ? "true" : "false");
+      const isInvalid = diffPct <= 0;
+      e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+      $("pos-exit-tp-price")?.closest(".pos-input-box")?.classList.toggle("is-invalid", isInvalid);
       if (diffPct <= 0) {
         if (tpHint) {
           tpHint.textContent = isShort
@@ -3816,6 +4104,7 @@ function initPositionsUi() {
       document.querySelectorAll("[data-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
     } else {
       e.target.setAttribute("aria-invalid", "false");
+      $("pos-exit-tp-price")?.closest(".pos-input-box")?.classList.remove("is-invalid");
       if (tpHint) {
         tpHint.textContent = tx("take_profit_desc", "Submits a GTC Limit exit order to sell (for Long) or cover (for Short) at target price.");
         tpHint.classList.remove("warn");
@@ -3830,16 +4119,36 @@ function initPositionsUi() {
     const slPx = Number(e.target.value || 0);
     const currPx = Number(activeExitPosition.current_price || 0);
     const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    const box = $("pos-exit-bracket-sl-box");
     if (slPx > 0 && currPx > 0) {
       const diffPct = isShort ? ((slPx - currPx) / currPx) * 100 : ((currPx - slPx) / currPx) * 100;
+      const isInvalid = diffPct <= 0;
+      e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+      if (box) box.classList.toggle("is-invalid", isInvalid);
       let matched = null;
       document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => {
         if (Math.abs(Number(c.dataset.bracketSlPct) - diffPct) < 0.05) matched = c;
       });
       document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
     } else {
+      e.target.setAttribute("aria-invalid", "false");
+      if (box) box.classList.remove("is-invalid");
       document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.remove("is-active"));
     }
+    updateExitCalculations();
+  });
+
+  $("pos-exit-bracket-trail-pct")?.addEventListener("input", (e) => {
+    const val = Number(e.target.value || 0);
+    const box = $("pos-exit-bracket-trail-box");
+    const isInvalid = val <= 0 || val > 50;
+    e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+    if (box) box.classList.toggle("is-invalid", isInvalid);
+    let matched = null;
+    document.querySelectorAll("[data-bracket-trail-pct]").forEach((c) => {
+      if (Math.abs(Number(c.dataset.bracketTrailPct) - val) < 0.05) matched = c;
+    });
+    document.querySelectorAll("[data-bracket-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
     updateExitCalculations();
   });
 
@@ -3848,14 +4157,20 @@ function initPositionsUi() {
     const tpPx = Number(e.target.value || 0);
     const currPx = Number(activeExitPosition.current_price || 0);
     const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
+    const box = $("pos-exit-bracket-tp-box") || e.target.closest(".pos-input-box");
     if (tpPx > 0 && currPx > 0) {
       const diffPct = isShort ? ((currPx - tpPx) / currPx) * 100 : ((tpPx - currPx) / currPx) * 100;
+      const isInvalid = diffPct <= 0;
+      e.target.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+      if (box) box.classList.toggle("is-invalid", isInvalid);
       let matched = null;
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => {
         if (Math.abs(Number(c.dataset.bracketTpPct) - diffPct) < 0.05) matched = c;
       });
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === matched));
     } else {
+      e.target.setAttribute("aria-invalid", "false");
+      if (box) box.classList.remove("is-invalid");
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.remove("is-active"));
     }
     updateExitCalculations();
@@ -4013,7 +4328,11 @@ function initPositionsUi() {
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const target = isShort ? currPx * (1 + pct / 100) : currPx * (1 - pct / 100);
       const slInput = $("pos-exit-bracket-sl");
-      if (slInput) slInput.value = formatExitInputPrice(target);
+      if (slInput) {
+        slInput.value = formatExitInputPrice(target);
+        slInput.setAttribute("aria-invalid", "false");
+        $("pos-exit-bracket-sl-box")?.classList.remove("is-invalid");
+      }
       document.querySelectorAll("[data-bracket-sl-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
     });
@@ -4027,9 +4346,47 @@ function initPositionsUi() {
       const isShort = String(activeExitPosition.side || "").toLowerCase() === "short";
       const target = isShort ? currPx * (1 - pct / 100) : currPx * (1 + pct / 100);
       const tpInput = $("pos-exit-bracket-tp");
-      if (tpInput) tpInput.value = formatExitInputPrice(target);
+      if (tpInput) {
+        tpInput.value = formatExitInputPrice(target);
+        tpInput.setAttribute("aria-invalid", "false");
+        $("pos-exit-bracket-tp-box")?.classList.remove("is-invalid");
+        tpInput.closest(".pos-input-box")?.classList.remove("is-invalid");
+      }
       document.querySelectorAll("[data-bracket-tp-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
       updateExitCalculations();
+    });
+  });
+
+  document.querySelectorAll("[data-bracket-trail-pct]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const pct = Number(chip.dataset.bracketTrailPct || 3);
+      const input = $("pos-exit-bracket-trail-pct");
+      if (input) {
+        input.value = pct.toFixed(1);
+        input.setAttribute("aria-invalid", "false");
+        $("pos-exit-bracket-trail-box")?.classList.remove("is-invalid");
+      }
+      document.querySelectorAll("[data-bracket-trail-pct]").forEach((c) => c.classList.toggle("is-active", c === chip));
+      updateExitCalculations();
+    });
+  });
+
+  $("pos-exit-bracket-sl-tag")?.addEventListener("click", () => {
+    if (activeBracketSlMode === "trailing") {
+      $("pos-exit-bracket-trail-pct")?.focus();
+    } else {
+      $("pos-exit-bracket-sl")?.focus();
+    }
+  });
+
+  $("pos-exit-bracket-tp-tag")?.addEventListener("click", () => {
+    $("pos-exit-bracket-tp")?.focus();
+  });
+
+  document.querySelectorAll(".pos-bracket-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.bracketSlMode;
+      if (mode) switchBracketSlMode(mode);
     });
   });
 
@@ -4077,6 +4434,7 @@ function initPositionsUi() {
   $("btn-autotrade-modal-stop")?.addEventListener("click", stopAutoTradeForCurrentModal);
   $("tab-strategy-standard")?.addEventListener("click", () => setAutoTradeTab("standard"));
   $("tab-strategy-custom")?.addEventListener("click", () => setAutoTradeTab("custom"));
+  $("pos-standard-strategy-select")?.addEventListener("change", adaptStrategyOptionsToUI);
   $("pos-custom-engine-select")?.addEventListener("change", (e) => {
     const desc = $("pos-custom-engine-desc");
     if (!desc || !customEnginesCache) return;
@@ -4106,6 +4464,7 @@ function initPositionsUi() {
     const mode = $("pos-autotrade-sizing-mode")?.value || "qty";
     syncSizingModeUI(mode);
   });
+  $("btn-pos-new-autotrade")?.addEventListener("click", () => openAutoTradeModal([]));
   $("btn-stop-all-autotrades")?.addEventListener("click", stopAllAutoTrades);
   $("pos-autotrades-list")?.addEventListener("click", (e) => {
     const stopBtn = e.target.closest(".btn-stop-chip-runner");

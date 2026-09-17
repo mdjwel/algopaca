@@ -3250,6 +3250,12 @@ a.pos-prot-badge.orders:focus-visible {
   box-shadow: 0 0 0 1px var(--copper);
 }
 
+.pos-input-box.is-invalid,
+.pos-input-box:has(input[aria-invalid="true"]) {
+  border-color: var(--sell) !important;
+  box-shadow: 0 0 0 1px var(--sell), 0 0 10px rgba(227, 93, 93, 0.35) !important;
+}
+
 .pos-input-prefix {
   color: var(--muted);
   font-family: var(--mono);
@@ -3276,12 +3282,40 @@ a.pos-prot-badge.orders:focus-visible {
   background: transparent;
   border: none;
   outline: none;
+  box-shadow: none;
   color: var(--text);
   font-family: var(--mono);
   font-size: 1.05rem;
   font-weight: 600;
   padding: 0;
   box-sizing: border-box;
+}
+
+.pos-field-input:focus,
+.pos-field-input:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.pos-input-box input[type="number"]::-webkit-inner-spin-button,
+.pos-input-box input[type="number"]::-webkit-outer-spin-button,
+.pos-chip-custom-box input[type="number"]::-webkit-inner-spin-button,
+.pos-chip-custom-box input[type="number"]::-webkit-outer-spin-button,
+.pos-field-input::-webkit-inner-spin-button,
+.pos-field-input::-webkit-outer-spin-button,
+.pos-chip-custom-input::-webkit-inner-spin-button,
+.pos-chip-custom-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.pos-input-box input[type="number"],
+.pos-chip-custom-box input[type="number"],
+.pos-chip-custom-input {
+  -moz-appearance: textfield;
 }
 
 .pos-exit-chips-wrap {
@@ -3341,6 +3375,7 @@ a.pos-prot-badge.orders:focus-visible {
   display: flex;
   align-items: center;
   height: 34px;
+  max-height: 34px;
   background: var(--surface-soft);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
@@ -3370,10 +3405,20 @@ a.pos-prot-badge.orders:focus-visible {
   background: transparent;
   border: none;
   outline: none;
+  box-shadow: none;
   width: 100%;
   min-width: 0;
   text-align: center;
   padding: 0;
+  height: 100%;
+}
+
+.pos-chip-custom-input:focus,
+.pos-chip-custom-input:focus-visible {
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .pos-chip-custom-input::placeholder {
@@ -3384,11 +3429,18 @@ a.pos-prot-badge.orders:focus-visible {
 
 .pos-chip-custom-box .pos-input-suffix {
   font-size: 0.74rem;
-  color: var(--copper);
-  font-weight: 700;
+  color: var(--text-muted);
+  font-weight: 600;
   margin-left: 0.15rem;
   user-select: none;
   flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.pos-chip-custom-box:focus-within .pos-input-suffix,
+.pos-chip-custom-box.is-active .pos-input-suffix {
+  color: var(--copper);
+  font-weight: 700;
 }
 
 .pos-exit-sizing-card {
@@ -3444,6 +3496,19 @@ a.pos-prot-badge.orders:focus-visible {
   min-width: 45px;
   font-size: 1rem;
   font-weight: 700;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.pos-exit-qty-input-box .pos-field-input:focus,
+.pos-exit-qty-input-box .pos-field-input:focus-visible {
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .pos-inline-qty-chips {
@@ -3614,14 +3679,66 @@ a.pos-prot-badge.orders:focus-visible {
   border-radius: var(--radius-md);
   min-width: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .pos-exit-subcard-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.45rem;
+}
+
+.pos-exit-subcard-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.pos-bracket-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.pos-bracket-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  min-height: 20px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pos-bracket-mode-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.pos-bracket-mode-btn.is-active,
+.pos-bracket-mode-btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--sell) 20%, transparent);
+  border-color: color-mix(in srgb, var(--sell) 50%, transparent);
+  color: var(--sell);
+  font-weight: 700;
 }
 
 .pos-subcard-tag {
@@ -3648,6 +3765,88 @@ a.pos-prot-badge.orders:focus-visible {
   background: rgba(63, 191, 143, 0.18);
   color: var(--buy);
   border: 1px solid rgba(63, 191, 143, 0.35);
+}
+
+.pos-subcard-tag[data-tooltip] {
+  position: relative;
+  cursor: help;
+  outline: none;
+}
+
+.pos-subcard-tag[data-tooltip]:focus-visible {
+  box-shadow: 0 0 0 2px var(--sell);
+}
+
+.pos-subcard-tag.tag-tp[data-tooltip]:focus-visible {
+  box-shadow: 0 0 0 2px var(--buy);
+}
+
+.pos-subcard-tag[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  transform: translateY(4px);
+  padding: 0.28rem 0.6rem;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--slate) 95%, #000);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.16s ease;
+  z-index: 100;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.pos-subcard-tag[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 8px;
+  transform: translateY(4px);
+  border-width: 5px 4.5px 0 4.5px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.18) transparent transparent transparent;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.16s ease;
+  z-index: 101;
+}
+
+.pos-subcard-tag[data-tooltip]:hover::after,
+.pos-subcard-tag[data-tooltip]:hover::before,
+.pos-subcard-tag[data-tooltip]:focus::after,
+.pos-subcard-tag[data-tooltip]:focus::before {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.pos-subcard-tag[data-tooltip=""]::after,
+.pos-subcard-tag[data-tooltip=""]::before {
+  display: none;
+}
+
+#pos-exit-bracket-sl-label.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 /* Stop Loss Subcard: Protection & Risk Floor */
@@ -3761,10 +3960,19 @@ a.pos-prot-badge.orders:focus-visible {
   box-shadow: 0 0 0 1px var(--buy);
 }
 
+#pos-exit-modal .pos-pct-chips.compact {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.28rem;
+}
+
+#pos-exit-modal .pos-pct-chips.compact .chip,
 .pos-pct-chips.compact .chip {
-  padding: 0.25rem 0.35rem;
-  font-size: 0.72rem;
-  min-height: 28px;
+  padding: 0.12rem 0.25rem;
+  font-size: 0.68rem;
+  min-height: 22px;
+  height: 22px;
+  line-height: 1;
+  border-radius: 4px;
 }
 
 .pos-clear-options {
@@ -4226,10 +4434,17 @@ a.pos-prot-badge.orders:focus-visible {
     gap: 0.25rem;
   }
 
-  #pos-exit-modal .pos-pct-chips .chip {
+  #pos-exit-modal .pos-pct-chips:not(.compact) .chip {
     font-size: 0.74rem;
     padding: 0.3rem 0.15rem;
     min-height: 30px;
+  }
+
+  #pos-exit-modal .pos-pct-chips.compact .chip {
+    font-size: 0.68rem;
+    padding: 0.12rem 0.25rem;
+    min-height: 22px;
+    height: 22px;
   }
 
   .pos-chip-custom-box {
@@ -4568,6 +4783,30 @@ a.pos-prot-badge.orders:focus-visible {
       border-color: var(--copper, #d4894c);
       font-weight: 600;
     }
+  }
+}
+
+.pos-field-select,
+.pos-autotrade-field .pos-field-input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: var(--text, #fff);
+  font-size: 0.88rem;
+  transition: all 0.18s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--copper, #d4894c);
+    box-shadow: 0 0 0 3px rgba(212, 137, 76, 0.2);
+  }
+
+  & option,
+  & optgroup {
+    background: #0f172a;
+    color: #fff;
   }
 }
 

@@ -267,15 +267,29 @@ class AiBrain:
         shared_session: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         symbol = symbol.upper().strip()
+        raw_track_dollar = getattr(self.config, "metals_dollar_index_only", False)
+        track_dollar_only = (
+            raw_track_dollar is True
+            or (isinstance(raw_track_dollar, (bool, int)) and bool(raw_track_dollar))
+            or (isinstance(raw_track_dollar, str) and raw_track_dollar.strip().lower() in {"1", "true", "yes", "on"})
+        )
+        is_metal = is_precious_metal(symbol)
+        dollar_only_active = bool(track_dollar_only and is_metal)
+
         bars = self.service.get_bars(symbol, limit=BAR_LOOKBACK)
         technicals = compute_technicals(bars)
-        news = fetch_news(symbol, limit=8)
-        calendar = (
-            shared_calendar
-            if shared_calendar is not None
-            else fetch_economic_calendar(hours_ahead=72, hours_behind=12)
-        )
-        earnings = fetch_earnings(symbol)
+        if dollar_only_active:
+            news = []
+            calendar = []
+            earnings = {}
+        else:
+            news = fetch_news(symbol, limit=8)
+            calendar = (
+                shared_calendar
+                if shared_calendar is not None
+                else fetch_economic_calendar(hours_ahead=72, hours_behind=12)
+            )
+            earnings = fetch_earnings(symbol)
         position = self.service.get_position_detail(symbol)
         position_qty = float(position.get("qty") or 0)
         account = (
@@ -370,7 +384,7 @@ class AiBrain:
         }
         # Rules the trader approved on the History page after reviewing what
         # actually happened. Advisory only — they never bypass a risk gate.
-        context["desk_lessons"] = self._desk_lessons(symbol)
+        context["desk_lessons"] = [] if dollar_only_active else self._desk_lessons(symbol)
         context["limits"] = {
             "max_qty": self._max_qty(context),
             "size_mode": getattr(self.config, "size_mode", "qty"),
@@ -378,10 +392,16 @@ class AiBrain:
             "min_confidence": self.config.ai_min_confidence,
             "stop_loss_pct": self.config.stop_loss_pct,
         }
-        if is_precious_metal(symbol):
+        if is_metal:
             context["precious_metals_intel"] = fetch_metals_macro_context(
-                self.service, symbol, calendar=calendar
+                self.service, symbol, calendar=calendar, track_dollar_only=track_dollar_only
             )
+            if track_dollar_only:
+                # Bypass news, economic calendar, earnings, and desk lessons completely
+                context["news"] = []
+                context["economic_calendar"] = []
+                context["earnings"] = {}
+                context["desk_lessons"] = []
         return context
 
     def _desk_lessons(self, symbol: str) -> list[str]:
@@ -475,45 +495,76 @@ class AiBrain:
                 else ""
             )
             + (
-                "PRECIOUS METALS & CROSS-ASSET MACRO INTELLIGENCE:\n"
-                "This symbol is precious metals / commodities related. Use precious_metals_intel in your analysis.\n"
-                "These fields are calibrated against 2007-2025 forward-return studies on GLD — where they\n"
-                "contradict chart intuition, the calibration wins.\n"
-                "- macro_composite_score (-3..+3) and metals_macro_bias: a weighted blend of rates (0.40),\n"
-                "  Gold/Silver ratio (0.35), long-term trend (0.15) and the dollar (0.10). Mean forward 20d\n"
-                "  GLD return by score band was: <=-1.5 -> -0.29%, -1.5..-0.5 -> -0.18%, -0.5..+0.5 -> +0.53%,\n"
-                "  +0.5..+1.5 -> +1.14%, >=+1.5 -> +1.09%.\n"
-                "  * Score >= 0.0: constructive/neutral macro bias. Above +1.5, size up and consider higher-beta vehicles.\n"
-                "  * Score <= -0.5: forward returns were NEGATIVE on average. Treat as a no-buy band, not a dip.\n"
-                "  * factor_scores breaks the score into its parts if you need to see what is driving it.\n"
-                "- trend_regime: 'bullish_above_sma200' or 'bearish_below_sma200'. This is the participation\n"
-                "  gate that keeps the desk out of multi-year metals bear markets. Respect it.\n"
-                "- Gold/Silver Ratio: gsr_live is the live GLD/SLV ratio; gsr_z_score is its deviation from the\n"
-                "  gsr_z_window mean (1 year when history allows — far more informative than a 20d window).\n"
-                "  * gsr_z_score >= +0.8 or macro_composite_score >= +0.2: the ratio is stretched or supportive. Historically a risk-off bid that lifted the\n"
-                "    whole complex, with silver (SLV) the higher-beta catch-up expression (size boosted 25%). Bullish, not just relative.\n"
-                "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
-                "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
-                "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
-                "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, and UGL are strictly excluded from the metals playbook.\n"
-                "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
-                "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
-                "- INVERSE DECAY GUARD & TIMING: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
-                "  Skip late-session entry (hour >= 19 UTC / 3 PM ET) on inverse ETFs to avoid overnight gap risk.\n"
-                "- PRE-RELEASE FREEZE: If macro_risk_level is 'imminent_release' (high-impact unreleased FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
-                "- POST-RELEASE CATALYST POSITIONING: If macro_risk_level is 'post_release_catalyst' (e.g. FOMC Federal Funds Rate decision or statement has been released):\n"
-                "  The imminent event freeze is LIFTED. Formulate an active directional position based on the released data:\n"
-                "  * Rate Hike / Hawkish: Yields & USD strengthen; bearish for bullion (GLD/SLV), bullish for inverse ETFs (GLL/GDXD) or short exposure.\n"
-                "  * Rate Cut / Dovish: Bullish for bullion (GLD/SLV); initiate or add to long positions.\n"
-                "  * When precious_metals_intel.active_catalyst is present, prioritize its policy outcome and market reaction over stagnant pre-event indicators.\n"
-                "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
-                "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"
-                "  (precious_metals_intel.dollar_trend is 'neutral', dollar_mixed is True, or macro releases are conflicting):\n"
-                "  * If currently holding an open SELL/SHORT position (position_qty < 0): you MUST immediately CLOSE/COVER\n"
-                "    the short position and reverse/enter a LONG position (action='buy'). A mixed dollar backdrop undermines\n"
-                "    the bearish thesis and creates severe upward squeeze risk for metals.\n"
-                "  * If flat (position_qty == 0): prefer taking a LONG position (BUY) on pullbacks rather than initiating any short.\n"
-                "\n"
+                (
+                    "*** MANDATORY: REAL-TIME DOLLAR INDEX (DXY/UUP) ONLY MODE ACTIVE ***\n"
+                    "User setting 'Track Dollar Index Only' is ON. Precious metals trading is SOLELY DRIVEN BY THE US DOLLAR INDEX (UUP / DXY).\n"
+                    "ALL news, economic releases, FOMC/CPI catalysts, Treasury yields, GSR, and equity factors are EXPLICITLY BYPASSED AND IGNORED.\n"
+                    f"- Live Dollar Mark (UUP): ${float(context.get('precious_metals_intel', {}).get('dollar_live_price') or 0.0):.2f} "
+                    f"(Intraday Change: {float(context.get('precious_metals_intel', {}).get('dollar_change_pct') or 0.0):+.2f}%)\n"
+                    f"- Dollar Trend: {context.get('precious_metals_intel', {}).get('dollar_trend')} "
+                    f"(Score: {context.get('precious_metals_intel', {}).get('factor_scores', {}).get('dollar')})\n"
+                    f"- Dollar Signal: {str(context.get('precious_metals_intel', {}).get('dollar_signal') or 'neutral').upper()} for metals\n"
+                    "EXECUTION DIRECTIVES:\n"
+                    "1. When Dollar is falling / weakening (dollar_trend 'falling' or dollar_score > 0):\n"
+                    "   * Immediate Bullish tailwind for Gold & Silver: execute BUY (action='buy') to open LONG.\n"
+                    "   * If holding a short position (position_qty < 0): you MUST immediately CLOSE/COVER and REVERSE to LONG (action='buy').\n"
+                    "   * If holding a long position (position_qty > 0): HOLD to ride the bullion rally.\n"
+                    "2. When Dollar is rising / strengthening (dollar_trend 'rising' or dollar_score < 0):\n"
+                    "   * Immediate Bearish pressure on Gold & Silver: execute SELL (action='sell') to exit long or open short / buy inverse ETF (GLL/GDXD).\n"
+                    "   * If holding a short position (position_qty < 0): HOLD to ride the decline.\n"
+                    "3. When Dollar is neutral/flat (dollar_trend 'neutral' or abs(dollar_score) <= 0.15):\n"
+                    "   * Stand aside or maintain existing trend position: HOLD.\n"
+                    "\n"
+                )
+                if (
+                    (context.get("precious_metals_intel") or {}).get("track_dollar_only")
+                    or (context.get("precious_metals_intel") or {}).get("dollar_only_mode")
+                    or (
+                        isinstance(getattr(self.config, "metals_dollar_index_only", False), bool)
+                        and getattr(self.config, "metals_dollar_index_only", False)
+                    )
+                )
+                else (
+                    "PRECIOUS METALS & CROSS-ASSET MACRO INTELLIGENCE:\n"
+                    "This symbol is precious metals / commodities related. Use precious_metals_intel in your analysis.\n"
+                    "These fields are calibrated against 2007-2025 forward-return studies on GLD — where they\n"
+                    "contradict chart intuition, the calibration wins.\n"
+                    "- macro_composite_score (-3..+3) and metals_macro_bias: a weighted blend of rates (0.40),\n"
+                    "  Gold/Silver ratio (0.35), long-term trend (0.15) and the dollar (0.10). Mean forward 20d\n"
+                    "  GLD return by score band was: <=-1.5 -> -0.29%, -1.5..-0.5 -> -0.18%, -0.5..+0.5 -> +0.53%,\n"
+                    "  +0.5..+1.5 -> +1.14%, >=+1.5 -> +1.09%.\n"
+                    "  * Score >= 0.0: constructive/neutral macro bias. Above +1.5, size up and consider higher-beta vehicles.\n"
+                    "  * Score <= -0.5: forward returns were NEGATIVE on average. Treat as a no-buy band, not a dip.\n"
+                    "  * factor_scores breaks the score into its parts if you need to see what is driving it.\n"
+                    "- trend_regime: 'bullish_above_sma200' or 'bearish_below_sma200'. This is the participation\n"
+                    "  gate that keeps the desk out of multi-year metals bear markets. Respect it.\n"
+                    "- Gold/Silver Ratio: gsr_live is the live GLD/SLV ratio; gsr_z_score is its deviation from the\n"
+                    "  gsr_z_window mean (1 year when history allows — far more informative than a 20d window).\n"
+                    "  * gsr_z_score >= +0.8 or macro_composite_score >= +0.2: the ratio is stretched or supportive. Historically a risk-off bid that lifted the\n"
+                    "    whole complex, with silver (SLV) the higher-beta catch-up expression (size boosted 25%). Bullish, not just relative.\n"
+                    "  * gsr_z_score <= -1.2: the ratio is compressed — a risk-on tell that preceded BELOW-average\n"
+                    "    bullion returns. Do not read it as 'gold is cheap, buy gold'.\n"
+                    "- miners_signal / gdx_gld_ratio: context only. Miner leadership was measured to have no\n"
+                    "  predictive power for gold (IC -0.01). GDX, GDXJ, DUST, and UGL are strictly excluded from the metals playbook.\n"
+                    "- Gold's short-term momentum mean-reverts: 5-20 day momentum is NEGATIVELY correlated with the\n"
+                    "  next month's return. Favour pullback entries inside an intact uptrend over fresh breakouts.\n"
+                    "- INVERSE DECAY GUARD & TIMING: Inverse ETFs (GLL, GDXD) are short-dated holds (max ~5 days or RSI >= 65); never hold long-term.\n"
+                    "  Skip late-session entry (hour >= 19 UTC / 3 PM ET) on inverse ETFs to avoid overnight gap risk.\n"
+                    "- PRE-RELEASE FREEZE: If macro_risk_level is 'imminent_release' (high-impact unreleased FOMC/CPI within 45 mins), HOLD unless instructions permit trading catalysts.\n"
+                    "- POST-RELEASE CATALYST POSITIONING: If macro_risk_level is 'post_release_catalyst' (e.g. FOMC Federal Funds Rate decision or statement has been released):\n"
+                    "  The imminent event freeze is LIFTED. Formulate an active directional position based on the released data:\n"
+                    "  * Rate Hike / Hawkish: Yields & USD strengthen; bearish for bullion (GLD/SLV), bullish for inverse ETFs (GLL/GDXD) or short exposure.\n"
+                    "  * Rate Cut / Dovish: Bullish for bullion (GLD/SLV); initiate or add to long positions.\n"
+                    "  * When precious_metals_intel.active_catalyst is present, prioritize its policy outcome and market reaction over stagnant pre-event indicators.\n"
+                    "- MANDATORY DOLLAR INDEX & ECONOMIC DATA MIXED REVERSAL RULE:\n"
+                    "  If analysis shows economic data for the US Dollar Index (DXY / UUP) is mixed or neutral\n"
+                    "  (precious_metals_intel.dollar_trend is 'neutral', dollar_mixed is True, or macro releases are conflicting):\n"
+                    "  * If currently holding an open SELL/SHORT position (position_qty < 0): you MUST immediately CLOSE/COVER\n"
+                    "    the short position and reverse/enter a LONG position (action='buy'). A mixed dollar backdrop undermines\n"
+                    "    the bearish thesis and creates severe upward squeeze risk for metals.\n"
+                    "  * If flat (position_qty == 0): prefer taking a LONG position (BUY) on pullbacks rather than initiating any short.\n"
+                    "\n"
+                )
                 if context.get("precious_metals_intel")
                 else ""
             )

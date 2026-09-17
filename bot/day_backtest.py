@@ -53,6 +53,7 @@ def lookback_bars(bars: pd.DataFrame, warmup: int) -> int:
 class DayBacktestParams:
     """Execution and risk rules applied on top of the strategy's signals."""
 
+    preset: str | None = None
     sub_mode: str = "vwap_trend"
     ema_fast: int = 9
     ema_slow: int = 21
@@ -71,6 +72,28 @@ class DayBacktestParams:
     initial_cash: float = 25_000.0
     risk_pct: float = 0.5
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS
+
+    def __post_init__(self) -> None:
+        if self.preset and self.preset != "custom":
+            from bot.day_presets import get_preset as _get_day_preset
+
+            p_def = _get_day_preset(self.preset)
+            if self.preset == "ai_metals_breakout":
+                if self.profit_target_r in (1.2, 2.0, 2.8):
+                    self.profit_target_r = p_def.profit_target_r
+                if self.stop_atr_mult in (1.0, 1.3, 1.5):
+                    self.stop_atr_mult = p_def.stop_atr_mult
+                if self.ema_fast in (9,):
+                    self.ema_fast = p_def.ema_fast
+                if self.ema_slow in (21,):
+                    self.ema_slow = p_def.ema_slow
+                if self.max_trades_per_day in (3, 4, 5):
+                    self.max_trades_per_day = p_def.max_trades_per_day
+                if self.open_buffer_mins in (15,):
+                    self.open_buffer_mins = p_def.open_buffer_mins
+                if self.side in ("long_short", "long_only"):
+                    self.side = p_def.side
+                self.sub_mode = p_def.sub_mode
 
 
 @dataclass

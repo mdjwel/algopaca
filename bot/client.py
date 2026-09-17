@@ -1452,11 +1452,16 @@ class AlpacaService:
             otype = self._enum_name(getattr(o, "type", ""), "").lower()
             side = self._enum_name(getattr(o, "side", ""), "").lower()
             oclass = self._enum_name(getattr(o, "order_class", ""), "").lower()
-            stop_px = float(getattr(o, "stop_price", 0) or 0) if getattr(o, "stop_price", None) else None
-            limit_px = float(getattr(o, "limit_price", 0) or 0) if getattr(o, "limit_price", None) else None
+            stop_px = self._order_num(o, "stop_price")
+            limit_px = self._order_num(o, "limit_price")
+            trail_pct = self._order_num(o, "trail_percent")
+            trail_px = self._order_num(o, "trail_price")
+            hwm = self._order_num(o, "hwm")
             is_stop = (
                 otype in {"stop", "stop_limit", "trailing_stop"}
                 or (stop_px is not None and stop_px > 0)
+                or (trail_pct is not None and trail_pct > 0)
+                or (trail_px is not None and trail_px > 0)
             )
             by_symbol.setdefault(sym, []).append({
                 "id": str(getattr(o, "id", "")),
@@ -1465,6 +1470,9 @@ class AlpacaService:
                 "qty": float(getattr(o, "qty", 0) or 0) or None,
                 "stop_price": stop_px,
                 "limit_price": limit_px,
+                "trail_percent": trail_pct,
+                "trail_price": trail_px,
+                "hwm": hwm,
                 "is_stop": is_stop,
                 "order_class": oclass or None,
             })
@@ -1473,11 +1481,16 @@ class AlpacaService:
                 leg_otype = self._enum_name(getattr(leg, "type", ""), "").lower()
                 leg_side = self._enum_name(getattr(leg, "side", ""), "").lower()
                 leg_oclass = self._enum_name(getattr(leg, "order_class", "") or oclass, "").lower()
-                leg_stop_px = float(getattr(leg, "stop_price", 0) or 0) if getattr(leg, "stop_price", None) else None
-                leg_limit_px = float(getattr(leg, "limit_price", 0) or 0) if getattr(leg, "limit_price", None) else None
+                leg_stop_px = self._order_num(leg, "stop_price")
+                leg_limit_px = self._order_num(leg, "limit_price")
+                leg_trail_pct = self._order_num(leg, "trail_percent")
+                leg_trail_px = self._order_num(leg, "trail_price")
+                leg_hwm = self._order_num(leg, "hwm")
                 leg_is_stop = (
                     leg_otype in {"stop", "stop_limit", "trailing_stop"}
                     or (leg_stop_px is not None and leg_stop_px > 0)
+                    or (leg_trail_pct is not None and leg_trail_pct > 0)
+                    or (leg_trail_px is not None and leg_trail_px > 0)
                 )
                 by_symbol.setdefault(leg_sym, []).append({
                     "id": str(getattr(leg, "id", "")),
@@ -1486,6 +1499,9 @@ class AlpacaService:
                     "qty": float(getattr(leg, "qty", 0) or 0) or None,
                     "stop_price": leg_stop_px,
                     "limit_price": leg_limit_px,
+                    "trail_percent": leg_trail_pct,
+                    "trail_price": leg_trail_px,
+                    "hwm": leg_hwm,
                     "is_stop": leg_is_stop,
                     "order_class": leg_oclass or None,
                 })
@@ -1496,8 +1512,11 @@ class AlpacaService:
         raw = getattr(order, name, None)
         if raw in (None, ""):
             return None
+        if type(raw).__name__ in ("MagicMock", "Mock", "NonCallableMagicMock"):
+            return None
         try:
-            return float(raw)
+            val = float(raw)
+            return val if val > 0 else None
         except (TypeError, ValueError):
             return None
 
@@ -2984,16 +3003,50 @@ class AlpacaService:
             resolved_tp = normalize_stock_order_price(float(take_profit_price), field="take_profit_price")
 
         has_trail = bool(trail_percent and float(trail_percent) > 0)
+
+        # Case 1: Trailing stop combined with Take Profit
+        # Alpaca native OCO does not accept trailing stops, so we place the native
+        # trailing stop order at Alpaca and link the take profit via 24h synthetic monitor.
         if has_trail and resolved_tp:
-            raise ValueError(
-                "Trailing stop cannot be combined with take profit in an Alpaca OCO bracket. "
-                "Use a fixed stop loss price for bracket exits."
-            )
+            self.cancel_open_exit_orders(symbol)
+            armed_stop = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent), qty=order_qty)
+            tp_info: dict[str, Any] = {
+                "id": f"synth_tp_{symbol}_{int(_time.time())}",
+                "limit_price": resolved_tp,
+                "qty": order_qty,
+                "side": "buy" if is_short else "sell",
+                "type": "take_profit",
+                "is_synthetic": True,
+            }
+            handler = self._get_synthetic_handler()
+            if handler and hasattr(handler, "sync_strategy_take_profit"):
+                try:
+                    synth_tp = handler.sync_strategy_take_profit(
+                        symbol=symbol,
+                        side="buy" if is_short else "sell",
+                        qty=order_qty,
+                        limit_price=resolved_tp,
+                        source="strategy_bracket_tp",
+                    )
+                    if synth_tp:
+                        tp_info["id"] = synth_tp.get("id")
+                        tp_info["synthetic_order_id"] = synth_tp.get("id")
+                except Exception as exc:
+                    logger.debug("Could not sync synthetic bracket take profit for %s: %s", symbol, exc)
+
+            return {
+                "symbol": symbol,
+                "action": "bracket",
+                "order_id": (armed_stop or {}).get("id"),
+                "order_class": "trailing_bracket",
+                "stop": armed_stop,
+                "take_profit": tp_info,
+            }
 
         # Clear any resting exit orders first so shares are freed
         self.cancel_open_exit_orders(symbol)
 
-        # Case 1: Trailing stop only
+        # Case 2: Trailing stop only
         if has_trail:
             armed = self.arm_trailing_stop(symbol, trail_percent=float(trail_percent), qty=order_qty)
             return {

@@ -250,6 +250,8 @@ class RunSettings:
     notify_email: bool = False
     notification_email: str = ""
     custom_engine_id: str = ""
+    metals_reversal_buy_on_stop: bool = True
+    metals_dollar_index_only: bool = False
 
 
 ALLOWED_TIMEFRAMES = ("1Min", "5Min", "15Min", "1Hour", "1Day")
@@ -564,6 +566,7 @@ class AppState:
                 "ai_models": catalog_payload(),
                 "active_auto_trades": self.multi_trader.list_active() if hasattr(self, "multi_trader") else [],
                 "active_auto_trades_count": len(self.multi_trader.list_active()) if hasattr(self, "multi_trader") else 0,
+                "all_auto_trades": self.multi_trader.list_runners(active_only=False) if hasattr(self, "multi_trader") else [],
                 "auto_trade_desired": getattr(self, "auto_trade_desired", False),
                 "auto_recovery_active": True,
                 "auto_recovery_count": getattr(self, "_auto_recovery_count", 0),
@@ -1686,6 +1689,18 @@ class AppState:
             else:
                 custom_engine_id = self.settings.custom_engine_id
 
+            if data.get("metals_reversal_buy_on_stop") is None:
+                metals_reversal_buy_on_stop = bool(getattr(self.settings, "metals_reversal_buy_on_stop", True))
+            else:
+                raw_mr = data.get("metals_reversal_buy_on_stop")
+                metals_reversal_buy_on_stop = raw_mr in (True, 1, "1", "true", "True", "yes", "on") if isinstance(raw_mr, (bool, int, str)) else bool(raw_mr)
+
+            if data.get("metals_dollar_index_only") is None:
+                metals_dollar_index_only = bool(getattr(self.settings, "metals_dollar_index_only", False))
+            else:
+                raw_dio = data.get("metals_dollar_index_only")
+                metals_dollar_index_only = raw_dio in (True, 1, "1", "true", "True", "yes", "on") if isinstance(raw_dio, (bool, int, str)) else bool(raw_dio)
+
             self.settings = RunSettings(
                 symbol=symbol,
                 symbols=symbols_raw.upper(),
@@ -1766,6 +1781,8 @@ class AppState:
                 notify_email=notify_email,
                 notification_email=notification_email,
                 custom_engine_id=custom_engine_id,
+                metals_reversal_buy_on_stop=metals_reversal_buy_on_stop,
+                metals_dollar_index_only=metals_dollar_index_only,
             )
             if self.settings.fast_sma >= self.settings.slow_sma:
                 raise ValueError("Fast SMA must be smaller than Slow SMA")
@@ -1950,6 +1967,8 @@ class AppState:
             notify_browser=s.notify_browser,
             notify_email=s.notify_email,
             notification_email=s.notification_email,
+            metals_reversal_buy_on_stop=bool(getattr(s, "metals_reversal_buy_on_stop", True)),
+            metals_dollar_index_only=bool(getattr(s, "metals_dollar_index_only", False)),
         )
 
     def _build_algo_bot(self) -> TradingBot:
@@ -2287,20 +2306,24 @@ class AppState:
 
         with self.lock:
             s = self.settings
-            sub_m = str(day_sub_mode).strip().lower() if day_sub_mode else s.day_sub_mode
-            e_fast = int(day_ema_fast) if day_ema_fast is not None else s.day_ema_fast
-            e_slow = int(day_ema_slow) if day_ema_slow is not None else s.day_ema_slow
-            orb_m = int(day_orb_minutes) if day_orb_minutes is not None else s.day_orb_minutes
-            s_side_val = str(day_side).strip().lower() if day_side else s.day_side
+            preset_id = resolve_day_preset_id(day_preset or s.day_preset)
+            preset_obj = get_day_preset(preset_id)
+
+            sub_m = str(day_sub_mode).strip().lower() if day_sub_mode else (preset_obj.sub_mode if preset_id != "custom" else s.day_sub_mode)
+            e_fast = int(day_ema_fast) if day_ema_fast is not None else (preset_obj.ema_fast if preset_id != "custom" else s.day_ema_fast)
+            e_slow = int(day_ema_slow) if day_ema_slow is not None else (preset_obj.ema_slow if preset_id != "custom" else s.day_ema_slow)
+            orb_m = int(day_orb_minutes) if day_orb_minutes is not None else (preset_obj.orb_minutes if preset_id != "custom" else s.day_orb_minutes)
+            s_side_val = str(day_side).strip().lower() if day_side else (preset_obj.side if preset_id != "custom" else s.day_side)
             s_side = s_side_val if s_side_val in {"long_short", "short_only"} else "long_only"
-            stop_atr = float(day_stop_atr_mult) if day_stop_atr_mult is not None else s.day_stop_atr_mult
-            tp_r = float(day_profit_target_r) if day_profit_target_r is not None else s.day_profit_target_r
-            max_t = int(day_max_trades_per_day) if day_max_trades_per_day is not None else s.day_max_trades_per_day
-            buf_m = int(day_open_buffer_mins) if day_open_buffer_mins is not None else s.day_open_buffer_mins
-            flat_m = int(day_eod_flatten_mins) if day_eod_flatten_mins is not None else s.day_eod_flatten_mins
-            flat = bool(day_eod_flatten) if day_eod_flatten is not None else s.day_eod_flatten
+            stop_atr = float(day_stop_atr_mult) if day_stop_atr_mult is not None else (preset_obj.stop_atr_mult if preset_id != "custom" else s.day_stop_atr_mult)
+            tp_r = float(day_profit_target_r) if day_profit_target_r is not None else (preset_obj.profit_target_r if preset_id != "custom" else s.day_profit_target_r)
+            max_t = int(day_max_trades_per_day) if day_max_trades_per_day is not None else (preset_obj.max_trades_per_day if preset_id != "custom" else s.day_max_trades_per_day)
+            buf_m = int(day_open_buffer_mins) if day_open_buffer_mins is not None else (preset_obj.open_buffer_mins if preset_id != "custom" else s.day_open_buffer_mins)
+            flat_m = int(day_eod_flatten_mins) if day_eod_flatten_mins is not None else (preset_obj.eod_flatten_mins if preset_id != "custom" else s.day_eod_flatten_mins)
+            flat = bool(day_eod_flatten) if day_eod_flatten is not None else (preset_obj.eod_flatten if preset_id != "custom" else s.day_eod_flatten)
 
             params = DayBacktestParams(
+                preset=preset_id,
                 sub_mode=sub_m,
                 ema_fast=e_fast,
                 ema_slow=e_slow,
@@ -2316,7 +2339,6 @@ class AppState:
                 risk_pct=s.ai_risk_pct,
                 slippage_bps=float(slip_bps) if slip_bps is not None else DEFAULT_SLIPPAGE_BPS,
             )
-            preset_id = day_preset or s.day_preset
 
         service = AlpacaService(self._base_config())
         start = start_cutoff - timedelta(days=max(days_i * 2, days_i + 7))
@@ -2551,6 +2573,7 @@ class AppState:
         ai_trail_after_r: float | None = None,
         ai_risk_pct: float | None = None,
         ai_max_positions: int | None = None,
+        metals_dollar_index_only: bool | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> dict[str, Any]:
@@ -2615,6 +2638,12 @@ class AppState:
             )
             trade_qty = float(qty) if qty is not None and qty > 0 else (float(s.trade_qty) if s.size_mode == "qty" else None)
 
+            dollar_only = (
+                bool(metals_dollar_index_only)
+                if metals_dollar_index_only is not None
+                else bool(getattr(s, "metals_dollar_index_only", False))
+            )
+
             params = AiBacktestParams(
                 preset=preset_id,
                 min_confidence=min_conf,
@@ -2626,6 +2655,8 @@ class AppState:
                 initial_cash=cash,
                 slippage_bps=float(slip_bps) if slip_bps is not None else DEFAULT_SLIPPAGE_BPS,
                 qty=trade_qty,
+                reversal_buy_on_stop=bool(getattr(s, "metals_reversal_buy_on_stop", True)),
+                metals_dollar_index_only=dollar_only,
             )
 
         pad = 120 if tf == "1Day" else max(days_i, 14)
@@ -2670,10 +2701,13 @@ class AppState:
                             )
                     except Exception:
                         pass
-            try:
-                calendar_events = fetch_economic_calendar(hours_ahead=days_i * 24, hours_behind=days_i * 24)
-            except Exception:
-                calendar_events = None
+            if dollar_only:
+                calendar_events = []
+            else:
+                try:
+                    calendar_events = fetch_economic_calendar(hours_ahead=days_i * 24, hours_behind=days_i * 24)
+                except Exception:
+                    calendar_events = None
 
         meta = {
             "mode": "ai",
@@ -3190,6 +3224,7 @@ class AppState:
         ai_trail_after_r: float | None = None,
         ai_risk_pct: float | None = None,
         ai_max_positions: int | None = None,
+        metals_dollar_index_only: bool | None = None,
     ) -> dict[str, Any]:
         """Fetch history and walk-forward SMA, dip, pair, LS, day, or AI (no live orders)."""
         mode_key = str(mode or "sma").strip().lower()
@@ -3216,6 +3251,7 @@ class AppState:
                 ai_trail_after_r=ai_trail_after_r,
                 ai_risk_pct=ai_risk_pct,
                 ai_max_positions=ai_max_positions,
+                metals_dollar_index_only=metals_dollar_index_only,
             )
 
         if mode_key == "pair":
@@ -4210,7 +4246,7 @@ class AppState:
             actions = item.get("actions") or []
             if not actions:
                 if item.get("order_id"):
-                    history_items.append(item)
+                    history_items.append({**item, "engine": item.get("engine") or engine})
                 continue
             for action in actions:
                 # Live fills need order_id.
@@ -4347,7 +4383,7 @@ class AppState:
         quote: dict[str, Any] | None = None,
         ai_extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        now = datetime.now()
+        now = datetime.now().astimezone()
         mark = (quote or {}).get("price", result.price)
         payload = {
             "ts": now.strftime("%H:%M:%S"),
@@ -4437,7 +4473,7 @@ class AppState:
 
         with self.lock:
             notify_email = bool(self.settings.notify_email)
-            now = datetime.now()
+            now = datetime.now().astimezone()
             iso = now.isoformat(timespec="seconds")
             ts = now.strftime("%H:%M:%S")
             for item in trades:
@@ -4464,15 +4500,16 @@ class AppState:
                     provider = None
                     preset_id, preset_label = None, "Manual"
                 else:
-                    mode = (
-                        "ai"
-                        if first.get("provider")
-                        else self.settings.strategy_mode
-                    )
+                    first_engine = str(first.get("engine") or "").lower()
+                    if first_engine and first_engine not in ("desk", "manual"):
+                        mode = first_engine
+                    elif first.get("provider"):
+                        mode = "ai"
+                    else:
+                        mode = self.settings.strategy_mode
                     provider = (
-                        self.settings.ai_provider
-                        if self.settings.strategy_mode == "ai"
-                        else None
+                        first.get("provider")
+                        or (self.settings.ai_provider if mode == "ai" else None)
                     )
                     preset_id, preset_label = self._preset_meta_locked()
                 session = {
@@ -4508,17 +4545,27 @@ class AppState:
     def _push_trade_entry_locked(
         self, item: dict[str, Any], session: dict[str, Any]
     ) -> None:
-        now = datetime.now()
+        now = datetime.now().astimezone()
         self._history_seq += 1
         signal = str(item.get("signal") or "").lower()
         symbol = str(item.get("symbol") or self.settings.symbol or "") or None
         reason = str(item.get("thesis") or item.get("reason") or "")
         price = item.get("price")
+        iso_str = str(
+            item.get("submitted_at")
+            or item.get("created_at")
+            or item.get("iso")
+            or now.isoformat(timespec="seconds")
+        )
+        ts_str = str(item.get("ts") or now.strftime("%H:%M:%S"))
         entry = {
             "id": self._history_seq,
             "poll": self._active_poll,
-            "ts": now.strftime("%H:%M:%S"),
-            "iso": now.isoformat(timespec="seconds"),
+            "ts": ts_str,
+            "iso": iso_str,
+            "submitted_at": item.get("submitted_at") or iso_str,
+            "created_at": item.get("created_at") or iso_str,
+            "filled_at": item.get("filled_at"),
             "signal": signal,
             "symbol": symbol,
             "price": price,
@@ -4561,7 +4608,7 @@ class AppState:
     ) -> None:
         if self._active_loop_session is None:
             return
-        now = datetime.now()
+        now = datetime.now().astimezone()
         self._history_seq += 1
         entry = {
             "id": self._history_seq,
@@ -4612,7 +4659,7 @@ class AppState:
         return preset.id, preset.label
 
     def _begin_loop_session_locked(self) -> dict[str, Any]:
-        now = datetime.now()
+        now = datetime.now().astimezone()
         self._loop_session_seq += 1
         preset_id, preset_label = self._preset_meta_locked()
         session = {
@@ -4647,7 +4694,7 @@ class AppState:
         session = self._active_loop_session
         if session is None:
             return
-        now = datetime.now()
+        now = datetime.now().astimezone()
         session["status"] = "stopped"
         session["stopped_at"] = now.isoformat(timespec="seconds")
         session["duration_seconds"] = (
@@ -6292,7 +6339,7 @@ class AppState:
 
         elif action == "bracket":
             target_stop = None
-            if (stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0):
+            if not use_trailing and ((stop_price and float(stop_price) > 0) or (stop_pct and float(stop_pct) > 0)):
                 target_stop = _resolve_stop_target(stop_price, stop_pct)
 
             target_tp = None
@@ -10074,7 +10121,7 @@ class AppState:
             return None
 
         # Disarm existing synthetic stops for symbol to prevent duplicate exits
-        self._cancel_synthetic_orders_for_symbol(sym)
+        self._cancel_synthetic_orders_for_symbol(sym, order_types={"stop_limit", "trailing_stop"})
 
         registered = self._register_synthetic_order(
             symbol=sym,
@@ -10197,6 +10244,8 @@ class AppState:
             protect_metals_position_before_event,
         )
         config = self._base_config()
+        if getattr(config, "metals_dollar_index_only", False):
+            return []
         service = AlpacaService(config, synthetic_order_handler=self)
         try:
             positions = service.list_positions()
@@ -10841,6 +10890,19 @@ class AppState:
 
     def start_loop(self, from_watchdog: bool = False) -> None:
         self._require_live_execution()
+        loop_syms = self._loop_symbols()
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            active_multi_syms = {
+                runner.symbol.upper()
+                for runner in self.multi_trader.runners.values()
+                if runner.status in ("running", "starting")
+            }
+            conflicts = loop_syms.intersection(active_multi_syms)
+            if conflicts:
+                conflicts_str = ", ".join(sorted(conflicts))
+                raise ValueError(
+                    f"Cannot start strategy loop: symbol(s) [{conflicts_str}] are already actively managed by an isolated Multi Auto-Trade runner."
+                )
         with self.lock:
             if self.loop_running or (self._thread and self._thread.is_alive()):
                 return
@@ -10879,13 +10941,16 @@ class AppState:
         try:
             path = self._auto_trade_state_path
             multi_info = []
+            multi_history = []
             if hasattr(self, "multi_trader") and self.multi_trader:
                 multi_info = self.multi_trader.get_active_runners_config()
+                multi_history = self.multi_trader.get_history_snapshots()
             data = {
                 "auto_trade_desired": bool(getattr(self, "auto_trade_desired", False)),
                 "strategy_mode": self.settings.strategy_mode if hasattr(self, "settings") else "sma",
                 "updated_at": time.time(),
                 "multi_runners": multi_info,
+                "multi_history": multi_history,
             }
             tmp = path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
@@ -10916,6 +10981,13 @@ class AppState:
                 self.auto_trade_desired = True
                 self._resumed_from_restart = True
             logger.info("Restored desired auto-trade state (ON) for user %s", self.user_id)
+
+        multi_history = data.get("multi_history")
+        if isinstance(multi_history, list) and multi_history and hasattr(self, "multi_trader"):
+            try:
+                self.multi_trader.restore_history(multi_history)
+            except Exception as exc:
+                logger.warning("Failed restoring multi-auto-trade history for user %s: %s", self.user_id, exc)
 
         multi_runners = data.get("multi_runners")
         if isinstance(multi_runners, list) and multi_runners and hasattr(self, "multi_trader"):
@@ -11178,7 +11250,13 @@ class AppState:
             stops = [
                 o
                 for o in sym_orders
-                if (o.get("is_stop") or o.get("stop_price"))
+                if (
+                    o.get("is_stop")
+                    or o.get("stop_price")
+                    or o.get("type") == "trailing_stop"
+                    or (o.get("trail_percent") is not None and float(o.get("trail_percent") or 0) > 0)
+                    or (o.get("trail_price") is not None and float(o.get("trail_price") or 0) > 0)
+                )
                 and str(o.get("side") or exit_side).lower().replace("orderside.", "") == exit_side
             ]
             limits = [
@@ -11203,6 +11281,7 @@ class AppState:
                     float(o.get("stop_price") or 0) > 0
                     or float(o.get("trail_percent") or 0) > 0
                     or float(o.get("trail_price") or 0) > 0
+                    or str(o.get("order_type", "")).lower() == "trailing_stop"
                 )
             ]
 
@@ -11220,6 +11299,36 @@ class AppState:
                 and float(o.get("limit_price") or 0) > 0
             ]
 
+            # Trailing stop detection from broker orders or 24h synthetic stops
+            trailing_orders = [
+                o for o in stops
+                if str(o.get("type", "")).lower() == "trailing_stop"
+                or (o.get("trail_percent") is not None and float(o.get("trail_percent") or 0) > 0)
+                or (o.get("trail_price") is not None and float(o.get("trail_price") or 0) > 0)
+            ]
+            synth_trailing_orders = [
+                o for o in synth_stops
+                if str(o.get("order_type", "")).lower() == "trailing_stop"
+                or (o.get("trail_percent") is not None and float(o.get("trail_percent") or 0) > 0)
+                or (o.get("trail_price") is not None and float(o.get("trail_price") or 0) > 0)
+            ]
+            has_trailing = bool(trailing_orders or synth_trailing_orders)
+            trail_pct_candidates = [
+                float(o.get("trail_percent"))
+                for o in (trailing_orders + synth_trailing_orders)
+                if o.get("trail_percent") is not None and float(o.get("trail_percent") or 0) > 0
+            ]
+            trail_price_candidates = [
+                float(o.get("trail_price"))
+                for o in (trailing_orders + synth_trailing_orders)
+                if o.get("trail_price") is not None and float(o.get("trail_price") or 0) > 0
+            ]
+
+            p["has_trailing_stop"] = has_trailing
+            p["trail_percent"] = trail_pct_candidates[0] if trail_pct_candidates else None
+            p["trail_price"] = trail_price_candidates[0] if trail_price_candidates else None
+            p["stop_order_type"] = "trailing_stop" if has_trailing else ("stop_loss" if (stops or synth_stops) else None)
+
             stop_candidates = [
                 float(o.get("stop_price"))
                 for o in stops
@@ -11234,7 +11343,19 @@ class AppState:
                 if synth_stop_prices:
                     stop_candidates = synth_stop_prices
 
-            p["has_stop_loss"] = bool(stop_candidates or stops or synth_stops)
+            # If trailing stop has no static stop_price yet, estimate it from current price and trail pct
+            current_px_val = float(p.get("current_price") or 0.0)
+            if not stop_candidates and has_trailing and current_px_val > 0:
+                if p["trail_percent"]:
+                    pct_val = float(p["trail_percent"])
+                    est_stop = current_px_val * (1.0 + pct_val / 100.0) if pos_side == "short" else current_px_val * (1.0 - pct_val / 100.0)
+                    stop_candidates = [round(est_stop, 2)]
+                elif p["trail_price"]:
+                    amt_val = float(p["trail_price"])
+                    est_stop = current_px_val + amt_val if pos_side == "short" else current_px_val - amt_val
+                    stop_candidates = [round(est_stop, 2)]
+
+            p["has_stop_loss"] = bool(stop_candidates or stops or synth_stops or has_trailing)
             p["has_synthetic_stop"] = bool(synth_stops)
             if stop_candidates:
                 p["stop_loss_price"] = min(stop_candidates) if pos_side == "short" else max(stop_candidates)
@@ -11258,6 +11379,7 @@ class AppState:
             p["has_take_profit"] = bool(limit_candidates or limits or synth_tps)
             p["has_synthetic_take_profit"] = bool(synth_tps)
             p["has_synthetic_exit"] = bool(synth_stops or synth_tps)
+            p["is_trailing_bracket"] = bool(has_trailing and (limit_candidates or limits or synth_tps))
             if limit_candidates:
                 p["take_profit_price"] = max(limit_candidates) if pos_side == "short" else min(limit_candidates)
             else:
@@ -11365,6 +11487,8 @@ class AppState:
                 # A short's stop sits above the mark, so flip the sign to keep
                 # "distance to stop" positive for a healthy position either way.
                 p["stop_distance_pct"] = round(gap if pos_side == "long" else -gap, 2)
+            elif has_trailing and p.get("trail_percent") is not None:
+                p["stop_distance_pct"] = round(float(p["trail_percent"]), 2)
 
             auto_summary = self.multi_trader.get_runner_summary(sym)
             if not auto_summary and self.loop_running and self._is_symbol_in_loop(sym):
@@ -11576,11 +11700,29 @@ class AppState:
             "window_truncated": bool(window["truncated"]),
         }
 
-    def _require_manual_book_control(self) -> None:
-        """Manual closes must not race the Auto Trade loop for the same book."""
-        if self.loop_running:
+    def _require_manual_book_control(self, symbols: list[str] | str | None = None) -> None:
+        """Manual closes must not race the Auto Trade loop or active Multi Auto-Trade runners."""
+        if symbols is None:
+            if self.loop_running:
+                raise ValueError("Stop the Auto Trade loop before closing positions manually.")
+            if hasattr(self, "multi_trader") and self.multi_trader:
+                active_multi = [
+                    r.symbol for r in self.multi_trader.runners.values()
+                    if r.status in ("running", "starting")
+                ]
+                if active_multi:
+                    active_str = ", ".join(sorted(set(active_multi)))
+                    raise ValueError(
+                        f"Stop active Multi Auto-Trade runner(s) [{active_str}] before closing all positions manually."
+                    )
+            return
+
+        target_syms = [symbols] if isinstance(symbols, str) else symbols
+        conflicts = [str(s).strip().upper() for s in target_syms if self.is_symbol_in_auto_trade(str(s))]
+        if conflicts:
+            conflicts_str = ", ".join(sorted(set(conflicts)))
             raise ValueError(
-                "Stop the Auto Trade loop before closing positions manually."
+                f"Stop Auto-Trade / Multi Auto-Trade for [{conflicts_str}] before closing position(s) manually."
             )
 
     def close_single_position(
@@ -11595,7 +11737,7 @@ class AppState:
         symbol = str(symbol or "").strip().upper()
         if not symbol:
             raise ValueError("Symbol is required")
-        self._require_manual_book_control()
+        self._require_manual_book_control(symbol)
         self._require_live_execution()
         service = AlpacaService(self._base_config())
         result = service.close_position(
@@ -11621,7 +11763,7 @@ class AppState:
         """Liquidate selected open positions."""
         if not symbols:
             raise ValueError("No symbols provided for batch close")
-        self._require_manual_book_control()
+        self._require_manual_book_control(symbols)
         self._require_live_execution()
         service = AlpacaService(self._base_config())
         results = service.close_batch_positions(
@@ -12097,34 +12239,42 @@ class AppState:
         """List snapshots of multi auto-trade runners."""
         return self.multi_trader.list_runners(active_only=active_only)
 
+    def remove_multi_auto_trade(self, symbol_or_id: str) -> bool:
+        """Remove a stopped runner from list/history."""
+        return self.multi_trader.remove_runner(symbol_or_id)
+
+    def restart_multi_auto_trade(self, symbol_or_id: str) -> dict[str, Any]:
+        """Restart a stopped runner with its saved settings."""
+        runner = self.multi_trader.restart_runner(symbol_or_id)
+        return runner.snapshot()
+
+    def _loop_symbols(self) -> set[str]:
+        """Return the active set of symbols targeted by the main strategy loop configuration."""
+        with self.lock:
+            mode = getattr(self.settings, "strategy_mode", "sma")
+            if mode == "pair":
+                pair_symbols = {
+                    (getattr(self.settings, "pair_long_symbol", None) or "").strip().upper(),
+                    (getattr(self.settings, "pair_short_symbol", None) or "").strip().upper(),
+                    (getattr(self.settings, "symbol", None) or "").strip().upper(),
+                }
+                return {s for s in pair_symbols if s}
+            symbols_list = {
+                part.strip().upper()
+                for part in (getattr(self.settings, "symbols", None) or "").split(",")
+                if part.strip()
+            }
+            head = (getattr(self.settings, "symbol", None) or "").strip().upper()
+            if head:
+                symbols_list.add(head)
+            return symbols_list or {"AAPL"}
+
     def _is_symbol_in_loop(self, symbol: str) -> bool:
         """Check if a symbol is actively managed by the running main strategy loop."""
         sym = str(symbol or "").strip().upper()
         if not sym or not self.loop_running:
             return False
-
-        with self.lock:
-            mode = self.settings.strategy_mode
-            if mode == "pair":
-                pair_symbols = {
-                    (self.settings.pair_long_symbol or "").strip().upper(),
-                    (self.settings.pair_short_symbol or "").strip().upper(),
-                    (self.settings.symbol or "").strip().upper(),
-                }
-                return sym in pair_symbols and bool(sym)
-            else:
-                symbols_list = tuple(
-                    part.strip().upper()
-                    for part in (self.settings.symbols or "").split(",")
-                    if part.strip()
-                )
-                head = (self.settings.symbol or "").strip().upper()
-                loop_symbols = set(symbols_list)
-                if head:
-                    loop_symbols.add(head)
-                if not loop_symbols:
-                    loop_symbols = {"AAPL"}
-                return sym in loop_symbols
+        return sym in self._loop_symbols()
 
     def is_symbol_in_auto_trade(self, symbol: str) -> bool:
         """Return True if the symbol is actively managed by an isolated runner or the main strategy loop."""
@@ -12200,3 +12350,7 @@ USER_STATE_REGISTRY = UserStateRegistry()
 def get_user_state(user_id: int) -> AppState:
     """Retrieve or initialize the active isolated AppState for a user."""
     return USER_STATE_REGISTRY.get(user_id)
+
+
+# Backward compatibility alias
+BotWebState = AppState

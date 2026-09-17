@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from bot import custom_engine_store
 from bot.client import AlpacaService
-from bot.config import Config, resolve_day_timeframe
+from bot.config import Config, resolve_day_timeframe, resolve_size_mode
 from bot.trader import TradingBot
 from bot.ai_trader import AiTradingBot
 from bot.day_trader import DayTradingBot
@@ -46,6 +46,11 @@ PROTECTED_CONFIG_FIELDS = {
     "symbol",
     "symbols",
     "strategy_mode",
+    "trading_mode",
+    "alpaca_live_api_key",
+    "alpaca_live_secret_key",
+    "alpaca_paper_api_key",
+    "alpaca_paper_secret_key",
     "openai_api_key",
     "gemini_api_key",
     "anthropic_api_key",
@@ -234,6 +239,13 @@ class TickerRunner:
             overrides["metals_reversal_buy_on_stop"] = bool(
                 self.settings["reversal_buy_on_stop"]
             )
+        if (
+            self.settings.get("metals_dollar_index_only") is None
+            and self.settings.get("dollar_index_only") is not None
+        ):
+            overrides["metals_dollar_index_only"] = bool(
+                self.settings["dollar_index_only"]
+            )
 
         # Everything else that names a real Config field is applied as an
         # override, coerced to the type that field already holds. A whitelist
@@ -253,6 +265,12 @@ class TickerRunner:
                     value,
                     self.symbol,
                 )
+
+        # Ensure size_mode matches strategy mode constraints
+        overrides["size_mode"] = resolve_size_mode(
+            self.settings.get("size_mode") or getattr(base_cfg, "size_mode", "qty"),
+            self.strategy_mode,
+        )
 
         return replace(base_cfg, **overrides)
 
@@ -348,10 +366,13 @@ class TickerRunner:
                 and self._thread.is_alive()
             )
             uptime = None
-            if self.started_at and self.status == "running":
-                uptime = max(0, int(time.time() - self.started_at))
-            elif self.started_at and self.stopped_at:
-                uptime = max(0, int(self.stopped_at - self.started_at))
+            if self.started_at:
+                if running or self.status in ("running", "stopping"):
+                    uptime = max(0, int(time.time() - self.started_at))
+                elif self.stopped_at:
+                    uptime = max(0, int(self.stopped_at - self.started_at))
+                else:
+                    uptime = max(0, int(time.time() - self.started_at))
 
             size_mode = str(self.settings.get("size_mode") or "qty").lower()
             trade_notional = self.settings.get("trade_notional")
@@ -392,7 +413,11 @@ class TickerRunner:
                 "settings": {
                     k: v
                     for k, v in self.settings.items()
-                    if not k.endswith("_key") and not k.endswith("_secret")
+                    if k not in PROTECTED_CONFIG_FIELDS
+                    and not str(k).endswith("_key")
+                    and not str(k).endswith("_secret")
+                    and "token" not in str(k).lower()
+                    and "password" not in str(k).lower()
                 },
             }
 
@@ -403,6 +428,7 @@ class MultiTradeManager:
     def __init__(self, app_state: Any) -> None:
         self.app_state = app_state
         self._runners: dict[str, TickerRunner] = {}  # Keyed by UPPERCASE symbol
+        self._history: list[dict[str, Any]] = []  # Snapshots of previous runners
         self._lock = threading.RLock()
 
     def start_runner(
@@ -419,18 +445,34 @@ class MultiTradeManager:
         if not sym:
             raise ValueError("Symbol cannot be empty.")
 
+        if hasattr(self.app_state, "_require_live_execution"):
+            self.app_state._require_live_execution()
+
+        if hasattr(self.app_state, "_is_symbol_in_loop") and self.app_state._is_symbol_in_loop(sym):
+            raise ValueError(
+                f"Symbol '{sym}' is already actively traded by the running main Auto Trade loop. Stop the main loop first."
+            )
+
         existing: TickerRunner | None = None
         with self._lock:
             cand = self._runners.get(sym)
-            if cand and cand.is_running:
-                if not replace_existing:
-                    raise ValueError(
-                        f"Auto-trade is already active for {sym} ({cand.engine_name}). Stop it first."
-                    )
+            if cand:
+                if cand.is_running:
+                    if not replace_existing:
+                        raise ValueError(
+                            f"Auto-trade is already active for {sym} ({cand.engine_name}). Stop it first."
+                        )
                 existing = cand
 
         if existing:
-            existing.stop(wait=True, timeout=3.0)
+            if existing.is_running:
+                existing.stop(wait=True, timeout=3.0)
+            with self._lock:
+                snap = existing.snapshot()
+                self._history = [h for h in self._history if h.get("id") != snap.get("id")]
+                self._history.append(snap)
+                if len(self._history) > 50:
+                    self._history = self._history[-50:]
 
         runner = TickerRunner(
             symbol=sym,
@@ -459,11 +501,11 @@ class MultiTradeManager:
         settings: dict[str, Any] | None = None,
     ) -> list[TickerRunner]:
         """Start auto-trade for multiple symbols under a specified strategy."""
+        clean_symbols = [s.strip().upper() for s in symbols if s and str(s).strip()]
+        if not clean_symbols:
+            raise ValueError("At least one valid ticker symbol is required.")
         started: list[TickerRunner] = []
-        for sym in symbols:
-            s = sym.strip().upper()
-            if not s:
-                continue
+        for s in clean_symbols:
             runner = self.start_runner(
                 symbol=s,
                 strategy_mode=strategy_mode,
@@ -501,13 +543,23 @@ class MultiTradeManager:
 
         return False
 
-    def stop_all(self, wait: bool = True) -> int:
-        """Stop all active auto-trade runners."""
+    def stop_all(self, wait: bool = True, timeout: float = 3.0) -> int:
+        """Stop all active auto-trade runners concurrently."""
         with self._lock:
             runners_to_stop = [r for r in self._runners.values() if r.is_running or r.desired_running]
 
         for runner in runners_to_stop:
-            runner.stop(wait=wait)
+            runner.desired_running = False
+            runner._stop_event.set()
+            with runner._lock:
+                if runner.status == "running":
+                    runner.status = "stopping"
+
+        if wait:
+            deadline = time.time() + timeout
+            for runner in runners_to_stop:
+                rem = max(0.05, deadline - time.time())
+                runner.stop(wait=True, timeout=rem)
 
         if hasattr(self.app_state, "_save_auto_trade_state"):
             try:
@@ -541,25 +593,153 @@ class MultiTradeManager:
     def list_runners(self, active_only: bool = False) -> list[dict[str, Any]]:
         with self._lock:
             runners = list(self._runners.values())
+            history = list(self._history)
 
         result: list[dict[str, Any]] = []
+        seen_ids = set()
         for r in runners:
             if active_only and not r.is_running:
                 continue
-            result.append(r.snapshot())
+            snap = r.snapshot()
+            seen_ids.add(snap["id"])
+            result.append(snap)
 
-        # Sort running first, then recently started
+        if not active_only:
+            for item in reversed(history):
+                if item.get("id") not in seen_ids:
+                    seen_ids.add(item.get("id"))
+                    result.append(dict(item))
+
+        # Sort running first, then recently started or stopped
         result.sort(
             key=lambda x: (
                 1 if x.get("is_running") else 0,
-                x.get("started_at") or 0,
+                x.get("started_at") or x.get("created_at") or 0,
             ),
             reverse=True,
         )
         return result
 
+    def remove_runner(self, symbol_or_id: str) -> bool:
+        """Remove a runner from active map or history."""
+        target = symbol_or_id.strip()
+        target_upper = target.upper()
+        removed = False
+        with self._lock:
+            # Check by ID in active runners first
+            matched_sym = None
+            for sym, r in self._runners.items():
+                if r.id == target:
+                    matched_sym = sym
+                    break
+            if matched_sym:
+                r = self._runners[matched_sym]
+                if r.is_running:
+                    r.stop(wait=True)
+                del self._runners[matched_sym]
+                removed = True
+            elif target_upper in self._runners:
+                r = self._runners[target_upper]
+                if r.is_running:
+                    r.stop(wait=True)
+                del self._runners[target_upper]
+                removed = True
+
+            # History cleanup: if target matches a runner ID, remove only that entry
+            matched_history_by_id = any(h.get("id") == target for h in self._history)
+            orig_len = len(self._history)
+            if matched_history_by_id:
+                self._history = [h for h in self._history if h.get("id") != target]
+            else:
+                self._history = [
+                    h for h in self._history
+                    if h.get("symbol") != target_upper and h.get("id") != target
+                ]
+            if len(self._history) < orig_len:
+                removed = True
+
+        if removed and hasattr(self.app_state, "_save_auto_trade_state"):
+            try:
+                self.app_state._save_auto_trade_state()
+            except Exception:
+                pass
+        return removed
+
+    def restart_runner(self, symbol_or_id: str) -> TickerRunner:
+        """Restart a stopped runner with its previous settings."""
+        target = symbol_or_id.strip()
+        target_upper = target.upper()
+        cfg: dict[str, Any] | None = None
+        with self._lock:
+            # 1. Check active runners by exact ID first
+            for sym, r in self._runners.items():
+                if r.id == target:
+                    cfg = {
+                        "symbol": r.symbol,
+                        "strategy_mode": r.strategy_mode,
+                        "custom_engine_id": r.custom_engine_id,
+                        "engine_name": r.engine_name,
+                        "settings": dict(r.settings or {}),
+                    }
+                    break
+
+            # 2. Check history by exact ID
+            if not cfg:
+                for h in reversed(self._history):
+                    if h.get("id") == target:
+                        cfg = {
+                            "symbol": h.get("symbol"),
+                            "strategy_mode": h.get("strategy_mode", ""),
+                            "custom_engine_id": h.get("custom_engine_id"),
+                            "engine_name": h.get("engine_name"),
+                            "settings": dict(h.get("settings") or {}),
+                        }
+                        break
+
+            # 3. Check active runners by symbol
+            if not cfg and target_upper in self._runners:
+                r = self._runners[target_upper]
+                cfg = {
+                    "symbol": r.symbol,
+                    "strategy_mode": r.strategy_mode,
+                    "custom_engine_id": r.custom_engine_id,
+                    "engine_name": r.engine_name,
+                    "settings": dict(r.settings or {}),
+                }
+
+            # 4. Check history by symbol
+            if not cfg:
+                for h in reversed(self._history):
+                    if h.get("symbol") == target_upper:
+                        cfg = {
+                            "symbol": h.get("symbol"),
+                            "strategy_mode": h.get("strategy_mode", ""),
+                            "custom_engine_id": h.get("custom_engine_id"),
+                            "engine_name": h.get("engine_name"),
+                            "settings": dict(h.get("settings") or {}),
+                        }
+                        break
+
+        if not cfg or not cfg.get("symbol"):
+            raise ValueError(f"No auto-trade runner found for '{symbol_or_id}' to restart.")
+
+        return self.start_runner(
+            symbol=cfg["symbol"],
+            strategy_mode=cfg.get("strategy_mode", ""),
+            custom_engine_id=cfg.get("custom_engine_id"),
+            engine_name=cfg.get("engine_name"),
+            settings=cfg.get("settings"),
+            replace_existing=True,
+        )
+
     def list_active(self) -> list[dict[str, Any]]:
         return self.list_runners(active_only=True)
+
+    @property
+    def runners(self) -> dict[str, TickerRunner]:
+        """Return a copy of the current runners mapping."""
+        with self._lock:
+            return dict(self._runners)
 
     def active_symbols_map(self) -> dict[str, dict[str, Any]]:
         """Return a mapping of symbol -> runner snapshot for all active runners."""
@@ -569,6 +749,34 @@ class MultiTradeManager:
                 for sym, runner in self._runners.items()
                 if runner.is_running
             }
+
+    def get_history_snapshots(self) -> list[dict[str, Any]]:
+        """Return snapshots of previous/stopped runners for disk persistence."""
+        with self._lock:
+            stopped_snaps = [
+                r.snapshot() for r in self._runners.values()
+                if not (r.desired_running or r.is_running)
+            ]
+            seen_ids = {s.get("id") for s in stopped_snaps}
+            combined = list(stopped_snaps)
+            for h in self._history:
+                if h.get("id") not in seen_ids:
+                    seen_ids.add(h.get("id"))
+                    combined.append(dict(h))
+            return combined
+
+    def restore_history(self, history: list[dict[str, Any]]) -> None:
+        """Restore previous runner history snapshots from saved state."""
+        if not isinstance(history, list):
+            return
+        with self._lock:
+            seen_ids = {h.get("id") for h in self._history if h.get("id")}
+            for item in history:
+                if isinstance(item, dict) and item.get("id") and item.get("id") not in seen_ids:
+                    self._history.append(dict(item))
+                    seen_ids.add(item["id"])
+            if len(self._history) > 50:
+                self._history = self._history[-50:]
 
     def get_active_runners_config(self) -> list[dict[str, Any]]:
         """Return configurations of runners that are actively running or desired to run."""

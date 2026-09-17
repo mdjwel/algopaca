@@ -101,6 +101,7 @@ _DEFAULTS: dict[str, Any] = {
     "stop_limit_offset_pct": 0.0,
     "stop_loss_24h": True,
     "metals_reversal_buy_on_stop": True,
+    "metals_dollar_index_only": False,
     "lang": "en",
     "options_enabled": True,
     "options_style": "vertical",

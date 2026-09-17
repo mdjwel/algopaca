@@ -175,10 +175,10 @@ def entry_gates(
             f"Stopped out {float(stop_age):.0f}m ago — cooling down for {cooldown}m.",
         )
 
+    symbol = str(context.get("symbol") or "").upper().strip()
     preset_id = getattr(config, "ai_preset", "")
-    if preset_id == "gold_silver_macro":
-        symbol = str(context.get("symbol") or "").upper().strip()
-        metals_intel = context.get("precious_metals_intel") or {}
+    metals_intel = context.get("precious_metals_intel") or {}
+    if preset_id == "gold_silver_macro" or bool(metals_intel.get("is_precious_metal")):
         try:
             val_macro = metals_intel.get("macro_composite_score")
             macro_score = float(val_macro) if val_macro is not None else 0.0
@@ -190,6 +190,31 @@ def entry_gates(
             gsr_z = float(val_gsr) if val_gsr is not None else 0.0
         except (ValueError, TypeError):
             gsr_z = 0.0
+
+        raw_td = getattr(config, "metals_dollar_index_only", False)
+        track_dollar_only = (
+            raw_td is True
+            or (isinstance(raw_td, (bool, int)) and bool(raw_td))
+            or (isinstance(raw_td, str) and raw_td.strip().lower() in {"1", "true", "yes", "on"})
+            or bool(metals_intel.get("track_dollar_only"))
+        )
+        if track_dollar_only:
+            # When tracking Dollar Index only, gate strictly on Dollar direction; bypass rates, GSR, and late-session filters
+            if symbol in {"GLD", "IAU", "BAR", "OUNZ", "PHYS", "SLV", "AGQ", "SIL", "SILJ", "PSLV"}:
+                if macro_score < 0.0:
+                    return Gate(
+                        False,
+                        f"Dollar Index is strengthening ({macro_score:+.2f} < 0.00) — long entries blocked in Dollar Index Only mode.",
+                    )
+                return ALLOW
+            if symbol in {"GLL", "GDXD"}:
+                if macro_score > 0.0:
+                    return Gate(
+                        False,
+                        f"Dollar Index is weakening ({macro_score:+.2f} > 0.00) — inverse ETF entries blocked in Dollar Index Only mode.",
+                    )
+                return ALLOW
+            return ALLOW
 
         # 1. Late-session entry filter on inverse ETFs (hour >= 19 UTC / 3 PM ET)
         if symbol in {"GLL", "GDXD"}:
@@ -228,8 +253,14 @@ def reversal_gate(config: Any, context: dict[str, Any], confidence: float) -> Ga
     intel = context.get("precious_metals_intel") or {}
     pos = context.get("position") or {}
     pos_qty = float(pos.get("qty") or 0.0)
-    # Allow prompt reversal of short on precious metals when dollar index / macro data is mixed
-    if intel.get("dollar_mixed") and pos_qty < 0:
+    raw_dm = getattr(config, "metals_dollar_index_only", False)
+    is_dollar_mode = (
+        raw_dm is True
+        or (isinstance(raw_dm, (bool, int)) and bool(raw_dm))
+        or (isinstance(raw_dm, str) and raw_dm.strip().lower() in {"1", "true", "yes", "on"})
+        or bool(intel.get("track_dollar_only"))
+    )
+    if (intel.get("dollar_mixed") or is_dollar_mode) and pos_qty != 0:
         return ALLOW
     activity = context.get("activity") or {}
     min_hold = int(getattr(config, "ai_min_hold_minutes", 0) or 0)

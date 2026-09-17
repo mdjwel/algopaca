@@ -779,15 +779,22 @@ class TestArmBracketExit(unittest.TestCase):
         self.assertEqual(submitted_req.side, OrderSide.BUY)
         self.assertEqual(submitted_req.qty, 5.0)
 
-    def test_arm_bracket_exit_trail_and_tp_conflict(self):
+    def test_arm_bracket_exit_with_trailing_stop_and_take_profit(self):
         self.service.get_position_qty = MagicMock(return_value=10.0)
-        with self.assertRaises(ValueError) as ctx:
-            self.service.arm_bracket_exit(
-                "AAPL",
-                trail_percent=3.0,
-                take_profit_price=160.0,
-            )
-        self.assertIn("trailing stop cannot be combined", str(ctx.exception).lower())
+        self.service.cancel_open_exit_orders = MagicMock(return_value={"stops_cancelled": 0, "tp_cancelled": 0})
+        self.service.arm_trailing_stop = MagicMock(
+            return_value={"id": "trail_123", "qty": 10.0, "side": "sell", "type": "trailing_stop", "trail_percent": 3.0}
+        )
+        res = self.service.arm_bracket_exit(
+            "AAPL",
+            trail_percent=3.0,
+            take_profit_price=160.0,
+        )
+        self.assertEqual(res["action"], "bracket")
+        self.assertEqual(res["order_class"], "trailing_bracket")
+        self.assertEqual(res["stop"]["id"], "trail_123")
+        self.assertEqual(res["take_profit"]["limit_price"], 160.0)
+        self.service.arm_trailing_stop.assert_called_once_with("AAPL", trail_percent=3.0, qty=10.0)
 
     def test_positions_overview_bracket_oco_detection_short(self):
         from alpaca.trading.enums import OrderSide, OrderType, OrderClass
@@ -847,6 +854,70 @@ class TestArmBracketExit(unittest.TestCase):
             self.assertIsNotNone(pos["stop_distance_pct"])
             # For short, gap = (1726 - 1777.78) / 1726 * 100 = -3.00%, distance = -gap = +3.00%
             self.assertAlmostEqual(pos["stop_distance_pct"], 3.00, places=1)
+
+    def test_positions_overview_detects_trailing_stop_and_trailing_bracket(self):
+        mock_service = MagicMock()
+        mock_service.get_all_positions.return_value = [
+            {
+                "symbol": "TNON",
+                "side": "long",
+                "qty": 100.0,
+                "avg_entry_price": 4.10,
+                "current_price": 4.16,
+                "market_value": 416.0,
+                "unrealized_pl": 6.0,
+            }
+        ]
+        mock_service.get_open_orders_summary.return_value = {
+            "TNON": [
+                {
+                    "id": "ord_trail_1",
+                    "side": "sell",
+                    "type": "trailing_stop",
+                    "qty": 100.0,
+                    "stop_price": 4.04,
+                    "trail_percent": 3.0,
+                    "trail_price": None,
+                    "is_stop": True,
+                },
+            ]
+        }
+        mock_service.get_account.return_value = {"equity": 50000.0}
+        state = AppState(user_id="test_user")
+        state.multi_trader = MagicMock()
+        state.multi_trader.get_runner_summary.return_value = None
+        state.loop_running = False
+
+        # Add synthetic take profit to simulate trailing bracket
+        state.synthetic_orders = {
+            "synth_tp_1": {
+                "id": "synth_tp_1",
+                "symbol": "TNON",
+                "side": "sell",
+                "qty": 100.0,
+                "limit_price": 4.58,
+                "order_type": "take_profit",
+                "status": "active",
+            }
+        }
+
+        with patch("bot.web_state.AlpacaService", return_value=mock_service):
+            overview = state.positions_overview()
+            pos = overview["positions"][0]
+            self.assertTrue(pos["has_stop_loss"])
+            self.assertTrue(pos["has_trailing_stop"])
+            self.assertEqual(pos["trail_percent"], 3.0)
+            self.assertEqual(pos["stop_order_type"], "trailing_stop")
+            self.assertEqual(pos["stop_loss_price"], 4.04)
+            self.assertTrue(pos["has_take_profit"])
+            self.assertEqual(pos["take_profit_price"], 4.58)
+            self.assertTrue(pos["is_trailing_bracket"])
+            self.assertEqual(pos["stop_loss_qty"], 100.0)
+            self.assertEqual(pos["take_profit_qty"], 100.0)
+            self.assertEqual(pos["exit_qty"], 100.0)
+            self.assertIsNotNone(pos["stop_distance_pct"])
+            # gap = (4.16 - 4.04) / 4.16 * 100 = 2.88%
+            self.assertAlmostEqual(pos["stop_distance_pct"], 2.88, places=1)
 
     def test_positions_overview_preserves_exit_quantities(self):
         mock_service = MagicMock()

@@ -255,6 +255,7 @@ class Config:
     stop_limit_offset_pct: float = 0.0
     stop_loss_24h: bool = True
     metals_reversal_buy_on_stop: bool = True
+    metals_dollar_index_only: bool = False
     lang: str = DEFAULT_LANG  # desk language; the AI writes thesis / risks in it
     # Options overlay — every strategy cycle maps its equity view onto Alpaca options.
     options_enabled: bool = True
@@ -416,6 +417,7 @@ class Config:
         stop_limit_offset_pct: float | None = None,
         stop_loss_24h: bool | None = None,
         metals_reversal_buy_on_stop: bool | None = None,
+        metals_dollar_index_only: bool | None = None,
         openai_model: str | None = None,
         gemini_model: str | None = None,
         anthropic_model: str | None = None,
@@ -855,6 +857,11 @@ class Config:
                 if metals_reversal_buy_on_stop is None
                 else bool(metals_reversal_buy_on_stop)
             ),
+            metals_dollar_index_only=(
+                self.metals_dollar_index_only
+                if metals_dollar_index_only is None
+                else bool(metals_dollar_index_only)
+            ),
             openai_model=openai_model or self.openai_model,
             gemini_model=gemini_model or self.gemini_model,
             anthropic_model=anthropic_model or self.anthropic_model,
@@ -972,6 +979,7 @@ class Config:
         stop_limit_offset_pct: float = 0.0,
         stop_loss_24h: bool = True,
         metals_reversal_buy_on_stop: bool = True,
+        metals_dollar_index_only: bool = False,
         lang: str = DEFAULT_LANG,
         risk_engine_enabled: bool = True,
         options_enabled: bool = True,
@@ -1061,6 +1069,7 @@ class Config:
             stop_limit_offset_pct=stop_limit_offset_pct,
             stop_loss_24h=bool(stop_loss_24h),
             metals_reversal_buy_on_stop=bool(metals_reversal_buy_on_stop),
+            metals_dollar_index_only=bool(metals_dollar_index_only),
             lang=lang,
             risk_engine_enabled=risk_engine_enabled,
             options_enabled=options_enabled,
@@ -1416,6 +1425,7 @@ class Config:
             metals_reversal_buy_on_stop=_e(
                 "METALS_REVERSAL_BUY_ON_STOP", "true"
             ).lower() in ("1", "true", "yes"),
+            metals_dollar_index_only=env_flag("METALS_DOLLAR_INDEX_ONLY", False),
             ai_max_spread_bps=max(
                 0.0, min(1000.0, float(_e("AI_MAX_SPREAD_BPS", "25")))
             ),

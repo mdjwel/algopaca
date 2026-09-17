@@ -1233,6 +1233,374 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertLessEqual(context["factor_scores"]["rates"], -0.6)
         self.assertEqual(context["yield_trend"], "rising_yields")
 
+    def test_day_backtest_ai_metals_breakout_defaults(self):
+        """Verify DayBacktestParams(preset='ai_metals_breakout') syncs with Auto Trade day_preset."""
+        from bot.day_backtest import DayBacktestParams
+        from bot.day_presets import get_preset as get_day_preset
+
+        preset = get_day_preset("ai_metals_breakout")
+        params = DayBacktestParams(preset="ai_metals_breakout")
+        self.assertEqual(params.sub_mode, preset.sub_mode)
+        self.assertEqual(params.sub_mode, "vwap_trend")
+        self.assertEqual(params.ema_fast, preset.ema_fast)
+        self.assertEqual(params.ema_fast, 13)
+        self.assertEqual(params.ema_slow, preset.ema_slow)
+        self.assertEqual(params.ema_slow, 34)
+        self.assertEqual(params.profit_target_r, preset.profit_target_r)
+        self.assertEqual(params.profit_target_r, 3.8)
+        self.assertEqual(params.stop_atr_mult, preset.stop_atr_mult)
+        self.assertEqual(params.stop_atr_mult, 2.0)
+        self.assertEqual(params.side, preset.side)
+        self.assertEqual(params.side, "long_only")
+        self.assertEqual(params.max_trades_per_day, preset.max_trades_per_day)
+        self.assertEqual(params.max_trades_per_day, 2)
+        self.assertEqual(params.open_buffer_mins, preset.open_buffer_mins)
+        self.assertEqual(params.open_buffer_mins, 20)
+
+    def test_web_state_day_backtest_resolves_metals_preset_defaults(self):
+        """Verify web_state _run_day_backtest populates preset defaults when fields are not overridden."""
+        from bot.web_state import AppState, RunSettings
+
+        state = AppState()
+        # Ensure desk settings have standard 9/21 defaults
+        state.settings = RunSettings()
+        self.assertEqual(state.settings.day_ema_fast, 9)
+        self.assertEqual(state.settings.day_ema_slow, 21)
+
+        # Mock service.get_bars_range and _trim_backtest_bars
+        mock_bars = pd.DataFrame(
+            {
+                "open": [100.0] * 50,
+                "high": [101.0] * 50,
+                "low": [99.0] * 50,
+                "close": [100.5] * 50,
+                "volume": [1000] * 50,
+            },
+            index=pd.date_range("2026-03-02 09:30", periods=50, freq="5min", tz="America/New_York"),
+        )
+        with patch.object(AppState, "_base_config"), \
+             patch("bot.web_state.AlpacaService") as mock_srv_cls, \
+             patch("bot.web_state.run_day_backtest") as mock_run:
+            srv = mock_srv_cls.return_value
+            srv.get_bars_range.return_value = mock_bars
+            mock_run.return_value = {"trades": 0, "win_rate_pct": 0.0}
+
+            state._run_day_backtest(
+                days=5,
+                bar_timeframe="15Min",
+                initial_cash=10000.0,
+                symbols="GLD",
+                symbol="GLD",
+                day_preset="ai_metals_breakout",
+            )
+            self.assertTrue(mock_run.called)
+            called_params = mock_run.call_args[1]["params"]
+            self.assertEqual(called_params.ema_fast, 13)
+            self.assertEqual(called_params.ema_slow, 34)
+            self.assertEqual(called_params.profit_target_r, 3.8)
+            self.assertEqual(called_params.stop_atr_mult, 2.0)
+            self.assertEqual(called_params.max_trades_per_day, 2)
+            self.assertEqual(called_params.open_buffer_mins, 20)
+            self.assertEqual(called_params.side, "long_only")
+
+    def test_web_state_ai_backtest_metals_reversal_buy_sync(self):
+        """Verify web_state _run_ai_backtest passes metals_reversal_buy_on_stop to AiBacktestParams."""
+        from bot.web_state import AppState, RunSettings
+
+        state = AppState()
+        state.settings = RunSettings()
+        state.settings.metals_reversal_buy_on_stop = True
+
+        mock_daily_bars = pd.DataFrame(
+            {
+                "open": [100.0] * 70,
+                "high": [101.0] * 70,
+                "low": [99.0] * 70,
+                "close": [100.5] * 70,
+                "volume": [1000] * 70,
+            },
+            index=pd.date_range("2026-01-01", periods=70, freq="B", tz="UTC"),
+        )
+        with patch.object(AppState, "_base_config"), \
+             patch("bot.web_state.AlpacaService") as mock_srv_cls, \
+             patch("bot.web_state.run_ai_backtest") as mock_run:
+            srv = mock_srv_cls.return_value
+            srv.get_bars_range.return_value = mock_daily_bars
+            mock_run.return_value = {"trades": 0}
+
+            state._run_ai_backtest(
+                days=30,
+                bar_timeframe="1Day",
+                initial_cash=10000.0,
+                symbols="GLD",
+                symbol="GLD",
+                ai_preset="gold_silver_macro",
+            )
+            self.assertTrue(mock_run.called)
+            params = mock_run.call_args[1]["params"]
+            self.assertTrue(params.reversal_buy_on_stop)
+            self.assertEqual(params.take_profit_r, 4.0)
+            self.assertEqual(params.atr_stop_mult, 1.6)
+            self.assertEqual(params.trail_after_r, 2.0)
+
+    def test_js_backtest_metals_defaults_sync(self):
+        """Verify backtest.js DAY_PRESET_DEFAULTS contains the exact values from day_presets.py."""
+        from pathlib import Path
+        import re
+
+        js_path = Path("web/static/js/backtest.js")
+        self.assertTrue(js_path.exists())
+        js_content = js_path.read_text(encoding="utf-8")
+
+        # Check ai_metals_breakout line
+        match = re.search(r'ai_metals_breakout:\s*\{([^}]+)\}', js_content)
+        self.assertIsNotNone(match)
+        chunk = match.group(1)
+        self.assertIn('"long_only"', chunk)
+        self.assertIn('tp_r: 3.8', chunk)
+        self.assertIn('stop_atr: 2.0', chunk)
+        self.assertIn('fast: 13', chunk)
+        self.assertIn('slow: 34', chunk)
+        self.assertIn('max_trades: 2', chunk)
+
+
+class TestMetalsDollarIndexOnly(unittest.TestCase):
+    def test_macro_context_dollar_only_mode(self):
+        service = MagicMock()
+        service.get_mark_price.return_value = {"price": 26.5}
+        dates = pd.date_range(end=datetime.now(timezone.utc), periods=80, freq="D")
+        gld_series = [240.0 for _ in range(80)]
+        # Falling dollar (UUP dropping from 29 to 27)
+        uup_series = [29.0 - (i * 0.025) for i in range(80)]
+
+        service.get_bars.side_effect = lambda sym, **kw: pd.DataFrame(
+            {"close": uup_series if sym == "UUP" else gld_series}, index=dates
+        )
+
+        dummy_events = [
+            {"event": "FOMC Rate Decision", "time_utc": datetime.now(timezone.utc).isoformat(), "impact": "HIGH"}
+        ]
+
+        # Call with track_dollar_only=True
+        ctx = fetch_metals_macro_context(service, "GLD", calendar=dummy_events, track_dollar_only=True)
+        self.assertTrue(ctx["dollar_only_mode"])
+        self.assertTrue(ctx["track_dollar_only"])
+        self.assertEqual(ctx["relevant_macro_events"], [])
+        self.assertEqual(ctx["events_5m_imminent"], [])
+        self.assertEqual(ctx["macro_risk_level"], "normal")
+        self.assertEqual(ctx["macro_composite_score"], round(ctx["factor_scores"]["dollar"] * 3.0, 2))
+        self.assertIn("dollar_signal", ctx)
+        self.assertEqual(ctx["dollar_signal"], "bullish")
+        self.assertEqual(ctx["dollar_action"], "buy")
+
+    def test_ai_brain_dollar_only_prompt(self):
+        from bot.ai_brain import AiBrain
+        from bot.config import Config
+
+        config = Config.default(
+            strategy_mode="ai",
+            ai_preset="gold_silver_macro",
+            ai_min_confidence=0.60,
+            metals_dollar_index_only=True,
+        )
+        service = MagicMock()
+        service.get_bars.return_value = pd.DataFrame()
+        service.get_position_detail.return_value = {"qty": 0}
+        service.account_summary.return_value = {"equity": 10000}
+        service.recent_activity.return_value = {}
+        service.get_mark_price.return_value = {"price": 240.0}
+        service.market_session.return_value = {"session": "open"}
+
+        with patch("bot.ai_brain.fetch_metals_macro_context") as mock_metals, \
+             patch("bot.ai_brain.compute_technicals") as mock_tech, \
+             patch("bot.ai_brain.fetch_news") as mock_news, \
+             patch("bot.ai_brain.fetch_earnings") as mock_earn:
+            mock_tech.return_value = {"ok": True, "atr_14": 2.5}
+            mock_news.return_value = []
+            mock_earn.return_value = {}
+            mock_metals.return_value = {
+                "is_precious_metal": True,
+                "dollar_only_mode": True,
+                "track_dollar_only": True,
+                "dollar_score": 0.8,
+                "dollar_trend": "falling",
+                "dollar_signal": "bullish",
+                "dollar_action": "buy",
+                "imminent_event_risk": False,
+                "macro_composite_score": 0.8,
+                "dollar_live_price": 27.5,
+                "dollar_change_pct": -0.5,
+            }
+
+            brain = AiBrain(config, service, MagicMock())
+            ctx = brain.build_context("GLD")
+            prompt = brain._format_prompt("GLD", ctx)
+
+            self.assertIn("MANDATORY: REAL-TIME DOLLAR INDEX", prompt)
+            self.assertIn("SOLELY DRIVEN BY THE US DOLLAR INDEX", prompt)
+            self.assertIn("EXPLICITLY BYPASSED AND IGNORED", prompt)
+
+    def test_ai_risk_dollar_only_entry_and_reversal(self):
+        from bot.ai_risk import entry_gates, reversal_gate
+        from bot.config import Config
+
+        config = Config.default(
+            strategy_mode="ai",
+            ai_preset="gold_silver_macro",
+            metals_dollar_index_only=True,
+            ai_min_hold_minutes=60,
+        )
+        context_long = {
+            "symbol": "GLD",
+            "precious_metals_intel": {
+                "is_precious_metal": True,
+                "dollar_only_mode": True,
+                "macro_composite_score": 0.75,
+                "track_dollar_only": True,
+            },
+            "news": [{"impact": "extreme_negative"}],
+            "activity": {"last_fill_age_min": 5},
+            "position": {"qty": 10},
+        }
+
+        # Long GLD allowed on positive dollar macro score (weak dollar)
+        gate_long = entry_gates(config, context_long, open_positions=0, day_pl_pct=0.0)
+        self.assertTrue(gate_long.allowed, f"Expected allowed but got: {gate_long.reason}")
+
+        # Long GLD blocked on negative dollar macro score (strong dollar)
+        context_strong_dollar = {
+            "symbol": "GLD",
+            "precious_metals_intel": {
+                "is_precious_metal": True,
+                "dollar_only_mode": True,
+                "macro_composite_score": -0.75,
+                "track_dollar_only": True,
+            },
+        }
+        gate_blocked = entry_gates(config, context_strong_dollar, open_positions=0, day_pl_pct=0.0)
+        self.assertFalse(gate_blocked.allowed)
+        self.assertIn("Dollar Index is strengthening", gate_blocked.reason)
+
+        # Inverse ETF GLL allowed on strong dollar (negative macro score for metals)
+        context_strong_dollar["symbol"] = "GLL"
+        gate_gll = entry_gates(config, context_strong_dollar, open_positions=0, day_pl_pct=0.0)
+        self.assertTrue(gate_gll.allowed)
+
+        # Inverse ETF GLL blocked on weak dollar (positive macro score for metals)
+        context_long["symbol"] = "GLL"
+        gate_gll_blocked = entry_gates(config, context_long, open_positions=0, day_pl_pct=0.0)
+        self.assertFalse(gate_gll_blocked.allowed)
+        self.assertIn("Dollar Index is weakening", gate_gll_blocked.reason)
+
+        # Reversal gate bypasses min_hold_minutes when in dollar_only_mode
+        rev_gate = reversal_gate(config, context_long, confidence=0.70)
+        self.assertTrue(rev_gate.allowed)
+
+    def test_backtest_ai_dollar_only_bypasses_events(self):
+        from bot.ai_backtest import evaluate_ai_signal, AiBacktestParams
+        from bot.strategy import Signal
+
+        params = AiBacktestParams(
+            preset="gold_silver_macro",
+            metals_dollar_index_only=True,
+        )
+
+        base_data = {
+            "close": 240.0,
+            "open": 239.5,
+            "high": 241.0,
+            "low": 239.0,
+            "sma10": 239.0,
+            "sma20": 238.0,
+            "sma50": 235.0,
+            "sma200": 220.0,
+            "rsi14": 50.0,
+            "adx14": 25.0,
+            "atr_pct": 1.5,
+            "dist_sma50_atr": 0.5,
+            "macd_hist": 0.2,
+            "vol_ratio": 1.0,
+            "bb_pct_b": 0.5,
+        }
+
+        row_weak_dollar = pd.Series({
+            **base_data,
+            "macro_composite_score": 0.7,
+            "dollar_trend": "falling",
+            "dollar_score": 0.7,
+        })
+
+        # Bypasses event_imminent_45m=True because metals_dollar_index_only is True
+        sig, conf, reason = evaluate_ai_signal(
+            row_weak_dollar, None, params, symbol="GLD", event_imminent_45m=True
+        )
+        self.assertEqual(sig, Signal.BUY)
+        self.assertIn("Dollar falling", reason)
+
+        row_strong_dollar = pd.Series({
+            **base_data,
+            "macro_composite_score": -0.7,
+            "dollar_trend": "rising",
+            "dollar_score": -0.7,
+        })
+
+        # Strong dollar triggers SELL on GLD
+        sig2, conf2, reason2 = evaluate_ai_signal(
+            row_strong_dollar, None, params, symbol="GLD", event_imminent_45m=True
+        )
+        self.assertEqual(sig2, Signal.SELL)
+        self.assertIn("Dollar rising", reason2)
+
+        # Strong dollar triggers BUY on inverse ETF GLL
+        sig3, conf3, reason3 = evaluate_ai_signal(
+            row_strong_dollar, None, params, symbol="GLL", event_imminent_45m=True
+        )
+        self.assertEqual(sig3, Signal.BUY)
+        self.assertIn("BUY inverse ETF", reason3)
+
+    def test_web_state_event_protection_bypassed(self):
+        from bot.web_state import AppState, RunSettings
+
+        state = AppState()
+        state.settings = RunSettings()
+        state.settings.metals_dollar_index_only = True
+
+        # When metals_dollar_index_only is enabled, check_metals_event_protection returns [] immediately
+        prot = state.check_metals_event_protection()
+        self.assertEqual(prot, [])
+
+
+    def test_ai_brain_dollar_only_context_bypass(self):
+        import dataclasses
+        from bot.ai_brain import AiBrain
+        from bot.config import Config
+
+        cfg = dataclasses.replace(Config.from_env(), metals_dollar_index_only=True)
+        brain = AiBrain(cfg, service=MagicMock(), provider=MagicMock())
+        brain.service.get_bars.return_value = pd.DataFrame()
+        brain.service.get_position_detail.return_value = {"qty": 0}
+        brain.service.account_summary.return_value = {"equity": 10000}
+        brain.service.recent_activity.return_value = {}
+        brain.service.get_mark_price.return_value = {"price": 100.0}
+
+        with patch("bot.ai_brain.fetch_news") as mock_news, \
+             patch("bot.ai_brain.fetch_economic_calendar") as mock_cal, \
+             patch("bot.ai_brain.fetch_earnings") as mock_earn, \
+             patch("bot.ai_brain.fetch_metals_macro_context") as mock_macro:
+            mock_macro.return_value = {"dollar_score": 0.5, "track_dollar_only": True}
+            ctx = brain.build_context("GLD")
+
+            # External calls must be completely bypassed
+            mock_news.assert_not_called()
+            mock_cal.assert_not_called()
+            mock_earn.assert_not_called()
+            self.assertEqual(ctx["news"], [])
+            self.assertEqual(ctx["economic_calendar"], [])
+            self.assertEqual(ctx["earnings"], {})
+            self.assertEqual(ctx["desk_lessons"], [])
+            mock_macro.assert_called_once()
+            self.assertTrue(mock_macro.call_args[1].get("track_dollar_only"))
+
 
 if __name__ == "__main__":
     unittest.main()

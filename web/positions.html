@@ -209,6 +209,9 @@
               <span id="pos-autotrades-count" class="log-count">0</span>
             </div>
             <div class="panel-head-actions">
+              <button type="button" id="btn-pos-new-autotrade" class="button copper btn-sm" title="Launch new auto-trade" data-i18n-title="launch_autotrade">
+                <span data-i18n="launch_autotrade">+ New Auto-Trade</span>
+              </button>
               <button type="button" id="btn-stop-all-autotrades" class="ghost ghost-danger btn-sm" title="Stop all active auto-trades" data-i18n-title="stop_all_autotrades">
                 <span data-i18n="stop_all_autotrades">Stop All Auto-Trades</span>
               </button>
@@ -804,7 +807,7 @@
             </div>
             <div class="pos-exit-status-grid">
               <div class="pos-exit-stat-sub">
-                <span data-i18n="stop_loss">Stop Loss</span>
+                <span id="pos-exit-stat-label-sl" data-i18n="stop_loss">Stop Loss</span>
                 <strong id="pos-exit-curr-sl" class="mono">—</strong>
               </div>
               <div class="pos-exit-stat-sub">
@@ -855,7 +858,7 @@
                 <button type="button" class="chip is-active" data-sl-pct="3">3%</button>
                 <button type="button" class="chip" data-sl-pct="5">5%</button>
                 <div id="pos-exit-sl-custom-wrap" class="pos-chip-custom-box">
-                  <input type="number" id="pos-exit-sl-custom-input" step="0.1" min="0.1" max="99.9" class="pos-field-input pos-chip-custom-input" placeholder="Custom" data-i18n-placeholder="custom_distance" />
+                  <input type="number" id="pos-exit-sl-custom-input" step="0.1" min="0.1" max="99.9" class="pos-chip-custom-input" placeholder="Custom" data-i18n-placeholder="custom_distance" />
                   <span class="pos-input-suffix">%</span>
                 </div>
               </div>
@@ -940,27 +943,48 @@
             <div class="pos-exit-bracket-grid">
               <div class="pos-exit-subcard pos-exit-subcard-sl">
                 <div class="pos-exit-subcard-head">
-                  <span class="pos-subcard-tag tag-sl">SL</span>
-                  <label class="pos-modal-label" for="pos-exit-bracket-sl" data-i18n="stop_loss">Stop Loss ($)</label>
+                  <div class="pos-exit-subcard-title-wrap">
+                    <span class="pos-subcard-tag tag-sl" id="pos-exit-bracket-sl-tag" data-tooltip="Stop Loss ($)" title="Stop Loss ($)" tabindex="0" role="img" aria-label="Stop Loss ($)">SL</span>
+                    <label class="pos-modal-label sr-only" id="pos-exit-bracket-sl-label" for="pos-exit-bracket-sl" data-i18n="stop_loss">Stop Loss ($)</label>
+                  </div>
+                  <div class="pos-bracket-mode-toggle" role="group" aria-label="Stop Loss Mode" data-i18n-aria-label="stop_loss_mode">
+                    <button type="button" id="btn-bracket-sl-fixed" class="pos-bracket-mode-btn is-active" data-bracket-sl-mode="fixed" data-i18n="bracket_mode_fixed">Fixed</button>
+                    <button type="button" id="btn-bracket-sl-trailing" class="pos-bracket-mode-btn" data-bracket-sl-mode="trailing" data-i18n="bracket_mode_trailing">Trailing</button>
+                  </div>
                 </div>
-                <div class="pos-input-box">
+
+                <!-- Fixed Stop Loss controls -->
+                <div class="pos-input-box" id="pos-exit-bracket-sl-box">
                   <span class="pos-input-prefix">$</span>
-                  <input type="number" id="pos-exit-bracket-sl" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                  <input type="number" id="pos-exit-bracket-sl" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" aria-label="Stop Loss ($)" />
                 </div>
-                <div class="pos-pct-chips compact">
+                <div class="pos-pct-chips compact" id="pos-exit-bracket-sl-chips">
                   <button type="button" class="chip" data-bracket-sl-pct="2">2%</button>
                   <button type="button" class="chip is-active" data-bracket-sl-pct="3">3%</button>
                   <button type="button" class="chip" data-bracket-sl-pct="5">5%</button>
                 </div>
+
+                <!-- Trailing Stop controls -->
+                <div class="pos-input-box" id="pos-exit-bracket-trail-box" hidden>
+                  <input type="number" id="pos-exit-bracket-trail-pct" step="0.1" min="0.1" max="50" value="3.0" class="pos-field-input" aria-label="Trail Distance (%)" />
+                  <span class="pos-input-suffix">%</span>
+                </div>
+                <div class="pos-pct-chips compact" id="pos-exit-bracket-trail-chips" hidden>
+                  <button type="button" class="chip" data-bracket-trail-pct="2">2%</button>
+                  <button type="button" class="chip is-active" data-bracket-trail-pct="3">3%</button>
+                  <button type="button" class="chip" data-bracket-trail-pct="5">5%</button>
+                </div>
               </div>
               <div class="pos-exit-subcard pos-exit-subcard-tp">
                 <div class="pos-exit-subcard-head">
-                  <span class="pos-subcard-tag tag-tp">TP</span>
-                  <label class="pos-modal-label" for="pos-exit-bracket-tp" data-i18n="take_profit">Take Profit ($)</label>
+                  <div class="pos-exit-subcard-title-wrap">
+                    <span class="pos-subcard-tag tag-tp" id="pos-exit-bracket-tp-tag" data-tooltip="Take Profit ($)" title="Take Profit ($)" tabindex="0" role="img" aria-label="Take Profit ($)">TP</span>
+                    <label class="pos-modal-label" for="pos-exit-bracket-tp" data-i18n="take_profit">Take Profit ($)</label>
+                  </div>
                 </div>
-                <div class="pos-input-box">
+                <div class="pos-input-box" id="pos-exit-bracket-tp-box">
                   <span class="pos-input-prefix">$</span>
-                  <input type="number" id="pos-exit-bracket-tp" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" />
+                  <input type="number" id="pos-exit-bracket-tp" step="0.01" min="0.01" class="pos-field-input" placeholder="0.00" aria-label="Take Profit ($)" />
                 </div>
                 <div class="pos-pct-chips compact">
                   <button type="button" class="chip" data-bracket-tp-pct="5">+5%</button>
@@ -1181,6 +1205,7 @@
               <select id="pos-autotrade-sizing-mode" class="pos-field-select">
                 <option value="qty" selected data-i18n="fixed_shares">Fixed Shares (Qty)</option>
                 <option value="notional" data-i18n="fixed_dollar">Fixed Dollar ($ Notional)</option>
+                <option value="ai" data-i18n="ai_risk_sizing" hidden>AI Risk Sizing</option>
               </select>
             </div>
 

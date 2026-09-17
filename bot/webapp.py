@@ -163,6 +163,8 @@ class SettingsIn(BaseModel):
     notify_email: Optional[bool] = None
     notification_email: Optional[str] = None
     custom_engine_id: Optional[str] = None
+    metals_reversal_buy_on_stop: Optional[bool] = None
+    metals_dollar_index_only: Optional[bool] = None
 
     @field_validator("notification_email")
     @classmethod
@@ -555,6 +557,8 @@ class BacktestIn(BaseModel):
     ai_trail_after_r: Optional[float] = Field(None, ge=0)
     ai_risk_pct: Optional[float] = Field(None, gt=0, le=100)
     ai_max_positions: Optional[int] = Field(None, ge=1)
+    metals_reversal_buy_on_stop: Optional[bool] = None
+    metals_dollar_index_only: Optional[bool] = None
 
 
 class ClosePositionIn(BaseModel):
@@ -2368,6 +2372,8 @@ def loop_start(
         _mirror_approval_prefs_from_desk(user["id"], payload)
         state.start_loop()
         return {"ok": True, "state": state.snapshot()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -2534,7 +2540,7 @@ def stop_multi_auto_trade(
 ) -> dict:
     """Stop an isolated auto-trade runner by symbol or ID."""
     state = get_user_state(user["id"])
-    target = (body.symbol or body.id or "").strip()
+    target = (body.id or body.symbol or "").strip()
     if not target:
         raise HTTPException(status_code=400, detail="Must provide symbol or id to stop.")
     stopped = state.stop_multi_auto_trade(target)
@@ -2558,6 +2564,48 @@ def stop_all_multi_auto_trades(user: dict = Depends(require_auth)) -> dict:
         "active_runners": state.multi_trader.list_active(),
         "active_symbols": state.multi_trader.active_symbols_map(),
     }
+
+
+@app.post("/api/auto-trade/multi/remove")
+def remove_multi_auto_trade(
+    body: MultiTradeStopIn, user: dict = Depends(require_auth)
+) -> dict:
+    """Remove a runner from active list or history."""
+    state = get_user_state(user["id"])
+    target = (body.id or body.symbol or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Must provide symbol or id to remove.")
+    removed = state.remove_multi_auto_trade(target)
+    return {
+        "ok": True,
+        "removed": removed,
+        "target": target,
+        "active_runners": state.multi_trader.list_active(),
+        "active_symbols": state.multi_trader.active_symbols_map(),
+    }
+
+
+@app.post("/api/auto-trade/multi/restart")
+def restart_multi_auto_trade(
+    body: MultiTradeStopIn, user: dict = Depends(require_auth)
+) -> dict:
+    """Restart a stopped runner with its saved settings."""
+    state = get_user_state(user["id"])
+    target = (body.id or body.symbol or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Must provide symbol or id to restart.")
+    try:
+        runner_snap = state.restart_multi_auto_trade(target)
+        return {
+            "ok": True,
+            "runner": runner_snap,
+            "active_runners": state.multi_trader.list_active(),
+            "active_symbols": state.multi_trader.active_symbols_map(),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

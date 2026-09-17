@@ -267,8 +267,8 @@ function manualTriggerPrice() {
 
 /** How a buy is sized: risk budget, a cash amount, or an exact share count. */
 function manualBuySizeMode() {
-  const raw = String(manualFormValue("buy_size_mode", "risk") || "risk").toLowerCase();
-  return ["risk", "notional", "qty"].includes(raw) ? raw : "risk";
+  const raw = String(manualFormValue("buy_size_mode", "qty") || "qty").toLowerCase();
+  return ["risk", "notional", "qty"].includes(raw) ? raw : "qty";
 }
 
 function manualBracketUnitMode() {
@@ -5618,9 +5618,9 @@ function syncBuyUnitToggle(bracketActive) {
     riskInput.disabled = !bracketActive || busy;
   }
   if (!bracketActive && manualBuySizeMode() === "risk") {
-    setManualFormValue("buy_size_mode", "notional");
-    const notionalInput = form?.querySelector('input[name="buy_size_mode"][value="notional"]');
-    if (notionalInput) notionalInput.checked = true;
+    setManualFormValue("buy_size_mode", "qty");
+    const qtyInput = form?.querySelector('input[name="buy_size_mode"][value="qty"]');
+    if (qtyInput) qtyInput.checked = true;
   }
 }
 
@@ -5868,12 +5868,27 @@ function syncManualHelp() {
   help.classList.toggle("info", !isWarn);
 }
 
-const MANUAL_FORM_STORAGE_KEY = "alpaca-desk-manual-order-form";
+const MANUAL_FORM_STORAGE_KEY = "alpaca-desk-manual-order-form-v2";
+const MANUAL_FORM_LEGACY_KEY = "alpaca-desk-manual-order-form";
 
 function readManualFormDraft() {
   try {
-    const raw = localStorage.getItem(MANUAL_FORM_STORAGE_KEY);
-    if (!raw) return null;
+    let raw = localStorage.getItem(MANUAL_FORM_STORAGE_KEY);
+    if (!raw) {
+      const legacy = localStorage.getItem(MANUAL_FORM_LEGACY_KEY);
+      if (legacy) {
+        localStorage.removeItem(MANUAL_FORM_LEGACY_KEY);
+        const data = JSON.parse(legacy);
+        if (data && typeof data === "object") {
+          if (data.buy_size_mode === "risk") {
+            delete data.buy_size_mode;
+          }
+          localStorage.setItem(MANUAL_FORM_STORAGE_KEY, JSON.stringify(data));
+          return data;
+        }
+      }
+      return null;
+    }
     const data = JSON.parse(raw);
     return data && typeof data === "object" ? data : null;
   } catch {

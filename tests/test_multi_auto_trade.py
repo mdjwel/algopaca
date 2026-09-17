@@ -339,6 +339,126 @@ class TestMultiAutoTrade(unittest.TestCase):
             self.assertEqual(orders_live["trading_mode"], "live")
             self.assertFalse(orders_live["paper"])
 
+    def test_two_way_collision_between_loop_and_multi_trader(self):
+        with patch.object(TickerRunner, "_run_cycle", return_value=None):
+            # 1. Start multi auto trade on AAPL
+            self.state.start_multi_auto_trade(symbols=["AAPL"], strategy_mode="sma")
+            self.assertTrue(self.state.is_symbol_in_auto_trade("AAPL"))
+
+            # 2. Main strategy loop targeting AAPL should fail to start
+            self.state.settings.symbol = "AAPL"
+            self.state.settings.symbols = "AAPL"
+            with self.assertRaises(ValueError) as ctx:
+                self.state.start_loop()
+            self.assertIn("already actively managed by an isolated Multi Auto-Trade runner", str(ctx.exception))
+
+            # Stop multi auto trade
+            self.state.stop_all_multi_auto_trades()
+
+            # 3. Now start main loop on AAPL
+            with patch.object(self.state, "_loop_worker", return_value=None):
+                self.state.start_loop()
+                self.assertTrue(self.state.loop_running)
+
+                # Attempting to start AAPL in multi trader should fail
+                with self.assertRaises(ValueError) as ctx2:
+                    self.state.start_multi_auto_trade(symbols=["AAPL"], strategy_mode="sma")
+                self.assertIn("already actively traded by the running main Auto Trade loop", str(ctx2.exception))
+
+                self.state.stop_loop()
+
+    def test_manual_close_guarded_against_multi_trader(self):
+        with patch.object(TickerRunner, "_run_cycle", return_value=None):
+            self.state.start_multi_auto_trade(symbols=["AAPL"], strategy_mode="sma")
+
+            # Single position close
+            with self.assertRaises(ValueError) as ctx:
+                self.state.close_single_position("AAPL")
+            self.assertIn("Stop Auto-Trade / Multi Auto-Trade for [AAPL]", str(ctx.exception))
+
+            # Batch position close
+            with self.assertRaises(ValueError) as ctx_batch:
+                self.state.close_batch_positions(["AAPL", "TSLA"])
+            self.assertIn("Stop Auto-Trade / Multi Auto-Trade for [AAPL]", str(ctx_batch.exception))
+
+            # Close all positions
+            with self.assertRaises(ValueError) as ctx_all:
+                self.state.close_all_positions()
+            self.assertIn("Stop active Multi Auto-Trade runner(s) [AAPL]", str(ctx_all.exception))
+
+            self.state.stop_all_multi_auto_trades()
+
+    def test_empty_symbols_rejected_in_start_batch(self):
+        mgr = self.state.multi_trader
+        with self.assertRaises(ValueError) as ctx:
+            mgr.start_batch(symbols=[" ", ""], strategy_mode="sma")
+        self.assertIn("At least one valid ticker symbol is required", str(ctx.exception))
+
+    def test_size_mode_resolution_and_protection(self):
+        # AI size mode is only permitted when strategy is ai
+        runner_non_ai = TickerRunner(
+            symbol="NVDA",
+            strategy_mode="sma",
+            app_state=self.state,
+            settings={"size_mode": "ai"},
+        )
+        cfg_non_ai = runner_non_ai._build_config()
+        self.assertEqual(cfg_non_ai.size_mode, "qty")
+
+        runner_ai = TickerRunner(
+            symbol="NVDA",
+            strategy_mode="ai",
+            app_state=self.state,
+            settings={"size_mode": "ai"},
+        )
+        cfg_ai = runner_ai._build_config()
+        self.assertEqual(cfg_ai.size_mode, "ai")
+
+    def test_history_persistence_and_restore(self):
+        with patch.object(TickerRunner, "_run_cycle", return_value=None):
+            # Start and stop a runner
+            runner = self.state.multi_trader.start_runner(symbol="TSLA", strategy_mode="dip")
+            runner_id = runner.id
+            self.state.multi_trader.stop_runner(runner_id)
+
+            # Save state to disk
+            self.state._save_auto_trade_state()
+
+            # Create a new AppState pointing to the same workspace
+            new_state = AppState(workspace_dir=self.tmp_dir, user_id=self.user_id)
+            new_state.bootstrap_auto_trade()
+
+            # Verify stopped runner is in history of new_state
+            snap = new_state.snapshot()
+            hist = snap.get("all_auto_trades", [])
+            matching = [r for r in hist if r["id"] == runner_id]
+            self.assertEqual(len(matching), 1)
+            self.assertEqual(matching[0]["symbol"], "TSLA")
+            self.assertEqual(matching[0]["strategy_mode"], "dip")
+            self.assertFalse(matching[0]["is_running"])
+
+    def test_trade_history_records_runner_engine_mode(self):
+        # When loop_running is False, trade with engine="dip" must record mode="dip"
+        fake_trade = [
+            {
+                "symbol": "AMD",
+                "signal": "buy",
+                "order_id": "order-123",
+                "engine": "dip",
+                "qty": 10,
+                "price": 100.0,
+            }
+        ]
+        self.state.settings.strategy_mode = "sma"  # global setting is sma
+        self.state.loop_running = False
+        self.state._record_trade_history(fake_trade)
+
+        # Check recorded session in loop_sessions
+        sessions = self.state.loop_sessions
+        self.assertTrue(len(sessions) > 0)
+        recent_session = sessions[0]
+        self.assertEqual(recent_session["mode"], "dip")
+
 
 class TestMultiAutoTradeApi(unittest.TestCase):
     def setUp(self):
@@ -434,6 +554,110 @@ class TestMultiAutoTradeApi(unittest.TestCase):
             stop_all_data = res_stop_all.json()
             self.assertEqual(stop_all_data["stopped_count"], 1)
             self.assertEqual(len(stop_all_data["active_runners"]), 0)
+
+    @patch("bot.webapp.get_user_state")
+    def test_api_multi_start_with_string_symbols_and_custom_settings(self, mock_get_state):
+        mock_get_state.return_value = self.state
+
+        with patch.object(TickerRunner, "_run_cycle", return_value=None):
+            # Test launching multi auto-trade with comma-separated string symbols
+            res = self.client.post(
+                "/api/auto-trade/multi/start",
+                json={
+                    "symbols": "AAPL, NVDA, TSLA",
+                    "strategy_mode": "sma",
+                    "bar_timeframe": "15Min",
+                    "poll_seconds": 25,
+                    "size_mode": "notional",
+                    "trade_notional": 250.0,
+                },
+            )
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertTrue(data["ok"])
+            self.assertEqual(len(data["started"]), 3)
+            self.assertIn("AAPL", data["active_symbols"])
+            self.assertIn("NVDA", data["active_symbols"])
+            self.assertIn("TSLA", data["active_symbols"])
+
+            # Verify runner settings
+            runners = self.state.multi_trader.list_active()
+            self.assertEqual(len(runners), 3)
+            for r in runners:
+                self.assertEqual(r["strategy_mode"], "sma")
+                self.assertEqual(r["timeframe"], "15Min")
+                self.assertEqual(r["poll_seconds"], 25)
+                self.assertEqual(r["size_mode"], "notional")
+                self.assertEqual(r["trade_notional"], 250.0)
+
+            # Clean up: stop all
+            res_stop_all = self.client.post("/api/auto-trade/multi/stop-all")
+            self.assertEqual(res_stop_all.status_code, 200)
+            self.assertEqual(res_stop_all.json()["stopped_count"], 3)
+
+    @patch("bot.webapp.get_user_state")
+    def test_multi_auto_trade_remove_and_restart(self, mock_get_state):
+        mock_get_state.return_value = self.state
+
+        with patch.object(TickerRunner, "_run_cycle", return_value=None):
+            # Start a runner
+            res = self.client.post(
+                "/api/auto-trade/multi/start",
+                json={
+                    "symbols": "NVDA",
+                    "strategy_mode": "dip",
+                    "bar_timeframe": "5Min",
+                    "poll_seconds": 20,
+                    "trade_qty": 5.0,
+                },
+            )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(res.json()["ok"])
+
+            # Stop NVDA
+            res_stop = self.client.post(
+                "/api/auto-trade/multi/stop",
+                json={"symbol": "NVDA"},
+            )
+            self.assertEqual(res_stop.status_code, 200)
+
+            # Check all runners in snapshot contains NVDA
+            snap = self.state.snapshot()
+            self.assertIn("all_auto_trades", snap)
+            nvda_runners = [r for r in snap["all_auto_trades"] if r["symbol"] == "NVDA"]
+            self.assertTrue(len(nvda_runners) >= 1)
+            old_nvda_id = nvda_runners[0]["id"]
+
+            # Restart it by ID
+            res_restart = self.client.post(
+                "/api/auto-trade/multi/restart",
+                json={"id": old_nvda_id},
+            )
+            self.assertEqual(res_restart.status_code, 200)
+            self.assertTrue(res_restart.json()["ok"])
+            self.assertTrue(self.state.multi_trader.is_running("NVDA"))
+            new_nvda_id = res_restart.json()["runner"]["id"]
+
+            # Stop it again
+            self.client.post("/api/auto-trade/multi/stop", json={"id": new_nvda_id})
+            self.assertFalse(self.state.multi_trader.is_running("NVDA"))
+
+            # Start another runner on NVDA - verify old one is preserved in history
+            self.client.post("/api/auto-trade/multi/start", json={"symbols": ["NVDA"], "strategy_mode": "sma"})
+            snap = self.state.snapshot()
+            all_nvda_ids = [r["id"] for r in snap["all_auto_trades"] if r["symbol"] == "NVDA"]
+            self.assertIn(new_nvda_id, all_nvda_ids)
+
+            # Remove old stopped runner by ID
+            res_remove = self.client.post(
+                "/api/auto-trade/multi/remove",
+                json={"id": new_nvda_id},
+            )
+            self.assertEqual(res_remove.status_code, 200)
+            self.assertTrue(res_remove.json()["removed"])
+            snap_after = self.state.snapshot()
+            remaining_nvda_ids = [r["id"] for r in snap_after["all_auto_trades"] if r["symbol"] == "NVDA"]
+            self.assertNotIn(new_nvda_id, remaining_nvda_ids)
 
 
 if __name__ == "__main__":
