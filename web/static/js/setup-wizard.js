@@ -621,9 +621,21 @@
       }
     });
 
-    // Step 1: Password strength & match listeners
-    inputPassword?.addEventListener("input", updatePasswordMeter);
-    inputConfirmPassword?.addEventListener("input", updatePasswordMatch);
+    // Realtime error clearing and meter listeners
+    inputUsername?.addEventListener("input", () => {
+      setFieldError(inputUsername, errUsername, "");
+    });
+    inputEmail?.addEventListener("input", () => {
+      setFieldError(inputEmail, errEmail, "");
+    });
+    inputPassword?.addEventListener("input", () => {
+      setFieldError(inputPassword, errPassword, "");
+      updatePasswordMeter();
+    });
+    inputConfirmPassword?.addEventListener("input", () => {
+      setFieldError(inputConfirmPassword, errConfirmPassword, "");
+      updatePasswordMatch();
+    });
     setupPasswordToggle(btnToggleOwnerPw, inputPassword);
     setupPasswordToggle(btnToggleConfirmPw, inputConfirmPassword);
     setupPasswordToggle(btnToggleSmtpPw, inputSmtpPass);
@@ -687,14 +699,16 @@
     }
   }
 
-  // Bootstrap On DOM Ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      initWizardEvents();
-      loadExistingState();
-    });
-  } else {
+  function initWizard() {
+    navigateToStep(1, { scroll: false });
     initWizardEvents();
     loadExistingState();
+  }
+
+  // Bootstrap On DOM Ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initWizard);
+  } else {
+    initWizard();
   }
 })();

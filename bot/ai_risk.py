@@ -139,6 +139,7 @@ def entry_gates(
     *,
     open_positions: int,
     day_pl_pct: float | None,
+    action: str | None = None,
 ) -> Gate:
     """Portfolio- and cost-level checks applied before any new position opens.
 
@@ -179,6 +180,23 @@ def entry_gates(
     preset_id = getattr(config, "ai_preset", "")
     metals_intel = context.get("precious_metals_intel") or {}
     if preset_id == "gold_silver_macro" or bool(metals_intel.get("is_precious_metal")):
+        requested_action = str(action or "").lower()
+        is_bullish_decoupling = bool(metals_intel.get("gold_dollar_divergence"))
+        # Match the backtest's Case C guard in live/paper execution.  A
+        # bullish DXY/Gold decoupling blocks new bearish exposure, whether it
+        # would be expressed as a direct short or a long inverse ETF.
+        if is_bullish_decoupling and requested_action in {"buy", "sell"}:
+            is_inverse = symbol in {"GLL", "GDXD", "ZSL", "JDST"}
+            is_direct_metal = symbol in {
+                "GLD", "IAU", "BAR", "OUNZ", "PHYS", "SLV", "AGQ", "SIL", "SILJ", "PSLV"
+            }
+            if (is_inverse and requested_action == "buy") or (
+                is_direct_metal and requested_action == "sell"
+            ):
+                return Gate(
+                    False,
+                    "Bullish DXY/Gold decoupling is active — new bearish metals exposure is blocked.",
+                )
         try:
             val_macro = metals_intel.get("macro_composite_score")
             macro_score = float(val_macro) if val_macro is not None else 0.0

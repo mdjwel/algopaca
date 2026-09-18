@@ -1,147 +1,57 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d131f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
-  <meta name="color-scheme" content="dark" />
-  <title>Advanced Order · AlgoPaca</title>
-  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
-  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css?v=2.5" />
-  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
-  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
+{% extends "layouts/desk.html" %}
+
+{% block title %}Advanced Order · AlgoPaca{% endblock %}
+
+{% block page_css %}
   <link rel="stylesheet" href="/static/css/manual-order.css?v=2.5" />
-  <script>
-    (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
-  </script>
-</head>
-<body data-page="manual-order">
-  <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="app">
-    <header class="masthead">
-      <div class="masthead-top">
-        <div class="masthead-brand">
-          <div class="masthead-brand-header">
-            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
-              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
-            </a>
-            <div class="masthead-brand-text">
-              <p class="eyebrow" data-i18n="eyebrow">AlgoPaca · Simulated</p>
-              <h1 data-i18n="nav_manual_order">Advanced Order</h1>
-            </div>
-          </div>
-          <p id="page-tagline" class="tagline" data-i18n="tagline_manual_order">Size a ticket by risk budget, dollars, or shares — the desk attaches the stop and the target for you.</p>
+{% endblock %}
+
+{% block page_id %}manual-order{% endblock %}
+
+{% block eyebrow %}AlgoPaca · Simulated{% endblock %}
+{% block eyebrow_i18n %}eyebrow{% endblock %}
+{% block page_heading %}Advanced Order{% endblock %}
+{% block page_heading_i18n %}nav_manual_order{% endblock %}
+{% block tagline %}Size a ticket by risk budget, dollars, or shares — the desk attaches the stop and the target for you.{% endblock %}
+{% block tagline_i18n %}tagline_manual_order{% endblock %}
+
+{% block modals %}
+  <!-- Order Confirmation Modal -->
+  <div id="manual-confirm-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-modal-dismiss="true"></div>
+    <div class="modal-content" id="manual-confirm-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="manual-confirm-summary">
+      <div class="modal-sheet-handle" aria-hidden="true"></div>
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 id="confirm-title" data-i18n="confirm_order">Confirm Order</h3>
+          <span id="confirm-env-badge" class="confirm-env-badge" hidden>Paper</span>
         </div>
-        <div class="masthead-search" id="masthead-search-container">
-          <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
-            <div class="masthead-search-box" id="header-ticker-search-box">
-              <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input
-                type="search"
-                id="header-ticker-search-input"
-                class="masthead-search-input"
-                placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
-                data-i18n-placeholder="header_search_placeholder"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Search stock tickers and markets"
-                data-i18n-aria-label="header_search_aria"
-                aria-autocomplete="list"
-                aria-controls="header-search-dropdown"
-              />
-              <div class="masthead-search-controls">
-                <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-                <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
-              </div>
-            </div>
-            <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
-          </form>
+        <button type="button" class="modal-close-btn" id="btn-confirm-close" data-modal-dismiss="true" aria-label="Close" data-i18n-aria-label="close">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="manual-confirm-body">
+        <div id="manual-confirm-summary" class="confirm-summary">
+          <!-- Summary rendered here -->
         </div>
-        <div class="masthead-right">
-          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
-            <div class="desk-nav-group" data-nav-group="trade">
-              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
-              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
-                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
-                <a href="/manual-order" data-page="manual-order" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_manual_order">Advanced Order</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="backtest">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
-              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
-                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
-                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
-                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="portfolio">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
-              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
-                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
-                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
-                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
-              </div>
-            </div>
-          </nav>
+        <ul id="manual-confirm-breaches" class="confirm-breaches" hidden></ul>
+        <p id="manual-confirm-note" class="confirm-note" hidden></p>
+        <!-- `window.prompt` was the last native dialog left on the page: it
+             ignored the desk's styling and could not be translated. -->
+        <div id="manual-confirm-prompt" class="confirm-prompt" hidden>
+          <label for="manual-confirm-prompt-input" id="manual-confirm-prompt-label"></label>
+          <input id="manual-confirm-prompt-input" type="text" autocomplete="off" spellcheck="false" maxlength="40" />
         </div>
       </div>
-    </header>
-
-    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
-
-    <!-- Order Confirmation Modal -->
-    <div id="manual-confirm-modal" class="modal" hidden>
-      <div class="modal-backdrop" data-modal-dismiss="true"></div>
-      <div class="modal-content" id="manual-confirm-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="manual-confirm-summary">
-        <div class="modal-sheet-handle" aria-hidden="true"></div>
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <h3 id="confirm-title" data-i18n="confirm_order">Confirm Order</h3>
-            <span id="confirm-env-badge" class="confirm-env-badge" hidden>Paper</span>
-          </div>
-          <button type="button" class="modal-close-btn" id="btn-confirm-close" data-modal-dismiss="true" aria-label="Close" data-i18n-aria-label="close">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-        <div class="modal-body" id="manual-confirm-body">
-          <div id="manual-confirm-summary" class="confirm-summary">
-            <!-- Summary rendered here -->
-          </div>
-          <ul id="manual-confirm-breaches" class="confirm-breaches" hidden></ul>
-          <p id="manual-confirm-note" class="confirm-note" hidden></p>
-          <!-- `window.prompt` was the last native dialog left on the page: it
-               ignored the desk's styling and could not be translated. -->
-          <div id="manual-confirm-prompt" class="confirm-prompt" hidden>
-            <label for="manual-confirm-prompt-input" id="manual-confirm-prompt-label"></label>
-            <input id="manual-confirm-prompt-input" type="text" autocomplete="off" spellcheck="false" maxlength="40" />
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="ghost" id="btn-confirm-cancel" data-i18n="cancel">Cancel</button>
-          <button type="button" class="primary" id="btn-confirm-submit" data-i18n="submit_order">Submit Order</button>
-        </div>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="btn-confirm-cancel" data-i18n="cancel">Cancel</button>
+        <button type="button" class="primary" id="btn-confirm-submit" data-i18n="submit_order">Submit Order</button>
       </div>
     </div>
+  </div>
+{% endblock %}
 
-    <main id="main" tabindex="-1">
+{% block content %}
       <div id="page-manual-order" class="page manual-layout" data-page="manual-order" data-side="buy">
         <section class="panel manual-panel is-open" id="manual-panel" aria-labelledby="manual-heading">
           <div class="panel-head">
@@ -952,66 +862,9 @@
           </details>
         </aside>
       </div>
-    </main>
+{% endblock %}
 
-    <!-- Desk Footer -->
-    <footer class="desk-footer" role="contentinfo">
-      <div class="desk-footer-inner">
-        <div class="desk-footer-brand-wrap">
-          <div class="desk-footer-brand">
-            <div class="desk-footer-logo-icon" aria-hidden="true">
-              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
-            </div>
-            <div class="desk-footer-brand-meta">
-              <span class="desk-footer-logo">AlgoPaca</span>
-              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
-            </div>
-          </div>
-          <div class="desk-footer-status" title="Trading desk systems operational">
-            <span class="status-beacon-green" aria-hidden="true">
-              <span class="beacon-core"></span>
-              <span class="beacon-ring"></span>
-            </span>
-            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
-          </div>
-        </div>
-
-        <nav class="desk-footer-links" aria-label="Footer navigation">
-          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
-          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Advanced Order</a>
-          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
-          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
-          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
-          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
-          <a href="/api-keys" class="desk-footer-link" data-i18n="nav_api_keys">API Keys</a>
-          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
-        </nav>
-
-        <div class="desk-footer-right">
-          <div class="lang-switcher">
-            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
-            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language">
-              <option value="en" data-i18n="language_english">English</option>
-              <option value="bn" data-i18n="language_bangla">বাংলা</option>
-              <option value="es" data-i18n="language_spanish">Español</option>
-              <option value="fr" data-i18n="language_french">Français</option>
-              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="desk-footer-bottom">
-        <p class="desk-footer-copy">
-          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
-          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
-        </p>
-      </div>
-    </footer>
-  </div>
-  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
-  <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js?v=2.5"></script>
+{% block page_scripts %}
   <script src="/static/js/manual-order.js?v=2.5"></script>
-</body>
-</html>
+{% endblock %}
+

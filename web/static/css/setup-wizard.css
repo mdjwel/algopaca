@@ -18,21 +18,29 @@
   & .wizard-masthead {
     margin-bottom: 2rem;
 
+    & .masthead-search {
+      display: none !important;
+    }
+
     & .wizard-badge-wrap {
       display: flex;
       align-items: center;
+      flex-wrap: nowrap;
       gap: 0.75rem;
       margin-bottom: 0.25rem;
 
       & .wizard-step-tag {
         display: inline-flex;
         align-items: center;
-        padding: 0.15rem 0.6rem;
+        padding: 0.2rem 0.65rem;
         font-family: var(--mono);
         font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+        line-height: 1.1;
+        white-space: nowrap;
+        flex-shrink: 0;
         color: var(--copper);
         background: var(--glow);
         border: 1px solid rgba(212, 137, 76, 0.35);
@@ -280,25 +288,6 @@
             background: linear-gradient(90deg, transparent, var(--copper), transparent);
           }
 
-          & .wizard-owner-header {
-            margin-bottom: 0.5rem;
-
-            & .wizard-owner-badge {
-              display: inline-flex;
-              align-items: center;
-              gap: 0.4rem;
-              padding: 0.25rem 0.65rem;
-              background: rgba(212, 137, 76, 0.15);
-              border: 1px solid rgba(212, 137, 76, 0.35);
-              border-radius: 999px;
-              font-size: 0.72rem;
-              font-weight: 600;
-              color: var(--copper);
-              text-transform: uppercase;
-              letter-spacing: 0.04em;
-            }
-          }
-
           & .wizard-owner-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -313,6 +302,10 @@
             display: flex;
             flex-direction: column;
             gap: 0.35rem;
+
+            &.is-full-width {
+              grid-column: 1 / -1;
+            }
 
             & .wizard-input-label {
               display: flex;
@@ -349,8 +342,13 @@
                 border-radius: var(--radius-sm);
                 color: var(--text);
                 font-size: 0.9rem;
-                height: 40px;
+                height: 42px;
                 transition: all 0.2s ease;
+
+                &::placeholder {
+                  color: var(--muted);
+                  opacity: 0.55;
+                }
 
                 &:focus {
                   outline: none;
@@ -395,9 +393,16 @@
               margin: 0.2rem 0 0 0;
             }
 
+            & .wizard-confirm-feedback {
+              min-height: 16px;
+              display: flex;
+              align-items: center;
+              margin-top: 0.35rem;
+            }
+
             & .wizard-match-hint {
               font-size: 0.78rem;
-              margin: 0.2rem 0 0 0;
+              margin: 0;
               transition: color 0.2s ease;
 
               &.is-match {
@@ -414,6 +419,7 @@
             display: flex;
             align-items: center;
             gap: 0.6rem;
+            min-height: 16px;
             margin-top: 0.35rem;
 
             & .pw-meter-bar {
@@ -930,7 +936,10 @@
     font-family: var(--ui);
     font-size: 0.9rem;
     line-height: 1.4;
-    transition: all 0.2s ease;
+    &::placeholder {
+      color: var(--muted);
+      opacity: 0.55;
+    }
 
     &:focus {
       outline: none;
@@ -942,6 +951,45 @@
     &.font-mono {
       font-family: var(--mono);
       font-size: 0.85rem;
+    }
+  }
+
+  & .wizard-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+
+    & .wizard-input-icon {
+      position: absolute;
+      left: 0.85rem;
+      color: var(--muted);
+      pointer-events: none;
+      transition: color 0.15s ease;
+    }
+
+    & .field-input {
+      padding-left: 2.35rem;
+      padding-right: 2.5rem;
+    }
+
+    & .wizard-pw-toggle {
+      position: absolute;
+      right: 0.5rem;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 0.4rem;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease;
+
+      &:hover {
+        color: var(--text);
+      }
     }
   }
 

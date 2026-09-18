@@ -17,6 +17,9 @@ from bot.metals_intel import (
     classify_bias,
     clip_unit,
     combine_macro_score,
+    compute_historical_macro_series,
+    compute_three_confirmation_matrix,
+    detect_metals_divergence,
     fetch_metals_macro_context,
     get_metal_category,
     is_precious_metal,
@@ -24,6 +27,7 @@ from bot.metals_intel import (
     protect_metals_position_before_event,
     score_dollar,
     score_gsr,
+    score_oil,
     score_rates,
     score_trend,
     zscore,
@@ -1113,6 +1117,29 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
             gate = entry_gates(config, ctx_gll, open_positions=0, day_pl_pct=0.0)
             self.assertTrue(gate.allowed)
 
+        # Case C: rising Dollar while Gold holds bullish structure prevents
+        # fresh bearish exposure in the live/paper path too.
+        ctx_divergence = {
+            "symbol": "GLD",
+            "mark": {"bid": 240.0, "ask": 240.05},
+            "precious_metals_intel": {
+                "macro_composite_score": 0.15,
+                "gold_dollar_divergence": True,
+            },
+        }
+        gate = entry_gates(
+            config, ctx_divergence, open_positions=0, day_pl_pct=0.0, action="sell"
+        )
+        self.assertFalse(gate.allowed)
+        self.assertIn("decoupling", gate.reason)
+
+        ctx_divergence["symbol"] = "GLL"
+        gate = entry_gates(
+            config, ctx_divergence, open_positions=0, day_pl_pct=0.0, action="buy"
+        )
+        self.assertFalse(gate.allowed)
+        self.assertIn("decoupling", gate.reason)
+
     def test_ai_qty_for_risk_balanced_allocation_cap(self):
         """Verify ai_qty_for_risk caps single position allocation to 55% when max_positions >= 2."""
         from bot.config import Config
@@ -1175,8 +1202,8 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertAlmostEqual(qty_stretched, 300.0, places=1)
 
     @patch("bot.macro_releases.fetch_fomc_live_release")
-    def test_fomc_post_release_catalyst_activates_proper_regime(self, mock_fomc):
-        """When FOMC rate hike is released, macro_risk_level is post_release_catalyst, not imminent_release."""
+    def test_fomc_post_release_catalyst_waits_for_market_confirmation(self, mock_fomc):
+        """A released hike is a catalyst, not evidence of a bearish reaction by itself."""
         mock_fomc.return_value = {
             "title": "Federal Funds Rate",
             "statement_title": "Federal Reserve issues FOMC statement",
@@ -1230,8 +1257,12 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
         self.assertIsNotNone(context.get("active_catalyst"))
         self.assertEqual(context["active_catalyst"]["actual"], "4.00%")
         self.assertEqual(context["active_catalyst"]["action"], "hike")
-        self.assertLessEqual(context["factor_scores"]["rates"], -0.6)
-        self.assertEqual(context["yield_trend"], "rising_yields")
+        self.assertEqual(
+            context["active_catalyst"]["market_reaction"],
+            "awaiting_cross_asset_confirmation",
+        )
+        self.assertEqual(context["factor_scores"]["rates"], 0.0)
+        self.assertEqual(context["yield_trend"], "neutral")
 
     def test_day_backtest_ai_metals_breakout_defaults(self):
         """Verify DayBacktestParams(preset='ai_metals_breakout') syncs with Auto Trade day_preset."""
@@ -1342,6 +1373,58 @@ class TestMetalsBacktestMacroRules(unittest.TestCase):
             self.assertEqual(params.take_profit_r, 4.0)
             self.assertEqual(params.atr_stop_mult, 1.6)
             self.assertEqual(params.trail_after_r, 2.0)
+
+    def test_run_strategy_backtest_accepts_metals_reversal_buy_on_stop(self):
+        """Verify AppState.run_strategy_backtest accepts metals_reversal_buy_on_stop without TypeError."""
+        from bot.web_state import AppState, RunSettings
+        from bot.webapp import BacktestIn
+        from unittest.mock import patch
+
+        state = AppState()
+        state.settings = RunSettings()
+
+        # 1. Verify BacktestIn model dumps metals_reversal_buy_on_stop and run_strategy_backtest accepts it
+        backtest_payload = BacktestIn(
+            mode="ai",
+            symbol="GLD",
+            symbols="GLD",
+            days=30,
+            ai_preset="gold_silver_macro",
+            metals_reversal_buy_on_stop=False,
+        ).model_dump()
+
+        self.assertIn("metals_reversal_buy_on_stop", backtest_payload)
+        self.assertIs(backtest_payload["metals_reversal_buy_on_stop"], False)
+
+        mock_daily_bars = pd.DataFrame(
+            {
+                "open": [100.0] * 70,
+                "high": [101.0] * 70,
+                "low": [99.0] * 70,
+                "close": [100.5] * 70,
+                "volume": [1000] * 70,
+            },
+            index=pd.date_range("2026-01-01", periods=70, freq="B", tz="UTC"),
+        )
+        with patch.object(AppState, "_base_config"), \
+             patch("bot.web_state.AlpacaService") as mock_srv_cls, \
+             patch("bot.web_state.run_ai_backtest") as mock_run:
+            srv = mock_srv_cls.return_value
+            srv.get_bars_range.return_value = mock_daily_bars
+            mock_run.return_value = {"trades": 0}
+
+            # Unpack all fields from BacktestIn.model_dump() - exactly what /api/backtest does
+            state.run_strategy_backtest(**backtest_payload)
+            self.assertTrue(mock_run.called)
+            called_params = mock_run.call_args[1]["params"]
+            self.assertFalse(called_params.reversal_buy_on_stop)
+
+            # Also verify unexpected future kwargs do not raise TypeError
+            mock_run.reset_mock()
+            backtest_payload_with_extra = dict(backtest_payload)
+            backtest_payload_with_extra["unknown_future_field"] = 12345
+            state.run_strategy_backtest(**backtest_payload_with_extra)
+            self.assertTrue(mock_run.called)
 
     def test_js_backtest_metals_defaults_sync(self):
         """Verify backtest.js DAY_PRESET_DEFAULTS contains the exact values from day_presets.py."""
@@ -1569,6 +1652,57 @@ class TestMetalsDollarIndexOnly(unittest.TestCase):
         prot = state.check_metals_event_protection()
         self.assertEqual(prot, [])
 
+    def test_ai_trader_and_desk_risk_dollar_only_bypasses_event_protection(self):
+        from bot.ai_trader import AiTradingBot
+        from bot.desk_risk import manage_open_position
+
+        config = MagicMock()
+        config.metals_dollar_index_only = True
+        config.paper = True
+        config.stop_loss_pct = 2.0
+        config.take_profit_r = 4.0
+        config.trail_after_r = 2.0
+
+        service = MagicMock()
+        service.market_session.return_value = {"is_open": True}
+
+        context = {
+            "position": {"qty": 10.0, "side": "long", "avg_entry": 240.0, "r_multiple": 0.5},
+            "mark": {"price": 242.0},
+            "technicals": {"rsi_14": 52.0},
+            "economic_calendar": [
+                {
+                    "title": "FOMC Rate Decision",
+                    "when_utc": (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat(),
+                    "impact": "High",
+                }
+            ],
+        }
+
+        bot = AiTradingBot.__new__(AiTradingBot)
+        bot.config = config
+        bot.service = service
+
+        with patch("bot.ai_trader.protect_metals_position_before_event") as mock_protect_ai, \
+             patch("bot.desk_risk.protect_metals_position_before_event") as mock_protect_desk:
+            out_ai = bot._manage_open_position("GLD", context)
+            self.assertNotIn("event_protection", out_ai)
+            mock_protect_ai.assert_not_called()
+
+            out_desk = manage_open_position(
+                config=config,
+                service=service,
+                symbol="GLD",
+                side="long",
+                entry=240.0,
+                price=242.0,
+                qty=10.0,
+                stop_distance=2.5,
+                current_stop=237.5,
+            )
+            self.assertNotIn("event_protection", out_desk)
+            mock_protect_desk.assert_not_called()
+
 
     def test_ai_brain_dollar_only_context_bypass(self):
         import dataclasses
@@ -1602,7 +1736,259 @@ class TestMetalsDollarIndexOnly(unittest.TestCase):
             self.assertTrue(mock_macro.call_args[1].get("track_dollar_only"))
 
 
+class TestMetalsStrategyEnhancements(unittest.TestCase):
+    """Tests for Sept 17/18 macro learnings: oil inflation tell, DXY divergence, 3-confirmation matrix, and dynamic catalyst."""
+
+    def test_score_oil_and_trend(self):
+        # Falling oil (USO drops) -> positive score (inflation cooling tailwind for gold)
+        falling_oil = pd.Series([100.0 - i * 0.4 for i in range(70)])
+        score_fall, trend_fall = score_oil(falling_oil)
+        self.assertIsNotNone(score_fall)
+        self.assertGreater(score_fall, 0.25)
+        self.assertEqual(trend_fall, "cooling_inflation")
+
+        # Rising oil (USO rallies) -> negative score (heating inflation)
+        rising_oil = pd.Series([70.0 + i * 0.5 for i in range(70)])
+        score_rise, trend_rise = score_oil(rising_oil)
+        self.assertIsNotNone(score_rise)
+        self.assertLess(score_rise, -0.25)
+        self.assertEqual(trend_rise, "heating_inflation")
+
+        # Insufficient data
+        score_empty, trend_empty = score_oil(pd.Series([100.0]))
+        self.assertIsNone(score_empty)
+        self.assertEqual(trend_empty, "unknown")
+
+    def test_detect_metals_divergence(self):
+        # Case C Divergence: DXY is rising, but Gold is holding strong above 200 SMA
+        gld_series = pd.Series([200.0 + i * 0.5 for i in range(20)])
+        div = detect_metals_divergence(
+            dollar_score=-0.40,
+            dollar_trend="rising",
+            gld_closes=gld_series,
+            trend_regime="bullish_above_sma200",
+        )
+        self.assertTrue(div["divergence_active"])
+        self.assertTrue(div["prohibit_shorts"])
+        self.assertEqual(div["divergence_type"], "bullish_decoupling")
+
+        # Normal correlation: DXY is falling, Gold is bullish
+        no_div = detect_metals_divergence(
+            dollar_score=0.40,
+            dollar_trend="falling",
+            gld_closes=gld_series,
+            trend_regime="bullish_above_sma200",
+        )
+        self.assertFalse(no_div["divergence_active"])
+        self.assertFalse(no_div["prohibit_shorts"])
+
+        # A stale long-term bull regime is not enough.  A fresh five-day
+        # breakdown must leave the short side available despite DXY strength.
+        declining_gold = pd.Series([200.0 + i * 0.5 for i in range(15)] + [207.0 - i * 1.5 for i in range(5)])
+        breakdown = detect_metals_divergence(
+            dollar_score=-0.40,
+            dollar_trend="rising",
+            gld_closes=declining_gold,
+            trend_regime="bullish_above_sma200",
+        )
+        self.assertFalse(breakdown["divergence_active"])
+
+    def test_compute_three_confirmation_matrix(self):
+        # All three aligned: DXY falling, Yields falling, Gold bullish
+        all_aligned = compute_three_confirmation_matrix(
+            dollar_score=0.35,
+            dollar_trend="falling",
+            rates_score=0.40,
+            yield_trend="falling_yields",
+            trend_regime="bullish_above_sma200",
+        )
+        self.assertTrue(all_aligned["conf_dollar"])
+        self.assertTrue(all_aligned["conf_rates"])
+        self.assertTrue(all_aligned["conf_gold"])
+        self.assertEqual(all_aligned["confirmations_count"], 3)
+        self.assertEqual(all_aligned["alignment_state"], "all_three_aligned")
+
+        # Two aligned: DXY neutral, Yields falling, Gold bullish
+        two_aligned = compute_three_confirmation_matrix(
+            dollar_score=0.0,
+            dollar_trend="neutral",
+            rates_score=0.30,
+            yield_trend="falling_yields",
+            trend_regime="bullish_above_sma200",
+        )
+        self.assertFalse(two_aligned["conf_dollar"])
+        self.assertTrue(two_aligned["conf_rates"])
+        self.assertTrue(two_aligned["conf_gold"])
+        self.assertEqual(two_aligned["confirmations_count"], 2)
+        self.assertEqual(two_aligned["alignment_state"], "moderate_aligned")
+
+        # Divergence warning overrides
+        div_state = compute_three_confirmation_matrix(
+            dollar_score=-0.40,
+            dollar_trend="rising",
+            rates_score=0.20,
+            yield_trend="falling_yields",
+            trend_regime="bullish_above_sma200",
+            divergence_active=True,
+        )
+        self.assertEqual(div_state["alignment_state"], "divergent_warning")
+        self.assertIn("prohibit shorts", div_state["summary"].lower())
+    def test_dynamic_post_release_catalyst_hike_absorbed_rebound(self):
+        """When FOMC hikes rate but yields fall post-announcement, detect absorbed rebound."""
+        service = MagicMock()
+        service.get_mark_price.side_effect = lambda s: {
+            "GLD": {"price": 240.0},
+            "SLV": {"price": 28.0},
+            "UUP": {"price": 28.0},
+            "TLT": {"price": 95.0},
+            "USO": {"price": 70.0},
+        }.get(s, {"price": 100.0})
+
+        idx = pd.date_range("2024-01-01", periods=70, freq="B", tz="UTC")
+        # TLT is strongly rising (yields falling)
+        tlt_series = pd.Series([85.0 + i * 0.2 for i in range(70)], index=idx)
+        gld_series = pd.Series([220.0 + i * 0.3 for i in range(70)], index=idx)
+        slv_series = pd.Series([25.0 + i * 0.05 for i in range(70)], index=idx)
+
+        def mock_bars(sym, limit=None, timeframe=None):
+            if sym == "TLT":
+                return pd.DataFrame({"close": tlt_series})
+            if sym == "GLD":
+                return pd.DataFrame({"close": gld_series})
+            if sym == "SLV":
+                return pd.DataFrame({"close": slv_series})
+            return pd.DataFrame({"close": pd.Series(100.0, index=idx)})
+
+        service.get_bars.side_effect = mock_bars
+
+        now = datetime.now(timezone.utc)
+        calendar = [
+            {
+                "title": "Federal Funds Rate",
+                "impact": "High",
+                "when_utc": (now - timedelta(minutes=15)).isoformat(),
+                "forecast": "4.00%",
+                "previous": "3.75%",
+                "actual": "4.00%",
+                "status": "released",
+                "released": True,
+            }
+        ]
+
+        context = fetch_metals_macro_context(service, "GLD", calendar=calendar)
+        self.assertEqual(context["macro_risk_level"], "post_release_catalyst")
+        self.assertIsNotNone(context.get("active_catalyst"))
+        self.assertEqual(context["active_catalyst"]["action"], "hike")
+        # In Sept 17 dynamic: yields falling -> absorbed rebound
+        self.assertTrue(context["active_catalyst"].get("absorbed_rebound"))
+        self.assertEqual(context["active_catalyst"].get("market_reaction"), "hike_absorbed_yields_falling")
+        self.assertGreater(context["factor_scores"]["rates"], 0.0)
+        self.assertEqual(context["yield_trend"], "falling_yields")
+        self.assertIn("oil_score", context)
+        self.assertIn("three_confirmation", context)
+        self.assertIn("gold_dollar_divergence", context)
+
+    def test_compute_historical_macro_series_has_enhanced_columns(self):
+        """Historical macro series must include oil, divergence, and 3-confirmation columns for backtest."""
+        idx = pd.date_range("2024-01-01", periods=50, freq="B", tz="UTC")
+        bars = pd.DataFrame(
+            {"open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1000},
+            index=idx,
+        )
+        macro_bars = {
+            "GLD": bars,
+            "TLT": bars,
+            "UUP": bars,
+            "USO": pd.DataFrame({"close": pd.Series(70.0, index=idx)}, index=idx),
+        }
+        df = compute_historical_macro_series(bars, symbol="GLD", macro_bars=macro_bars)
+        self.assertIn("oil_score", df.columns)
+        self.assertIn("oil_trend", df.columns)
+        self.assertIn("gold_dollar_divergence", df.columns)
+        self.assertIn("confirmations_count", df.columns)
+        self.assertIn("three_confirmation_state", df.columns)
+
+    def test_historical_divergence_requires_current_gold_strength(self):
+        """A recently falling GLD cannot be flagged as bullish decoupling solely from its 200-day regime."""
+        idx = pd.date_range("2024-01-01", periods=250, freq="B", tz="UTC")
+        gold = pd.Series([100.0 + i * 0.5 for i in range(250)], index=idx)
+        gold.iloc[-5:] = [221.0, 220.0, 219.0, 218.0, 217.0]
+        bars = pd.DataFrame({"close": gold}, index=idx)
+        uup = pd.Series([28.0 + i * 0.03 for i in range(250)], index=idx)
+
+        macro = compute_historical_macro_series(
+            bars,
+            symbol="GLD",
+            macro_bars={
+                "GLD": bars,
+                "UUP": pd.DataFrame({"close": uup}, index=idx),
+            },
+        )
+        self.assertEqual(macro.iloc[-1]["trend_regime"], "bullish_above_sma200")
+        self.assertEqual(macro.iloc[-1]["dollar_trend"], "rising")
+        self.assertFalse(macro.iloc[-1]["gold_dollar_divergence"])
+
+    def test_ai_backtest_divergence_blocks_short_and_three_aligned_boosts_long(self):
+        """Strategy Dual-Sync: ai_backtest evaluate_ai_signal must respect divergence and 3-confirmation."""
+        from bot.ai_backtest import AiBacktestParams, evaluate_ai_signal
+        from bot.strategy import Signal
+
+        params = AiBacktestParams(preset="gold_silver_macro")
+        row = pd.Series(
+            {
+                "open": 200.0,
+                "high": 202.0,
+                "low": 199.5,
+                "close": 201.0,
+                "volume": 10000,
+                "rsi14": 50.0,
+                "adx14": 25.0,
+                "sma10": 200.0,
+                "sma20": 198.0,
+                "sma50": 195.0,
+                "sma200": 180.0,
+                "dist_sma50_atr": 1.0,
+                "macd_hist": 0.5,
+                "trend_regime": "bullish_above_sma200",
+                "macro_composite_score": 1.2,
+                "gold_dollar_divergence": True,
+                "three_confirmation_state": "all_three_aligned",
+                "confirmations_count": 3,
+                "oil_trend": "cooling_inflation",
+                "yield_trend": "falling_yields",
+                "dollar_trend": "rising",
+                "dollar_mixed": False,
+            }
+        )
+
+        # 1. Long signal receives confirmation boost
+        sig_long, conf_long, thesis_long = evaluate_ai_signal(
+            row, None, params, symbol="GLD", allow_short=True
+        )
+        self.assertEqual(sig_long, Signal.BUY)
+        self.assertIn("All 3 Macro Confirmations Aligned", thesis_long)
+
+        # 2. Short attempt during divergence is strictly blocked
+        bear_row = row.copy()
+        bear_row["close"] = 175.0
+        bear_row["sma200"] = 190.0
+        bear_row["trend_regime"] = "bearish_below_sma200"
+        bear_row["macro_composite_score"] = -1.5
+        bear_row["yield_trend"] = "rising_yields"
+        bear_row["gold_dollar_divergence"] = True
+        sig_short, conf_short, thesis_short = evaluate_ai_signal(
+            bear_row, None, params, symbol="GLD", allow_short=True
+        )
+        self.assertEqual(sig_short, Signal.HOLD)
+        self.assertIn("Bullish Decoupling Divergence", thesis_short)
+
+        # 3. Inverse ETF during divergence is also blocked
+        sig_inv, _, thesis_inv = evaluate_ai_signal(
+            row, None, params, symbol="GLL", allow_short=True
+        )
+        self.assertEqual(sig_inv, Signal.HOLD)
+        self.assertIn("Bullish Decoupling Divergence", thesis_inv)
+
+
 if __name__ == "__main__":
     unittest.main()
-
-

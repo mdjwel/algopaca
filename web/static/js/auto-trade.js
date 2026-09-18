@@ -2,6 +2,8 @@ let formDirty = false;
 let formFocused = false;
 // Stop pressed, worker still draining the symbol in flight.
 let loopStopping = false;
+let stopConfirmationOpen = false;
+let isCreatingNewAutoTrade = false;
 let aiPresets = [];
 /** AI risk-engine inputs and their fallbacks — kept in one place so the form,
  *  the preset apply, and settings hydration cannot drift apart. */
@@ -109,12 +111,21 @@ function formPayload() {
   const symbolsRaw = String(formValue("symbols", "") || "").trim().toUpperCase();
   const provider = String(lastDeskSettings?.ai_provider || "openai");
   const pairLegs = mode === "pair" ? parsePairLegsFromText(symbolsRaw || symbolRaw) : null;
+  let resolvedSymbols = symbolsRaw || symbolRaw || "AAPL";
+  if (isCreatingNewAutoTrade && symbolRaw && mode !== "pair") {
+    const activeSymbols = typeof getActiveAutoTradeSymbols === "function" ? getActiveAutoTradeSymbols() : new Set();
+    const rawList = symbolsRaw.replace(/[;,]/g, " ").split(/\s+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    const allRawActive = rawList.length > 0 && rawList.every((s) => activeSymbols.has(s));
+    if (allRawActive && !rawList.includes(symbolRaw)) {
+      resolvedSymbols = symbolRaw;
+    }
+  }
   const symbol = pairLegs
     ? pairLegs.long
     : symbolRaw || "AAPL";
   const symbols = pairLegs
     ? `${pairLegs.long},${pairLegs.short}`
-    : symbolsRaw || symbol;
+    : resolvedSymbols;
   return {
     symbol,
     symbols,
@@ -168,6 +179,9 @@ function formPayload() {
     ai_instructions: String(formValue("ai_instructions", "") || ""),
     ai_min_confidence: Number(formValue("ai_min_confidence", 0.55) || 0.55),
     metals_dollar_index_only: !!$("field-metals-dollar-index-only")?.checked,
+    metals_reversal_buy_on_stop: $("field-metals-reversal-buy-on-stop")
+      ? !!$("field-metals-reversal-buy-on-stop").checked
+      : true,
     risk_engine_enabled: !!$("field-risk-engine-enabled")?.checked,
     ai_risk_pct: numField("ai_risk_pct", 0.5),
     ai_atr_stop_mult: numField("ai_atr_stop_mult", 1.8),
@@ -514,9 +528,25 @@ const AI_PROVIDER_MISSING_KEY_MESSAGES = {
   xai: "Paste an xAI API key on API Keys and click Save AI keys before running AI mode.",
 };
 
+function alpacaKeysConfigured() {
+  if (typeof lastAlpacaStatus === "undefined" || !lastAlpacaStatus) return true;
+  const s = lastAlpacaStatus;
+  const mode = s.trading_mode || (s.paper === false ? "live" : "paper");
+  if (mode === "live") {
+    if (s.live_keys && s.live_keys.api_key_set === false) return false;
+  } else {
+    if (s.paper_keys && s.paper_keys.api_key_set === false) return false;
+    if (s.set === false) return false;
+  }
+  return true;
+}
+
 function validateReadyToRun() {
   const localError = validateLocal();
   if (localError) return localError;
+  if (!alpacaKeysConfigured()) {
+    return "Alpaca API credentials are not configured. Please go to API Keys to connect your Alpaca API Key and Secret Key.";
+  }
   const payload = formPayload();
   if (payload.strategy_mode === "ai" && !providerKeyReady(payload.ai_provider)) {
     return (
@@ -676,15 +706,16 @@ function syncSizeModeUi() {
   if (strategyMode !== "ai" && mode === "ai") {
     mode = "qty";
   }
+  const isLocked = loopRunning && !isCreatingNewAutoTrade;
   const sizeModeRadios = form?.elements?.size_mode;
   if (sizeModeRadios instanceof RadioNodeList || Array.isArray(sizeModeRadios)) {
     [...sizeModeRadios].forEach((input) => {
       input.checked = input.value === mode;
-      input.disabled = loopRunning;
+      input.disabled = isLocked;
     });
   } else if (sizeModeRadios) {
     sizeModeRadios.value = mode;
-    sizeModeRadios.disabled = loopRunning;
+    sizeModeRadios.disabled = isLocked;
   }
   const aiUnit = $("size-unit-ai");
   if (aiUnit) aiUnit.hidden = strategyMode !== "ai";
@@ -701,10 +732,10 @@ function syncSizeModeUi() {
   const qtyEl = $("field-qty");
   const notionalEl = $("field-notional");
   if (qtyEl) {
-    qtyEl.disabled = loopRunning || mode !== "qty";
+    qtyEl.disabled = isLocked || mode !== "qty";
   }
   if (notionalEl) {
-    notionalEl.disabled = loopRunning || mode !== "notional";
+    notionalEl.disabled = isLocked || mode !== "notional";
   }
   const label = $("size-field-label");
   if (label) {
@@ -728,6 +759,7 @@ function syncSizeModeUi() {
     const curVal = Number(formValue("trade_notional", 100) || 0);
     notionalChips.querySelectorAll(".btn-notional-chip").forEach((btn) => {
       btn.classList.toggle("is-active", Number(btn.dataset.val) === curVal);
+      btn.disabled = isLocked;
     });
   }
 
@@ -788,7 +820,7 @@ function syncSizeModeUi() {
 }
 
 function selectSizeMode(mode) {
-  if (loopRunning) return;
+  if (loopRunning && !isCreatingNewAutoTrade) return;
   const strategyMode = String(formValue("strategy_mode", "sma") || "sma");
   let next = "qty";
   if (mode === "notional") next = "notional";
@@ -892,21 +924,52 @@ function syncBrowserNotificationBadge() {
   }
 }
 
-function hasAnyRunningAutoTrade(state = lastStatus) {
-  if (loopRunning || state?.loop_running) return true;
-  const runners = Array.isArray(state?.all_auto_trades)
-    ? state.all_auto_trades
-    : (Array.isArray(state?.active_auto_trades) ? state.active_auto_trades : []);
+function hasAnyRunningAutoTrade(state = null) {
+  const current = state || (typeof latestState !== "undefined" && latestState ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null));
+  if (loopRunning || current?.loop_running) return true;
+  const runners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
   if (runners.some((r) => r.is_running)) return true;
-  if (Number(state?.active_auto_trades_count || 0) > 0) return true;
+  if (Number(current?.active_auto_trades_count || 0) > 0) return true;
   return false;
 }
 
-function syncAddAutoTradeVisibility(state = lastStatus) {
+function getActiveAutoTradeSymbols(state = null) {
+  const current = state || (typeof latestState !== "undefined" && latestState ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null));
+  const activeSyms = new Set();
+  if (current?.loop_running || loopRunning) {
+    const mainSyms = current?.settings?.symbols || current?.settings?.symbol || "";
+    String(mainSyms)
+      .replace(/[;,]/g, " ")
+      .split(/\s+/)
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .forEach((s) => activeSyms.add(s));
+  }
+  const runners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
+  for (const r of runners) {
+    if (r.is_running || r.desired_running) {
+      const syms = Array.isArray(r.symbols) && r.symbols.length ? r.symbols : (r.symbol ? [r.symbol] : []);
+      syms.forEach((s) => activeSyms.add(String(s).trim().toUpperCase()));
+    }
+  }
+  return activeSyms;
+}
+
+function syncAddAutoTradeVisibility(state = null) {
   const addBtn = $("btn-add-autotrade");
-  if (!addBtn) return;
+  const headerAddBtn = $("btn-header-add-autotrade");
+  if (isCreatingNewAutoTrade) {
+    if (addBtn) addBtn.hidden = true;
+    if (headerAddBtn) headerAddBtn.disabled = true;
+    return;
+  }
   const isRunning = hasAnyRunningAutoTrade(state);
-  addBtn.hidden = !isRunning;
+  if (addBtn) addBtn.hidden = !isRunning;
+  if (headerAddBtn) headerAddBtn.disabled = false;
 }
 
 function syncRunZone() {
@@ -1077,14 +1140,14 @@ function syncWatchlistComposer() {
     }
     if (includeBtn) {
       includeBtn.textContent = featured ? `Include ${featured}` : "Include";
-      includeBtn.disabled = loopRunning;
+      includeBtn.disabled = loopRunning && !isCreatingNewAutoTrade;
     }
   }
 }
 
 function includeFeaturedInWatchlist() {
   const form = $("settings");
-  if (!form?.symbols || loopRunning) return;
+  if (!form?.symbols || (loopRunning && !isCreatingNewAutoTrade)) return;
   const featured = String(form.symbol?.value || "").trim().toUpperCase();
   if (!featured) return;
   const list = parseSymbolList(form.symbols.value);
@@ -1176,7 +1239,10 @@ function syncStrategyHint(forceState) {
   if (forceState) persistStatus = forceState;
   let state = persistStatus;
   let label = "Ready";
-  if (loopRunning) {
+  if (isCreatingNewAutoTrade) {
+    state = "ready";
+    label = typeof window.t === "function" ? window.t("new_autotrade_mode", "New Auto-Trade") : "New Auto-Trade";
+  } else if (loopRunning) {
     state = "locked";
     label = "Locked";
   } else if (state === "invalid") {
@@ -1198,13 +1264,37 @@ function syncStrategyHint(forceState) {
       ? "Stop the loop to edit strategy"
       : state === "invalid"
         ? "Fix validation errors before running"
-        : "Strategy settings auto-save; broker/AI keys live on the API Keys page";
+        : (isCreatingNewAutoTrade ? "Configuring new auto-trade runner" : "Strategy settings auto-save; broker/AI keys live on the API Keys page");
 }
 
 function maybeSyncWatchlistFromPrimary(ev) {
-  if (ev?.target?.name !== "symbol") return;
   const form = $("settings");
-  if (!form?.symbols) return;
+  if (!form) return;
+  const name = ev?.target?.name;
+
+  if (name === "symbols") {
+    if (form.symbol) {
+      const syms = String(form.symbols.value || "")
+        .replace(/[;,]/g, " ")
+        .split(/\s+/)
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      if (syms.length > 0 && form.symbol.value !== syms[0]) {
+        form.symbol.value = syms[0];
+        lastPrimarySymbol = syms[0];
+        if (typeof applyAiWatchlist === "function" && typeof lastDeskWatchlist !== "undefined") {
+          applyAiWatchlist(lastDeskWatchlist);
+        }
+        if (typeof syncFeaturedWall === "function") {
+          syncFeaturedWall();
+        }
+      }
+    }
+    return;
+  }
+
+  if (name !== "symbol") return;
+  if (!form.symbols) return;
   const next = String(form.symbol.value || "")
     .trim()
     .toUpperCase();
@@ -1214,27 +1304,25 @@ function maybeSyncWatchlistFromPrimary(ev) {
   const watch = String(form.symbols.value || "")
     .trim()
     .toUpperCase();
-  // Keep a solo watchlist in lockstep with primary; leave multi-lists alone.
-  if (!watch || watch === prev) {
+
+  // If in new auto-trade creation mode, or if the current watchlist contains active loop symbols,
+  // sync to the newly typed symbol directly so stale tickers don't block the new runner.
+  if (isCreatingNewAutoTrade) {
+    const activeSymbols = typeof getActiveAutoTradeSymbols === "function" ? getActiveAutoTradeSymbols() : new Set();
+    const watchList = String(watch)
+      .replace(/[;,]/g, " ")
+      .split(/\s+/)
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+    const hasActiveOverlap = watchList.length > 0 && watchList.every((s) => activeSymbols.has(s));
+    if (!watch || watch === prev || hasActiveOverlap || watchList.length <= 1) {
+      form.symbols.value = next || watch;
+    }
+  } else if (!watch || watch === prev) {
+    // Keep a solo watchlist in lockstep with primary; leave multi-lists alone.
     form.symbols.value = next || watch;
   }
   lastPrimarySymbol = next || prev;
-}
-
-function syncActiveAiDisplay() {
-  const activeAiName = $("ai-active-provider-name");
-  if (!activeAiName) return;
-  const pNames = {
-    openai: "OpenAI",
-    gemini: "Google Gemini",
-    anthropic: "Anthropic",
-    xai: "xAI",
-  };
-  const provider = lastDeskSettings?.ai_provider || "openai";
-  const pName = pNames[provider] || provider;
-  const modelKey = `${provider}_model`;
-  const mName = lastDeskSettings?.[modelKey] || aiModels.defaults?.[provider] || "";
-  activeAiName.textContent = mName ? `${pName} · ${mName}` : pName;
 }
 
 function populateModelOptions(models) {
@@ -1246,7 +1334,6 @@ function populateModelOptions(models) {
     xai: Array.isArray(models.xai) ? models.xai : [],
     defaults: models.defaults || {},
   };
-  syncActiveAiDisplay();
 }
 
 
@@ -1316,7 +1403,7 @@ function syncModeUi() {
       daily.disabled = day;
     }
     if (day && tf.value === "1Day") tf.value = intradayTimeframe(tf.value);
-    tf.disabled = loopRunning || pair || ls;
+    tf.disabled = (loopRunning && !isCreatingNewAutoTrade) || pair || ls;
     refreshNiceSelect(tf);
   }
   if (pair) {
@@ -1330,8 +1417,6 @@ function syncModeUi() {
       if (form.symbols) form.symbols.value = "";
     }
   }
-  // Active AI provider status badge while in AI mode
-  syncActiveAiDisplay();
   const metricA = $("metric-a-label");
   const metricB = $("metric-b-label");
   if (metricA && metricB) {
@@ -1368,6 +1453,9 @@ function syncModeUi() {
   syncSizeModeUi();
   syncRunZone();
   syncStrategyHint();
+  if (typeof syncStrategyCollapsedSummary === "function") {
+    syncStrategyCollapsedSummary();
+  }
 }
 
 function findPreset(id) {
@@ -2263,7 +2351,7 @@ async function deleteActiveCustomEngine(engineId) {
 function applySettings(settings, { force = false } = {}) {
   if (!settings) return;
   lastDeskSettings = settings;
-  if (!force && (formDirty || formFocused)) return;
+  if (!force && (formDirty || formFocused || isCreatingNewAutoTrade)) return;
   const form = $("settings");
   if (!form) {
     // Manual-order fields live on their own page — hydrate only when present.
@@ -2377,6 +2465,9 @@ function applySettings(settings, { force = false } = {}) {
   }
   if (form.metals_dollar_index_only) {
     form.metals_dollar_index_only.checked = !!settings.metals_dollar_index_only;
+  }
+  if (form.metals_reversal_buy_on_stop) {
+    form.metals_reversal_buy_on_stop.checked = settings.metals_reversal_buy_on_stop !== false;
   }
   if (form.notify_browser) {
     form.notify_browser.checked = settings.notify_browser !== false;
@@ -2603,21 +2694,15 @@ function stopLoopElapsedTicker() {
 }
 
 function tickLoopElapsed() {
-  const el = $("loop-elapsed");
-  if (!el) return;
   if (loopRunning && loopStartedAtMs) {
     const sec = (Date.now() - loopStartedAtMs) / 1000;
     const label = formatDuration(sec);
-    el.hidden = false;
-    el.textContent = loopStopping
-      ? tx("stopping_label", `Stopping ${label}`, { label })
-      : `Running ${label}`;
-    el.dataset.kind = loopStopping ? "stopping" : "running";
     if (!busy) {
       const loopState = $("loop-state");
       if (loopState) {
-        loopState.textContent =
-          `Loop running · ${label} — Stop to edit strategy again.`;
+        loopState.textContent = loopStopping
+          ? tx("stopping_label", `Stopping · ${label}`, { label })
+          : `Loop running · ${label} — Stop to edit strategy again.`;
       }
     }
     const live = document.querySelector(
@@ -2627,14 +2712,6 @@ function tickLoopElapsed() {
       const started = live.textContent.split(" · ")[0] || "—";
       live.textContent = `${started} · ${label}`;
     }
-  } else if (!loopRunning && loopLastDurationSec != null) {
-    el.hidden = false;
-    el.textContent = `Last run ${formatDuration(loopLastDurationSec)}`;
-    el.dataset.kind = "last";
-  } else {
-    el.hidden = true;
-    el.textContent = "";
-    delete el.dataset.kind;
   }
 }
 
@@ -2669,7 +2746,8 @@ function applyResult(result) {
   el.className = `signal ${signal}`;
 
   const isAi = !!result.provider;
-  const isDip = !isAi && (result.engine === "dip" || result.rsi != null);
+  const isDip = !isAi && (result.engine === "dip" || (result.engine == null && result.rsi != null && result.bb_pct_b != null));
+  const isDay = !isAi && !isDip && (result.engine === "day" || result.vwap != null || result.day_sub_mode != null);
   if (isAi) {
     const rsi = result.rsi ?? result.context_summary?.rsi;
     const trend = result.trend_bias || result.context_summary?.trend || result.ta_bias;
@@ -2683,6 +2761,13 @@ function applyResult(result) {
       rsi != null && rsi !== "" ? Number(rsi).toFixed(1) : "—";
     $("slow").textContent =
       pct != null && pct !== "" ? `${Number(pct).toFixed(0)}` : "—";
+  } else if (isDay) {
+    const vwapVal = result.vwap ?? result.fast_sma;
+    const secondVal = result.slow_sma ?? result.fast_sma;
+    $("fast").textContent =
+      vwapVal != null && vwapVal !== "" ? Number(vwapVal).toFixed(2) : "—";
+    $("slow").textContent =
+      secondVal != null && secondVal !== "" ? Number(secondVal).toFixed(2) : "—";
   } else {
     $("fast").textContent =
       result.fast_sma != null && result.fast_sma !== ""
@@ -2937,7 +3022,11 @@ async function refreshWatchQuotes({ force = false } = {}) {
 }
 
 function applyLoop(running, meta = {}) {
-  loopRunning = !!running;
+  if (typeof running !== "undefined") {
+    loopRunning = !!running;
+  } else if (typeof latestState !== "undefined" && latestState?.loop_running != null) {
+    loopRunning = !!latestState.loop_running;
+  }
   if (meta.stopping != null) loopStopping = !!meta.stopping;
   if (!loopRunning) loopStopping = false;
 
@@ -2979,28 +3068,85 @@ function applyLoop(running, meta = {}) {
   loopBtn.setAttribute("aria-pressed", loopRunning ? "true" : "false");
   loopBtn.title = loopRunning ? "Stop the loop" : "Start the polling loop";
   const onceBtn = $("btn-once");
-  if (onceBtn) onceBtn.disabled = loopRunning || busy;
   const addBtn = $("btn-add-autotrade");
-  if (addBtn) addBtn.disabled = busy;
-  syncStrategyHint(loopRunning ? "locked" : persistStatus === "locked" ? "ready" : persistStatus);
-  const settings = $("settings");
-  if (settings) {
-    [...settings.elements].forEach((el) => {
-      if (el.name) el.disabled = loopRunning;
-    });
-    const tf = $("field-timeframe");
-    if (tf && !loopRunning) {
-      const mode = formPayload().strategy_mode;
-      tf.disabled = mode === "pair" || mode === "ls";
+  const startNewBtn = $("btn-start-new-autotrade");
+  const bannerStartBtn = $("btn-banner-start-new-autotrade");
+  const newBanner = $("new-autotrade-banner");
+
+  if (isCreatingNewAutoTrade) {
+    if (newBanner) newBanner.hidden = false;
+    if (startNewBtn) {
+      startNewBtn.hidden = false;
+      startNewBtn.disabled = busy;
     }
-    syncNiceSelectDisabled(settings);
+    if (bannerStartBtn) {
+      bannerStartBtn.hidden = false;
+      bannerStartBtn.disabled = busy;
+    }
+    if (onceBtn) onceBtn.hidden = true;
+    if (loopBtn) loopBtn.hidden = true;
+    if (addBtn) addBtn.hidden = true;
+
+    syncStrategyHint("ready");
+    const hint = $("strategy-hint");
+    if (hint) {
+      hint.textContent = typeof window.t === "function" ? window.t("new_autotrade_mode", "New Auto-Trade (Unlocked)") : "New Auto-Trade (Unlocked)";
+      hint.dataset.state = "ready";
+    }
+
+    const settings = $("settings");
+    if (settings) {
+      [...settings.elements].forEach((el) => {
+        if (el.name) el.disabled = false;
+      });
+      const tf = $("field-timeframe");
+      if (tf) {
+        const mode = formPayload().strategy_mode;
+        tf.disabled = mode === "pair" || mode === "ls";
+      }
+      syncNiceSelectDisabled(settings);
+    }
+  } else {
+    if (newBanner) newBanner.hidden = true;
+    if (startNewBtn) startNewBtn.hidden = true;
+    if (bannerStartBtn) bannerStartBtn.hidden = true;
+    if (onceBtn) {
+      onceBtn.hidden = false;
+      onceBtn.disabled = loopRunning || busy;
+    }
+    if (loopBtn) {
+      loopBtn.hidden = false;
+    }
+    if (addBtn) {
+      addBtn.disabled = busy;
+    }
+    syncStrategyHint(loopRunning ? "locked" : persistStatus === "locked" ? "ready" : persistStatus);
+    const settings = $("settings");
+    if (settings) {
+      [...settings.elements].forEach((el) => {
+        if (el.name) el.disabled = loopRunning;
+      });
+      const tf = $("field-timeframe");
+      if (tf && !loopRunning) {
+        const mode = formPayload().strategy_mode;
+        tf.disabled = mode === "pair" || mode === "ls";
+      }
+      syncNiceSelectDisabled(settings);
+    }
   }
+
   // Keep size field visibility correct after unlock or while looping.
   syncSizeModeUi();
   syncRunZone();
   if (typeof syncManualUi === "function") syncManualUi();
   const loopState = $("loop-state");
-  if (loopRunning) {
+  if (isCreatingNewAutoTrade) {
+    if (loopState) {
+      loopState.textContent = typeof window.t === "function"
+        ? window.t("new_autotrade_state_hint", "New Auto-Trade setup active — select strategy and tickers, then click '+ Start Auto Trade'.")
+        : "New Auto-Trade setup active — select strategy and tickers, then click '+ Start Auto Trade'.";
+    }
+  } else if (loopRunning) {
     const elapsed =
       loopStartedAtMs != null
         ? formatDuration((Date.now() - loopStartedAtMs) / 1000)
@@ -3015,7 +3161,8 @@ function applyLoop(running, meta = {}) {
   applyAiWatchlist(lastDeskWatchlist);
   const page = $("page-auto-trade");
   if (page) {
-    page.classList.toggle("is-loop-running", loopRunning);
+    page.classList.toggle("is-loop-running", loopRunning && !isCreatingNewAutoTrade);
+    page.classList.toggle("is-creating-new-autotrade", isCreatingNewAutoTrade);
   }
 }
 
@@ -3024,6 +3171,9 @@ let lastAutoRecoveryCount = -1;
 function render(state, { forceSettings = false } = {}) {
   if (typeof latestState !== "undefined") {
     latestState = state;
+  }
+  if (typeof lastStatus !== "undefined") {
+    lastStatus = state;
   }
   if (state.auto_recovery_count != null) {
     const recCount = Number(state.auto_recovery_count);
@@ -3167,6 +3317,7 @@ async function onOnce() {
     });
     formDirty = false;
     persistStatus = "ready";
+    currentAutoTradeView = "wall";
     render(data.state, { forceSettings: true });
     if (!lastTradeNotified) {
       showToast(
@@ -3245,7 +3396,164 @@ async function onStart() {
   }
 }
 
+/**
+ * Display confirmation modal for stopping auto-trade loop, offering option to close open position(s).
+ * Returns Promise<"close_and_stop" | "stop_only" | "cancel">
+ */
+function confirmStopLoopWithPosition({ title, description, positions = [] }) {
+  return new Promise((resolve) => {
+    const modal = $("modal-stop-loop-confirm");
+    const titleEl = $("modal-stop-loop-title");
+    const descEl = $("modal-stop-loop-desc");
+    const posBox = $("modal-stop-loop-pos-box");
+    const noPosBox = $("modal-stop-loop-no-pos");
+    const btnClosePos = $("btn-stop-loop-close-pos");
+    const btnStopOnly = $("btn-stop-loop-only");
+    const btnCancel = $("btn-stop-loop-cancel");
+    const btnClose = $("btn-stop-loop-close");
+    const backdrop = $("modal-stop-loop-backdrop");
+
+    if (!modal) {
+      resolve("stop_only");
+      return;
+    }
+
+    // The loop button remains enabled until the user chooses an action. Avoid
+    // registering a second set of handlers if it is activated again in that
+    // short window.
+    if (stopConfirmationOpen) {
+      resolve("cancel");
+      return;
+    }
+    stopConfirmationOpen = true;
+    const previouslyFocused = document.activeElement;
+
+    if (titleEl && title) titleEl.textContent = title;
+    if (descEl && description) descEl.textContent = description;
+
+    const hasPositions = Array.isArray(positions) && positions.length > 0;
+    if (hasPositions) {
+      if (posBox) {
+        posBox.hidden = false;
+        const p = positions[0];
+        const symEl = $("modal-stop-loop-pos-sym");
+        const qtyEl = $("modal-stop-loop-pos-qty");
+        const entryEl = $("modal-stop-loop-pos-entry");
+        const markEl = $("modal-stop-loop-pos-mark");
+        const pnlEl = $("modal-stop-loop-pos-pnl");
+
+        if (positions.length === 1) {
+          if (symEl) symEl.textContent = p.symbol || "—";
+          if (qtyEl) qtyEl.textContent = `${p.qty || 0} (${p.side || "long"})`;
+          const avgEntry = p.avg_entry_price != null ? p.avg_entry_price : p.avg_entry;
+          if (entryEl) entryEl.textContent = avgEntry != null ? `$${Number(avgEntry).toFixed(2)}` : "—";
+          if (markEl) markEl.textContent = p.current_price != null ? `$${Number(p.current_price).toFixed(2)}` : "—";
+          const upl = p.unrealized_pl != null ? Number(p.unrealized_pl) : 0;
+          const uplPct = p.unrealized_pct != null ? Number(p.unrealized_pct) : null;
+          if (pnlEl) {
+            const isPos = upl >= 0;
+            const sign = isPos && upl > 0 ? "+" : "";
+            pnlEl.textContent = `${sign}$${upl.toFixed(2)}${uplPct != null ? ` (${sign}${uplPct.toFixed(1)}%)` : ""}`;
+            pnlEl.className = `modal-pos-pnl mono ${isPos ? "is-profit" : "is-loss"}`;
+          }
+        } else {
+          const syms = positions.map((x) => x.symbol).join(", ");
+          if (symEl) symEl.textContent = syms;
+          const totalQty = positions.reduce((acc, x) => acc + Math.abs(Number(x.qty || 0)), 0);
+          if (qtyEl) qtyEl.textContent = `${positions.length} positions (${totalQty} sh)`;
+          if (entryEl) entryEl.textContent = "—";
+          if (markEl) markEl.textContent = "—";
+          const totalUpl = positions.reduce((acc, x) => acc + Number(x.unrealized_pl || 0), 0);
+          if (pnlEl) {
+            const isPos = totalUpl >= 0;
+            const sign = isPos && totalUpl > 0 ? "+" : "";
+            pnlEl.textContent = `${sign}$${totalUpl.toFixed(2)}`;
+            pnlEl.className = `modal-pos-pnl mono ${isPos ? "is-profit" : "is-loss"}`;
+          }
+        }
+      }
+      if (noPosBox) noPosBox.hidden = true;
+      if (btnClosePos) {
+        btnClosePos.hidden = false;
+        btnClosePos.textContent =
+          positions.length > 1
+            ? tx("stop_and_close_all_positions", "Close Positions & Stop")
+            : tx("stop_and_close_positions", "Close Position & Stop");
+      }
+      if (btnStopOnly) {
+        btnStopOnly.textContent = tx("stop_loop_only", "Stop Loop Only");
+      }
+    } else {
+      if (posBox) posBox.hidden = true;
+      if (noPosBox) noPosBox.hidden = false;
+      if (btnClosePos) btnClosePos.hidden = true;
+      if (btnStopOnly) btnStopOnly.textContent = tx("stop_loop", "Stop Loop");
+    }
+
+    const cleanup = () => {
+      modal.hidden = true;
+      document.body.classList.remove("modal-open");
+      stopConfirmationOpen = false;
+      btnClosePos?.removeEventListener("click", onClosePos);
+      btnStopOnly?.removeEventListener("click", onStopOnly);
+      btnCancel?.removeEventListener("click", onCancel);
+      btnClose?.removeEventListener("click", onCancel);
+      backdrop?.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onKeyDown);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+
+    const onClosePos = () => { cleanup(); resolve("close_and_stop"); };
+    const onStopOnly = () => { cleanup(); resolve("stop_only"); };
+    const onCancel = () => { cleanup(); resolve("cancel"); };
+    const onKeyDown = (e) => { if (e.key === "Escape") { cleanup(); resolve("cancel"); } };
+
+    btnClosePos?.addEventListener("click", onClosePos);
+    btnStopOnly?.addEventListener("click", onStopOnly);
+    btnCancel?.addEventListener("click", onCancel);
+    btnClose?.addEventListener("click", onCancel);
+    backdrop?.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onKeyDown);
+
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    // A visible, deterministic focus target makes the dialog usable with the
+    // keyboard as well as pointer input.
+    const initialFocus = !btnClosePos || btnClosePos.hidden ? btnStopOnly : btnClosePos;
+    initialFocus?.focus();
+  });
+}
+
 async function onStop() {
+  await refreshLoopOrderPositions(true).catch(() => {});
+  const loopSymbols = new Set();
+  const rawSyms = latestState?.settings?.symbols || latestState?.settings?.symbol || "";
+  String(rawSyms).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).forEach((s) => loopSymbols.add(s));
+  const headSym = (latestState?.settings?.symbol || "").trim().toUpperCase();
+  if (headSym) loopSymbols.add(headSym);
+
+  const openPositions = [];
+  loopSymbols.forEach((sym) => {
+    const pos = loopOrderPositions[sym];
+    if (pos && Math.abs(Number(pos.qty || 0)) > 0.0001) {
+      openPositions.push(pos);
+    }
+  });
+
+  let closePositions = false;
+  if (openPositions.length > 0) {
+    const choice = await confirmStopLoopWithPosition({
+      title: tx("stop_main_loop_title", "Stop Main Auto-Trade Loop"),
+      description: tx(
+        "stop_main_loop_confirm_desc",
+        `The running auto-trade loop has ${openPositions.length} active position(s). Would you like to close them or keep them open?`
+      ),
+      positions: openPositions,
+    });
+    if (choice === "cancel") return;
+    closePositions = choice === "close_and_stop";
+  }
+
   try {
     // Flip the badge before the round trip so Stop feels instant even while
     // the worker finishes the symbol it is on.
@@ -3255,7 +3563,10 @@ async function onStop() {
     statusGen += 1;
     suppressWatchlistUntilStop = true;
     clearDeskWatchlist();
-    const data = await api("/api/loop/stop", { method: "POST", body: "{}" });
+    const data = await api("/api/loop/stop", {
+      method: "POST",
+      body: JSON.stringify({ close_positions: closePositions }),
+    });
     render(data.state, { forceSettings: true });
     // Keep busy until the worker exits — stop only interrupts between cycles /
     // during the poll sleep, so loop_running can stay true briefly.
@@ -3263,17 +3574,23 @@ async function onStop() {
       const state = await waitUntilLoopStopped();
       render(state, { forceSettings: true });
     }
-    showToast("Loop stopped.", "ok");
+    showToast(
+      closePositions
+        ? tx("loop_stopped_closed_toast", "Loop stopped and positions closed.")
+        : tx("loop_stopped_toast", "Loop stopped."),
+      "ok"
+    );
   } catch (err) {
     showToast(err.message, "error");
   } finally {
     setBusy(false);
     await refreshStatus({ forceSettings: true });
+    await refreshLoopOrderPositions(true).catch(() => {});
   }
 }
 
 async function onLoopToggle() {
-  if (busy) return;
+  if (busy || stopConfirmationOpen) return;
   if (loopRunning) {
     await onStop();
   } else {
@@ -3312,7 +3629,7 @@ let persistTimer = null;
 function schedulePersistSettings() {
   clearTimeout(persistTimer);
   clearTimeout(hintResetTimer);
-  if (loopRunning) return;
+  if (loopRunning || isCreatingNewAutoTrade) return;
   const err = validateLocal();
   if (err) {
     syncStrategyHint("invalid");
@@ -3320,7 +3637,7 @@ function schedulePersistSettings() {
   }
   syncStrategyHint("editing");
   persistTimer = setTimeout(async () => {
-    if (loopRunning) return;
+    if (loopRunning || isCreatingNewAutoTrade) return;
     const err = validateLocal();
     if (err) {
       syncStrategyHint("invalid");
@@ -3368,11 +3685,12 @@ if (form) {
     syncSmaHint();
     syncDipHint();
     syncDeskAccordions();
-    if (name === "symbol") {
+    if (name === "symbol" || name === "symbols") {
       applyAiWatchlist(lastDeskWatchlist);
       syncFeaturedWall();
     }
     setFormError(null);
+    syncNewAutoTradeNamePlaceholder();
     if (name === "openai_api_key" || name === "gemini_api_key") {
       syncStrategyHint("editing");
       return;
@@ -3382,6 +3700,7 @@ if (form) {
   form.addEventListener("change", (ev) => {
     if (ev.target?.id === "field-custom-engine-select") return;
     formDirty = true;
+    syncNewAutoTradeNamePlaceholder();
     if (activeCustomEngineId) {
       const mod = $("active-custom-engine-modified");
       if (mod) mod.hidden = false;
@@ -3408,7 +3727,7 @@ if (form) {
     if (name === "strategy_mode" && (ev.target.value === "pair" || ev.target.value === "ls")) {
       if (form.elements.bar_timeframe) form.elements.bar_timeframe.value = "1Day";
     }
-    if (name === "symbol") {
+    if (name === "symbol" || name === "symbols") {
       maybeSyncWatchlistFromPrimary(ev);
       applyAiWatchlist(lastDeskWatchlist);
       syncFeaturedWall();
@@ -3432,7 +3751,7 @@ if (form) {
   });
   $("desk-notional-chips")?.addEventListener("click", (ev) => {
     const btn = ev.target.closest(".btn-notional-chip");
-    if (!btn || loopRunning) return;
+    if (!btn || (loopRunning && !isCreatingNewAutoTrade)) return;
     const val = Number(btn.dataset.val);
     const inp = $("field-notional");
     if (inp && val > 0) {
@@ -3648,6 +3967,44 @@ function renderCurrentLoopOrders(state) {
     } else {
       statusEl.className = "loop-orders-status-pill is-idle";
       statusEl.textContent = tx("loop_idle", "Idle");
+    }
+  }
+
+  // Loop P/L pill
+  const pnlEl = $("loop-orders-pnl");
+  if (pnlEl) {
+    let loopRealized = 0;
+    const loopSymbols = new Set();
+    allOrders.forEach((o) => {
+      const sym = o.symbol ? String(o.symbol).toUpperCase() : "";
+      if (sym) loopSymbols.add(sym);
+      const r = Number(o.realized_pl ?? o.pnl ?? 0);
+      if (Number.isFinite(r)) loopRealized += r;
+    });
+    if (isRunning) {
+      const rawSyms = state?.settings?.symbols || state?.settings?.symbol || "";
+      String(rawSyms).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).forEach((s) => loopSymbols.add(s));
+    }
+    let loopUnrealized = 0;
+    loopSymbols.forEach((sym) => {
+      const pos = loopOrderPositions[sym];
+      if (pos && pos.unrealized_pl != null && Number.isFinite(Number(pos.unrealized_pl))) {
+        loopUnrealized += Number(pos.unrealized_pl);
+      }
+    });
+    const loopTotal = loopRealized + loopUnrealized;
+    const hasPnl = Math.abs(loopTotal) > 0.005 || totalOrders > 0;
+    if (hasPnl) {
+      const isProf = loopTotal > 0.005;
+      const isLoss = loopTotal < -0.005;
+      const tone = isProf ? "is-profit" : (isLoss ? "is-loss" : "is-flat");
+      const sign = isProf ? "+" : "";
+      pnlEl.className = `loop-orders-pnl-pill ${tone}`;
+      pnlEl.textContent = `Loop P/L: ${sign}$${loopTotal.toFixed(2)}`;
+      pnlEl.title = `Loop Total P/L: ${sign}$${loopTotal.toFixed(2)} (Realized: $${loopRealized.toFixed(2)}, Unrealized: $${loopUnrealized.toFixed(2)})`;
+      pnlEl.hidden = false;
+    } else {
+      pnlEl.hidden = true;
     }
   }
 
@@ -4062,6 +4419,201 @@ function formatRunnerUptime(seconds) {
 }
 
 const expandedRunnerIds = new Set();
+let selectedRunnerId = null;
+let strategyPanelCollapsed = false;
+let strategyCollapseInitialized = false;
+let currentAutoTradeView = "runner";
+let panelsCollapseRestored = false;
+
+function restorePanelsCollapseState() {
+  if (panelsCollapseRestored) return;
+  panelsCollapseRestored = true;
+
+  let stratStored = null;
+  let runnersStored = null;
+  try {
+    stratStored = localStorage.getItem("algopaca_strategy_collapsed");
+    runnersStored = localStorage.getItem("algopaca_multi_runners_collapsed");
+  } catch (_) {}
+
+  // Determine initial states ensuring mutual exclusivity of expanded mode:
+  // If both were explicitly collapsed, keep both collapsed.
+  // If Auto-Trades was explicitly expanded, expand Auto-Trades and collapse Strategy.
+  // If Strategy was explicitly collapsed, collapse Strategy and expand Auto-Trades.
+  // Otherwise default: Strategy expanded, Auto-Trades collapsed.
+  if (stratStored === "true" && runnersStored === "true") {
+    setStrategyCollapsed(true, false, false);
+    setMultiRunnersCollapsed(true, false, false);
+  } else if (runnersStored === "false") {
+    setMultiRunnersCollapsed(false, false, false);
+    setStrategyCollapsed(true, false, false);
+  } else if (stratStored === "true" && runnersStored !== "true") {
+    setStrategyCollapsed(true, false, false);
+    setMultiRunnersCollapsed(false, false, false);
+  } else {
+    setStrategyCollapsed(false, false, false);
+    setMultiRunnersCollapsed(true, false, false);
+  }
+}
+
+function initStrategyCollapse() {
+  if (strategyCollapseInitialized) return;
+  strategyCollapseInitialized = true;
+
+  restorePanelsCollapseState();
+
+  const toggleBtn = $("btn-toggle-strategy-collapse");
+  toggleBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleStrategyCollapse();
+  });
+
+  const panelHead = $("strategy-panel")?.querySelector(".panel-head");
+  panelHead?.addEventListener("click", (e) => {
+    if (e.target.closest("button, a, input, select, textarea, label")) return;
+    toggleStrategyCollapse();
+  });
+}
+
+function toggleStrategyCollapse() {
+  setStrategyCollapsed(!strategyPanelCollapsed, true);
+}
+
+function syncStrategyCollapsedSummary() {
+  const summaryEl = $("strategy-collapsed-summary");
+  if (!summaryEl) return;
+  if (!strategyPanelCollapsed) {
+    summaryEl.hidden = true;
+    return;
+  }
+
+  let modeName = "";
+  if (activeCustomEngineId) {
+    const custEng = typeof findCustomEngine === "function" ? findCustomEngine(activeCustomEngineId) : null;
+    if (custEng?.name) {
+      modeName = custEng.name;
+    }
+  }
+  if (!modeName) {
+    const modeVal = formValue("strategy_mode", "sma");
+    const modeLabels = {
+      sma: "SMA Crossover",
+      dip: "Buy The Dip",
+      pair: "L/S Pair",
+      ls: "Regime Dual Momentum",
+      day: "Day Trading",
+      ai: "AI Trader",
+    };
+    modeName = modeLabels[modeVal] || String(modeVal).toUpperCase();
+  }
+
+  let symVal = String(formValue("symbol", "") || "").trim().toUpperCase();
+  const symsVal = String(formValue("symbols", "") || "").trim();
+  if (symsVal) {
+    const list = parseSymbolsList(symsVal);
+    if (list.length > 1) {
+      symVal = `${list[0]} +${list.length - 1}`;
+    } else if (list.length === 1) {
+      symVal = list[0];
+    }
+  }
+
+  summaryEl.textContent = `${modeName}${symVal ? ` · ${symVal}` : ""}`;
+  summaryEl.hidden = false;
+}
+
+function setStrategyCollapsed(collapsed, save = true, syncOther = true) {
+  strategyPanelCollapsed = !!collapsed;
+  const panel = $("strategy-panel");
+  const body = $("strategy-body");
+  const btn = $("btn-toggle-strategy-collapse");
+
+  if (panel) {
+    panel.classList.toggle("is-collapsed", strategyPanelCollapsed);
+    panel.classList.toggle("is-open", !strategyPanelCollapsed);
+  }
+  if (body) {
+    body.hidden = strategyPanelCollapsed;
+  }
+  if (btn) {
+    const label = strategyPanelCollapsed
+      ? tx("expand_strategy_panel", "Expand Strategy panel")
+      : tx("minimize_strategy_panel", "Minimize Strategy panel");
+    btn.setAttribute("aria-expanded", String(!strategyPanelCollapsed));
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+  }
+  syncStrategyCollapsedSummary();
+  if (save) {
+    try {
+      localStorage.setItem("algopaca_strategy_collapsed", String(strategyPanelCollapsed));
+    } catch (_) {}
+  }
+
+  // When Strategy card is in expanded mode, Auto-Trades card should be collapsed automatically
+  if (!strategyPanelCollapsed && syncOther) {
+    setMultiRunnersCollapsed(true, save, false);
+  }
+}
+
+let multiRunnersPanelCollapsed = false;
+let multiRunnersCollapseInitialized = false;
+
+function initMultiRunnersCollapse() {
+  if (multiRunnersCollapseInitialized) return;
+  multiRunnersCollapseInitialized = true;
+
+  restorePanelsCollapseState();
+
+  const toggleBtn = $("btn-toggle-multi-runners-collapse");
+  toggleBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMultiRunnersCollapse();
+  });
+
+  const panelHead = $("multi-runners-card")?.querySelector(".panel-head");
+  panelHead?.addEventListener("click", (e) => {
+    if (e.target.closest("button, a, input, select, textarea, label")) return;
+    toggleMultiRunnersCollapse();
+  });
+}
+
+function toggleMultiRunnersCollapse() {
+  setMultiRunnersCollapsed(!multiRunnersPanelCollapsed, true);
+}
+
+function setMultiRunnersCollapsed(collapsed, save = true, syncOther = true) {
+  multiRunnersPanelCollapsed = !!collapsed;
+  const panel = $("multi-runners-card");
+  const body = $("multi-runners-body") || panel?.querySelector(".multi-runners-body");
+  const btn = $("btn-toggle-multi-runners-collapse");
+
+  if (panel) {
+    panel.classList.toggle("is-collapsed", multiRunnersPanelCollapsed);
+    panel.classList.toggle("is-open", !multiRunnersPanelCollapsed);
+  }
+  if (body) {
+    body.hidden = multiRunnersPanelCollapsed;
+  }
+  if (btn) {
+    const label = multiRunnersPanelCollapsed
+      ? tx("expand_autotrades_panel", "Expand Auto-Trades panel")
+      : tx("minimize_autotrades_panel", "Minimize Auto-Trades panel");
+    btn.setAttribute("aria-expanded", String(!multiRunnersPanelCollapsed));
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+  }
+  if (save) {
+    try {
+      localStorage.setItem("algopaca_multi_runners_collapsed", String(multiRunnersPanelCollapsed));
+    } catch (_) {}
+  }
+
+  // When Auto Trades card is in expanded mode, Strategy card should be collapsed automatically
+  if (!multiRunnersPanelCollapsed && syncOther) {
+    setStrategyCollapsed(true, save, false);
+  }
+}
 
 function parseSymbolsList(val) {
   if (!val) return [];
@@ -4074,7 +4626,142 @@ function parseSymbolsList(val) {
   )];
 }
 
-async function handleAddAutoTrade() {
+function getGeneratedAutoTradeNameFromForm() {
+  const payload = formPayload();
+  const rawSymbols = payload.symbols || payload.symbol || "AAPL";
+  const symbols = parseSymbolsList(rawSymbols);
+  let symStr = "AAPL";
+  if (symbols.length === 1) {
+    symStr = symbols[0];
+  } else if (symbols.length > 1 && symbols.length <= 3) {
+    symStr = symbols.join(", ");
+  } else if (symbols.length > 3) {
+    symStr = `${symbols.slice(0, 2).join(", ")} +${symbols.length - 2}`;
+  }
+
+  const isCustom = !!payload.custom_engine_id;
+  let stratPart = "SMA 10/30";
+  if (isCustom) {
+    const ce = (customEngines || []).find((e) => e.id === payload.custom_engine_id);
+    stratPart = ce?.name || "Custom Engine";
+  } else if (payload.strategy_mode === "sma") {
+    const fast = payload.fast_sma || payload.fast_period || 10;
+    const slow = payload.slow_sma || payload.slow_period || 30;
+    stratPart = `SMA ${fast}/${slow}`;
+  } else if (payload.strategy_mode === "dip") {
+    const preset = payload.dip_preset || "deep";
+    stratPart = `Dip (${preset})`;
+  } else if (payload.strategy_mode === "day") {
+    const dayTypes = { vwap: "VWAP", vwap_trend: "VWAP", orb: "ORB", ema_cross: "EMA Cross", mean_reversion: "Mean Reversion" };
+    const subMode = payload.day_sub_mode || payload.day_strategy_type || "vwap_trend";
+    stratPart = `Day ${dayTypes[subMode] || subMode.toUpperCase()}`;
+  } else if (payload.strategy_mode === "ai") {
+    let prov = (payload.ai_provider || "AI").charAt(0).toUpperCase() + (payload.ai_provider || "AI").slice(1);
+    if (prov.toLowerCase() === "xai") prov = "Grok";
+    stratPart = `AI ${prov}`;
+  } else if (payload.strategy_mode === "ls") {
+    stratPart = "Long/Short";
+  } else {
+    stratPart = (payload.strategy_mode || "SMA").toUpperCase();
+  }
+
+  const tf = payload.bar_timeframe || "15Min";
+  return `${symStr} · ${stratPart} (${tf})`;
+}
+
+function syncNewAutoTradeNamePlaceholder() {
+  const inp = $("field-new-runner-name");
+  if (inp) {
+    inp.placeholder = `e.g. ${getGeneratedAutoTradeNameFromForm()}`;
+  }
+}
+
+function enterNewAutoTradeMode() {
+  isCreatingNewAutoTrade = true;
+  currentAutoTradeView = "wall";
+  applyLoop();
+  syncNewAutoTradeNamePlaceholder();
+
+  const state = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  if (state) renderMultiAutoTrades(state);
+
+  const banner = $("new-autotrade-banner");
+  if (banner) banner.hidden = false;
+  const startBtn = $("btn-start-new-autotrade");
+  if (startBtn) {
+    startBtn.hidden = false;
+    startBtn.disabled = busy;
+  }
+  const bannerStartBtn = $("btn-banner-start-new-autotrade");
+  if (bannerStartBtn) {
+    bannerStartBtn.hidden = false;
+    bannerStartBtn.disabled = busy;
+  }
+  const addBtn = $("btn-add-autotrade");
+  if (addBtn) addBtn.hidden = true;
+  const onceBtn = $("btn-once");
+  if (onceBtn) onceBtn.hidden = true;
+  const loopBtn = $("btn-loop");
+  if (loopBtn) loopBtn.hidden = true;
+
+  const hint = $("strategy-hint");
+  if (hint) {
+    hint.textContent = typeof window.t === "function" ? window.t("new_autotrade_mode", "New Auto-Trade (Unlocked)") : "New Auto-Trade (Unlocked)";
+    hint.dataset.state = "ready";
+  }
+
+  // Expand and scroll to strategy panel and focus symbols
+  setStrategyCollapsed(false, false);
+  $("strategy-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const symsInput = $("field-symbol") || $("field-symbols");
+  if (symsInput) {
+    symsInput.focus();
+    if (typeof symsInput.select === "function") symsInput.select();
+  }
+
+  showToast(
+    tx(
+      "new_autotrade_unlocked_toast",
+      "Strategy panel unlocked! Adjust strategy & symbols, then click '+ Start Auto Trade'."
+    ),
+    "info"
+  );
+}
+
+function exitNewAutoTradeMode(options = {}) {
+  const isEv = options && (typeof options.preventDefault === "function" || (typeof Event !== "undefined" && options instanceof Event));
+  const skipRender = !isEv && Boolean(options?.skipRender);
+  isCreatingNewAutoTrade = false;
+  const banner = $("new-autotrade-banner");
+  if (banner) banner.hidden = true;
+  const nameInput = $("field-new-runner-name");
+  if (nameInput) nameInput.value = "";
+  const startBtn = $("btn-start-new-autotrade");
+  if (startBtn) startBtn.hidden = true;
+  const bannerStartBtn = $("btn-banner-start-new-autotrade");
+  if (bannerStartBtn) bannerStartBtn.hidden = true;
+  if (lastDeskSettings && loopRunning) {
+    applySettings(lastDeskSettings, { force: true });
+  }
+  applyLoop();
+
+  if (!skipRender) {
+    const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+    const runners = Array.isArray(current?.all_auto_trades) && current.all_auto_trades.length
+      ? current.all_auto_trades
+      : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
+    if (runners.length) {
+      currentAutoTradeView = "runner";
+      renderMultiAutoTrades(current);
+    }
+  }
+}
+
+function handleAddAutoTrade() {
+  enterNewAutoTradeMode();
+}
+
+async function handleStartNewAutoTrade() {
   if (busy) return;
   const localError = validateReadyToRun();
   if (localError) {
@@ -4091,20 +4778,48 @@ async function handleAddAutoTrade() {
     showToast(msg, "error");
     return;
   }
+
+  const featSymbol = String(formValue("symbol", "") || "").trim().toUpperCase();
   const rawSymbols = payload.symbols || payload.symbol || "";
-  const symbols = parseSymbolsList(rawSymbols);
+  let symbols = parseSymbolsList(rawSymbols);
+
+  // If the user typed a new featured symbol that isn't in symbols, prioritize it
+  if (featSymbol && !symbols.includes(featSymbol)) {
+    const activeSyms = typeof getActiveAutoTradeSymbols === "function" ? getActiveAutoTradeSymbols() : new Set();
+    const allSymbolsActive = symbols.length > 0 && symbols.every((s) => activeSyms.has(s));
+    if (allSymbolsActive || !symbols.length) {
+      symbols = [featSymbol];
+    } else {
+      symbols.unshift(featSymbol);
+    }
+  }
 
   if (!symbols.length) {
     const msg = tx("multi_error_no_symbols", "Please enter at least one ticker symbol.");
     showToast(msg, "error");
-    const input = $("field-symbols") || $("field-symbol");
+    const input = $("field-symbol") || $("field-symbols");
+    input?.focus();
+    return;
+  }
+
+  // Pre-validate that none of the requested symbols are already actively running
+  const activeSyms = typeof getActiveAutoTradeSymbols === "function" ? getActiveAutoTradeSymbols() : new Set();
+  const duplicateSyms = symbols.filter((s) => activeSyms.has(s));
+  if (duplicateSyms.length > 0) {
+    const msg = tx(
+      "multi_error_already_active",
+      `Symbol '${duplicateSyms.join(", ")}' is already running in an active Auto Trade session. Please choose a different symbol or stop the active session first.`
+    );
+    showToast(msg, "error");
+    setFormError(msg);
+    const input = $("field-symbol") || $("field-symbols");
     input?.focus();
     return;
   }
 
   const sizeMode = payload.size_mode || "qty";
   const sizeVal = sizeMode === "notional" ? payload.trade_notional : payload.trade_qty;
-  if (!Number.isFinite(sizeVal) || sizeVal <= 0) {
+  if (sizeMode !== "ai" && (!Number.isFinite(sizeVal) || sizeVal <= 0)) {
     showToast(tx("invalid_size_value", "Please enter a valid positive trade size."), "error");
     return;
   }
@@ -4127,16 +4842,22 @@ async function handleAddAutoTrade() {
 
   const env = deskEnvLabel() === "live" ? "LIVE" : "paper";
   const symText = symbols.length > 1 ? `${symbols.length} tickers (${symbols.join(", ")})` : symbols[0];
+  const customRunnerName = $("field-new-runner-name")?.value?.trim() || "";
+  const displayName = customRunnerName || getGeneratedAutoTradeNameFromForm();
   const ok = window.confirm(
     tx(
       "confirm_add_autotrade",
-      `Start background Auto Trade for ${symText} with ${env} orders under ${engineName}?`
+      `Start background Auto Trade for ${symText} (${displayName}) with ${env} orders under ${engineName}?`
     )
   );
   if (!ok) return;
 
-  const btn = $("btn-add-autotrade");
-  if (btn) btn.disabled = true;
+  const startBtns = [
+    $("btn-start-new-autotrade"),
+    $("btn-banner-start-new-autotrade"),
+    $("btn-add-autotrade"),
+  ].filter(Boolean);
+  startBtns.forEach((b) => (b.disabled = true));
 
   try {
     setBusy(true, tx("starting_autotrade", "Starting Auto Trade…"));
@@ -4144,6 +4865,7 @@ async function handleAddAutoTrade() {
       method: "POST",
       body: JSON.stringify({
         symbols: symbols,
+        name: customRunnerName || null,
         strategy_mode: isCustom ? "" : payload.strategy_mode,
         custom_engine_id: isCustom ? payload.custom_engine_id : null,
         engine_name: engineName,
@@ -4157,7 +4879,19 @@ async function handleAddAutoTrade() {
       }),
     });
 
-    symbols.forEach((s) => expandedRunnerIds.add(s.toUpperCase()));
+    let targetRunnerId = null;
+    if (res?.started && Array.isArray(res.started) && res.started.length) {
+      res.started.forEach((r) => {
+        if (r.id) expandedRunnerIds.add(String(r.id));
+        if (r.symbol) expandedRunnerIds.add(String(r.symbol).toUpperCase());
+      });
+      targetRunnerId = String(res.started[0].id || res.started[0].symbol);
+    } else {
+      symbols.forEach((s) => expandedRunnerIds.add(s.toUpperCase()));
+      if (symbols[0]) targetRunnerId = symbols[0];
+    }
+    selectedRunnerId = targetRunnerId;
+    currentAutoTradeView = "runner";
 
     showToast(
       tx(
@@ -4167,13 +4901,20 @@ async function handleAddAutoTrade() {
       "ok"
     );
 
-    await refreshStatus();
+    exitNewAutoTradeMode({ skipRender: true });
+    const freshState = await refreshStatus();
+    selectedRunnerId = targetRunnerId;
+    currentAutoTradeView = "runner";
+    if (freshState) {
+      renderMultiAutoTrades(freshState);
+    }
+    setMultiRunnersCollapsed(false, true);
     $("multi-runners-card")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (err) {
     showToast(err.message || tx("error_start_autotrade", "Failed to start auto-trade"), "error");
   } finally {
     setBusy(false);
-    if (btn) btn.disabled = false;
+    startBtns.forEach((b) => (b.disabled = false));
   }
 }
 
@@ -4182,7 +4923,11 @@ function renderMultiAutoTrades(state) {
   const listEl = $("multi-runners-list");
   const badgeEl = $("multi-runners-badge");
   const emptyEl = $("multi-runners-empty");
+  const toolbarEl = $("multi-runners-toolbar");
   const stopAllBtn = $("btn-stop-all-runners");
+  const clearStoppedBtn = $("btn-clear-stopped-runners");
+  const detailCard = $("runner-detail-card");
+  const signalWall = $("signal-wall");
   if (!card || !listEl) return;
 
   syncAddAutoTradeVisibility(state);
@@ -4193,6 +4938,8 @@ function renderMultiAutoTrades(state) {
 
   const activeRunners = runners.filter((r) => r.is_running);
   const activeCount = activeRunners.length;
+  const stoppedRunners = runners.filter((r) => !r.is_running);
+  const stoppedCount = stoppedRunners.length;
 
   if (badgeEl) {
     badgeEl.textContent = activeCount > 0
@@ -4203,143 +4950,673 @@ function renderMultiAutoTrades(state) {
   if (!runners.length) {
     card.hidden = false;
     listEl.innerHTML = "";
+    if (toolbarEl) toolbarEl.hidden = true;
     if (emptyEl) emptyEl.hidden = false;
     if (stopAllBtn) stopAllBtn.hidden = true;
+    if (clearStoppedBtn) clearStoppedBtn.hidden = true;
+    if (detailCard) detailCard.hidden = true;
+    if (signalWall) signalWall.hidden = false;
+    selectedRunnerId = null;
     return;
   }
 
   card.hidden = false;
+  if (toolbarEl) toolbarEl.hidden = false;
   if (emptyEl) emptyEl.hidden = true;
   if (stopAllBtn) stopAllBtn.hidden = activeCount === 0;
+  if (clearStoppedBtn) clearStoppedBtn.hidden = stoppedCount === 0;
 
-  listEl.innerHTML = runners
-    .map((runner) => {
-      const sym = String(runner.symbol || "").toUpperCase();
-      const runnerId = String(runner.id || sym);
-      const isExpanded = expandedRunnerIds.has(sym) || expandedRunnerIds.has(runnerId);
-      const engine = runner.engine_name || String(runner.strategy_mode || "").toUpperCase() || "—";
-      const sig = String(runner.last_signal || "hold").toLowerCase();
-      const px = runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "—";
-      const reason = runner.error || runner.last_reason || tx("no_signals_yet", "No signal generated yet.");
-      const isErr = !!runner.error;
-      const statusText = isErr
-        ? "ERROR"
-        : (runner.status === "stopping" ? "STOPPING" : (runner.is_running ? "RUNNING" : "STOPPED"));
-      const badgeClass = runner.is_running && !isErr
-        ? "badge-copper"
-        : (isErr ? "badge-danger" : "badge-neutral");
+  // Determine selected runner: keep currently selected if valid, otherwise pick first running or first in list
+  let selectedRunner = runners.find((r) => String(r.id || r.symbol) === selectedRunnerId);
+  if (!selectedRunner) {
+    selectedRunner = runners.find((r) => r.is_running) || runners[0];
+    selectedRunnerId = String(selectedRunner.id || selectedRunner.symbol);
+  }
 
-      const sizeDisplay = runner.size_display || (
-        runner.settings?.size_mode === "notional" && runner.settings?.trade_notional
-          ? `$${Number(runner.settings.trade_notional).toFixed(2)}`
-          : (runner.settings?.trade_qty ? `${runner.settings.trade_qty} sh` : "—")
+  // If the user is currently renaming in the sidebar list, don't clobber their typing!
+  if (!listEl.querySelector(".multi-runner-rename-box")) {
+    listEl.innerHTML = runners
+      .map((runner) => {
+        const rawSyms = Array.isArray(runner.symbols) && runner.symbols.length
+          ? runner.symbols
+          : (runner.symbol ? [runner.symbol] : []);
+        const symbols = rawSyms.map((s) => String(s).toUpperCase());
+        const sym = symbols[0] || String(runner.symbol || "").toUpperCase();
+        const runnerId = String(runner.id || sym);
+        const isSelected = String(runner.id || runner.symbol) === selectedRunnerId;
+        const engine = runner.engine_name || String(runner.strategy_mode || "").toUpperCase() || "—";
+        const sig = String(runner.last_signal || "hold").toLowerCase();
+        const px = runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "—";
+        const isErr = !!runner.error;
+        const isCircuitBreaker = !!runner.circuit_breaker_triggered;
+        const statusText = isCircuitBreaker
+          ? "CIRCUIT BREAKER"
+          : (isErr
+            ? "ERROR"
+            : (runner.status === "stopping" ? "STOPPING" : (runner.is_running ? "RUNNING" : "STOPPED")));
+        const badgeClass = isCircuitBreaker || isErr
+          ? "badge-danger"
+          : (runner.is_running ? "badge-copper" : "badge-neutral");
+
+        const realizedPl = Number(runner.realized_pl || 0);
+        let unrealizedPl = Number(runner.unrealized_pl || 0);
+        let totalPl = Number(runner.total_pl || 0);
+
+        const runnerSymbols = Array.isArray(runner.symbols) && runner.symbols.length ? runner.symbols : [sym];
+        if (loopOrderPositions && runner.is_running) {
+          let hasLive = false;
+          let sumLiveUnrealized = 0;
+          for (const s of runnerSymbols) {
+            const lp = loopOrderPositions[s];
+            if (lp && lp.unrealized_pl != null && !Number.isNaN(Number(lp.unrealized_pl))) {
+              sumLiveUnrealized += Number(lp.unrealized_pl);
+              hasLive = true;
+            } else if (runner.symbols_data && runner.symbols_data[s]) {
+              sumLiveUnrealized += Number(runner.symbols_data[s].unrealized_pl || 0);
+            }
+          }
+          if (hasLive) {
+            unrealizedPl = sumLiveUnrealized;
+            totalPl = realizedPl + unrealizedPl;
+          }
+        }
+
+        const pnlSign = totalPl > 0.005 ? "+" : (totalPl < -0.005 ? "-" : "");
+        const pnlAbs = Math.abs(totalPl).toFixed(2);
+        const pnlDisplay = `${pnlSign}$${pnlAbs}`;
+        const toneClass = totalPl > 0.005 ? "is-profit" : (totalPl < -0.005 ? "is-loss" : "is-flat");
+        const pnlTitle = `Loop P/L: ${pnlDisplay} (Realized: $${realizedPl.toFixed(2)}, Unrealized: $${unrealizedPl.toFixed(2)})`;
+
+        const timeframe = runner.timeframe || runner.settings?.bar_timeframe || "—";
+        const runnerName = runner.name || `${sym} · ${engine} (${timeframe})`;
+
+        const symDisplay = symbols.length > 1
+          ? `<div class="multi-runner-sym-group">
+              <span class="multi-runner-sym mono">${escapeHtml(sym)}</span>
+              <span class="multi-runner-sym-more" title="${escapeHtml(symbols.join(", "))}">+${symbols.length - 1}</span>
+            </div>`
+          : `<span class="multi-runner-sym mono">${escapeHtml(sym)}</span>`;
+
+        return `
+          <div class="multi-runner-item ${isErr || isCircuitBreaker ? "has-error" : ""} ${isSelected ? "is-selected" : ""}" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" role="button" tabindex="0" title="${escapeHtml(tx("click_to_view_details", "Click to view full details on the left"))}">
+            <div class="multi-runner-row-top">
+              <span class="multi-runner-beacon ${runner.is_running ? "is-active" : "is-idle"}" aria-hidden="true">
+                <span class="beacon-ring"></span>
+                <span class="beacon-core"></span>
+              </span>
+              <div class="multi-runner-identity" data-id="${escapeHtml(runnerId)}">
+                <span class="multi-runner-name" title="${escapeHtml(runnerName)}">${escapeHtml(runnerName)}</span>
+              </div>
+              <span class="badge ${badgeClass} badge-xs">${escapeHtml(statusText)}</span>
+            </div>
+            <div class="multi-runner-row-sub">
+              <div class="multi-runner-sym-wrap">
+                ${symDisplay}
+                <span class="multi-runner-sig ${escapeHtml(sig)}">${escapeHtml(sig.toUpperCase())}</span>
+              </div>
+              <div class="multi-runner-metrics-wrap">
+                ${runner.last_price != null && Number(runner.last_price) > 0 ? `<span class="multi-runner-px mono">$${Number(runner.last_price).toFixed(2)}</span>` : ""}
+                <span class="multi-runner-pnl ${toneClass} mono" title="${escapeHtml(pnlTitle)}">${escapeHtml(pnlDisplay)}</span>
+              </div>
+            </div>
+            <div class="multi-runner-row-actions">
+              <span class="multi-runner-select-hint">${isSelected ? `✓ ${escapeHtml(tx("active_view", "Active View"))}` : escapeHtml(tx("click_to_inspect", "Click to inspect"))}</span>
+              <div class="multi-runner-quick-btns">
+                ${runner.is_running ? `
+                  <button type="button" class="btn btn-xs btn-ghost-danger btn-stop-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("stop_autotrade", "Stop Auto-Trade"))}">
+                    ${escapeHtml(tx("stop", "Stop"))}
+                  </button>
+                ` : `
+                  <button type="button" class="btn btn-xs btn-ghost-copper btn-restart-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("restart_autotrade", "Restart Auto-Trade"))}">
+                    ${escapeHtml(tx("restart", "Restart"))}
+                  </button>
+                  <button type="button" class="btn btn-xs btn-ghost-danger btn-remove-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("remove_from_list", "Remove from list"))}">
+                    ${escapeHtml(tx("clear", "Clear"))}
+                  </button>
+                `}
+              </div>
+            </div>
+          </div>`;
+      })
+      .join("");
+  }
+
+  const switchBanner = $("wall-runner-switch-banner");
+  if (currentAutoTradeView === "wall") {
+    if (detailCard) detailCard.hidden = true;
+    if (signalWall) signalWall.hidden = false;
+    if (switchBanner) switchBanner.hidden = false;
+  } else {
+    if (detailCard) detailCard.hidden = false;
+    if (signalWall) signalWall.hidden = true;
+    if (switchBanner) switchBanner.hidden = true;
+    renderSelectedRunnerDetails(selectedRunner, state);
+  }
+}
+
+function formatDiagnosisReason(reasonStr) {
+  if (!reasonStr || reasonStr === "—" || reasonStr === "no symbols") {
+    return `<span class="diag-empty">—</span>`;
+  }
+  const str = String(reasonStr).trim();
+  const aiMatch = str.match(/^\[([^\]]+)\]\s*(?:conf=([0-9.]+))?\s*(?:ta=([a-zA-Z0-9_-]+))?\s*(?:news=([a-zA-Z0-9_-]+))?\s*(?:\|\s*(.*))?$/i);
+  if (aiMatch) {
+    const conf = aiMatch[2] != null && !Number.isNaN(Number(aiMatch[2])) ? Math.round(Number(aiMatch[2]) * 100) : null;
+    const ta = aiMatch[3] ? aiMatch[3].toLowerCase() : "";
+    const thesis = (aiMatch[5] || "").trim();
+
+    const toneClass = ta === "bullish" ? "is-bullish" : (ta === "bearish" ? "is-bearish" : "is-neutral");
+    const confLabel = conf != null ? `${conf}%` : "";
+    const badgeText = [confLabel, ta ? ta.toUpperCase() : ""].filter(Boolean).join(" · ");
+
+    return `
+      <div class="diag-cell-wrap" title="${escapeHtml(str)}">
+        ${badgeText ? `<span class="diag-badge ${toneClass}">${escapeHtml(badgeText)}</span>` : ""}
+        <span class="diag-thesis-text">${escapeHtml(thesis || str)}</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="diag-cell-wrap" title="${escapeHtml(str)}">
+      <span class="diag-thesis-text">${escapeHtml(str)}</span>
+    </div>
+  `;
+}
+
+function renderSelectedRunnerDetails(runner, state) {
+  const card = $("runner-detail-card");
+  const contentEl = $("runner-detail-content");
+  if (!card || !contentEl || !runner) return;
+
+  // If the user is currently renaming this runner, don't clobber their typing!
+  if (contentEl.querySelector(".multi-runner-rename-box")) {
+    return;
+  }
+
+  const rawSyms = Array.isArray(runner.symbols) && runner.symbols.length
+    ? runner.symbols
+    : (runner.symbol ? [runner.symbol] : []);
+  const symbols = rawSyms.map((s) => String(s).toUpperCase());
+  const sym = symbols[0] || String(runner.symbol || "").toUpperCase();
+  const runnerId = String(runner.id || sym);
+  const engine = runner.engine_name || String(runner.strategy_mode || "").toUpperCase() || "—";
+  const sig = String(runner.last_signal || "hold").toLowerCase();
+  const symbolsData = runner.symbols_data || {};
+  let reason = runner.error || runner.last_reason;
+  if (!reason || reason === "no symbols") {
+    const symReason = symbolsData[sym]?.last_reason || symbolsData[sym]?.reason;
+    if (symReason && symReason !== "no symbols") {
+      reason = symReason;
+    } else {
+      const anyReason = Object.values(symbolsData).find(
+        (d) => (d.last_reason && d.last_reason !== "no symbols") || (d.reason && d.reason !== "no symbols")
       );
+      if (anyReason) {
+        reason = anyReason.last_reason || anyReason.reason;
+      } else if (!runner.is_running) {
+        reason = tx("autotrade_stopped_reason", "Auto-trade is stopped.");
+      } else {
+        reason = tx("no_signals_yet", "No signal generated yet.");
+      }
+    }
+  }
+  const isErr = !!runner.error;
+  const isCircuitBreaker = !!runner.circuit_breaker_triggered;
+  const statusText = isCircuitBreaker
+    ? "CIRCUIT BREAKER"
+    : (isErr
+      ? "ERROR"
+      : (runner.status === "stopping" ? "STOPPING" : (runner.is_running ? "RUNNING" : "STOPPED")));
+  const badgeClass = isCircuitBreaker || isErr
+    ? "badge-danger"
+    : (runner.is_running ? "badge-copper" : "badge-neutral");
 
-      const timeframe = runner.timeframe || runner.settings?.bar_timeframe || "—";
-      const pollSeconds = runner.poll_seconds || runner.settings?.poll_seconds || "—";
-      const cycles = runner.cycles_count || 0;
-      const trades = runner.trades_count || 0;
-      const uptime = runner.uptime_seconds != null ? formatRunnerUptime(runner.uptime_seconds) : "—";
+  const realizedPl = Number(runner.realized_pl || 0);
+  let unrealizedPl = Number(runner.unrealized_pl || 0);
+  let totalPl = Number(runner.total_pl || 0);
 
-      const startedAt = runner.started_at
-        ? new Date(runner.started_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-        : "—";
+  const runnerSymbols = Array.isArray(runner.symbols) && runner.symbols.length ? runner.symbols : [sym];
+  if (loopOrderPositions && runner.is_running) {
+    let hasLive = false;
+    let sumLiveUnrealized = 0;
+    for (const s of runnerSymbols) {
+      const lp = loopOrderPositions[s];
+      if (lp && lp.unrealized_pl != null && !Number.isNaN(Number(lp.unrealized_pl))) {
+        sumLiveUnrealized += Number(lp.unrealized_pl);
+        hasLive = true;
+      } else if (runner.symbols_data && runner.symbols_data[s]) {
+        sumLiveUnrealized += Number(runner.symbols_data[s].unrealized_pl || 0);
+      }
+    }
+    if (hasLive) {
+      unrealizedPl = sumLiveUnrealized;
+      totalPl = realizedPl + unrealizedPl;
+    }
+  }
+
+  const pnlSign = totalPl > 0.005 ? "+" : (totalPl < -0.005 ? "-" : "");
+  const pnlAbs = Math.abs(totalPl).toFixed(2);
+  const pnlDisplay = `${pnlSign}$${pnlAbs}`;
+  const toneClass = totalPl > 0.005 ? "is-profit" : (totalPl < -0.005 ? "is-loss" : "is-flat");
+
+  const sizeDisplay = runner.size_display || (
+    runner.settings?.size_mode === "notional" && runner.settings?.trade_notional
+      ? `$${Number(runner.settings.trade_notional).toFixed(2)}`
+      : (runner.settings?.trade_qty ? `${runner.settings.trade_qty} sh` : "—")
+  );
+
+  const timeframe = runner.timeframe || runner.settings?.bar_timeframe || "—";
+  const runnerName = runner.name || `${sym} · ${engine} (${timeframe})`;
+  const pollSeconds = runner.poll_seconds || runner.settings?.poll_seconds || "—";
+  const cycles = runner.cycles_count || 0;
+  const trades = runner.trades_count || 0;
+  const uptime = runner.uptime_seconds != null ? formatRunnerUptime(runner.uptime_seconds) : "—";
+  const winRateDisplay = runner.win_rate != null ? `${runner.win_rate}% (${runner.trades_won || 0}W / ${runner.trades_lost || 0}L)` : "—";
+  const profitFactorDisplay = runner.profit_factor != null ? `${runner.profit_factor}x` : "—";
+  const circuitBreakerDisplay = runner.max_loss_limit ? `-$${Number(runner.max_loss_limit).toFixed(2)}` : tx("disabled", "Disabled");
+  const sessionDisplay = runner.session_hours === "all" ? tx("all_sessions", "All Sessions") : tx("regular_hours", "Regular Hours");
+  const capDisplay = runner.max_notional_cap ? `$${Number(runner.max_notional_cap).toFixed(2)}` : tx("none", "None");
+
+  const startedAt = runner.started_at
+    ? new Date(runner.started_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
+
+  // Find all active open positions across all symbols
+  const openPositions = [];
+  for (const s of runnerSymbols) {
+    const sUpper = String(s).toUpperCase();
+    const symData = symbolsData[sUpper] || symbolsData[s] || {};
+    const livePos = loopOrderPositions?.[sUpper] || loopOrderPositions?.[s];
+
+    let q = 0;
+    let side = "FLAT";
+    let uPl = 0;
+    let pxVal = null;
+
+    if (livePos && livePos.qty != null && Math.abs(Number(livePos.qty)) > 0) {
+      q = Number(livePos.qty);
+      side = livePos.side || "long";
+      uPl = livePos.unrealized_pl != null ? Number(livePos.unrealized_pl) : 0;
+      pxVal = livePos.current_price;
+    } else if (symData.position_qty != null && Math.abs(Number(symData.position_qty)) > 0) {
+      q = Number(symData.position_qty);
+      side = symData.position_side || "long";
+      uPl = symData.unrealized_pl != null ? Number(symData.unrealized_pl) : 0;
+      pxVal = symData.last_price;
+    } else if (sUpper === sym && runner.position_qty != null && Math.abs(Number(runner.position_qty)) > 0) {
+      q = Number(runner.position_qty);
+      side = runner.position_side || "long";
+      uPl = runner.unrealized_pl != null ? Number(runner.unrealized_pl) : 0;
+      pxVal = runner.last_price;
+    }
+
+    if (Math.abs(q) > 0) {
+      openPositions.push({
+        symbol: sUpper,
+        qty: Math.abs(q),
+        side: String(side).toLowerCase(),
+        unrealized_pl: uPl,
+        price: pxVal,
+      });
+    }
+  }
+
+  let posDisplay = tx("flat", "Flat");
+  let posToneClass = "is-flat";
+  let posSub = (sizeDisplay && sizeDisplay !== "—")
+    ? `${tx("order_size_label", "Order Size:")} ${sizeDisplay}`
+    : "—";
+
+  if (openPositions.length === 1) {
+    const p = openPositions[0];
+    posDisplay = `${p.symbol}: ${p.qty} sh (${p.side.toUpperCase()})`;
+    posToneClass = "is-holding";
+    posSub = runnerSymbols.length > 1
+      ? `${tx("active_of_total", "1 of {count} active", { count: runnerSymbols.length })} · ${tx("size_label", "Size:")} ${sizeDisplay}`
+      : `${tx("size_label", "Size:")} ${sizeDisplay}`;
+  } else if (openPositions.length > 1) {
+    posDisplay = tx("active_positions_count", "{count} Active Positions", { count: openPositions.length });
+    posToneClass = "is-holding";
+    posSub = openPositions.map((p) => `${p.symbol} (${p.qty})`).join(", ");
+  }
+
+  const primarySd = symbolsData[sym] || symbolsData[sym.toLowerCase()] || {};
+  const rawPx = primarySd.last_price != null ? primarySd.last_price : runner.last_price;
+  const px = rawPx != null && !Number.isNaN(Number(rawPx))
+    ? `$${Number(rawPx).toFixed(2)}`
+    : "—";
+
+  // Scan for any actionable signal (BUY or SELL) across all symbols
+  let activeSignal = null;
+  for (const s of runnerSymbols) {
+    const sUpper = String(s).toUpperCase();
+    const sd = symbolsData[sUpper] || symbolsData[s] || {};
+    const sSig = String(sd.last_signal || (sUpper === sym ? runner.last_signal : "hold") || "hold").toLowerCase();
+    if (sSig === "buy" || sSig === "sell") {
+      const sPx = sd.last_price != null
+        ? `$${Number(sd.last_price).toFixed(2)}`
+        : (sUpper === sym && runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "");
+      activeSignal = { symbol: sUpper, signal: sSig, price: sPx };
+      break;
+    }
+  }
+
+  let heroSig = sig;
+  let heroSigDisplay = sig.toUpperCase();
+  let heroPxDisplay = px;
+  let heroSub = `${sym} · ${timeframe}`;
+
+  if (runnerSymbols.length > 1) {
+    if (activeSignal) {
+      heroSig = activeSignal.signal;
+      heroSigDisplay = activeSignal.signal.toUpperCase();
+      heroPxDisplay = `${activeSignal.symbol} ${activeSignal.price}`.trim();
+      heroSub = `${tx("action_signal_detected", "Signal on")} ${activeSignal.symbol} · ${runnerSymbols.length} ${tx("tickers_monitored", "Tickers")} (${timeframe})`;
+    } else {
+      heroSig = "hold";
+      heroSigDisplay = "HOLD";
+      heroPxDisplay = `${runnerSymbols.length} ${tx("tickers", "Tickers")}`;
+      heroSub = `${tx("all_tickers_monitored", "All Monitored")} · ${timeframe}`;
+    }
+  }
+
+  const realizedSign = realizedPl >= 0.005 ? "+" : (realizedPl <= -0.005 ? "-" : "");
+  const realizedDisplay = `${realizedSign}$${Math.abs(realizedPl).toFixed(2)}`;
+  const realizedTone = realizedPl >= 0.005 ? "is-profit" : (realizedPl <= -0.005 ? "is-loss" : "is-flat");
+
+  const unrealizedSign = unrealizedPl >= 0.005 ? "+" : (unrealizedPl <= -0.005 ? "-" : "");
+  const unrealizedDisplay = `${unrealizedSign}$${Math.abs(unrealizedPl).toFixed(2)}`;
+  const unrealizedTone = unrealizedPl >= 0.005 ? "is-profit" : (unrealizedPl <= -0.005 ? "is-loss" : "is-flat");
+
+  const tickerRows = symbols
+    .map((s) => {
+      const sUpper = String(s).toUpperCase();
+      const sd = symbolsData[sUpper] || symbolsData[s] || {};
+      const sPx =
+        sd.last_price != null
+          ? `$${Number(sd.last_price).toFixed(2)}`
+          : (sUpper === sym && runner.last_price != null
+              ? `$${Number(runner.last_price).toFixed(2)}`
+              : "—");
+      const sSig = String(
+        sd.last_signal || (sUpper === sym ? runner.last_signal : "hold") || "hold"
+      ).toLowerCase();
+
+      const livePos = loopOrderPositions?.[sUpper] || loopOrderPositions?.[s];
+      const sPosQty =
+        livePos?.qty != null
+          ? Number(livePos.qty)
+          : (sd.position_qty != null
+              ? Number(sd.position_qty)
+              : (sUpper === sym && runner.position_qty != null
+                  ? Number(runner.position_qty)
+                  : 0));
+      const sPosSide =
+        livePos?.side || sd.position_side || (sUpper === sym ? runner.position_side : "FLAT") || "FLAT";
+      const hasPos = Math.abs(sPosQty) > 0;
+      const sPosDisplay = hasPos
+        ? `<span class="pos-pill ${escapeHtml(String(sPosSide).toLowerCase())}">${Math.abs(sPosQty)} sh (${escapeHtml(String(sPosSide).toUpperCase())})</span>`
+        : `<span class="pos-flat">${escapeHtml(tx("flat", "Flat"))}</span>`;
+
+      const sUnreal = Number(
+        livePos?.unrealized_pl != null
+          ? livePos.unrealized_pl
+          : (sd.unrealized_pl != null
+              ? sd.unrealized_pl
+              : (sUpper === sym ? runner.unrealized_pl : 0) || 0)
+      );
+      const sUnrealSign = sUnreal >= 0.005 ? "+" : (sUnreal <= -0.005 ? "-" : "");
+      const sUnrealDisplay = `${sUnrealSign}$${Math.abs(sUnreal).toFixed(2)}`;
+      const sUnrealTone =
+        sUnreal >= 0.005 ? "is-profit" : (sUnreal <= -0.005 ? "is-loss" : "is-flat");
+      const sReason = sd.last_reason || (sUpper === sym ? runner.last_reason : "") || "—";
+      const sReasonHtml = formatDiagnosisReason(sReason);
 
       return `
-      <div class="multi-runner-item ${isErr ? "has-error" : ""} ${isExpanded ? "is-expanded" : ""}" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}">
-        <div class="multi-runner-head" role="button" tabindex="0" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(tx("click_to_view_details", "Click to toggle details"))}">
-          <span class="multi-runner-beacon ${runner.is_running ? "is-active" : "is-idle"}" aria-hidden="true">
-            <span class="beacon-ring"></span>
-            <span class="beacon-core"></span>
-          </span>
-          <span class="multi-runner-sym mono">${escapeHtml(sym)}</span>
-          <span class="multi-runner-engine">${escapeHtml(engine)}</span>
-          <span class="badge ${badgeClass}">${escapeHtml(statusText)}</span>
-          <span class="multi-runner-sig ${escapeHtml(sig)}">${escapeHtml(sig.toUpperCase())}</span>
-          <span class="multi-runner-px mono">${escapeHtml(px)}</span>
-          <div class="multi-runner-head-actions">
-            ${runner.is_running ? `
-              <button type="button" class="btn btn-sm btn-ghost-danger btn-stop-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("stop_autotrade", "Stop Auto-Trade"))}">
-                ${escapeHtml(tx("stop", "Stop"))}
-              </button>
-            ` : `
-              <button type="button" class="btn btn-sm btn-ghost-copper btn-restart-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("restart_autotrade", "Restart Auto-Trade"))}">
-                ${escapeHtml(tx("restart", "Restart"))}
-              </button>
-            `}
-            <span class="multi-runner-chevron" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </span>
-          </div>
-        </div>
-
-        <div class="multi-runner-details" ${isExpanded ? "" : "hidden"}>
-          <div class="multi-details-grid">
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("strategy_engine", "Strategy / Engine"))}</div>
-              <div class="multi-detail-val">${escapeHtml(engine)} <span class="sub mono">(${escapeHtml(runner.strategy_mode || "standard")})</span></div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("bar_timeframe", "Bar Timeframe"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(String(timeframe))}</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("poll_interval", "Poll Interval"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(String(pollSeconds))}s</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("trade_size", "Trade Sizing"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(String(sizeDisplay))}</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("autotrade_cycles", "Cycles Evaluated"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(String(cycles))}</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("autotrade_trades", "Trades Executed"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(String(trades))}</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("autotrade_uptime", "Uptime"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(uptime)}</div>
-            </div>
-            <div class="multi-detail-col">
-              <div class="multi-detail-label">${escapeHtml(tx("started_at", "Started At"))}</div>
-              <div class="multi-detail-val mono">${escapeHtml(startedAt)}</div>
-            </div>
-          </div>
-
-          <div class="multi-runner-reason-box">
-            <span class="reason-label">${escapeHtml(tx("last_signal_diagnosis", "Latest Signal & Diagnosis"))}:</span>
-            <span class="reason-text">${escapeHtml(reason)}</span>
-          </div>
-
-          <div class="multi-runner-bottom-actions">
-            <button type="button" class="btn btn-sm btn-outline btn-load-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("load_into_form_title", "Load this auto-trade configuration into the Strategy Form"))}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              ${escapeHtml(tx("load_into_form", "Load into Strategy Form"))}
-            </button>
-            ${!runner.is_running ? `
-              <button type="button" class="btn btn-sm btn-ghost-danger btn-remove-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("remove_from_list", "Remove from list"))}">
-                ${escapeHtml(tx("remove", "Remove"))}
-              </button>
-            ` : ""}
-          </div>
-        </div>
-      </div>`;
+        <tr class="runner-ticker-row ${hasPos ? "has-active-position" : ""}">
+          <td class="cell-sym">${escapeHtml(sUpper)}</td>
+          <td class="cell-mono cell-price">${escapeHtml(sPx)}</td>
+          <td class="cell-center"><span class="multi-runner-sig ${escapeHtml(sSig)}">${escapeHtml(sSig.toUpperCase())}</span></td>
+          <td class="cell-pos">${sPosDisplay}</td>
+          <td class="cell-mono cell-pnl ${sUnrealTone}">${escapeHtml(sUnrealDisplay)}</td>
+          <td class="cell-reason">${sReasonHtml}</td>
+        </tr>
+      `;
     })
     .join("");
+
+  const tickersTableHtml = symbols.length > 1 ? `
+    <div class="multi-runner-tickers-section">
+      <div class="multi-runner-section-title">
+        <span>${escapeHtml(tx("tickers_in_autotrade", "Tickers in this Auto-Trade"))} (${symbols.length})</span>
+      </div>
+      <div class="multi-runner-tickers-table-wrap">
+        <table class="multi-runner-tickers-table">
+          <thead>
+            <tr>
+              <th>${escapeHtml(tx("symbol", "Symbol"))}</th>
+              <th class="col-right">${escapeHtml(tx("price", "Price"))}</th>
+              <th class="col-center">${escapeHtml(tx("signal", "Signal"))}</th>
+              <th>${escapeHtml(tx("position", "Position"))}</th>
+              <th class="col-right">${escapeHtml(tx("unrealized_pl", "Unrealized P/L"))}</th>
+              <th>${escapeHtml(tx("diagnosis", "Diagnosis / Reason"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tickerRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ` : "";
+
+  contentEl.innerHTML = `
+    <div class="runner-detail-head">
+      <div class="runner-detail-identity">
+        <span class="multi-runner-beacon ${runner.is_running ? "is-active" : "is-idle"}" aria-hidden="true">
+          <span class="beacon-ring"></span>
+          <span class="beacon-core"></span>
+        </span>
+        <div class="runner-detail-titles">
+          <div class="runner-detail-title-wrap">
+            <h2 id="runner-detail-title" class="runner-detail-title">${escapeHtml(runnerName)}</h2>
+            <button type="button" class="btn-rename-runner btn-icon-subtle" data-id="${escapeHtml(runnerId)}" data-name="${escapeHtml(runner.name || "")}" title="${escapeHtml(tx("rename_autotrade", "Rename Auto-Trade"))}" aria-label="${escapeHtml(tx("rename_autotrade", "Rename Auto-Trade"))}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+          </div>
+          <div class="runner-detail-badges">
+            <span class="badge ${badgeClass}">${escapeHtml(statusText)}</span>
+            <span class="badge-engine mono">${escapeHtml(engine)}</span>
+            <span class="badge-timeframe mono">${escapeHtml(timeframe)}</span>
+            <span class="badge-poll mono">${escapeHtml(pollSeconds)}s ${escapeHtml(tx("poll", "poll"))}</span>
+          </div>
+        </div>
+      </div>
+      <div class="runner-detail-actions">
+        <button type="button" class="btn btn-sm btn-outline btn-load-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}" title="${escapeHtml(tx("load_into_form_title", "Load this auto-trade configuration into the Strategy Form"))}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <span>${escapeHtml(tx("load_into_form", "Load into Form"))}</span>
+        </button>
+        ${runner.is_running ? `
+          <button type="button" class="btn btn-sm btn-danger btn-stop-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12"></rect></svg>
+            <span>${escapeHtml(tx("stop", "Stop"))}</span>
+          </button>
+        ` : `
+          <button type="button" class="btn btn-sm btn-copper btn-restart-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            <span>${escapeHtml(tx("restart", "Restart"))}</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost-danger btn-remove-runner" data-symbol="${escapeHtml(sym)}" data-id="${escapeHtml(runnerId)}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>${escapeHtml(tx("remove", "Remove"))}</span>
+          </button>
+        `}
+      </div>
+    </div>
+
+    <!-- Hero Signal & P/L Banner -->
+    <div class="runner-detail-hero">
+      <div class="runner-hero-stat runner-hero-signal">
+        <span class="runner-hero-label">${escapeHtml(tx("last_signal", "Last Signal"))}</span>
+        <div class="runner-hero-val-row">
+          <span class="multi-runner-sig big ${escapeHtml(heroSig)}">${escapeHtml(heroSigDisplay)}</span>
+          <span class="runner-hero-px mono">${escapeHtml(heroPxDisplay)}</span>
+        </div>
+        <span class="runner-hero-sub">${escapeHtml(heroSub)}</span>
+      </div>
+
+      <div class="runner-hero-stat runner-hero-pnl">
+        <span class="runner-hero-label">${escapeHtml(tx("loop_total_pnl", "Total Loop P/L"))}</span>
+        <div class="runner-hero-pnl-val mono ${toneClass}">${escapeHtml(pnlDisplay)}</div>
+        <div class="runner-hero-pnl-breakdown">
+          <div class="pnl-breakdown-col">
+            <span class="pnl-breakdown-label">${escapeHtml(tx("realized", "Realized"))}</span>
+            <span class="pnl-breakdown-val mono ${realizedTone}">${escapeHtml(realizedDisplay)}</span>
+          </div>
+          <div class="pnl-breakdown-sep" aria-hidden="true"></div>
+          <div class="pnl-breakdown-col">
+            <span class="pnl-breakdown-label">${escapeHtml(tx("unrealized", "Unrealized"))}</span>
+            <span class="pnl-breakdown-val mono ${unrealizedTone}">${escapeHtml(unrealizedDisplay)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="runner-hero-stat runner-hero-pos">
+        <span class="runner-hero-label">${escapeHtml(tx("current_position", "Open Position"))}</span>
+        <div class="runner-hero-val mono ${posToneClass}" title="${escapeHtml(posDisplay)}">${escapeHtml(posDisplay)}</div>
+        <span class="runner-hero-sub" title="${escapeHtml(posSub)}">${escapeHtml(posSub)}</span>
+      </div>
+    </div>
+
+    <!-- KPI Telemetry Grid -->
+    <div class="runner-detail-grid">
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("win_rate", "Win Rate"))}</span>
+        <strong class="runner-grid-val mono ${winRateDisplay === "—" ? "is-muted-val" : ""}">${escapeHtml(winRateDisplay)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("profit_factor", "Profit Factor"))}</span>
+        <strong class="runner-grid-val mono ${profitFactorDisplay === "—" ? "is-muted-val" : ""}">${escapeHtml(profitFactorDisplay)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("circuit_breaker_limit", "Circuit Breaker"))}</span>
+        <strong class="runner-grid-val mono ${circuitBreakerDisplay === tx("disabled", "Disabled") ? "is-muted-val" : ""}">${escapeHtml(circuitBreakerDisplay)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("capital_cap", "Capital Cap"))}</span>
+        <strong class="runner-grid-val mono ${capDisplay === tx("none", "None") ? "is-muted-val" : ""}">${escapeHtml(capDisplay)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("session_hours", "Session Hours"))}</span>
+        <strong class="runner-grid-val mono">${escapeHtml(sessionDisplay)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("autotrade_cycles", "Cycles / Trades"))}</span>
+        <strong class="runner-grid-val mono">${cycles} <span class="grid-sub-val">(${trades} ${escapeHtml(tx("trades", "trades"))})</span></strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("autotrade_uptime", "Uptime"))}</span>
+        <strong class="runner-grid-val mono">${escapeHtml(uptime)}</strong>
+      </div>
+      <div class="runner-grid-card">
+        <span class="runner-grid-label">${escapeHtml(tx("started_at", "Started At"))}</span>
+        <strong class="runner-grid-val mono">${escapeHtml(startedAt)}</strong>
+      </div>
+    </div>
+
+    ${tickersTableHtml}
+
+    <div class="runner-detail-reason-box">
+      <div class="reason-header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <span class="reason-title">${escapeHtml(tx("last_signal_diagnosis", "Latest Signal & Diagnosis"))}</span>
+      </div>
+      <p class="reason-body">${escapeHtml(reason)}</p>
+    </div>
+  `;
 }
 
 async function stopRunnerFromDesk(symbol) {
   if (!symbol) return;
+  const sym = String(symbol).toUpperCase();
+  const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  const allRunners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
+  const runner = allRunners.find(
+    (r) => String(r.id) === symbol || String(r.symbol).toUpperCase() === sym || (Array.isArray(r.symbols) && r.symbols.map((s) => String(s).toUpperCase()).includes(sym))
+  );
+
+  const rawRunnerSymbols = Array.isArray(runner?.symbols) && runner.symbols.length
+    ? runner.symbols
+    : (runner?.symbol ? [runner.symbol] : [sym]);
+  const runnerSymbols = rawRunnerSymbols.map((s) => String(s).toUpperCase());
+
+  let openPositions = [];
+  for (const s of runnerSymbols) {
+    const symData = runner?.symbols_data?.[s] || runner?.symbols_data?.[s.toLowerCase()];
+    if (loopOrderPositions && loopOrderPositions[s] && Math.abs(Number(loopOrderPositions[s].qty || 0)) > 0) {
+      openPositions.push({
+        symbol: s,
+        qty: loopOrderPositions[s].qty,
+        side: loopOrderPositions[s].side,
+        unrealized_pl: loopOrderPositions[s].unrealized_pl,
+        current_price: loopOrderPositions[s].current_price,
+      });
+    } else if (symData?.position_qty && Math.abs(Number(symData.position_qty)) > 0) {
+      openPositions.push({
+        symbol: s,
+        qty: symData.position_qty,
+        side: symData.position_side || "flat",
+        unrealized_pl: symData.unrealized_pl,
+        current_price: symData.last_price,
+      });
+    } else if (s === String(runner?.symbol || "").toUpperCase() && runner?.position_qty && Math.abs(Number(runner.position_qty)) > 0) {
+      openPositions.push({
+        symbol: s,
+        qty: runner.position_qty,
+        side: runner.position_side || "flat",
+        unrealized_pl: runner.unrealized_pl,
+        current_price: runner.last_price,
+      });
+    }
+  }
+
+  let closePositions = false;
+  if (openPositions.length > 0) {
+    const titleSymbols = runnerSymbols.join(", ");
+    const res = await confirmStopLoopWithPosition({
+      title: tx("stop_runner_confirm_title", `Stop Auto-Trade for ${titleSymbols}?`),
+      description: tx(
+        "stop_runner_confirm_desc",
+        `Auto-trade has open positions. Would you like to close them immediately upon stopping?`
+      ),
+      positions: openPositions,
+    });
+    if (res.action === "cancel") return;
+    closePositions = !!res.closePositions;
+  }
+
   try {
     setBusy(true, tx("stopping_autotrade", "Stopping…"));
-    await api("/api/auto-trade/multi/stop", {
+    const stopId = runner?.id || symbol;
+    const data = await api("/api/auto-trade/multi/stop", {
       method: "POST",
-      body: JSON.stringify({ symbol: symbol, id: symbol }),
+      body: JSON.stringify({ symbol: symbol, id: stopId, close_positions: closePositions }),
     });
-    showToast(tx("autotrade_stopped_toast", "Auto-Trade stopped"), "ok");
+    if (data?.loop_running === false || String(symbol).toLowerCase() === "main-loop" || String(symbol).toLowerCase() === "main") {
+      loopRunning = false;
+      loopStopping = false;
+    }
+    const stoppedLabel = runnerSymbols.join(", ");
+    showToast(
+      closePositions
+        ? tx("autotrade_stopped_closed_toast", `Auto-Trade stopped & positions closed for ${stoppedLabel}.`)
+        : tx("autotrade_stopped_toast", `Auto-Trade stopped for ${stoppedLabel}.`),
+      "ok"
+    );
     await refreshStatus();
   } catch (err) {
     showToast(err.message || tx("error_stop_autotrade", "Failed to stop auto-trade"), "error");
@@ -4374,7 +5651,8 @@ async function removeRunnerFromDesk(target) {
       method: "POST",
       body: JSON.stringify({ symbol: target, id: target }),
     });
-    expandedRunnerIds.delete(target.toUpperCase());
+    expandedRunnerIds.delete(target);
+    expandedRunnerIds.delete(String(target).toUpperCase());
     showToast(tx("autotrade_removed_toast", "Auto-Trade removed from list."), "ok");
     await refreshStatus();
   } catch (err) {
@@ -4384,19 +5662,124 @@ async function removeRunnerFromDesk(target) {
   }
 }
 
-async function stopAllRunnersFromDesk() {
+async function clearStoppedRunnersFromDesk() {
+  const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  const allRunners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
+  const stoppedRunners = allRunners.filter((r) => !r.is_running);
+  if (!stoppedRunners.length) return;
+
   const ok = window.confirm(
-    tx(
-      "stop_all_autotrades_confirm",
-      "Stop all active auto-trade runners? All background execution loops will be halted."
-    )
+    tx("clear_stopped_autotrades_confirm", "Clear all stopped auto-trades from the list?")
   );
   if (!ok) return;
 
   try {
+    setBusy(true, tx("clearing", "Clearing…"));
+    await api("/api/auto-trade/multi/clear-stopped", {
+      method: "POST",
+    });
+    for (const r of stoppedRunners) {
+      if (r.id) expandedRunnerIds.delete(r.id);
+      if (r.symbol) {
+        expandedRunnerIds.delete(r.symbol);
+        expandedRunnerIds.delete(String(r.symbol).toUpperCase());
+      }
+    }
+    showToast(tx("stopped_autotrades_cleared_toast", "Stopped auto-trades cleared."), "ok");
+    await refreshStatus();
+  } catch (err) {
+    showToast(err.message || tx("error_clear_stopped_autotrade", "Failed to clear stopped auto-trades"), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function stopAllRunnersFromDesk() {
+  const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  const allRunners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
+  const activeRunners = allRunners.filter((r) => r.is_running);
+
+  let openPositions = [];
+  const seenSyms = new Set();
+  for (const r of activeRunners) {
+    const runnerSymbols = Array.isArray(r.symbols) && r.symbols.length
+      ? r.symbols
+      : [r.symbol];
+    for (const rawSymbol of runnerSymbols) {
+      const rSym = String(rawSymbol || "").toUpperCase();
+      if (!rSym || seenSyms.has(rSym)) continue;
+      seenSyms.add(rSym);
+      const symbolData = r.symbols_data?.[rSym] || {};
+      if (loopOrderPositions && loopOrderPositions[rSym] && Math.abs(Number(loopOrderPositions[rSym].qty || 0)) > 0) {
+        openPositions.push({
+          symbol: rSym,
+          qty: loopOrderPositions[rSym].qty,
+          side: loopOrderPositions[rSym].side,
+          unrealized_pl: loopOrderPositions[rSym].unrealized_pl,
+          current_price: loopOrderPositions[rSym].current_price,
+        });
+      } else if (symbolData.position_qty && Math.abs(Number(symbolData.position_qty)) > 0) {
+        openPositions.push({
+          symbol: rSym,
+          qty: symbolData.position_qty,
+          side: symbolData.position_side,
+          unrealized_pl: symbolData.unrealized_pl,
+          current_price: symbolData.current_price || symbolData.last_price,
+        });
+      } else if (rSym === String(r.symbol || "").toUpperCase() && r.position_qty && Math.abs(Number(r.position_qty)) > 0) {
+        openPositions.push({
+          symbol: rSym,
+          qty: r.position_qty,
+          side: r.position_side,
+          unrealized_pl: r.unrealized_pl,
+          current_price: r.last_price,
+        });
+      }
+    }
+  }
+
+  let closePositions = false;
+  if (openPositions.length > 0) {
+    const res = await confirmStopLoopWithPosition({
+      title: tx("stop_all_autotrades_confirm_title", "Stop All Active Auto-Trade Runners?"),
+      description: tx(
+        "stop_all_autotrades_confirm_desc",
+        "Active auto-trades have open positions. Would you like to close these positions immediately upon stopping?"
+      ),
+      positions: openPositions,
+    });
+    if (res.action === "cancel") return;
+    closePositions = !!res.closePositions;
+  } else {
+    const ok = window.confirm(
+      tx(
+        "stop_all_autotrades_confirm",
+        "Stop all active auto-trade runners? All background execution loops will be halted."
+      )
+    );
+    if (!ok) return;
+  }
+
+  try {
     setBusy(true, tx("stopping_autotrade", "Stopping…"));
-    await api("/api/auto-trade/multi/stop-all", { method: "POST", body: "{}" });
-    showToast(tx("all_autotrades_stopped_toast", "All active auto-trades stopped"), "ok");
+    const data = await api("/api/auto-trade/multi/stop-all", {
+      method: "POST",
+      body: JSON.stringify({ close_positions: closePositions }),
+    });
+    if (data?.loop_running === false) {
+      loopRunning = false;
+      loopStopping = false;
+    }
+    showToast(
+      closePositions
+        ? tx("all_autotrades_stopped_closed_toast", "All active auto-trades stopped and positions closed.")
+        : tx("all_autotrades_stopped_toast", "All active auto-trades stopped"),
+      "ok"
+    );
     await refreshStatus();
   } catch (err) {
     showToast(err.message || tx("error_stop_autotrade", "Failed to stop auto-trade"), "error");
@@ -4409,11 +5792,15 @@ function loadRunnerIntoForm(targetIdOrSymbol) {
   const target = String(targetIdOrSymbol || "").trim();
   if (!target) return;
   const targetUpper = target.toUpperCase();
-  const allRunners = Array.isArray(lastStatus?.all_auto_trades)
-    ? lastStatus.all_auto_trades
-    : (Array.isArray(lastStatus?.active_auto_trades) ? lastStatus.active_auto_trades : []);
+  const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  const allRunners = Array.isArray(current?.all_auto_trades)
+    ? current.all_auto_trades
+    : (Array.isArray(current?.active_auto_trades) ? current.active_auto_trades : []);
   const runner = allRunners.find(
-    (r) => String(r.id) === target || String(r.symbol).toUpperCase() === targetUpper
+    (r) =>
+      String(r.id) === target ||
+      String(r.symbol).toUpperCase() === targetUpper ||
+      (Array.isArray(r.symbols) && r.symbols.some((s) => String(s || "").toUpperCase() === targetUpper))
   );
   if (!runner) return;
 
@@ -4422,10 +5809,13 @@ function loadRunnerIntoForm(targetIdOrSymbol) {
     applySettings(runner.settings, { force: true });
   }
 
+  const runnerSymbols = Array.isArray(runner.symbols) && runner.symbols.length
+    ? runner.symbols
+    : (runner.symbol ? [runner.symbol] : []);
   const symField = $("field-symbol");
   const symsField = $("field-symbols");
-  if (symField && runner.symbol) symField.value = runner.symbol;
-  if (symsField && runner.symbol) symsField.value = runner.symbol;
+  if (symField && runnerSymbols[0]) symField.value = runnerSymbols[0];
+  if (symsField && runnerSymbols.length) symsField.value = runnerSymbols.join(", ");
 
   if (runner.custom_engine_id) {
     const custSelect = $("field-custom-engine-select");
@@ -4475,11 +5865,108 @@ function loadRunnerIntoForm(targetIdOrSymbol) {
     refreshNiceSelects($("settings"));
   }
 
+  if (hasAnyRunningAutoTrade(current)) {
+    enterNewAutoTradeMode();
+  }
+
+  setStrategyCollapsed(false, false);
   $("strategy-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast(tx("runner_settings_loaded", `Loaded ${runner.symbol} configuration into Strategy Form.`), "ok");
+  const loadedSyms = runnerSymbols.join(", ") || runner.symbol;
+  showToast(tx("runner_settings_loaded", `Loaded ${loadedSyms} configuration into Strategy Form.`), "ok");
+}
+
+function startRenameRunnerUI(runnerId, currentName, targetContainer) {
+  if (!targetContainer) return;
+  if (targetContainer.querySelector(".multi-runner-rename-box")) return;
+
+  const origHtml = targetContainer.innerHTML;
+  targetContainer.innerHTML = `
+    <form class="multi-runner-rename-box" data-id="${escapeHtml(runnerId)}">
+      <input type="text" class="input input-sm multi-runner-rename-input" value="${escapeHtml(currentName)}" maxlength="80" placeholder="${escapeHtml(tx("leave_blank_for_default", "Leave blank for default name"))}" />
+      <button type="submit" class="btn btn-xs btn-copper btn-save-rename" title="${escapeHtml(tx("save", "Save"))}">✓</button>
+      <button type="button" class="btn btn-xs btn-ghost btn-cancel-rename" title="${escapeHtml(tx("cancel", "Cancel"))}">✕</button>
+    </form>
+  `;
+
+  const formEl = targetContainer.querySelector(".multi-runner-rename-box");
+  const inputEl = targetContainer.querySelector(".multi-runner-rename-input");
+  const cancelBtn = targetContainer.querySelector(".btn-cancel-rename");
+
+  if (inputEl) {
+    inputEl.focus();
+    inputEl.select();
+  }
+
+  const cancel = (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    targetContainer.innerHTML = origHtml;
+  };
+
+  cancelBtn?.addEventListener("click", cancel);
+
+  inputEl?.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      cancel();
+    }
+  });
+
+  formEl?.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+  });
+
+  formEl?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const newName = inputEl.value.trim();
+    try {
+      setBusy(true, tx("saving_rename", "Renaming Auto-Trade…"));
+      const res = await api("/api/auto-trade/multi/rename", {
+        method: "POST",
+        body: JSON.stringify({ id: runnerId, name: newName }),
+      });
+      showToast(
+        newName
+          ? tx("autotrade_renamed_toast", `Auto-trade renamed to "${newName}".`)
+          : tx("autotrade_reset_toast", "Auto-trade name reset to default."),
+        "ok"
+      );
+      targetContainer.innerHTML = origHtml;
+      if (res?.state) {
+        render(res.state, { forceSettings: false });
+      } else {
+        await refreshStatus();
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+      targetContainer.innerHTML = origHtml;
+    } finally {
+      setBusy(false);
+    }
+  });
 }
 
 $("multi-runners-list")?.addEventListener("click", (ev) => {
+  const renameBtn = ev.target.closest(".btn-rename-runner");
+  if (renameBtn) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    const runnerId = renameBtn.dataset.id;
+    const currentName = renameBtn.dataset.name || "";
+    const container = renameBtn.closest(".multi-runner-identity") || renameBtn.closest(".multi-detail-val");
+    startRenameRunnerUI(runnerId, currentName, container);
+    return;
+  }
+
+  const renameBox = ev.target.closest(".multi-runner-rename-box");
+  if (renameBox) {
+    ev.stopPropagation();
+    return;
+  }
+
   const stopBtn = ev.target.closest(".btn-stop-runner");
   if (stopBtn) {
     ev.stopPropagation();
@@ -4508,40 +5995,95 @@ $("multi-runners-list")?.addEventListener("click", (ev) => {
     return;
   }
 
-  const head = ev.target.closest(".multi-runner-head");
-  if (head) {
-    const item = head.closest(".multi-runner-item");
-    const sym = item?.dataset?.symbol;
-    const id = item?.dataset?.id || sym;
-    if (!id) return;
-    if (expandedRunnerIds.has(id) || expandedRunnerIds.has(sym)) {
-      expandedRunnerIds.delete(id);
-      expandedRunnerIds.delete(sym);
-    } else {
-      expandedRunnerIds.add(id);
+  // Select runner when clicking runner item
+  const item = ev.target.closest(".multi-runner-item");
+  if (item) {
+    const id = item.dataset.id || item.dataset.symbol;
+    if (id) {
+      selectedRunnerId = id;
+      currentAutoTradeView = "runner";
+      const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+      if (current) {
+        renderMultiAutoTrades(current);
+      }
+      if (window.innerWidth <= 992) {
+        $("runner-detail-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
-    const details = item.querySelector(".multi-runner-details");
-    const isNowExpanded = expandedRunnerIds.has(id) || expandedRunnerIds.has(sym);
-    item.classList.toggle("is-expanded", isNowExpanded);
-    head.setAttribute("aria-expanded", isNowExpanded ? "true" : "false");
-    if (details) details.hidden = !isNowExpanded;
+  }
+});
+
+$("btn-return-to-runner")?.addEventListener("click", () => {
+  currentAutoTradeView = "runner";
+  const current = (typeof latestState !== "undefined" && latestState) ? latestState : (typeof lastStatus !== "undefined" ? lastStatus : null);
+  if (current) {
+    renderMultiAutoTrades(current);
   }
 });
 
 $("multi-runners-list")?.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" || ev.key === " ") {
-    const head = ev.target.closest(".multi-runner-head");
-    if (head && !ev.target.closest("button")) {
+    if (ev.target.closest("input, button, form, a")) {
+      return;
+    }
+    const item = ev.target.closest(".multi-runner-item");
+    if (item) {
       ev.preventDefault();
-      head.click();
+      item.click();
     }
   }
 });
 
+// Event delegation for the left-side Runner Details Panel
+$("runner-detail-card")?.addEventListener("click", (ev) => {
+  const renameBtn = ev.target.closest(".btn-rename-runner");
+  if (renameBtn) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    const runnerId = renameBtn.dataset.id;
+    const currentName = renameBtn.dataset.name || "";
+    const container = renameBtn.closest(".runner-detail-title-wrap");
+    startRenameRunnerUI(runnerId, currentName, container);
+    return;
+  }
+
+  const stopBtn = ev.target.closest(".btn-stop-runner");
+  if (stopBtn) {
+    ev.stopPropagation();
+    stopRunnerFromDesk(stopBtn.dataset.id || stopBtn.dataset.symbol);
+    return;
+  }
+
+  const restartBtn = ev.target.closest(".btn-restart-runner");
+  if (restartBtn) {
+    ev.stopPropagation();
+    restartRunnerFromDesk(restartBtn.dataset.id || restartBtn.dataset.symbol);
+    return;
+  }
+
+  const removeBtn = ev.target.closest(".btn-remove-runner");
+  if (removeBtn) {
+    ev.stopPropagation();
+    removeRunnerFromDesk(removeBtn.dataset.id || removeBtn.dataset.symbol);
+    return;
+  }
+
+  const loadBtn = ev.target.closest(".btn-load-runner");
+  if (loadBtn) {
+    ev.stopPropagation();
+    loadRunnerIntoForm(loadBtn.dataset.id || loadBtn.dataset.symbol);
+    return;
+  }
+});
+
 $("btn-stop-all-runners")?.addEventListener("click", stopAllRunnersFromDesk);
+$("btn-clear-stopped-runners")?.addEventListener("click", clearStoppedRunnersFromDesk);
 $("btn-add-autotrade")?.addEventListener("click", handleAddAutoTrade);
 $("btn-header-add-autotrade")?.addEventListener("click", handleAddAutoTrade);
 $("btn-empty-launch-multi")?.addEventListener("click", handleAddAutoTrade);
+$("btn-start-new-autotrade")?.addEventListener("click", handleStartNewAutoTrade);
+$("btn-banner-start-new-autotrade")?.addEventListener("click", handleStartNewAutoTrade);
+$("btn-cancel-new-autotrade")?.addEventListener("click", exitNewAutoTradeMode);
 function validateInlineNotificationEmail() {
   const input = $("field-notification-email");
   const errEl = $("field-notification-email-error");
@@ -4700,11 +6242,15 @@ document.addEventListener("keydown", (ev) => {
 
 // Auto-trade event listeners and initialization
 document.addEventListener("DOMContentLoaded", () => {
+  initStrategyCollapse();
+  initMultiRunnersCollapse();
   syncModeUi();
   refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));
   refreshCustomEngines().catch((err) => console.error("Custom engines fetch error:", err));
 });
 if (document.readyState === "interactive" || document.readyState === "complete") {
+  initStrategyCollapse();
+  initMultiRunnersCollapse();
   syncModeUi();
   refreshStatus({ forceSettings: true }).catch((err) => showToast(err.message, "error"));
   refreshCustomEngines().catch((err) => console.error("Custom engines fetch error:", err));
@@ -4713,6 +6259,9 @@ if (document.readyState === "interactive" || document.readyState === "complete")
 function onDeskStatusUpdate(state, { forceSettings } = {}) {
   if (typeof latestState !== "undefined") {
     latestState = state;
+  }
+  if (typeof lastStatus !== "undefined") {
+    lastStatus = state;
   }
   render(state, { forceSettings });
 }
@@ -4723,6 +6272,7 @@ function onDeskStatusInterval() {
 }
 
 function onDeskLanguageChange() {
+  syncStrategyCollapsedSummary();
   syncEngineSide();
   syncModeHint();
   syncPresetHint();

@@ -175,12 +175,13 @@ class AiTradingBot:
         return {"primary": primary, "results": results}
 
     def _empty_bundle(self) -> dict[str, Any]:
+        has_symbols = bool(getattr(self, "symbols", None)) or bool(getattr(self.config, "symbol", None))
         return {
             "primary": {
                 "symbol": self.config.symbol,
                 "signal": Signal.HOLD.value,
                 "price": 0.0,
-                "reason": "no symbols",
+                "reason": "Cycle stopped" if has_symbols else "no symbols",
             },
             "results": [],
         }
@@ -245,6 +246,7 @@ class AiTradingBot:
                 context,
                 open_positions=self._open_positions,
                 day_pl_pct=day_pl_pct,
+                action=decision.action,
             )
 
             # Portfolio guards only ever block *new* risk — closing and covering stay open.
@@ -682,7 +684,8 @@ class AiTradingBot:
             return out
 
         # 2) Pre-event economic data protection for Gold & Silver (5m release window)
-        if is_precious_metal(symbol):
+        track_dollar_only = bool(getattr(self.config, "metals_dollar_index_only", False))
+        if is_precious_metal(symbol) and not track_dollar_only:
             cal = context.get("economic_calendar")
             events_5m = check_imminent_economic_events(cal, window_minutes=5.0)
             if events_5m:
@@ -691,6 +694,7 @@ class AiTradingBot:
                     symbol=symbol,
                     event=events_5m[0],
                     reversal_buy=bool(getattr(self.config, "metals_reversal_buy_on_stop", True)),
+                    track_dollar_only=track_dollar_only,
                 )
                 if prot:
                     out["event_protection"] = prot

@@ -10,6 +10,43 @@ let pairPresets = [];
 let dayPresets = [];
 let aiPresets = [];
 
+// The server also bounds its market-data reads.  This client-side guard is a
+// final recovery path for a dropped connection, so the primary action cannot
+// remain disabled indefinitely.
+const BACKTEST_REQUEST_TIMEOUT_MS = 120000;
+
+async function requestBacktest(payload) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    BACKTEST_REQUEST_TIMEOUT_MS
+  );
+  try {
+    return await api("/api/backtest", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "Backtest timed out after 2 minutes. Market data did not respond; please try again."
+      );
+    }
+    if (/failed to fetch/i.test(String(err?.message || err))) {
+      const offline = navigator.onLine === false;
+      throw new Error(
+        offline
+          ? "You appear to be offline. Reconnect, reload the page, and try the backtest again."
+          : "Cannot reach the AlgoPaca server. Reload the page, then try the backtest again."
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function findSmaPreset(id) {
   return smaPresets.find((p) => p.id === id) || null;
 }
@@ -51,13 +88,21 @@ function parsePairLegsFromText(raw) {
 function setBtError(message) {
   const el = $("bt-error");
   if (!el) return;
+  const messageEl = $("bt-error-message");
+  const apiKeysLink = $("bt-error-api-keys");
   if (!message) {
     el.hidden = true;
-    el.textContent = "";
+    if (messageEl) messageEl.textContent = "";
+    else el.textContent = "";
+    if (apiKeysLink) apiKeysLink.hidden = true;
     return;
   }
   el.hidden = false;
-  el.textContent = message;
+  if (messageEl) messageEl.textContent = message;
+  else el.textContent = message;
+  if (apiKeysLink) {
+    apiKeysLink.hidden = !/Alpaca .*credentials are incomplete/i.test(message);
+  }
 }
 
 function applyBtSmaPreset(presetId) {
@@ -327,16 +372,6 @@ function syncBacktestUi() {
   }
   if (form.elements.symbols) form.elements.symbols.disabled = false;
   if (form.elements.bar_timeframe) form.elements.bar_timeframe.disabled = !!pair || !!ls;
-
-  const stopOn = !!form.elements.stop_loss_enabled?.checked;
-  const stopLabel = $("bt-stop-pct-label");
-  if (stopLabel) stopLabel.hidden = !stopOn || pair || ls;
-
-  const stopEnabled = form.elements.stop_loss_enabled;
-  if (stopEnabled) {
-    const wrap = stopEnabled.closest("label") || stopEnabled.closest(".bt-stop-toggle");
-    if (wrap) wrap.hidden = !!pair || !!ls;
-  }
 
   const tf = form.elements.bar_timeframe?.value || "1Day";
   const daysEl = form.elements.days;
@@ -689,12 +724,11 @@ function applyDeskSettingsToBacktest(settings) {
   if (settings.ls_time_stop_bars != null && form.elements.ls_time_stop_bars) {
     form.elements.ls_time_stop_bars.value = settings.ls_time_stop_bars;
   }
-  const stopPct = Number(settings.stop_loss_pct ?? 0);
-  if (form.elements.stop_loss_enabled) {
-    form.elements.stop_loss_enabled.checked = stopPct > 0;
+  if (settings.metals_dollar_index_only !== undefined && form.elements.metals_dollar_index_only) {
+    form.elements.metals_dollar_index_only.checked = !!settings.metals_dollar_index_only;
   }
-  if (form.elements.stop_loss_pct && stopPct > 0) {
-    form.elements.stop_loss_pct.value = stopPct;
+  if (settings.metals_reversal_buy_on_stop !== undefined && form.elements.metals_reversal_buy_on_stop) {
+    form.elements.metals_reversal_buy_on_stop.checked = settings.metals_reversal_buy_on_stop !== false;
   }
   syncBacktestUi();
   saveBacktestFormDraft();
@@ -768,11 +802,11 @@ function loadBacktestFromDesk() {
     if (desk.elements.ls_time_stop_bars) {
       form.elements.ls_time_stop_bars.value = desk.elements.ls_time_stop_bars.value;
     }
-    if (desk.elements.stop_loss_enabled) {
-      form.elements.stop_loss_enabled.checked = !!desk.elements.stop_loss_enabled.checked;
+    if (desk.elements.metals_dollar_index_only && form.elements.metals_dollar_index_only) {
+      form.elements.metals_dollar_index_only.checked = !!desk.elements.metals_dollar_index_only.checked;
     }
-    if (desk.elements.stop_loss_pct) {
-      form.elements.stop_loss_pct.value = desk.elements.stop_loss_pct.value;
+    if (desk.elements.metals_reversal_buy_on_stop && form.elements.metals_reversal_buy_on_stop) {
+      form.elements.metals_reversal_buy_on_stop.checked = desk.elements.metals_reversal_buy_on_stop.checked !== false;
     }
     syncBacktestUi();
     saveBacktestFormDraft();
@@ -839,7 +873,6 @@ function backtestPayload() {
   }
   const tf = String(form.elements.bar_timeframe.value || "1Day");
   if (tf !== "1Day" && days > 60) days = 60;
-  const stopOn = !!form.elements.stop_loss_enabled?.checked;
   const symbolsRaw = String(
     form.elements.symbols?.value || form.elements.symbol?.value || "AAPL"
   ).trim();
@@ -859,7 +892,7 @@ function backtestPayload() {
     bar_timeframe: tf,
     qty: Number(form.elements.qty.value || 1),
     initial_cash: Number(form.elements.initial_cash.value || 10000),
-    stop_loss_pct: stopOn ? Number(form.elements.stop_loss_pct.value || 0) : 0,
+    stop_loss_pct: 0,
   };
   if (mode === "sma") {
     payload.sma_preset = form.elements.sma_preset.value || "classic";
@@ -918,6 +951,9 @@ function backtestPayload() {
     payload.ai_risk_pct = Number(form.elements.ai_risk_pct?.value || 0.5);
     payload.ai_max_positions = Number(form.elements.ai_max_positions?.value || 3);
     payload.metals_dollar_index_only = !!form.elements.metals_dollar_index_only?.checked;
+    payload.metals_reversal_buy_on_stop = form.elements.metals_reversal_buy_on_stop
+      ? !!form.elements.metals_reversal_buy_on_stop.checked
+      : true;
   } else {
     payload.dip_preset = form.elements.dip_preset.value || "deep";
     payload.dip_rsi_buy = Number(form.elements.dip_rsi_buy.value || 30);
@@ -943,7 +979,6 @@ function readBacktestFormDraft() {
 function saveBacktestFormDraft() {
   const form = $("backtest-form");
   if (!form) return;
-  const stopOn = !!form.elements.stop_loss_enabled?.checked;
   const draft = {
     mode: form.elements.mode?.value || "dip",
     symbols: String(form.elements.symbols?.value || form.elements.symbol?.value || "")
@@ -957,8 +992,6 @@ function saveBacktestFormDraft() {
     bar_timeframe: form.elements.bar_timeframe?.value || "1Day",
     initial_cash: form.elements.initial_cash?.value || "10000",
     qty: form.elements.qty?.value || "1",
-    stop_loss_enabled: stopOn,
-    stop_loss_pct: form.elements.stop_loss_pct?.value || "2",
     sma_preset: form.elements.sma_preset?.value || "classic",
     fast_sma: form.elements.fast_sma?.value || "10",
     slow_sma: form.elements.slow_sma?.value || "30",
@@ -989,6 +1022,9 @@ function saveBacktestFormDraft() {
     ai_risk_pct: form.elements.ai_risk_pct?.value || "0.5",
     ai_max_positions: form.elements.ai_max_positions?.value || "3",
     metals_dollar_index_only: !!form.elements.metals_dollar_index_only?.checked,
+    metals_reversal_buy_on_stop: form.elements.metals_reversal_buy_on_stop
+      ? !!form.elements.metals_reversal_buy_on_stop.checked
+      : true,
   };
   try {
     localStorage.setItem(BT_FORM_STORAGE_KEY, JSON.stringify(draft));
@@ -1038,8 +1074,6 @@ function restoreBacktestFormDraft() {
   setVal("bar_timeframe", draft.bar_timeframe);
   setVal("initial_cash", draft.initial_cash);
   setVal("qty", draft.qty);
-  setCheck("stop_loss_enabled", draft.stop_loss_enabled);
-  setVal("stop_loss_pct", draft.stop_loss_pct);
   setVal("sma_preset", draft.sma_preset);
   setVal("fast_sma", draft.fast_sma);
   setVal("slow_sma", draft.slow_sma);
@@ -1070,6 +1104,7 @@ function restoreBacktestFormDraft() {
   setVal("ai_risk_pct", draft.ai_risk_pct);
   setVal("ai_max_positions", draft.ai_max_positions);
   setCheck("metals_dollar_index_only", draft.metals_dollar_index_only);
+  setCheck("metals_reversal_buy_on_stop", draft.metals_reversal_buy_on_stop ?? true);
   return true;
 }
 
@@ -1248,12 +1283,10 @@ $("backtest-form")?.addEventListener("submit", async (ev) => {
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Running…";
+      btn.setAttribute("aria-busy", "true");
     }
     saveBacktestFormDraft();
-    const data = await api("/api/backtest", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const data = await requestBacktest(payload);
     btActiveHistoryId =
       data.history_id != null ? Number(data.history_id) : null;
     renderBacktestResult(data.result, { historyId: btActiveHistoryId });
@@ -1271,6 +1304,7 @@ $("backtest-form")?.addEventListener("submit", async (ev) => {
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Run backtest";
+      btn.removeAttribute("aria-busy");
     }
   }
 });

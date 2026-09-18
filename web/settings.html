@@ -1,122 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d131f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
-  <meta name="color-scheme" content="dark" />
-  <title>User Settings · AlgoPaca</title>
-  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
-  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css" />
-  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
-  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
+{% extends "layouts/desk.html" %}
+
+{% block title %}User Settings · AlgoPaca{% endblock %}
+
+{% block page_css %}
   <link rel="stylesheet" href="/static/css/settings.css" />
-  <script>
-    (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
-  </script>
-</head>
-<body data-page="settings">
-  <a class="skip-link" href="#main" data-i18n="skip_to_desk">Skip to desk</a>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="app">
-    <header class="masthead">
-      <div class="masthead-top">
-        <div class="masthead-brand">
-          <div class="masthead-brand-header">
-            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
-              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
-            </a>
-            <div class="masthead-brand-text">
-              <div class="settings-badge-wrap">
-                <p class="eyebrow" data-i18n="eyebrow_settings">AlgoPaca · Settings</p>
-                <span class="settings-user-tag" id="header-user-tag">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                  </svg>
-                  <span id="header-user-role-text">SETTINGS</span>
-                </span>
-              </div>
-              <h1 data-i18n="settings_title">User Settings</h1>
-            </div>
-          </div>
-          <p id="page-tagline" class="tagline" data-i18n="tagline_settings">Personalize your trader profile, security preferences, appearance themes, and safety defaults.</p>
-        </div>
-        <div class="masthead-search" id="masthead-search-container">
-          <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
-            <div class="masthead-search-box" id="header-ticker-search-box">
-              <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input
-                type="search"
-                id="header-ticker-search-input"
-                class="masthead-search-input"
-                placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
-                data-i18n-placeholder="header_search_placeholder"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Search stock tickers and markets"
-                data-i18n-aria-label="header_search_aria"
-                aria-autocomplete="list"
-                aria-controls="header-search-dropdown"
-              />
-              <div class="masthead-search-controls">
-                <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-                <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
-              </div>
-            </div>
-            <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
-          </form>
-        </div>
-        <div class="masthead-right">
-          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
-            <div class="desk-nav-group" data-nav-group="trade">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
-              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
-                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
-                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Advanced Order</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="backtest">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
-              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
-                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
-                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
-                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="portfolio">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
-              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
-                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
-                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
-                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
-              </div>
-            </div>
-          </nav>
-        </div>
-      </div>
-    </header>
+{% endblock %}
 
-    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+{% block page_id %}settings{% endblock %}
+{% block skip_link_target %}#main{% endblock %}
+{% block skip_link_i18n %}skip_to_desk{% endblock %}
+{% block skip_link_text %}Skip to desk{% endblock %}
 
-    <main id="main">
+{% block masthead_brand_text %}
+  <div class="settings-badge-wrap">
+    <p class="eyebrow" data-i18n="eyebrow_settings">AlgoPaca · Settings</p>
+    <span class="settings-user-tag" id="header-user-tag">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+      <span id="header-user-role-text">SETTINGS</span>
+    </span>
+  </div>
+  <h1 data-i18n="settings_title">User Settings</h1>
+{% endblock %}
+
+{% block tagline %}Personalize your trader profile, security preferences, appearance themes, and safety defaults.{% endblock %}
+{% block tagline_i18n %}tagline_settings{% endblock %}
+
+{% block content %}
       <div id="page-settings" class="page page-settings" data-page="settings">
 
         <!-- Settings Primary Navigation Tabs -->
@@ -980,8 +892,9 @@
         </section>
 
       </div>
-    </main>
+{% endblock %}
 
+{% block modals %}
     <!-- Modal: Delete Account Confirmation -->
     <div class="modal-backdrop" id="modal-delete-account" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title" hidden>
       <div class="modal-card modal-card-danger">
@@ -1013,12 +926,8 @@
         </div>
       </div>
     </div>
+{% endblock %}
 
-  </div>
-
-  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
-  <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js"></script>
+{% block page_scripts %}
   <script src="/static/js/settings.js"></script>
-</body>
-</html>
+{% endblock %}

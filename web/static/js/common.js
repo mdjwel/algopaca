@@ -133,6 +133,7 @@ function ensureNiceSelect(el) {
 
 /** Global State */
 let latestState = null;
+let lastStatus = null;
 let lastDeskSettings = null;
 let lastAccount = null;
 let lastAlpacaStatus = null;
@@ -981,6 +982,7 @@ async function refreshStatus({ forceSettings = false } = {}) {
   if (gen !== statusGen) return state;
 
   latestState = state;
+  lastStatus = state;
   if (state.account) {
     applyAccount(state.account);
   }
@@ -2249,6 +2251,9 @@ try {
 function initHeaderTickerSearch() {
   const mastheadTop = document.querySelector(".masthead-top");
   if (!mastheadTop) return;
+  if (document.body && document.body.getAttribute("data-page") === "setup-wizard") {
+    return;
+  }
 
   // Check if search form already exists, or inject it
   let searchContainer = document.getElementById("masthead-search-container");

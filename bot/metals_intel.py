@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
@@ -74,6 +74,12 @@ TREND_WINDOW = 200
 # Miners ratio is reported for context; it carries no score weight.
 MINERS_Z_WINDOW = 60
 MINERS_Z_SCALE = 1.5
+
+# Crude oil proxy parameters (USO) - inflation expectation and yield easing tell
+OIL_FAST_PERIODS = 20
+OIL_SLOW_PERIODS = 60
+OIL_FAST_SCALE = 0.08
+OIL_SLOW_SCALE = 0.15
 
 FACTOR_WEIGHTS: dict[str, float] = {
     "rates": 0.40,
@@ -159,6 +165,8 @@ def zscore(series: pd.Series | None, window: int) -> float | None:
     """Latest z-score over `window`, shrinking the window to the data available."""
     if series is None or len(series) < 3:
         return None
+    if not isinstance(series, pd.Series):
+        series = pd.Series(series)
     win = min(int(window), len(series))
     if win < 3:
         return None
@@ -169,17 +177,22 @@ def zscore(series: pd.Series | None, window: int) -> float | None:
     return float((float(series.iloc[-1]) - mean) / std)
 
 
-def momentum(series: pd.Series | None, periods: int) -> float | None:
+def momentum(series: pd.Series | Sequence[float] | None, periods: int) -> float | None:
     """Fractional return over `periods` bars, shortened when history is thin."""
     if series is None or len(series) < 2:
         return None
+    if not isinstance(series, pd.Series):
+        series = pd.Series(series)
     step = min(int(periods), len(series) - 1)
     if step < 1:
         return None
     past = float(series.iloc[-1 - step])
-    if past <= 0:
+    if past <= 0 or pd.isna(past):
         return None
-    return float(series.iloc[-1]) / past - 1.0
+    curr = float(series.iloc[-1])
+    if pd.isna(curr):
+        return None
+    return float(curr / past - 1.0)
 
 
 def score_rates(tlt_closes: pd.Series | None) -> float | None:
@@ -247,6 +260,128 @@ def classify_bias(score: float) -> str:
     if score <= _MODERATE_BEAR:
         return "moderate_bearish"
     return "neutral"
+
+
+def score_oil(uso_closes: pd.Series | Sequence[float] | None) -> tuple[float | None, str]:
+    """Valuation / momentum score for crude oil (USO proxy).
+
+    Falling crude oil cools inflation expectations and eases Treasury yield pressure,
+    acting as a supportive tailwind for precious metals.
+    Returns:
+        (oil_score, oil_trend)
+        oil_score: in [-1.0, 1.0], positive when oil is falling (inflation cooling = supportive for gold)
+        oil_trend: 'cooling_inflation', 'heating_inflation', 'neutral', or 'unknown'
+    """
+    if uso_closes is None or len(uso_closes) < 2:
+        return None, "unknown"
+    fast = momentum(uso_closes, OIL_FAST_PERIODS)
+    slow = momentum(uso_closes, OIL_SLOW_PERIODS)
+    parts = []
+    if fast is not None:
+        parts.append(clip_unit(-fast / OIL_FAST_SCALE))  # inverted: oil drop is positive for gold
+    if slow is not None:
+        parts.append(clip_unit(-slow / OIL_SLOW_SCALE))
+    if not parts:
+        return None, "unknown"
+    score = clip_unit(sum(parts) / len(parts))
+    if score > 0.25:
+        trend = "cooling_inflation"
+    elif score < -0.25:
+        trend = "heating_inflation"
+    else:
+        trend = "neutral"
+    return score, trend
+
+
+def detect_metals_divergence(
+    dollar_score: float | None,
+    dollar_trend: str,
+    gld_closes: pd.Series | None = None,
+    trend_regime: str = "unknown",
+) -> dict[str, Any]:
+    """Detect divergence between the US Dollar and Gold bullion.
+
+    Case C (Warning from Sept 17/18 macro): DXY rising, but Gold is still
+    rising or holding steady above its long-term trend.  A 200-day regime by
+    itself is not enough: a stale bull regime can coexist with a fresh gold
+    breakdown, where suppressing every short would be incorrect.
+    This signifies sovereign central-bank demand, fiscal deficit hedging, or geopolitical bids
+    where gold decouples from standard dollar inverse correlation.
+    Shorting gold during a bullish decoupling is prohibited.
+    """
+    dollar_strong = (dollar_trend == "rising") or (dollar_score is not None and dollar_score < -0.25)
+    gold_strong = False
+    if gld_closes is not None and len(gld_closes) >= 5:
+        recent_mom = momentum(gld_closes, min(5, len(gld_closes) - 1))
+        # "Holding" permits a flat five-bar move but never a fresh decline.
+        # Requiring both the long-term regime and near-term price behaviour
+        # keeps this protective rule from masking an actual bearish break.
+        gold_strong = bool(
+            trend_regime == "bullish_above_sma200"
+            and recent_mom is not None
+            and recent_mom >= 0.0
+        )
+    # With no recent gold series, there is no observable decoupling.  Do not
+    # infer one from the long-term regime alone.
+
+    divergence_active = bool(dollar_strong and gold_strong)
+    return {
+        "divergence_active": divergence_active,
+        "divergence_type": "bullish_decoupling" if divergence_active else "none",
+        "prohibit_shorts": divergence_active,
+        "note": (
+            "DXY rising while Gold is holding bullish structure (Case C Divergence: sovereign/central-bank demand). "
+            "Shorting gold is strictly prohibited during bullish decoupling."
+            if divergence_active
+            else "Standard macro cross-asset correlation intact."
+        ),
+    }
+
+
+def compute_three_confirmation_matrix(
+    dollar_score: float | None,
+    dollar_trend: str,
+    rates_score: float | None,
+    yield_trend: str,
+    trend_regime: str,
+    divergence_active: bool = False,
+) -> dict[str, Any]:
+    """3-Confirmation Rule for high-probability precious metals trading:
+
+    1. Dollar Structure: Bearish or falling (dollar_trend == 'falling' or dollar_score > 0.15)
+    2. Rates / Yields Structure: Falling yields / rising TLT (yield_trend == 'falling_yields' or rates_score > 0.15)
+    3. Gold Bullion Structure: Bullish regime (trend_regime == 'bullish_above_sma200')
+    """
+    conf_dollar = (dollar_trend == "falling") or (dollar_score is not None and dollar_score > 0.15)
+    conf_rates = (yield_trend == "falling_yields") or (rates_score is not None and rates_score > 0.15)
+    conf_gold = (trend_regime == "bullish_above_sma200")
+
+    count = (1 if conf_dollar else 0) + (1 if conf_rates else 0) + (1 if conf_gold else 0)
+
+    if divergence_active:
+        alignment_state = "divergent_warning"
+        summary = "DXY and Gold are diverging (Case C); hold longs, prohibit shorts, wait for clear resolution."
+    elif count == 3:
+        alignment_state = "all_three_aligned"
+        summary = "All 3 macro confirmations aligned (DXY down, Yields down, Gold bullish). Prime long setup."
+    elif count == 2:
+        alignment_state = "moderate_aligned"
+        summary = "2 of 3 macro confirmations aligned. Standard pullback setup."
+    elif count == 1:
+        alignment_state = "partial_unconfirmed"
+        summary = "Only 1 macro confirmation aligned. High chop risk; selective entries only."
+    else:
+        alignment_state = "bearish_aligned" if (dollar_trend == "rising" and yield_trend == "rising_yields") else "unconfirmed"
+        summary = "Macro headwinds dominate (rising yields & dollar). Bullish long setups stand aside."
+
+    return {
+        "conf_dollar": bool(conf_dollar),
+        "conf_rates": bool(conf_rates),
+        "conf_gold": bool(conf_gold),
+        "confirmations_count": int(count),
+        "alignment_state": alignment_state,
+        "summary": summary,
+    }
 
 
 def compute_historical_macro_series(
@@ -398,6 +533,45 @@ def compute_historical_macro_series(
         macro_score = np.round((weighted_val / total_w).fillna(0.0) * SCORE_SCALE, 2)
         metals_bias = [classify_bias(float(s)) for s in macro_score]
 
+    # 5. Oil score from USO
+    uso_df = mb.get("USO")
+    if uso_df is not None and not uso_df.empty and "close" in uso_df.columns:
+        uso_closes = uso_df["close"].astype(float).reindex(df_index, method="ffill")
+        fast_step_oil = min(OIL_FAST_PERIODS, max(2, len(uso_closes) - 1))
+        slow_step_oil = min(OIL_SLOW_PERIODS, max(5, len(uso_closes) - 1))
+        fast_mom_oil = (uso_closes / uso_closes.shift(fast_step_oil) - 1.0) / OIL_FAST_SCALE
+        slow_mom_oil = (uso_closes / uso_closes.shift(slow_step_oil) - 1.0) / OIL_SLOW_SCALE
+        fast_clip_oil = (-fast_mom_oil).clip(-1.0, 1.0)
+        slow_clip_oil = (-slow_mom_oil).clip(-1.0, 1.0)
+        oil_sum = fast_clip_oil.fillna(0.0) + slow_clip_oil.fillna(0.0)
+        oil_cnt = (fast_clip_oil.notna().astype(float) + slow_clip_oil.notna().astype(float)).replace(0, np.nan)
+        oil_score = (oil_sum / oil_cnt).clip(-1.0, 1.0)
+    else:
+        oil_score = pd.Series(np.nan, index=df_index)
+
+    oil_trend = pd.Series("neutral", index=df_index)
+    oil_trend[oil_score > 0.25] = "cooling_inflation"
+    oil_trend[oil_score < -0.25] = "heating_inflation"
+
+    # 6. Divergence and 3-Confirmation Matrix.  As with the real-time
+    # detector, a bullish 200-day regime alone is not a DXY/Gold divergence;
+    # bullion must also be holding or rising over the recent five bars.
+    dollar_strong = (dollar_trend == "rising") | (dollar_score < -0.25)
+    gold_momentum_5 = gld_closes / gld_closes.shift(5) - 1.0
+    gold_strong = (trend_regime == "bullish_above_sma200") & (gold_momentum_5 >= 0.0)
+    gold_dollar_divergence = dollar_strong & gold_strong
+
+    conf_d = (dollar_trend == "falling") | (dollar_score > 0.15)
+    conf_r = (yield_trend == "falling_yields") | (rates_score > 0.15)
+    conf_g = (trend_regime == "bullish_above_sma200")
+    confirmations_count = conf_d.astype(int) + conf_r.astype(int) + conf_g.astype(int)
+
+    three_confirmation_state = pd.Series("unconfirmed", index=df_index)
+    three_confirmation_state[confirmations_count == 1] = "partial_unconfirmed"
+    three_confirmation_state[confirmations_count == 2] = "moderate_aligned"
+    three_confirmation_state[confirmations_count == 3] = "all_three_aligned"
+    three_confirmation_state[gold_dollar_divergence] = "divergent_warning"
+
     return pd.DataFrame(
         {
             "macro_composite_score": macro_score,
@@ -411,6 +585,11 @@ def compute_historical_macro_series(
             "dollar_score": dollar_score.round(3),
             "gsr_score": gsr_score.round(3),
             "trend_score": trend_score.round(3),
+            "oil_score": oil_score.round(3),
+            "oil_trend": oil_trend,
+            "gold_dollar_divergence": gold_dollar_divergence,
+            "confirmations_count": confirmations_count,
+            "three_confirmation_state": three_confirmation_state,
         },
         index=df_index,
     )
@@ -472,6 +651,18 @@ def fetch_metals_macro_context(
     _, slv_close = _fetch_closes(service, silver_sym, _METAL_BAR_LIMIT)
     _, tlt_close = _fetch_closes(service, "TLT", _MACRO_BAR_LIMIT)
     _, gdx_close = _fetch_closes(service, "GDX", _MACRO_BAR_LIMIT)
+
+    # Crude oil (USO proxy) for inflation expectations and yield easing tell
+    uso_price = 0.0
+    try:
+        uso_mark = service.get_mark_price("USO")
+        if isinstance(uso_mark.get("price"), (int, float)):
+            uso_price = float(uso_mark["price"])
+    except Exception as exc:
+        logger.debug("Failed to fetch USO mark: %s", exc)
+
+    _, uso_close = _fetch_closes(service, "USO", _MACRO_BAR_LIMIT)
+    oil_score, oil_trend = score_oil(uso_close)
 
     # 4. Gold/Silver ratio history and relative valuation
     gsr_sma: float | None = None
@@ -629,11 +820,34 @@ def fetch_metals_macro_context(
         if active_catalyst:
             action = str(active_catalyst.get("action") or "").lower()
             if action == "hike":
-                rates_score = min(rates_score if rates_score is not None else -0.6, -0.6)
-                yield_trend = "rising_yields"
-                dollar_trend = "rising"
-                dollar_score = min(dollar_score if dollar_score is not None else -0.5, -0.5)
-                dollar_mixed = False
+                # A policy hike is not automatically a bearish market move.
+                # Classify its *observed* cross-asset reaction, rather than
+                # manufacturing a rising-yield / stronger-dollar signal when
+                # either data feed is missing or the reaction is mixed.
+                is_rebound = (
+                    (rates_score is not None and rates_score > 0.10)
+                    or (rates_score is not None and rates_score > 0.0 and dollar_score is not None and dollar_score > 0.10)
+                )
+                is_hawkish_follow_through = (
+                    rates_score is not None
+                    and rates_score < -0.10
+                    and dollar_score is not None
+                    and dollar_score < -0.10
+                )
+                if is_rebound:
+                    active_catalyst["absorbed_rebound"] = True
+                    active_catalyst["market_reaction"] = "hike_absorbed_yields_falling"
+                    if rates_score is not None and rates_score > 0:
+                        yield_trend = "falling_yields"
+                elif is_hawkish_follow_through:
+                    active_catalyst["absorbed_rebound"] = False
+                    active_catalyst["market_reaction"] = "hawkish_follow_through"
+                    yield_trend = "rising_yields"
+                    dollar_trend = "rising"
+                    dollar_mixed = False
+                else:
+                    active_catalyst["absorbed_rebound"] = False
+                    active_catalyst["market_reaction"] = "awaiting_cross_asset_confirmation"
             elif action == "cut":
                 rates_score = max(rates_score if rates_score is not None else 0.6, 0.6)
                 yield_trend = "falling_yields"
@@ -652,6 +866,24 @@ def fetch_metals_macro_context(
             )
             metals_macro_bias = classify_bias(macro_composite_score)
 
+    # 8. Divergence Detection & 3-Confirmation Matrix
+    divergence = detect_metals_divergence(
+        dollar_score=dollar_score,
+        dollar_trend=dollar_trend,
+        gld_closes=gld_close,
+        trend_regime=trend_regime,
+    )
+    gold_dollar_divergence = bool(divergence["divergence_active"])
+
+    three_conf = compute_three_confirmation_matrix(
+        dollar_score=dollar_score,
+        dollar_trend=dollar_trend,
+        rates_score=rates_score,
+        yield_trend=yield_trend,
+        trend_regime=trend_regime,
+        divergence_active=gold_dollar_divergence,
+    )
+
     if track_dollar_only:
         macro_risk_level = "normal"
         factor_weights = {"dollar": 1.0}
@@ -660,6 +892,7 @@ def fetch_metals_macro_context(
             "gsr": None,
             "trend": None,
             "dollar": None if dollar_score is None else round(dollar_score, 3),
+            "oil": None,
             "miners_unweighted": None,
         }
     else:
@@ -669,6 +902,7 @@ def fetch_metals_macro_context(
             "gsr": None if gsr_score is None else round(gsr_score, 3),
             "trend": None if trend_score is None else round(trend_score, 3),
             "dollar": None if dollar_score is None else round(dollar_score, 3),
+            "oil": None if oil_score is None else round(oil_score, 3),
             "miners_unweighted": None if miners_z is None else round(clip_unit(miners_z / MINERS_Z_SCALE), 3),
         }
         if imminent_risk:
@@ -685,12 +919,17 @@ def fetch_metals_macro_context(
         reversal_reason = dollar_snap["short_reversal_reason"]
     else:
         is_reversal = bool(
-            dollar_mixed and not (active_catalyst and active_catalyst.get("action") == "hike")
+            (dollar_mixed or gold_dollar_divergence)
+            and not (active_catalyst and active_catalyst.get("action") == "hike" and not active_catalyst.get("absorbed_rebound"))
         )
         reversal_reason = (
-            "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
-            if is_reversal
-            else None
+            "DXY-Gold bullish divergence active (central-bank demand decoupling); close short immediately"
+            if gold_dollar_divergence
+            else (
+                "US Dollar Index momentum / economic data is mixed (neutral); close short and reverse to long"
+                if is_reversal
+                else None
+            )
         )
 
     dollar_sig = dollar_snap["dollar_signal"]
@@ -734,6 +973,14 @@ def fetch_metals_macro_context(
         "dollar_change_pct": uup_change_pct,
         "dollar_signal": dollar_sig,
         "dollar_action": dollar_act,
+        "oil_score": oil_score,
+        "oil_trend": oil_trend,
+        "oil_live_price": uso_price,
+        "gold_dollar_divergence": gold_dollar_divergence,
+        "divergence_details": divergence,
+        "three_confirmation": three_conf,
+        "three_confirmation_state": three_conf["alignment_state"],
+        "confirmations_count": three_conf["confirmations_count"],
     }
 
 
@@ -961,4 +1208,3 @@ def protect_metals_position_before_event(
         current_price,
     )
     return armed_info
-

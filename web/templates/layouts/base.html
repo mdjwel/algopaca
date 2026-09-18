@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% block head_meta %}
+    {% include "partials/head.html" %}
+  {% endblock %}
+  <title>{% block title %}AlgoPaca{% endblock %}</title>
+  {% block page_css %}{% endblock %}
+</head>
+<body {% block body_attrs %}data-page="{% block page_id %}auto-trade{% endblock %}"{% endblock %}>
+  {% block body_content %}{% endblock %}
+</body>
+</html>

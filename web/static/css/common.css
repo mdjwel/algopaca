@@ -2245,8 +2245,8 @@ a.button:focus-visible {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  padding: 0.18rem;
-  gap: 0.15rem;
+  padding: 0.12rem;
+  gap: 0.1rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--line) 70%, var(--panel));
 }
@@ -2256,16 +2256,16 @@ a.button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 2rem;
-  min-height: 2rem;
-  width: 2rem;
-  height: 2rem;
+  min-width: 1.55rem;
+  min-height: 1.55rem;
+  width: 1.55rem;
+  height: 1.55rem;
   margin: 0;
   padding: 0;
   border-radius: 999px;
   background: transparent;
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: 0.74rem;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -2277,11 +2277,11 @@ a.button:focus-visible {
 
 @media (pointer: coarse) {
   .qty-unit {
-    min-width: 2.35rem;
-    min-height: 2.35rem;
-    width: 2.35rem;
-    height: 2.35rem;
-    font-size: 0.92rem;
+    min-width: 1.95rem;
+    min-height: 1.95rem;
+    width: 1.95rem;
+    height: 1.95rem;
+    font-size: 0.84rem;
   }
 }
 
@@ -2908,7 +2908,10 @@ button.ghost.date-range-apply:focus-visible {
 
 /* Toggles inside a bordered group read as loose text next to the framed
    inputs above them — give them a surface so they land as controls. */
-.field-group > .check {
+.field-group > .check,
+.field-group > .day-only > .check,
+#metals-strategy-options > .check,
+#bt-metals-options > .check {
   padding: 0.6rem 0.75rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -2916,18 +2919,33 @@ button.ghost.date-range-apply:focus-visible {
   transition: border-color 0.18s ease, background 0.18s ease;
 }
 
-.field-group > .check:hover {
+.field-group > .check:hover,
+.field-group > .day-only > .check:hover,
+#metals-strategy-options > .check:hover,
+#bt-metals-options > .check:hover {
   border-color: color-mix(in srgb, var(--copper) 30%, transparent);
   background: var(--line-soft);
 }
 
-.field-group > .check:focus-within {
+.field-group > .check:focus-within,
+.field-group > .day-only > .check:focus-within,
+#metals-strategy-options > .check:focus-within,
+#bt-metals-options > .check:focus-within {
   border-color: var(--copper);
 }
 
-.field-group > .check:has(input:checked) {
+.field-group > .check:has(input:checked),
+.field-group > .day-only > .check:has(input:checked),
+#metals-strategy-options > .check:has(input:checked),
+#bt-metals-options > .check:has(input:checked) {
   border-color: color-mix(in srgb, var(--copper) 45%, transparent);
   background: rgba(212, 137, 76, 0.07);
+}
+
+#metals-strategy-options,
+#bt-metals-options {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .form .check strong {
@@ -2962,47 +2980,6 @@ button.ghost.date-range-apply:focus-visible {
 
 .manual-actions .primary {
   flex: 1;
-}
-
-.loop-elapsed {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 0.92rem;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  background: var(--copper);
-  border-radius: var(--radius-sm);
-  padding: 0.28rem 0.55rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.loop-elapsed[data-kind="stopping"] {
-  background: transparent;
-  color: var(--copper);
-  border: 1px solid var(--copper);
-  animation: loop-stopping-pulse 1.1s ease-in-out infinite;
-}
-
-@keyframes loop-stopping-pulse {
-  50% {
-    opacity: 0.55;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loop-elapsed[data-kind="stopping"] {
-    animation: none;
-  }
-}
-
-.loop-elapsed[data-kind="last"] {
-  color: var(--copper);
-  background: transparent;
-  border: 1px solid rgba(212, 137, 76, 0.45);
-  font-weight: 500;
-  font-size: 0.78rem;
 }
 
 .actions {

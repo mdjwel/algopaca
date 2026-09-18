@@ -1,0 +1,81 @@
+<header class="masthead">
+  <div class="masthead-top">
+    <div class="masthead-brand">
+      <div class="masthead-brand-header">
+        <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
+          <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
+        </a>
+        <div class="masthead-brand-text">
+          {% block masthead_brand_text %}
+          <p class="eyebrow" data-i18n="{% block eyebrow_i18n %}eyebrow{% endblock %}">{% block eyebrow %}AlgoPaca · Simulated{% endblock %}</p>
+          <h1 data-i18n="{% block page_heading_i18n %}nav_auto_trade{% endblock %}">{% block page_heading %}Auto Trade{% endblock %}</h1>
+          {% endblock %}
+        </div>
+      </div>
+      {% block masthead_tagline %}
+      <p id="page-tagline" class="tagline" data-i18n="{% block tagline_i18n %}tagline_auto_trade{% endblock %}">{% block tagline %}Design an engine and watchlist, run a signal, then loop on paper or live.{% endblock %}</p>
+      {% endblock %}
+    </div>
+    <div class="masthead-search" id="masthead-search-container">
+      <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
+        <div class="masthead-search-box" id="header-ticker-search-box">
+          <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="search"
+            id="header-ticker-search-input"
+            class="masthead-search-input"
+            placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
+            data-i18n-placeholder="header_search_placeholder"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search stock tickers and markets"
+            data-i18n-aria-label="header_search_aria"
+            aria-autocomplete="list"
+            aria-controls="header-search-dropdown"
+          />
+          <div class="masthead-search-controls">
+            <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
+          </div>
+        </div>
+        <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
+      </form>
+    </div>
+    <div class="masthead-right">
+      <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
+        <div class="desk-nav-group" data-nav-group="trade">
+          <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
+          <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
+            <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
+            <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Advanced Order</a>
+          </div>
+        </div>
+        <div class="desk-nav-group" data-nav-group="backtest">
+          <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
+          <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
+            <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
+            <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
+            <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
+          </div>
+        </div>
+        <div class="desk-nav-group" data-nav-group="portfolio">
+          <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
+          <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
+            <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
+            <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
+            <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
+          </div>
+        </div>
+      </nav>
+    </div>
+  </div>
+  {% block masthead_subnav %}{% endblock %}
+</header>

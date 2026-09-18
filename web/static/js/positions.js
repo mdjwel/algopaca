@@ -3273,10 +3273,11 @@ function renderActiveAutoTradesBanner(data) {
       const sig = String(r.last_signal || "hold").toLowerCase();
       const px = r.last_price != null ? `$${Number(r.last_price).toFixed(2)}` : "—";
 
+      const runnerTitle = r.name ? `${r.name} (${engine})` : engine;
       return `
-      <div class="pos-autotrade-chip" data-symbol="${escapeHtml(sym)}">
+      <div class="pos-autotrade-chip" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(runnerTitle)}">
         <span class="pos-autotrade-chip-sym">${escapeHtml(sym)}</span>
-        <span class="pos-autotrade-chip-engine">${escapeHtml(engine)}</span>
+        <span class="pos-autotrade-chip-engine" title="${escapeHtml(runnerTitle)}">${escapeHtml(r.name || engine)}</span>
         <span class="pos-autotrade-chip-sig ${sig}">${escapeHtml(sig.toUpperCase())}</span>
         <span class="pos-autotrade-chip-price">${px}</span>
         <button type="button" class="pos-autotrade-chip-stop btn-stop-chip-runner" data-symbol="${escapeHtml(sym)}" title="${escapeHtml(tx("stop_autotrade", "Stop Auto-Trade"))}">
@@ -3472,9 +3473,12 @@ async function openAutoTradeModal(symbols) {
   }
 
   // Check if runner is currently active for this symbol
-  const activeRunners = (positionsData?.active_auto_trades || []).filter((r) =>
-    activeAutoTradeSymbols.includes(r.symbol)
-  );
+  const upperTargets = activeAutoTradeSymbols.map((s) => String(s || "").toUpperCase());
+  const activeRunners = (positionsData?.active_auto_trades || []).filter((r) => {
+    const syms = Array.isArray(r.symbols) && r.symbols.length ? r.symbols : [r.symbol];
+    const upperSyms = syms.map((s) => String(s || "").toUpperCase());
+    return upperTargets.some((t) => upperSyms.includes(t));
+  });
   const isRunning = isSingle && activeRunners.length > 0;
 
   if (statusBadge) {
@@ -3491,6 +3495,7 @@ async function openAutoTradeModal(symbols) {
     if (isRunning) {
       activeCard.hidden = false;
       const runner = activeRunners[0];
+      const symData = (runner.symbols_data && runner.symbols_data[firstSym]) || {};
       const engineEl = $("pos-autotrade-active-engine");
       const sigEl = $("pos-autotrade-active-signal");
       const pxEl = $("pos-autotrade-active-price");
@@ -3500,18 +3505,22 @@ async function openAutoTradeModal(symbols) {
 
       if (engineEl) engineEl.textContent = runner.engine_name || runner.strategy_mode?.toUpperCase() || "Standard";
       if (sigEl) {
-        const s = String(runner.last_signal || "hold").toLowerCase();
+        const sigVal = symData.signal || symData.last_signal || runner.last_signal || "hold";
+        const s = String(sigVal).toLowerCase();
         sigEl.className = `pos-signal-badge ${s}`;
         sigEl.textContent = s.toUpperCase();
       }
-      if (pxEl) pxEl.textContent = runner.last_price != null ? `$${Number(runner.last_price).toFixed(2)}` : "—";
+      if (pxEl) {
+        const pxVal = symData.price != null ? symData.price : (symData.last_price != null ? symData.last_price : runner.last_price);
+        pxEl.textContent = pxVal != null ? `$${Number(pxVal).toFixed(2)}` : "—";
+      }
       if (cyclesEl) cyclesEl.textContent = String(runner.cycles_count || 0);
       if (uptimeEl) {
         const sec = runner.uptime_seconds || 0;
         const mins = Math.floor(sec / 60);
         uptimeEl.textContent = mins > 0 ? `${mins}m ${sec % 60}s` : `${sec}s`;
       }
-      if (reasonEl) reasonEl.textContent = runner.last_reason || runner.error || "—";
+      if (reasonEl) reasonEl.textContent = symData.reason || symData.last_reason || runner.last_reason || runner.error || "—";
     } else {
       activeCard.hidden = true;
     }
@@ -3550,6 +3559,19 @@ async function openAutoTradeModal(symbols) {
         sizeInp.value = runner.settings.trade_qty;
       }
     }
+
+    const maxLossInp = $("pos-autotrade-max-loss");
+    if (maxLossInp) {
+      maxLossInp.value = runner.max_loss_limit != null ? runner.max_loss_limit : "";
+    }
+    const sessSelect = $("pos-autotrade-session");
+    if (sessSelect) {
+      sessSelect.value = runner.session_hours || "regular";
+    }
+    const notionalCapInp = $("pos-autotrade-max-notional");
+    if (notionalCapInp) {
+      notionalCapInp.value = runner.max_notional_cap != null ? runner.max_notional_cap : "";
+    }
   } else {
     await setAutoTradeTab("standard");
     const stdSelect = $("pos-standard-strategy-select");
@@ -3562,6 +3584,13 @@ async function openAutoTradeModal(symbols) {
     if (pollSelect) pollSelect.value = "30";
 
     syncSizingModeUI("qty");
+
+    const maxLossInp = $("pos-autotrade-max-loss");
+    if (maxLossInp) maxLossInp.value = "";
+    const sessSelect = $("pos-autotrade-session");
+    if (sessSelect) sessSelect.value = "regular";
+    const notionalCapInp = $("pos-autotrade-max-notional");
+    if (notionalCapInp) notionalCapInp.value = "";
 
     const pos = (positionsData?.positions || []).find((p) => p.symbol === firstSym);
     const defQty = pos && pos.qty && Math.abs(parseFloat(pos.qty)) > 0
@@ -3620,13 +3649,17 @@ async function submitAutoTradeModal() {
   const sizeMode = $("pos-autotrade-sizing-mode")?.value || "qty";
   const sizeVal = parseFloat($("pos-autotrade-size-input")?.value || "1");
 
-  if (!Number.isFinite(sizeVal) || sizeVal <= 0) {
+  if (sizeMode !== "ai" && (!Number.isFinite(sizeVal) || sizeVal <= 0)) {
     if (errEl) {
       errEl.hidden = false;
       errEl.textContent = tx("invalid_size_value", "Please enter a valid positive trade size.");
     }
     return;
   }
+
+  const maxLossVal = parseFloat($("pos-autotrade-max-loss")?.value || "");
+  const sessVal = $("pos-autotrade-session")?.value || "regular";
+  const notionalCapVal = parseFloat($("pos-autotrade-max-notional")?.value || "");
 
   const payload = {
     // A custom engine brings its own base strategy, so leave the mode empty
@@ -3639,6 +3672,9 @@ async function submitAutoTradeModal() {
     size_mode: sizeMode,
     trade_qty: sizeMode === "qty" ? sizeVal : null,
     trade_notional: sizeMode === "notional" ? sizeVal : null,
+    max_loss_limit: Number.isFinite(maxLossVal) && maxLossVal > 0 ? maxLossVal : null,
+    session_hours: sessVal,
+    max_notional_cap: Number.isFinite(notionalCapVal) && notionalCapVal > 0 ? notionalCapVal : null,
   };
 
   if (submitBtn) {
@@ -3676,6 +3712,21 @@ async function submitAutoTradeModal() {
 
 async function stopAutoTradeForCurrentModal() {
   if (activeAutoTradeSymbols.length === 0) return;
+  const hasPositions = activeAutoTradeSymbols.some((s) => {
+    const p = (positionsData?.positions || []).find((pos) => pos.symbol === s);
+    return p && Math.abs(parseFloat(p.qty || 0)) > 0;
+  });
+
+  let closePositions = false;
+  if (hasPositions) {
+    closePositions = window.confirm(
+      tx(
+        "stop_modal_close_positions_confirm",
+        "Also close open positions for these symbols upon stopping auto-trade?"
+      )
+    );
+  }
+
   const stopBtn = $("btn-autotrade-modal-stop");
   if (stopBtn) {
     stopBtn.disabled = true;
@@ -3684,13 +3735,17 @@ async function stopAutoTradeForCurrentModal() {
 
   try {
     await Promise.all(
-      activeAutoTradeSymbols.map((sym) =>
-        fetch("/api/auto-trade/multi/stop", {
+      activeAutoTradeSymbols.map(async (sym) => {
+        const res = await fetch("/api/auto-trade/multi/stop", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: sym }),
-        })
-      )
+          body: JSON.stringify({ symbol: sym, close_positions: closePositions }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `Failed to stop auto-trade for ${sym} (HTTP ${res.status})`);
+        }
+      })
     );
     closeAutoTradeModal();
     showToast(tx("autotrade_stopped_toast", "Auto-Trade stopped"), "ok");
@@ -3706,11 +3761,22 @@ async function stopAutoTradeForCurrentModal() {
 }
 
 async function stopSingleAutoTrade(symbol) {
+  const p = (positionsData?.positions || []).find((pos) => pos.symbol === symbol);
+  let closePositions = false;
+  if (p && Math.abs(parseFloat(p.qty || 0)) > 0) {
+    closePositions = window.confirm(
+      tx(
+        "stop_single_close_position_confirm",
+        `Also close open position for ${symbol} upon stopping auto-trade?`
+      )
+    );
+  }
+
   try {
     const res = await fetch("/api/auto-trade/multi/stop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol }),
+      body: JSON.stringify({ symbol, close_positions: closePositions }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -3724,11 +3790,31 @@ async function stopSingleAutoTrade(symbol) {
 }
 
 async function stopAllAutoTrades() {
+  let closePositions = false;
+  const activeSymbols = new Set();
+  (positionsData?.active_auto_trades || []).forEach((r) => {
+    const syms = Array.isArray(r.symbols) && r.symbols.length ? r.symbols : [r.symbol];
+    syms.forEach((s) => {
+      if (s) activeSymbols.add(String(s).toUpperCase());
+    });
+  });
+  const hasAnyPos = (positionsData?.positions || []).some(
+    (pos) => activeSymbols.has(String(pos.symbol || "").toUpperCase()) && Math.abs(parseFloat(pos.qty || 0)) > 0
+  );
+  if (hasAnyPos) {
+    closePositions = window.confirm(
+      tx(
+        "stop_all_close_positions_confirm",
+        "Also close open positions for all active auto-trade symbols?"
+      )
+    );
+  }
+
   try {
     const res = await fetch("/api/auto-trade/multi/stop-all", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ close_positions: closePositions }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -4463,6 +4549,38 @@ function initPositionsUi() {
   $("pos-autotrade-size-input")?.addEventListener("input", () => {
     const mode = $("pos-autotrade-sizing-mode")?.value || "qty";
     syncSizingModeUI(mode);
+  });
+  $("pos-autotrade-baskets-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip-basket");
+    if (!chip) return;
+    const basketId = chip.dataset.basketId;
+    const baskets = positionsData?.auto_trade_baskets || [
+      { id: "mega_tech", symbols: ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META"], default_strategy: "ai" },
+      { id: "semis", symbols: ["NVDA", "AMD", "AVGO", "TSM", "QCOM"], default_strategy: "sma" },
+      { id: "etf_core", symbols: ["SPY", "QQQ", "IWM", "DIA"], default_strategy: "sma" },
+      { id: "dividend_staples", symbols: ["KO", "PEP", "JNJ", "PG", "WMT"], default_strategy: "dip" },
+    ];
+    const basket = baskets.find((b) => b.id === basketId);
+    if (basket && Array.isArray(basket.symbols)) {
+      activeAutoTradeSymbols = [...basket.symbols];
+      const chipsEl = $("pos-autotrade-targets-chips");
+      if (chipsEl) {
+        chipsEl.innerHTML = activeAutoTradeSymbols
+          .map((s) => `<span class="pos-autotrade-target-pill">${escapeHtml(s)}</span>`)
+          .join("");
+      }
+      const symBadge = $("pos-autotrade-symbol-badge");
+      if (symBadge) symBadge.textContent = `${activeAutoTradeSymbols.length} Holdings`;
+      const submitBtn = $("btn-autotrade-modal-submit");
+      if (submitBtn) submitBtn.textContent = tx("start_batch_autotrade", "Start Batch Auto-Trade");
+      if (basket.default_strategy) {
+        const stdSelect = $("pos-standard-strategy-select");
+        if (stdSelect) {
+          stdSelect.value = basket.default_strategy;
+          adaptStrategyOptionsToUI();
+        }
+      }
+    }
   });
   $("btn-pos-new-autotrade")?.addEventListener("click", () => openAutoTradeModal([]));
   $("btn-stop-all-autotrades")?.addEventListener("click", stopAllAutoTrades);

@@ -68,6 +68,15 @@ _ET = ZoneInfo("America/New_York")
 _BUY_SLIPPAGE = 1.005
 _SELL_SLIPPAGE = 0.995
 _MARK_CACHE_TTL = 5.0
+# The Alpaca SDK delegates to ``requests`` without a timeout.  A missing
+# timeout can leave a web request (and the Backtest button) waiting forever
+# when a market-data connection stalls.  Keep the limit generous enough for
+# an intraday page, while letting the caller report an actionable failure.
+_MARKET_DATA_REQUEST_TIMEOUT_SECONDS = 20.0
+# Account verification runs inline when credentials are saved.  It needs a
+# shorter deadline so an unavailable broker cannot leave the configuration
+# page disabled indefinitely.
+_TRADING_REQUEST_TIMEOUT_SECONDS = 12.0
 # Order states that will never change again — the ticket can stop polling.
 _TERMINAL_ORDER_STATES = frozenset(
     {"filled", "canceled", "cancelled", "expired", "rejected", "replaced"}
@@ -285,15 +294,51 @@ class AlpacaService:
                 config.secret_key.strip(),
                 paper=config.paper,
             )
+            self._set_trading_request_timeout(self._trading)
             self._data: StockHistoricalDataClient | None = StockHistoricalDataClient(
                 config.api_key.strip(),
                 config.secret_key.strip(),
             )
+            self._set_market_data_timeout(self._data)
         else:
             self._trading = None
             self._data = None
         self._option_data = None
         self._mark_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    @staticmethod
+    def _set_market_data_timeout(client: StockHistoricalDataClient) -> None:
+        """Give the SDK's market-data HTTP session a finite default timeout.
+
+        alpaca-py's REST client intentionally exposes a plain requests session
+        and does not pass a timeout to it.  Wrapping that one session preserves
+        the SDK's normal retry/error handling while preventing an indefinitely
+        blocked market-data read.
+        """
+        session = getattr(client, "_session", None)
+        request = getattr(session, "request", None)
+        if session is None or not callable(request):
+            return
+
+        def request_with_timeout(*args: Any, **kwargs: Any) -> Any:
+            kwargs.setdefault("timeout", _MARKET_DATA_REQUEST_TIMEOUT_SECONDS)
+            return request(*args, **kwargs)
+
+        session.request = request_with_timeout
+
+    @staticmethod
+    def _set_trading_request_timeout(client: TradingClient) -> None:
+        """Prevent a stalled account check from blocking credential saves."""
+        session = getattr(client, "_session", None)
+        request = getattr(session, "request", None)
+        if session is None or not callable(request):
+            return
+
+        def request_with_timeout(*args: Any, **kwargs: Any) -> Any:
+            kwargs.setdefault("timeout", _TRADING_REQUEST_TIMEOUT_SECONDS)
+            return request(*args, **kwargs)
+
+        session.request = request_with_timeout
 
     def _get_synthetic_handler(self) -> Any | None:
         if self.synthetic_order_handler is not None:
@@ -3250,6 +3295,68 @@ class AlpacaService:
         if end_dt <= start:
             raise ValueError("end must be after start")
         return self._fetch_bars(symbol, tf, start, end_dt, timeframe_key=tf_key)
+
+    def get_bars_range_many(
+        self,
+        symbols: list[str] | tuple[str, ...],
+        *,
+        start: datetime,
+        end: datetime | None = None,
+        timeframe: str | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        """Return a separate historical frame for each requested symbol.
+
+        Alpaca accepts a list of symbols in one bars request.  Backtests use
+        that facility so multi-symbol and metals macro runs do not serially
+        block on one network round trip per symbol.
+        """
+        wanted = list(
+            dict.fromkeys(
+                str(s).strip().upper() for s in symbols if str(s).strip()
+            )
+        )
+        if not wanted:
+            return {}
+
+        tf_key = (timeframe or self.config.bar_timeframe or "1Day").strip()
+        tf = _TIMEFRAME_MAP.get(tf_key, TimeFrame.Day)
+        end_dt = end or datetime.now(timezone.utc)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+        if end_dt <= start:
+            raise ValueError("end must be after start")
+
+        request = StockBarsRequest(
+            symbol_or_symbols=wanted,
+            timeframe=tf,
+            start=start,
+            end=end_dt,
+            feed=_DEFAULT_FEED,
+        )
+        bars = self.data.get_stock_bars(request)
+        df = bars.df
+        empty = df.iloc[0:0].copy()
+        if df.empty:
+            return {sym: empty.copy() for sym in wanted}
+
+        out: dict[str, pd.DataFrame] = {}
+        for sym in wanted:
+            if isinstance(df.index, pd.MultiIndex):
+                try:
+                    level = "symbol" if "symbol" in df.index.names else 0
+                    one = df.xs(sym, level=level).sort_index().copy()
+                except KeyError:
+                    one = empty.copy()
+            elif len(wanted) == 1:
+                one = df.sort_index().copy()
+            else:
+                one = empty.copy()
+            if tf_key == "1Day" and not one.empty:
+                one = self._drop_incomplete_daily_bar(one)
+            out[sym] = one
+        return out
 
     def _fetch_bars(
         self,

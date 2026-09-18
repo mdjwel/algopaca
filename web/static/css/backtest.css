@@ -79,8 +79,7 @@
 .form .bt-sma-only[hidden],
 .form .bt-dip-only[hidden],
 .form .bt-pair-only[hidden],
-.form .bt-ls-only[hidden],
-#bt-stop-pct-label[hidden] {
+.form .bt-ls-only[hidden] {
   display: none !important;
 }
 

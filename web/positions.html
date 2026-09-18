@@ -1,113 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d131f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
-  <meta name="color-scheme" content="dark" />
-  <title>Positions · AlgoPaca</title>
-  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
-  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css?v=2.5" />
-  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
-  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
+{% extends "layouts/desk.html" %}
+
+{% block title %}Positions · AlgoPaca{% endblock %}
+
+{% block page_css %}
   <link rel="stylesheet" href="/static/css/positions.css?v=2.6" />
-  <script>
-    (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
-  </script>
-</head>
-<body data-page="positions">
-  <a class="skip-link" href="#positions-panel" data-i18n="skip_to_positions">Skip to positions</a>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="app">
-    <header class="masthead">
-      <div class="masthead-top">
-        <div class="masthead-brand">
-          <div class="masthead-brand-header">
-            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
-              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
-            </a>
-            <div class="masthead-brand-text">
-              <p class="eyebrow" data-i18n="eyebrow">AlgoPaca · Simulated</p>
-              <h1 data-i18n="nav_positions">Positions</h1>
-            </div>
-          </div>
-          <p id="page-tagline" class="tagline" data-i18n="tagline_positions">Inspect active holdings, track unrealized gains, and manage partial or full liquidations.</p>
-        </div>
-        <div class="masthead-search" id="masthead-search-container">
-          <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
-            <div class="masthead-search-box" id="header-ticker-search-box">
-              <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input
-                type="search"
-                id="header-ticker-search-input"
-                class="masthead-search-input"
-                placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
-                data-i18n-placeholder="header_search_placeholder"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Search stock tickers and markets"
-                data-i18n-aria-label="header_search_aria"
-                aria-autocomplete="list"
-                aria-controls="header-search-dropdown"
-              />
-              <div class="masthead-search-controls">
-                <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-                <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
-              </div>
-            </div>
-            <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
-          </form>
-        </div>
-        <div class="masthead-right">
-          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
-            <div class="desk-nav-group" data-nav-group="trade">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
-              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
-                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link" data-i18n="nav_auto_trade">Auto Trade</a>
-                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Advanced Order</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="backtest">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
-              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
-                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
-                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
-                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="portfolio">
-              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
-              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
-                <a href="/positions" data-page="positions" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_positions">Positions</a>
-                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
-                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
-              </div>
-            </div>
-          </nav>
-        </div>
-      </div>
-    </header>
+{% endblock %}
 
-    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+{% block page_id %}positions{% endblock %}
+{% block skip_link_target %}#positions-panel{% endblock %}
+{% block skip_link_i18n %}skip_to_positions{% endblock %}
+{% block skip_link_text %}Skip to positions{% endblock %}
 
-    <main id="main">
+{% block eyebrow %}AlgoPaca · Simulated{% endblock %}
+{% block eyebrow_i18n %}eyebrow{% endblock %}
+{% block page_heading %}Positions{% endblock %}
+{% block page_heading_i18n %}nav_positions{% endblock %}
+{% block tagline %}Inspect active holdings, track unrealized gains, and manage partial or full liquidations.{% endblock %}
+{% block tagline_i18n %}tagline_positions{% endblock %}
+
+{% block content %}
       <div id="page-positions" class="page page-positions" data-page="positions">
 
         <!-- Top Summary KPI Banner -->
@@ -425,62 +336,9 @@
           </div>
         </div>
       </div>
-    </main>
+{% endblock %}
 
-    <!-- Desk Footer -->
-    <footer class="desk-footer" role="contentinfo">
-      <div class="desk-footer-inner">
-        <div class="desk-footer-brand-wrap">
-          <div class="desk-footer-brand">
-            <div class="desk-footer-logo-icon" aria-hidden="true">
-              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
-            </div>
-            <div class="desk-footer-brand-meta">
-              <span class="desk-footer-logo">AlgoPaca</span>
-              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
-            </div>
-          </div>
-          <div class="desk-footer-status" title="Trading desk systems operational">
-            <span class="status-beacon-green" aria-hidden="true">
-              <span class="beacon-core"></span>
-              <span class="beacon-ring"></span>
-            </span>
-            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
-          </div>
-        </div>
-
-        <nav class="desk-footer-links" aria-label="Footer navigation">
-          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
-          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Advanced Order</a>
-          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
-          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
-          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
-          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
-          <a href="/api-keys" class="desk-footer-link" data-i18n="nav_api_keys">API Keys</a>
-          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
-        </nav>
-
-        <div class="desk-footer-right">
-          <div class="lang-switcher">
-            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
-            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language">
-              <option value="en" data-i18n="language_english">English</option>
-              <option value="bn" data-i18n="language_bangla">বাংলা</option>
-              <option value="es" data-i18n="language_spanish">Español</option>
-              <option value="fr" data-i18n="language_french">Français</option>
-              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="desk-footer-bottom">
-        <p class="desk-footer-copy">
-          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
-          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
-        </p>
-      </div>
-    </footer>
+{% block modals %}
 
     <!-- Partial/Full Close Modal Dialog -->
     <div id="pos-close-modal" class="pos-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pos-modal-title" hidden>
@@ -1144,6 +1002,17 @@
             </div>
           </div>
 
+          <!-- Curated Baskets Quick Select -->
+          <div class="pos-autotrade-baskets-section" id="pos-autotrade-baskets-box">
+            <label class="pos-modal-label" data-i18n="quick_baskets">Quick Ticker Baskets</label>
+            <div id="pos-autotrade-baskets-chips" class="pos-autotrade-baskets-chips">
+              <button type="button" class="chip chip-basket" data-basket-id="mega_tech" title="AAPL, MSFT, NVDA, GOOGL, AMZN, META">🚀 Mega-Cap Tech</button>
+              <button type="button" class="chip chip-basket" data-basket-id="semis" title="NVDA, AMD, AVGO, TSM, QCOM">⚡ Semiconductors</button>
+              <button type="button" class="chip chip-basket" data-basket-id="etf_core" title="SPY, QQQ, IWM, DIA">📈 Index ETFs</button>
+              <button type="button" class="chip chip-basket" data-basket-id="dividend_staples" title="KO, PEP, JNJ, PG, WMT">🛡️ Dividend Staples</button>
+            </div>
+          </div>
+
           <!-- Symbols Selected Info -->
           <div class="pos-autotrade-targets">
             <label class="pos-modal-label" data-i18n="target_tickers">Target Ticker(s)</label>
@@ -1222,6 +1091,33 @@
             </div>
           </div>
 
+          <!-- Risk Controls & Trading Hours Section -->
+          <div class="pos-autotrade-risk-section">
+            <h4 class="pos-autotrade-section-title" data-i18n="risk_and_session_controls">Risk Controls &amp; Session Filter</h4>
+            <div class="pos-autotrade-params-grid">
+              <div class="pos-autotrade-field">
+                <label class="pos-modal-label" for="pos-autotrade-max-loss" data-i18n="circuit_breaker_max_loss">Max Loss Circuit Breaker ($)</label>
+                <input type="number" id="pos-autotrade-max-loss" class="pos-field-input" min="1" step="any" placeholder="e.g. 50 (Disabled if empty)" />
+                <p class="field-help" data-i18n="circuit_breaker_help">Auto-closes position and halts loop if total loss exceeds this amount.</p>
+              </div>
+
+              <div class="pos-autotrade-field">
+                <label class="pos-modal-label" for="pos-autotrade-session" data-i18n="trading_hours_session">Trading Hours</label>
+                <select id="pos-autotrade-session" class="pos-field-select">
+                  <option value="regular" selected data-i18n="regular_market_hours">Regular Hours (9:30 AM - 4 PM ET)</option>
+                  <option value="all" data-i18n="all_market_sessions">All Sessions (Pre/Post/Overnight)</option>
+                </select>
+                <p class="field-help" data-i18n="session_hours_help">Avoid illiquid price gaps by restricting loop execution to regular hours.</p>
+              </div>
+
+              <div class="pos-autotrade-field">
+                <label class="pos-modal-label" for="pos-autotrade-max-notional" data-i18n="max_notional_cap_label">Max Capital Allocation Cap ($)</label>
+                <input type="number" id="pos-autotrade-max-notional" class="pos-field-input" min="10" step="any" placeholder="e.g. 1000 (Optional)" />
+                <p class="field-help" data-i18n="max_notional_cap_help">Limits maximum position dollar value per trade.</p>
+              </div>
+            </div>
+          </div>
+
           <p id="pos-autotrade-modal-error" class="form-error" role="alert" hidden></p>
         </div>
 
@@ -1231,12 +1127,8 @@
         </div>
       </div>
     </div>
+{% endblock %}
 
-  </div>
-
-  <script src="/static/vendor/nice-select2/nice-select2.min.js"></script>
-  <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js?v=2.5"></script>
+{% block page_scripts %}
   <script src="/static/js/positions.js?v=2.6"></script>
-</body>
-</html>
+{% endblock %}

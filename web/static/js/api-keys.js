@@ -25,6 +25,56 @@ const savePaperLabel = () => tx("save_paper_keys_btn", "Save paper keys");
 const saveLiveLabel = () => tx("save_live_keys_btn", "Save live keys");
 const saveAiLabel = () => tx("save_ai_keys_btn", "Save AI keys");
 const savingLabel = () => tx("saving", "Saving…");
+const ALPACA_KEY_SAVE_TIMEOUT_MS = 20_000;
+const AI_KEY_SAVE_TIMEOUT_MS = 20_000;
+
+async function saveAlpacaKeysRequest(payload) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    ALPACA_KEY_SAVE_TIMEOUT_MS
+  );
+  try {
+    return await api("/api/alpaca-keys", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "Alpaca account verification timed out. Your keys may have been saved; reload this page to confirm before trying again."
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function saveAiKeysRequest(payload) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    AI_KEY_SAVE_TIMEOUT_MS
+  );
+  try {
+    return await api("/api/keys", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "AI key save timed out. Your key may have been saved; reload this page to confirm before trying again."
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 function selectedAiProvider() {
   const checked = document.querySelector('input[name="active_ai_provider"]:checked');
@@ -459,10 +509,7 @@ async function onSaveKeys(ev) {
   try {
     setBusy(true, "Saving AI configuration…");
     setConfigBusy(true, "ai");
-    const data = await api("/api/keys", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const data = await saveAiKeysRequest(payload);
     const openaiEl = $("field-openai-key");
     const geminiEl = $("field-gemini-key");
     const anthropicEl = $("field-anthropic-key");
@@ -567,14 +614,11 @@ async function saveAlpacaSlot(environment) {
   try {
     setBusy(true, `Saving ${label} keys…`);
     setConfigBusy(true, isLive ? "live" : "alpaca");
-    const data = await api("/api/alpaca-keys", {
-      method: "POST",
-      body: JSON.stringify({
-        alpaca_api_key: apiKey,
-        alpaca_secret_key: secret,
-        environment,
-        save_to_env: true,
-      }),
+    const data = await saveAlpacaKeysRequest({
+      alpaca_api_key: apiKey,
+      alpaca_secret_key: secret,
+      environment,
+      save_to_env: true,
     });
     const status = data.alpaca_key_status || data.state?.alpaca_key_status || {};
     const keyEl = $(isLive ? "field-live-key" : "field-alpaca-key");

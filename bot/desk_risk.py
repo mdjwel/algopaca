@@ -149,7 +149,8 @@ def manage_open_position(
             return out
 
     # 2) Pre-event economic data protection for Gold & Silver (5m release window)
-    if is_precious_metal(symbol):
+    track_dollar_only = bool(getattr(config, "metals_dollar_index_only", False))
+    if is_precious_metal(symbol) and not track_dollar_only:
         events_5m = check_imminent_economic_events(window_minutes=5.0)
         if events_5m:
             prot = protect_metals_position_before_event(
@@ -157,6 +158,7 @@ def manage_open_position(
                 symbol=symbol,
                 event=events_5m[0],
                 reversal_buy=bool(getattr(config, "metals_reversal_buy_on_stop", True)),
+                track_dollar_only=track_dollar_only,
             )
             if prot:
                 out["event_protection"] = prot

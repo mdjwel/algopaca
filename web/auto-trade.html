@@ -1,116 +1,36 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d131f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="AlgoPaca" />
-  <meta name="color-scheme" content="dark" />
-  <title>Auto Trade · AlgoPaca</title>
-  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg" />
-  <link rel="apple-touch-icon" href="/static/img/algopaca-mark.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/vendor/nice-select2/nice-select2.css" />
-  <link rel="stylesheet" href="/static/css/common.css" />
-  <link rel="stylesheet" href="/static/css/desk-shell.css" media="(min-width: 769px)" />
-  <link rel="stylesheet" href="/static/css/mobile-shell.css" media="(max-width: 768px)" />
-  <link rel="stylesheet" href="/static/css/auto-trade.css?v=2.5" />
-  <script>
-    (function(){try{var valid=["obsidian","midnight","emerald","daylight"];var t=localStorage.getItem("algopaca_theme");if(!t||!valid.includes(t)){var m=document.cookie.match(/(?:^|;\s*)algopaca_theme=([^;]+)/);if(m&&valid.includes(decodeURIComponent(m[1])))t=decodeURIComponent(m[1]);}if(t&&valid.includes(t))document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
-  </script>
-</head>
-<body data-page="auto-trade">
-  <a class="skip-link" href="#signal-wall" data-i18n="skip_to_signal">Skip to last signal</a>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="app">
-    <header class="masthead">
-      <div class="masthead-top">
-        <div class="masthead-brand">
-          <div class="masthead-brand-header">
-            <a href="/auto-trade" class="masthead-logo-link" aria-label="AlgoPaca Home">
-              <img src="/static/img/algopaca-mark.svg" alt="AlgoPaca Logo" class="masthead-logo-img" width="48" height="48" />
-            </a>
-            <div class="masthead-brand-text">
-              <p class="eyebrow" data-i18n="eyebrow">AlgoPaca · Simulated</p>
-              <h1 data-i18n="nav_auto_trade">Auto Trade</h1>
-            </div>
-          </div>
-          <p id="page-tagline" class="tagline" data-i18n="tagline_auto_trade">Design an engine and watchlist, run a signal, then loop on paper or live.</p>
-        </div>
-        <div class="masthead-search" id="masthead-search-container">
-          <form class="masthead-search-form" id="header-ticker-search-form" role="search" onsubmit="return false;">
-            <div class="masthead-search-box" id="header-ticker-search-box">
-              <svg class="masthead-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input
-                type="search"
-                id="header-ticker-search-input"
-                class="masthead-search-input"
-                placeholder="Search ticker or company… (e.g. AAPL, NVDA)"
-                data-i18n-placeholder="header_search_placeholder"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Search stock tickers and markets"
-                data-i18n-aria-label="header_search_aria"
-                aria-autocomplete="list"
-                aria-controls="header-search-dropdown"
-              />
-              <div class="masthead-search-controls">
-                <button type="button" id="header-search-clear" class="masthead-search-clear" aria-label="Clear search" data-i18n-aria-label="header_search_clear" hidden>
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-                <kbd class="masthead-search-kbd" id="header-search-kbd" title="Press / or ⌘K to search tickers" data-i18n-title="header_search_shortcut_title">⌘K</kbd>
-              </div>
-            </div>
-            <div id="header-search-dropdown" class="masthead-search-dropdown" hidden></div>
-          </form>
-        </div>
-        <div class="masthead-right">
-          <nav class="desk-nav" aria-label="Desk pages" data-i18n-aria-label="desk_pages">
-            <div class="desk-nav-group" data-nav-group="trade">
-              <button type="button" class="desk-nav-link desk-nav-trigger is-active" id="nav-trade-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-trade-menu" data-group-pages="auto-trade manual-order" data-i18n="nav_group_trade">Trade</button>
-              <div class="desk-menu" id="nav-trade-menu" aria-labelledby="nav-trade-trigger" hidden>
-                <a href="/auto-trade" data-page="auto-trade" class="desk-menu-link is-active" aria-current="page" data-i18n="nav_auto_trade">Auto Trade</a>
-                <a href="/manual-order" data-page="manual-order" class="desk-menu-link" data-i18n="nav_manual_order">Advanced Order</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="backtest">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-backtest-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-backtest-menu" data-group-pages="backtest backtest-history backtest-compare" data-i18n="nav_backtest">Backtest</button>
-              <div class="desk-menu" id="nav-backtest-menu" aria-labelledby="nav-backtest-trigger" hidden>
-                <a href="/backtest" data-page="backtest" class="desk-menu-link" data-i18n="bt_subnav_run">Run</a>
-                <a href="/backtest/history" data-page="backtest-history" class="desk-menu-link" data-i18n="bt_subnav_history">History</a>
-                <a href="/backtest/compare" data-page="backtest-compare" class="desk-menu-link" data-i18n="bt_subnav_compare">Compare</a>
-              </div>
-            </div>
-            <div class="desk-nav-group" data-nav-group="portfolio">
-              <button type="button" class="desk-nav-link desk-nav-trigger" id="nav-portfolio-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="nav-portfolio-menu" data-group-pages="positions orders history" data-i18n="nav_group_portfolio">Portfolio</button>
-              <div class="desk-menu" id="nav-portfolio-menu" aria-labelledby="nav-portfolio-trigger" hidden>
-                <a href="/positions" data-page="positions" class="desk-menu-link" data-i18n="nav_positions">Positions</a>
-                <a href="/orders" data-page="orders" class="desk-menu-link" data-i18n="nav_orders">Orders</a>
-                <a href="/history" data-page="history" class="desk-menu-link" data-i18n="nav_history">History</a>
-              </div>
-            </div>
-          </nav>
-        </div>
-      </div>
-    </header>
+{% extends "layouts/desk.html" %}
 
-    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+{% block title %}Auto Trade · AlgoPaca{% endblock %}
 
-    <main id="main">
+{% block page_css %}
+  <link rel="stylesheet" href="/static/css/auto-trade.css?v=2.6" />
+{% endblock %}
+
+{% block page_id %}auto-trade{% endblock %}
+{% block skip_link_target %}#signal-wall{% endblock %}
+{% block skip_link_i18n %}skip_to_signal{% endblock %}
+{% block skip_link_text %}Skip to last signal{% endblock %}
+
+{% block eyebrow %}AlgoPaca · Simulated{% endblock %}
+{% block eyebrow_i18n %}eyebrow{% endblock %}
+{% block page_heading %}Auto Trade{% endblock %}
+{% block page_heading_i18n %}nav_auto_trade{% endblock %}
+{% block tagline %}Design an engine and watchlist, run a signal, then loop on paper or live.{% endblock %}
+{% block tagline_i18n %}tagline_auto_trade{% endblock %}
+
+{% block content %}
       <div id="page-auto-trade" class="page layout" data-page="auto-trade">
         <div class="desk-left">
+          <!-- Selected Auto-Trade Runner Details Panel -->
+          <section class="panel runner-detail-panel" id="runner-detail-card" aria-labelledby="runner-detail-title" hidden>
+            <div id="runner-detail-content"></div>
+          </section>
+
           <section class="signal-wall" id="signal-wall" aria-labelledby="signal-heading" aria-live="polite">
+            <div id="wall-runner-switch-banner" class="wall-runner-switch-banner" hidden>
+              <span data-i18n="evaluating_strategy_test">Strategy evaluation preview</span>
+              <button type="button" id="btn-return-to-runner" class="btn-link-subtle" data-i18n="return_to_runner">Return to Runner Details →</button>
+            </div>
             <div class="wall-top">
               <h2 id="signal-heading" class="wall-label" data-i18n="signal_wall_heading">Last signal</h2>
               <div class="wall-top-meta">
@@ -147,6 +67,7 @@
                 <h2 data-i18n="current_loop_orders">Current Loop Orders</h2>
                 <span id="loop-orders-badge" class="badge badge-copper">0</span>
                 <span id="loop-orders-status" class="loop-orders-status-pill" hidden>Live</span>
+                <span id="loop-orders-pnl" class="loop-orders-pnl-pill" hidden>Loop P/L: $0.00</span>
               </div>
               <div class="panel-head-actions">
                 <a href="/history" class="ghost btn-history-link">
@@ -184,56 +105,48 @@
             </div>
           </section>
 
-          <!-- Multi Auto-Trade Runners Panel -->
-          <section class="panel multi-runners-panel" id="multi-runners-card" aria-labelledby="multi-runners-heading">
-            <div class="panel-head">
-              <div class="panel-head-title-wrap">
-                <span class="multi-runner-beacon" aria-hidden="true">
-                  <span class="beacon-ring"></span>
-                  <span class="beacon-core"></span>
-                </span>
-                <h2 id="multi-runners-heading" data-i18n="auto_trades">Auto-Trades</h2>
-                <span id="multi-runners-badge" class="badge badge-copper">0</span>
-              </div>
-              <div class="panel-head-actions">
-                <button type="button" id="btn-header-add-autotrade" class="btn btn-sm btn-copper" data-i18n="add_new">+ Add New</button>
-                <button type="button" id="btn-stop-all-runners" class="btn btn-sm btn-ghost-danger" data-i18n="stop_all_autotrades" hidden>Stop All</button>
-                <a href="/positions" class="ghost btn-history-link">
-                  <span data-i18n="manage_in_positions">Manage in Positions</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </a>
-              </div>
-            </div>
-            <div class="multi-runners-body">
-              <p class="panel-hint" data-i18n="multi_runners_hint">Active and previous auto-trade runners. Click any item to inspect full details, telemetry, and strategy configuration.</p>
-              <div id="multi-runners-list" class="multi-runners-list"></div>
-              <div id="multi-runners-empty" class="multi-runners-empty">
-                <svg class="multi-runners-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-                  <circle cx="12" cy="5" r="2"></circle>
-                  <path d="M12 7v4"></path>
-                  <line x1="8" y1="16" x2="8" y2="16"></line>
-                  <line x1="16" y1="16" x2="16" y2="16"></line>
-                </svg>
-                <p class="multi-runners-empty-title" data-i18n="no_active_autotrades">No auto-trades running right now.</p>
-                <p class="multi-runners-empty-desc" data-i18n="no_active_autotrades_desc">Configure your strategy in the Strategy panel, then click "+ Add Auto Trade" to start an independent background trading loop.</p>
-                <button type="button" id="btn-empty-launch-multi" class="btn btn-sm btn-copper multi-runners-empty-btn" data-i18n="add_auto_trade">+ Add Auto Trade</button>
-              </div>
-            </div>
-          </section>
-
         </div>
 
         <aside class="console">
           <section class="panel strategy-panel is-open" id="strategy-panel" aria-labelledby="strategy-heading">
             <div class="panel-head">
-              <h2 id="strategy-heading" data-i18n="strategy">Strategy</h2>
+              <div class="panel-head-title-wrap">
+                <h2 id="strategy-heading" data-i18n="strategy">Strategy</h2>
+                <span id="strategy-collapsed-summary" class="strategy-collapsed-pill" hidden></span>
+              </div>
               <div class="panel-head-actions">
                 <p id="strategy-hint" class="panel-hint" data-state="ready" aria-live="polite" data-i18n="ready">Ready</p>
+                <button type="button" id="btn-toggle-strategy-collapse" class="panel-collapse-btn" aria-expanded="true" aria-controls="strategy-body" title="Minimize Strategy panel" data-i18n-title="minimize_strategy_panel" aria-label="Minimize Strategy panel" data-i18n-aria-label="minimize_strategy_panel">
+                  <svg class="collapse-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
               </div>
             </div>
 
             <div id="strategy-body" class="strategy-body">
+              <!-- New Auto-Trade Banner (shown when "+ Add New" unlocks the strategy) -->
+              <div id="new-autotrade-banner" class="new-autotrade-banner" hidden>
+                <div class="new-autotrade-banner-header">
+                  <div class="new-autotrade-banner-info">
+                    <div class="new-autotrade-banner-badge">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                      <strong data-i18n="new_autotrade_mode_title">New Auto-Trade</strong>
+                    </div>
+                    <p class="new-autotrade-banner-desc" data-i18n="new_autotrade_mode_desc">Configure your new strategy and symbols below. Existing auto-trades continue in the background.</p>
+                  </div>
+                  <div class="new-autotrade-banner-actions">
+                    <button type="button" id="btn-banner-start-new-autotrade" class="btn btn-xs btn-copper primary" title="Launch new auto-trade with configured strategy" data-i18n="start_auto_trade">+ Start Auto Trade</button>
+                    <button type="button" id="btn-cancel-new-autotrade" class="btn btn-xs ghost new-autotrade-cancel-btn" title="Cancel new auto-trade setup" data-i18n="cancel">Cancel</button>
+                  </div>
+                </div>
+                <div class="new-autotrade-name-row">
+                  <label for="field-new-runner-name" class="new-autotrade-name-label">
+                    <span data-i18n="autotrade_name">Auto-Trade Name</span>
+                    <span class="sub" data-i18n="optional">(Optional)</span>
+                  </label>
+                  <input type="text" id="field-new-runner-name" class="input new-autotrade-name-input" autocomplete="off" spellcheck="false" placeholder="e.g. AAPL · SMA 10/30 (15Min)" maxlength="80" />
+                </div>
+              </div>
+
             <form id="settings" class="form" novalidate>
               <p class="field-help strategy-intro" data-i18n="strategy_intro">Pick an engine, set the symbols to evaluate, then Run once. Buy/sell signals place paper or live orders.</p>
               <fieldset class="field-group">
@@ -530,18 +443,8 @@
                   Intraday algorithm calculates VWAP &amp; Opening Range with optional AI confirmation. Positions are sized dynamically and auto-flattened before closing bell.
                 </p>
 
-                <!-- AI trader options -->
-                <div class="ai-active-provider-card ai-only" id="ai-active-provider-card" hidden>
-                  <div class="ai-active-provider-info">
-                    <span class="ai-active-provider-icon" aria-hidden="true">✦</span>
-                    <div class="ai-active-provider-meta">
-                      <span class="ai-active-provider-label" data-i18n="active_ai_provider">Active AI provider</span>
-                      <strong id="ai-active-provider-name" class="ai-active-provider-name">OpenAI · GPT-5.6 Luna</strong>
-                    </div>
-                  </div>
-                  <a href="/api-keys" class="ai-active-provider-link" data-i18n="manage_ai_in_settings">Manage in API Settings ↗</a>
-                </div>
-                <div class="field-pair-row ai-only" hidden>
+
+                <div class="field-pair-row ai-confidence-preset-row ai-only" hidden>
                   <label for="field-confidence"><span data-i18n="min_confidence">Min confidence</span>
                     <input id="field-confidence" name="ai_min_confidence" type="number" value="0.55" min="0" max="1" step="0.05" inputmode="decimal" />
                   </label>
@@ -561,12 +464,19 @@
                   </label>
                 </div>
                 <p id="preset-hint" class="field-help ai-only" hidden data-i18n="preset_hint">Hold when mixed; respect calendar; no chase.</p>
-                <div id="metals-strategy-options" class="ai-only metals-only" hidden style="margin-top: 0.75rem;">
+                <div id="metals-strategy-options" class="ai-only metals-only" hidden style="margin-top: 0.75rem; grid-column: 1 / -1; width: 100%;">
                   <label class="check stack" for="field-metals-dollar-index-only">
                     <input id="field-metals-dollar-index-only" name="metals_dollar_index_only" type="checkbox" />
                     <span>
                       <strong data-i18n="metals_dollar_index_only">Track Dollar Index Only</strong>
                       <span class="check-desc" data-i18n="metals_dollar_index_only_desc">Trade precious metals (GLD, SLV, GLL, etc.) strictly based on real-time US Dollar Index (DXY / UUP). All news, earnings, and economic calendar releases are completely bypassed.</span>
+                    </span>
+                  </label>
+                  <label class="check stack" for="field-metals-reversal-buy-on-stop" style="margin-top: 0.5rem;">
+                    <input id="field-metals-reversal-buy-on-stop" name="metals_reversal_buy_on_stop" type="checkbox" checked />
+                    <span>
+                      <strong data-i18n="metals_reversal_buy_on_stop">Reversal Buy on Stop Loss</strong>
+                      <span class="check-desc" data-i18n="metals_reversal_buy_on_stop_desc">Instantly open a reversal Long position if short stop loss is hit during high-impact economic events.</span>
                     </span>
                   </label>
                 </div>
@@ -597,70 +507,78 @@
                 </p>
                 <p id="watchlist-hint" class="field-help" data-i18n="watchlist_hint">Each cycle evaluates this list. Featured is highlighted on the wall.</p>
 
-                <div class="manual-qty-field auto-qty-field" id="auto-size-block">
-                  <div class="qty-field-head">
-                    <div class="qty-field-copy">
-                      <label class="qty-field-label" id="size-field-label" for="field-qty" data-i18n="quantity">Quantity</label>
-                      <span id="auto-size-avail" class="qty-field-avail"></span>
-                    </div>
-                    <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
-                      <label class="qty-unit" data-tooltip="Dollars ($)" data-i18n-tooltip="dollars_title">
-                        <input type="radio" name="size_mode" value="notional" />
-                        <span aria-hidden="true">$</span>
-                        <span class="sr-only" data-i18n="dollars_title">Dollars ($)</span>
-                      </label>
-                      <label class="qty-unit" data-tooltip="Shares (#)" data-i18n-tooltip="shares_title">
-                        <input type="radio" name="size_mode" value="qty" checked />
-                        <span aria-hidden="true">#</span>
-                        <span class="sr-only" data-i18n="shares_title">Shares (#)</span>
-                      </label>
-                      <label class="qty-unit" id="size-unit-ai" data-tooltip="AI" data-i18n-tooltip="size_ai_title" hidden>
-                        <input type="radio" name="size_mode" value="ai" />
-                        <span aria-hidden="true">AI</span>
-                        <span class="sr-only" data-i18n="size_ai_title">AI decides</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="qty-field-input" id="auto-qty-label">
-                    <div class="price-input-shell">
-                      <input id="field-qty" name="trade_qty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal" placeholder="1" aria-label="Shares quantity" data-i18n-aria-label="shares_qty" />
-                    </div>
-                    <p class="field-error" role="alert" hidden></p>
-                  </div>
-
-                  <div class="qty-field-input" id="auto-notional-label" hidden>
-                    <div class="price-input-shell">
-                      <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" placeholder="100" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" />
-                    </div>
-                    <div class="notional-quick-chips" id="desk-notional-chips" role="group" aria-label="Quick dollar amounts" data-i18n-aria-label="quick_dollar_amounts">
-                      <button type="button" class="btn-notional-chip" data-val="100">$100</button>
-                      <button type="button" class="btn-notional-chip" data-val="250">$250</button>
-                      <button type="button" class="btn-notional-chip" data-val="500">$500</button>
-                      <button type="button" class="btn-notional-chip" data-val="1000">$1,000</button>
-                      <button type="button" class="btn-notional-chip" data-val="2500">$2,500</button>
-                    </div>
-                    <p class="field-error" role="alert" hidden></p>
-                  </div>
-
-                  <div class="qty-field-input" id="auto-ai-label" hidden>
-                    <div class="price-input-shell is-readonly size-ai-shell">
-                      <div class="size-ai-card">
-                        <div class="size-ai-top">
-                          <p id="size-ai-cap" class="size-ai-cap">—</p>
-                          <span id="size-ai-source" class="size-ai-source" data-i18n="size_ai_src_cap">Model cap</span>
-                        </div>
-                        <p id="size-ai-formula" class="size-ai-placeholder" data-i18n="size_ai_placeholder">Model picks shares each cycle</p>
-                        <div id="size-ai-chips" class="size-ai-chips" aria-label="Sizing inputs" data-i18n-aria-label="size_ai_inputs"></div>
+                <div class="field-pair-row auto-qty-poll-row">
+                  <div class="manual-qty-field auto-qty-field" id="auto-size-block">
+                    <div class="qty-field-head">
+                      <div class="qty-field-copy">
+                        <label class="qty-field-label" id="size-field-label" for="field-qty" data-i18n="quantity">Quantity</label>
+                        <span id="auto-size-avail" class="qty-field-avail"></span>
+                      </div>
+                      <div class="qty-unit-toggle" role="radiogroup" aria-label="Quantity unit" data-i18n-aria-label="qty_unit">
+                        <label class="qty-unit" data-tooltip="Dollars ($)" data-i18n-tooltip="dollars_title">
+                          <input type="radio" name="size_mode" value="notional" />
+                          <span aria-hidden="true">$</span>
+                          <span class="sr-only" data-i18n="dollars_title">Dollars ($)</span>
+                        </label>
+                        <label class="qty-unit" data-tooltip="Shares (#)" data-i18n-tooltip="shares_title">
+                          <input type="radio" name="size_mode" value="qty" checked />
+                          <span aria-hidden="true">#</span>
+                          <span class="sr-only" data-i18n="shares_title">Shares (#)</span>
+                        </label>
+                        <label class="qty-unit" id="size-unit-ai" data-tooltip="AI" data-i18n-tooltip="size_ai_title" hidden>
+                          <input type="radio" name="size_mode" value="ai" />
+                          <span aria-hidden="true">AI</span>
+                          <span class="sr-only" data-i18n="size_ai_title">AI decides</span>
+                        </label>
                       </div>
                     </div>
+
+                    <div class="qty-field-input" id="auto-qty-label">
+                      <div class="price-input-shell">
+                        <input id="field-qty" name="trade_qty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal" placeholder="1" aria-label="Shares quantity" data-i18n-aria-label="shares_qty" />
+                      </div>
+                      <p class="field-error" role="alert" hidden></p>
+                    </div>
+
+                    <div class="qty-field-input" id="auto-notional-label" hidden>
+                      <div class="price-input-shell">
+                        <input id="field-notional" name="trade_notional" type="number" value="100" min="1" step="0.01" inputmode="decimal" placeholder="100" aria-label="Dollar amount" data-i18n-aria-label="size_notional_label" />
+                      </div>
+                      <div class="notional-quick-chips" id="desk-notional-chips" role="group" aria-label="Quick dollar amounts" data-i18n-aria-label="quick_dollar_amounts">
+                        <button type="button" class="btn-notional-chip" data-val="100">$100</button>
+                        <button type="button" class="btn-notional-chip" data-val="250">$250</button>
+                        <button type="button" class="btn-notional-chip" data-val="500">$500</button>
+                        <button type="button" class="btn-notional-chip" data-val="1000">$1,000</button>
+                        <button type="button" class="btn-notional-chip" data-val="2500">$2,500</button>
+                      </div>
+                      <p class="field-error" role="alert" hidden></p>
+                    </div>
+
+                    <div class="qty-field-input" id="auto-ai-label" hidden>
+                      <div class="price-input-shell is-readonly size-ai-shell">
+                        <div class="size-ai-card">
+                          <div class="size-ai-top">
+                            <p id="size-ai-cap" class="size-ai-cap">—</p>
+                            <span id="size-ai-source" class="size-ai-source" data-i18n="size_ai_src_cap">Model cap</span>
+                          </div>
+                          <p id="size-ai-formula" class="size-ai-placeholder" data-i18n="size_ai_placeholder">Model picks shares each cycle</p>
+                          <div id="size-ai-chips" class="size-ai-chips" aria-label="Sizing inputs" data-i18n-aria-label="size_ai_inputs"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <p id="size-hint" class="field-help" data-i18n="size_hint">Orders use share qty. Switch to dollars to size buys/sells in USD at the live mark.</p>
+                  </div>
+
+                  <div class="auto-poll-field" id="auto-poll-block">
+                    <div class="poll-field-head">
+                      <label class="poll-field-label" for="field-poll"><span data-i18n="poll_interval_sec">Poll interval (sec)</span></label>
+                    </div>
+                    <div class="price-input-shell">
+                      <input id="field-poll" name="poll_seconds" type="number" value="20" min="10" inputmode="numeric" />
+                    </div>
+                    <p id="poll-hint" class="field-help" data-i18n="poll_hint">Loop checks the market every 20 seconds.</p>
                   </div>
                 </div>
-                <label for="field-poll"><span data-i18n="poll_interval_sec">Poll interval (sec)</span>
-                  <input id="field-poll" name="poll_seconds" type="number" value="20" min="10" inputmode="numeric" />
-                </label>
-                <p id="poll-hint" class="field-help" data-i18n="poll_hint">Loop checks the market every 20 seconds.</p>
-                <p id="size-hint" class="field-help" data-i18n="size_hint">Orders use share qty. Switch to dollars to size buys/sells in USD at the live mark.</p>
               </fieldset>
 
               <!-- Risk Engine Accordion -->
@@ -848,7 +766,7 @@
                     <button type="button" id="btn-once" class="primary" title="Evaluate the strategy once" data-i18n="run_once" data-i18n-title="title_run_once">Run once</button>
                     <button type="button" id="btn-loop" class="copper" aria-pressed="false" title="Poll on an interval" data-i18n="start_loop" data-i18n-title="title_start_loop">Start loop</button>
                     <button type="button" id="btn-add-autotrade" class="btn btn-add-autotrade copper" title="Start a new Auto Trade with current settings" data-i18n="add_new" hidden>Add New</button>
-                    <p id="loop-elapsed" class="loop-elapsed" hidden>0:00</p>
+                    <button type="button" id="btn-start-new-autotrade" class="btn btn-copper primary btn-start-new-autotrade" title="Launch new auto-trade with configured strategy" data-i18n="start_auto_trade" hidden>+ Start Auto Trade</button>
                   </div>
                 </div>
                 <details class="run-notes" id="run-notes">
@@ -864,69 +782,115 @@
             </form>
             </div>
           </section>
+
+          <!-- Multi Auto-Trade Runners Panel (Sidebar List) -->
+          <section class="panel multi-runners-panel sidebar-runners-panel is-collapsed" id="multi-runners-card" aria-labelledby="multi-runners-heading">
+            <div class="panel-head">
+              <div class="panel-head-title-wrap">
+                <span class="multi-runner-beacon" aria-hidden="true">
+                  <span class="beacon-ring"></span>
+                  <span class="beacon-core"></span>
+                </span>
+                <h2 id="multi-runners-heading" data-i18n="auto_trades">Auto-Trades</h2>
+                <span id="multi-runners-badge" class="badge badge-copper">0</span>
+              </div>
+              <div class="panel-head-actions">
+                <button type="button" id="btn-header-add-autotrade" class="btn btn-sm btn-copper" data-i18n="add_new">+ Add New</button>
+                <button type="button" id="btn-toggle-multi-runners-collapse" class="panel-collapse-btn" aria-expanded="false" aria-controls="multi-runners-body" title="Expand Auto-Trades panel" data-i18n-title="expand_autotrades_panel" aria-label="Expand Auto-Trades panel" data-i18n-aria-label="expand_autotrades_panel">
+                  <svg class="collapse-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+              </div>
+            </div>
+            <div id="multi-runners-body" class="multi-runners-body" hidden>
+              <p class="panel-hint" data-i18n="sidebar_runners_hint">Select an auto-trade to view live details and telemetry on the left panel.</p>
+              <div class="multi-runners-toolbar" id="multi-runners-toolbar">
+                <a href="/positions" class="ghost btn-history-link" title="Manage in Positions" data-i18n-title="manage_in_positions">
+                  <span data-i18n="positions">Positions</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </a>
+                <div class="multi-runners-toolbar-batch">
+                  <button type="button" id="btn-clear-stopped-runners" class="btn btn-sm btn-ghost-danger" data-i18n="clear_stopped" hidden>Clear Stopped</button>
+                  <button type="button" id="btn-stop-all-runners" class="btn btn-sm btn-ghost-danger" data-i18n="stop_all_runners" data-i18n-title="stop_all_autotrades" title="Stop all active auto-trades" hidden>Stop All</button>
+                </div>
+              </div>
+              <div id="multi-runners-list" class="multi-runners-list"></div>
+              <div id="multi-runners-empty" class="multi-runners-empty">
+                <svg class="multi-runners-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+                  <circle cx="12" cy="5" r="2"></circle>
+                  <path d="M12 7v4"></path>
+                  <line x1="8" y1="16" x2="8" y2="16"></line>
+                  <line x1="16" y1="16" x2="16" y2="16"></line>
+                </svg>
+                <p class="multi-runners-empty-title" data-i18n="no_active_autotrades">No auto-trades running right now.</p>
+                <p class="multi-runners-empty-desc" data-i18n="no_active_autotrades_desc">Configure your strategy in the Strategy panel above, then click "+ Add Auto Trade" to start an independent background trading loop.</p>
+                <button type="button" id="btn-empty-launch-multi" class="btn btn-sm btn-copper multi-runners-empty-btn" data-i18n="add_auto_trade">+ Add Auto Trade</button>
+              </div>
+            </div>
+          </section>
         </aside>
       </div>
-    </main>
+{% endblock %}
 
-    <!-- Desk Footer -->
-    <footer class="desk-footer" role="contentinfo">
-      <div class="desk-footer-inner">
-        <div class="desk-footer-brand-wrap">
-          <div class="desk-footer-brand">
-            <div class="desk-footer-logo-icon" aria-hidden="true">
-              <img src="/static/img/algopaca-mark.svg" alt="" width="36" height="36" class="desk-footer-mark-img" />
+{% block modals %}
+  <!-- Stop Loop Confirmation & Close Position Modal -->
+  <div id="modal-stop-loop-confirm" class="modal" hidden>
+    <div class="modal-backdrop" id="modal-stop-loop-backdrop"></div>
+    <div class="modal-content modal-stop-loop-content" role="dialog" aria-modal="true" aria-labelledby="modal-stop-loop-title">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg class="modal-title-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <rect x="9" y="9" width="6" height="6"></rect>
+          </svg>
+          <h3 id="modal-stop-loop-title" class="modal-title" data-i18n="stop_loop_confirm_title">Stop Auto-Trade Loop</h3>
+        </div>
+        <button type="button" class="modal-close-btn" id="btn-stop-loop-close" aria-label="Close" data-i18n-aria-label="close">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-stop-loop-body">
+        <p id="modal-stop-loop-desc" class="modal-desc" data-i18n="stop_loop_confirm_desc">Are you sure you want to stop this auto-trade loop?</p>
+        
+        <!-- Open Position Summary Card -->
+        <div id="modal-stop-loop-pos-box" class="modal-pos-box" hidden>
+          <div class="modal-pos-box-head">
+            <span class="modal-pos-badge" data-i18n="open_position_detected">Open Position Detected</span>
+            <span id="modal-stop-loop-pos-pnl" class="modal-pos-pnl mono">+$0.00</span>
+          </div>
+          <div class="modal-pos-grid">
+            <div class="modal-pos-col">
+              <span class="modal-pos-label" data-i18n="symbol">Symbol</span>
+              <span id="modal-stop-loop-pos-sym" class="modal-pos-val mono">—</span>
             </div>
-            <div class="desk-footer-brand-meta">
-              <span class="desk-footer-logo">AlgoPaca</span>
-              <span class="desk-footer-tagline" data-i18n="footer_desk_tagline">Quantitative Execution Desk</span>
+            <div class="modal-pos-col">
+              <span class="modal-pos-label" data-i18n="position_qty">Quantity</span>
+              <span id="modal-stop-loop-pos-qty" class="modal-pos-val mono">—</span>
+            </div>
+            <div class="modal-pos-col">
+              <span class="modal-pos-label" data-i18n="entry_price">Avg Entry</span>
+              <span id="modal-stop-loop-pos-entry" class="modal-pos-val mono">—</span>
+            </div>
+            <div class="modal-pos-col">
+              <span class="modal-pos-label" data-i18n="current_price">Current Price</span>
+              <span id="modal-stop-loop-pos-mark" class="modal-pos-val mono">—</span>
             </div>
           </div>
-          <div class="desk-footer-status" title="Trading desk systems operational">
-            <span class="status-beacon-green" aria-hidden="true">
-              <span class="beacon-core"></span>
-              <span class="beacon-ring"></span>
-            </span>
-            <span class="desk-footer-status-text" data-i18n="footer_all_systems_operational">All Systems Operational</span>
-          </div>
+          <p class="modal-pos-prompt" data-i18n="stop_loop_close_pos_prompt">Would you like to close this open position at market price or keep it open in your account?</p>
         </div>
 
-        <nav class="desk-footer-links" aria-label="Footer navigation">
-          <a href="/auto-trade" class="desk-footer-link" data-i18n="nav_auto_trade">Auto Trade</a>
-          <a href="/manual-order" class="desk-footer-link" data-i18n="nav_manual_order">Advanced Order</a>
-          <a href="/backtest" class="desk-footer-link" data-i18n="nav_backtest">Backtest</a>
-          <a href="/positions" class="desk-footer-link" data-i18n="nav_positions">Positions</a>
-          <a href="/orders" class="desk-footer-link" data-i18n="nav_orders">Orders</a>
-          <a href="/history" class="desk-footer-link" data-i18n="nav_history">History</a>
-          <a href="/api-keys" class="desk-footer-link" data-i18n="nav_api_keys">API Keys</a>
-          <a href="https://alpaca.markets/disclosures" target="_blank" rel="noopener noreferrer" class="desk-footer-link ext-link" data-i18n="footer_alpaca_disclosures">Alpaca Disclosures ↗</a>
-        </nav>
-
-        <div class="desk-footer-right">
-          <div class="lang-switcher">
-            <label for="lang-select" class="sr-only" data-i18n="select_language">Language</label>
-            <select id="lang-select" class="lang-select" aria-label="Select Language" data-i18n-aria-label="select_language">
-              <option value="en" data-i18n="language_english">English</option>
-              <option value="bn" data-i18n="language_bangla">বাংলা</option>
-              <option value="es" data-i18n="language_spanish">Español</option>
-              <option value="fr" data-i18n="language_french">Français</option>
-              <option value="hi" data-i18n="language_hindi">हिन्दी</option>
-            </select>
-          </div>
+        <div id="modal-stop-loop-no-pos" class="modal-no-pos-box" hidden>
+          <p data-i18n="no_open_positions_desc">No active open positions are currently held for this loop.</p>
         </div>
       </div>
-
-      <div class="desk-footer-bottom">
-        <p class="desk-footer-copy">
-          <span class="desk-footer-copy-symbol">&copy; 2026 AlgoPaca Trading Systems.</span>
-          <span class="desk-footer-disclaimer" data-i18n="footer_disclaimer_short">Securities and algorithmic trading involve substantial risk.</span>
-        </p>
+      <div class="modal-actions" id="modal-stop-loop-actions">
+        <button type="button" id="btn-stop-loop-close-pos" class="btn btn-danger" data-i18n="stop_and_close_positions">Close Position & Stop</button>
+        <button type="button" id="btn-stop-loop-only" class="btn btn-outline" data-i18n="stop_loop_only">Stop Loop Only</button>
+        <button type="button" id="btn-stop-loop-cancel" class="btn btn-ghost" data-i18n="cancel">Cancel</button>
       </div>
-    </footer>
+    </div>
   </div>
 
-  <script src="/static/vendor/nice-select2/nice-select2.min.js?v=2.4.1-p5"></script>
-  <script src="/static/i18n.js"></script>
-  <script src="/static/js/common.js?v=2.5"></script>
-  <script src="/static/js/auto-trade.js?v=2.5"></script>
-</body>
-</html>
+{% endblock %}
+
+{% block page_scripts %}
+  <script src="/static/js/auto-trade.js?v=2.6"></script>
+{% endblock %}

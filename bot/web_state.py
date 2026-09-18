@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -370,7 +371,11 @@ class AppState:
         self._dip_hunt_path_live = self.workspace_dir / ".dip_hunt_plans.live.json"
         self._approvals_path_paper = approvals_path_for(self.workspace_dir, paper=True)
         self._approvals_path_live = approvals_path_for(self.workspace_dir, paper=False)
-        self.lock = threading.Lock()
+        # State helpers are frequently composed (for example, a dashboard
+        # snapshot also builds a loop-runner snapshot).  A regular Lock
+        # deadlocks when one of those helpers re-enters the state boundary,
+        # which in turn leaves configuration saves waiting forever.
+        self.lock = threading.RLock()
         self.multi_trader = MultiTradeManager(self)
         self.settings = RunSettings()
         self.loop_running = False
@@ -524,7 +529,7 @@ class AppState:
             elapsed = None
             if self.loop_running and started is not None:
                 elapsed = max(0.0, time.time() - started)
-            return {
+            state = {
                 "loop_running": self.loop_running,
                 "loop_stopping": self.loop_stopping,
                 "loop_started_at": (
@@ -557,6 +562,18 @@ class AppState:
                 "ai_key_status": key_status,
                 "alpaca_key_status": self._alpaca_key_status_locked(),
                 "trading_mode": self._trading_mode_status_locked(),
+                "auto_trade_desired": getattr(self, "auto_trade_desired", False),
+                "auto_recovery_active": True,
+                "auto_recovery_count": getattr(self, "_auto_recovery_count", 0),
+                "last_auto_recovery_at": getattr(self, "_last_auto_recovery_at", None),
+            }
+
+        # Preset stores and runner snapshots can take their own locks or touch
+        # disk.  Do that work after releasing the desk lock so an in-flight
+        # status poll cannot prevent a user from saving credentials.
+        active_auto_trades = self._get_active_auto_trades_with_loop()
+        state.update(
+            {
                 "ai_presets": list_presets(),
                 "sma_presets": list_sma_presets(),
                 "dip_presets": list_dip_presets(),
@@ -564,13 +581,35 @@ class AppState:
                 "day_presets": list_day_presets(),
                 "custom_engines": custom_engine_store.list_custom_engines(self.user_id),
                 "ai_models": catalog_payload(),
-                "active_auto_trades": self.multi_trader.list_active() if hasattr(self, "multi_trader") else [],
-                "active_auto_trades_count": len(self.multi_trader.list_active()) if hasattr(self, "multi_trader") else 0,
-                "all_auto_trades": self.multi_trader.list_runners(active_only=False) if hasattr(self, "multi_trader") else [],
-                "auto_trade_desired": getattr(self, "auto_trade_desired", False),
-                "auto_recovery_active": True,
-                "auto_recovery_count": getattr(self, "_auto_recovery_count", 0),
-                "last_auto_recovery_at": getattr(self, "_last_auto_recovery_at", None),
+                "active_auto_trades": active_auto_trades,
+                "active_auto_trades_count": len(active_auto_trades),
+                "all_auto_trades": self._get_all_auto_trades_with_loop(),
+                "auto_trade_baskets": self.multi_trader.get_baskets() if hasattr(self, "multi_trader") else [],
+            }
+        )
+        return state
+
+    def configuration_snapshot(self) -> dict[str, Any]:
+        """Return only the state needed by configuration forms.
+
+        Saving a key must not wait for histories, presets, or runner snapshots
+        that are only needed by the full dashboard status poll.
+        """
+        with self.lock:
+            key_status = self._key_status_locked()
+            return {
+                "settings": asdict(self.settings),
+                "account": self.account,
+                "ai_ready": {
+                    "openai": key_status["openai"]["set"],
+                    "gemini": key_status["gemini"]["set"],
+                    "anthropic": key_status["anthropic"]["set"],
+                    "xai": key_status["xai"]["set"],
+                },
+                "ai_key_status": key_status,
+                "alpaca_key_status": self._alpaca_key_status_locked(),
+                "trading_mode": self._trading_mode_status_locked(),
+                "ai_models": catalog_payload(),
             }
 
     def loop_state(self) -> dict[str, Any]:
@@ -1971,6 +2010,24 @@ class AppState:
             metals_dollar_index_only=bool(getattr(s, "metals_dollar_index_only", False)),
         )
 
+    def require_backtest_market_data_credentials(self) -> None:
+        """Raise an actionable error before a browser backtest starts without Alpaca keys."""
+        config = self._base_config()
+        if config.api_key and config.secret_key:
+            return
+
+        environment = "Paper" if config.paper else "Live"
+        missing = []
+        if not config.api_key:
+            missing.append("API key")
+        if not config.secret_key:
+            missing.append("secret key")
+        raise ValueError(
+            f"Alpaca {environment} credentials are incomplete "
+            f"(missing {' and '.join(missing)}). Open API Keys, add both "
+            "credentials for the active environment, then run the backtest again."
+        )
+
     def _build_algo_bot(self) -> TradingBot:
         """SMA or buy-the-dip bot (TradingBot branches on strategy_mode)."""
         cfg = self._base_config()
@@ -2573,9 +2630,11 @@ class AppState:
         ai_trail_after_r: float | None = None,
         ai_risk_pct: float | None = None,
         ai_max_positions: int | None = None,
+        metals_reversal_buy_on_stop: bool | None = None,
         metals_dollar_index_only: bool | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        **_extra: Any,
     ) -> dict[str, Any]:
         """Replay AI Trader engine rules over historical bars."""
         kind = str(run_kind or "per_symbol").strip().lower().replace("-", "_")
@@ -2643,6 +2702,11 @@ class AppState:
                 if metals_dollar_index_only is not None
                 else bool(getattr(s, "metals_dollar_index_only", False))
             )
+            reversal_buy = (
+                bool(metals_reversal_buy_on_stop)
+                if metals_reversal_buy_on_stop is not None
+                else bool(getattr(s, "metals_reversal_buy_on_stop", True))
+            )
 
             params = AiBacktestParams(
                 preset=preset_id,
@@ -2655,52 +2719,92 @@ class AppState:
                 initial_cash=cash,
                 slippage_bps=float(slip_bps) if slip_bps is not None else DEFAULT_SLIPPAGE_BPS,
                 qty=trade_qty,
-                reversal_buy_on_stop=bool(getattr(s, "metals_reversal_buy_on_stop", True)),
+                reversal_buy_on_stop=reversal_buy,
                 metals_dollar_index_only=dollar_only,
             )
 
         pad = 120 if tf == "1Day" else max(days_i, 14)
         start = start_cutoff - timedelta(days=days_i + pad)
 
-        service = AlpacaService(self._base_config())
-        bars_by_symbol: dict[str, pd.DataFrame] = {}
-        errors: list[dict[str, Any]] = []
-        for sym in symbol_list:
-            try:
-                bars = service.get_bars_range(sym, start=start, end=end, timeframe=tf)
-                if bars.empty:
-                    raise ValueError(f"No bar data returned for {sym}")
-                bars_by_symbol[sym] = self._trim_backtest_bars(
-                    bars, days_i=days_i, end=end, start_cutoff=start_cutoff
-                )
-            except Exception as exc:  # noqa: BLE001
-                errors.append({"symbol": sym, "error": str(exc)})
-
-        if not bars_by_symbol:
-            detail = "; ".join(f"{e['symbol']}: {e['error']}" for e in errors)
-            raise ValueError(detail or "AI backtest produced no results: no bar data")
-
-        macro_bars: dict[str, pd.DataFrame] | None = None
-        calendar_events: list[dict[str, Any]] | None = None
         is_metals_run = (
             preset_id == "gold_silver_macro"
             or any(is_precious_metal(s) for s in symbol_list)
         )
+        macro_syms = ["TLT", "UUP", "GLD", "SLV", "USO"] if is_metals_run else []
+        requested_symbols = list(dict.fromkeys([*symbol_list, *macro_syms]))
+
+        service = AlpacaService(self._base_config())
+        bars_by_symbol: dict[str, pd.DataFrame] = {}
+        errors: list[dict[str, Any]] = []
+        try:
+            batch = service.get_bars_range_many(
+                requested_symbols, start=start, end=end, timeframe=tf
+            )
+            if not isinstance(batch, dict):
+                # Keep older injected test doubles and third-party service
+                # implementations compatible while the app uses batch reads.
+                raise TypeError("Market-data batch response was not a dictionary")
+        except Exception as batch_exc:  # noqa: BLE001
+            logger.warning(
+                "Batch backtest data read failed; retrying symbols individually: %s",
+                batch_exc,
+            )
+            # A malformed/unavailable symbol should not discard the entire
+            # result.  This rare fallback stays parallel, so it cannot turn a
+            # single failed batch request into several serial network waits.
+            batch = {}
+            with ThreadPoolExecutor(
+                max_workers=min(8, len(requested_symbols))
+            ) as pool:
+                futures = {
+                    sym: pool.submit(
+                        service.get_bars_range,
+                        sym,
+                        start=start,
+                        end=end,
+                        timeframe=tf,
+                    )
+                    for sym in requested_symbols
+                }
+                for sym, future in futures.items():
+                    try:
+                        batch[sym] = future.result()
+                    except Exception as exc:  # noqa: BLE001
+                        batch[sym] = pd.DataFrame()
+                        if sym in symbol_list:
+                            errors.append({"symbol": sym, "error": str(exc)})
+
+        for sym in symbol_list:
+            bars = batch.get(sym)
+            if bars is None or bars.empty:
+                if not any(e["symbol"] == sym for e in errors):
+                    errors.append(
+                        {"symbol": sym, "error": f"No bar data returned for {sym}"}
+                    )
+                continue
+            bars_by_symbol[sym] = self._trim_backtest_bars(
+                bars, days_i=days_i, end=end, start_cutoff=start_cutoff
+            )
+
+        if not bars_by_symbol:
+            detail = "; ".join(f"{e['symbol']}: {e['error']}" for e in errors)
+            raise ValueError(
+                detail or "AI backtest produced no results: no bar data"
+            )
+
+        macro_bars: dict[str, pd.DataFrame] | None = None
+        calendar_events: list[dict[str, Any]] | None = None
         if is_metals_run:
-            macro_syms = ["TLT", "UUP", "GLD", "SLV"]
             macro_bars = {}
             for msym in macro_syms:
                 if msym in bars_by_symbol:
                     macro_bars[msym] = bars_by_symbol[msym]
                 else:
-                    try:
-                        mb = service.get_bars_range(msym, start=start, end=end, timeframe=tf)
-                        if not mb.empty:
-                            macro_bars[msym] = self._trim_backtest_bars(
-                                mb, days_i=days_i, end=end, start_cutoff=start_cutoff
-                            )
-                    except Exception:
-                        pass
+                    mb = batch.get(msym)
+                    if mb is not None and not mb.empty:
+                        macro_bars[msym] = self._trim_backtest_bars(
+                            mb, days_i=days_i, end=end, start_cutoff=start_cutoff
+                        )
             if dollar_only:
                 calendar_events = []
             else:
@@ -3224,7 +3328,9 @@ class AppState:
         ai_trail_after_r: float | None = None,
         ai_risk_pct: float | None = None,
         ai_max_positions: int | None = None,
+        metals_reversal_buy_on_stop: bool | None = None,
         metals_dollar_index_only: bool | None = None,
+        **_extra: Any,
     ) -> dict[str, Any]:
         """Fetch history and walk-forward SMA, dip, pair, LS, day, or AI (no live orders)."""
         mode_key = str(mode or "sma").strip().lower()
@@ -3251,6 +3357,7 @@ class AppState:
                 ai_trail_after_r=ai_trail_after_r,
                 ai_risk_pct=ai_risk_pct,
                 ai_max_positions=ai_max_positions,
+                metals_reversal_buy_on_stop=metals_reversal_buy_on_stop,
                 metals_dollar_index_only=metals_dollar_index_only,
             )
 
@@ -10285,6 +10392,7 @@ class AppState:
                     event=ev,
                     synthetic_handler=self,
                     reversal_buy=reversal_cfg,
+                    track_dollar_only=bool(getattr(config, "metals_dollar_index_only", False)),
                 )
                 if armed:
                     with self.lock:
@@ -10893,9 +11001,10 @@ class AppState:
         loop_syms = self._loop_symbols()
         if hasattr(self, "multi_trader") and self.multi_trader:
             active_multi_syms = {
-                runner.symbol.upper()
+                sym.upper()
                 for runner in self.multi_trader.runners.values()
-                if runner.status in ("running", "starting")
+                if runner.is_running or runner.desired_running
+                for sym in getattr(runner, "symbols", [runner.symbol])
             }
             conflicts = loop_syms.intersection(active_multi_syms)
             if conflicts:
@@ -10910,6 +11019,7 @@ class AppState:
                 self.auto_trade_desired = True
             self.loop_running = True
             self.loop_stopping = False
+            self._dismissed_main_loop = False
             self.loop_started_at = time.time()
             self.loop_last_duration_seconds = None
             self._begin_loop_session_locked()
@@ -10928,13 +11038,20 @@ class AppState:
                 return
             self.last_ai_results = results
 
-    def stop_loop(self) -> None:
+    def stop_loop(self, close_positions: bool = False) -> None:
         self._stop.set()
         with self.lock:
             self.last_ai_results = None
             self.loop_stopping = self.loop_running
             self.auto_trade_desired = False
+            self._close_positions_on_loop_stop = bool(close_positions)
         self._save_auto_trade_state()
+        if not (self._thread and self._thread.is_alive()):
+            with self.lock:
+                self.loop_running = False
+                self.loop_stopping = False
+            if close_positions:
+                self._close_loop_positions_now()
 
     def _save_auto_trade_state(self) -> None:
         """Persist user's auto-trade desired state and active multi-runners to disk."""
@@ -10949,6 +11066,7 @@ class AppState:
                 "auto_trade_desired": bool(getattr(self, "auto_trade_desired", False)),
                 "strategy_mode": self.settings.strategy_mode if hasattr(self, "settings") else "sma",
                 "updated_at": time.time(),
+                "main_loop_name": getattr(self, "main_loop_name", None),
                 "multi_runners": multi_info,
                 "multi_history": multi_history,
             }
@@ -10981,6 +11099,10 @@ class AppState:
                 self.auto_trade_desired = True
                 self._resumed_from_restart = True
             logger.info("Restored desired auto-trade state (ON) for user %s", self.user_id)
+
+        if "main_loop_name" in data:
+            with self.lock:
+                self.main_loop_name = data.get("main_loop_name")
 
         multi_history = data.get("multi_history")
         if isinstance(multi_history, list) and multi_history and hasattr(self, "multi_trader"):
@@ -11132,6 +11254,7 @@ class AppState:
                         except Exception as exc:
                             logger.debug("Periodic metals event check failed: %s", exc)
         finally:
+            should_close = False
             with self.lock:
                 duration = None
                 if self.loop_started_at is not None:
@@ -11144,11 +11267,32 @@ class AppState:
                 # after Stop. Run once still populates this independently.
                 self.last_ai_results = None
                 self._finish_loop_session_locked(duration)
+                should_close = getattr(self, "_close_positions_on_loop_stop", False)
+                self._close_positions_on_loop_stop = False
+            if should_close:
+                self._close_loop_positions_now()
             if getattr(self, "auto_trade_desired", False) and not self._stop.is_set():
                 logger.warning(
                     "Auto-trade loop worker terminated unexpectedly for user %s while desired state is ON. Watchdog will recover it.",
                     self.user_id,
                 )
+
+    def _close_loop_positions_now(self) -> None:
+        """Liquidate any open positions held for symbols traded by the main strategy loop."""
+        try:
+            symbols = list(self._loop_symbols())
+            if not symbols:
+                return
+            service = AlpacaService(self._base_config())
+            for sym in symbols:
+                try:
+                    pos = service.get_position_detail(sym)
+                    if pos and abs(float(pos.get("qty") or 0.0)) > 0:
+                        self.close_single_position(sym, cancel_orders=True)
+                except Exception as exc:
+                    logger.warning("Failed to close position for %s on loop stop: %s", sym, exc)
+        except Exception as exc:
+            logger.warning("Error closing loop positions on stop: %s", exc)
 
     def positions_overview(self) -> dict[str, Any]:
         """Aggregate all open positions and account metrics for the Positions page."""
@@ -11542,8 +11686,8 @@ class AppState:
             "loop_running": loop_running,
             "paper": mode_status["paper"],
             "trading_mode": mode_status["mode"],
-            "active_auto_trades": self.multi_trader.list_active(),
-            "all_auto_trades": self.multi_trader.list_runners(),
+            "active_auto_trades": self._get_active_auto_trades_with_loop(),
+            "all_auto_trades": self._get_all_auto_trades_with_loop(),
             "live_authorized": mode_status["live_authorized"],
         }
 
@@ -11707,8 +11851,9 @@ class AppState:
                 raise ValueError("Stop the Auto Trade loop before closing positions manually.")
             if hasattr(self, "multi_trader") and self.multi_trader:
                 active_multi = [
-                    r.symbol for r in self.multi_trader.runners.values()
+                    sym for r in self.multi_trader.runners.values()
                     if r.status in ("running", "starting")
+                    for sym in getattr(r, "symbols", [r.symbol])
                 ]
                 if active_multi:
                     active_str = ", ".join(sorted(set(active_multi)))
@@ -11732,12 +11877,14 @@ class AppState:
         qty: float | None = None,
         percentage: float | None = None,
         cancel_orders: bool | None = None,
+        bypass_autotrade_check: bool = False,
     ) -> dict[str, Any]:
         """Liquidate a single open position (full or partial)."""
         symbol = str(symbol or "").strip().upper()
         if not symbol:
             raise ValueError("Symbol is required")
-        self._require_manual_book_control(symbol)
+        if not bypass_autotrade_check:
+            self._require_manual_book_control(symbol)
         self._require_live_execution()
         service = AlpacaService(self._base_config())
         result = service.close_position(
@@ -11758,12 +11905,16 @@ class AppState:
         return result
 
     def close_batch_positions(
-        self, symbols: list[str], cancel_orders: bool = True
+        self,
+        symbols: list[str],
+        cancel_orders: bool = True,
+        bypass_autotrade_check: bool = False,
     ) -> dict[str, Any]:
         """Liquidate selected open positions."""
         if not symbols:
             raise ValueError("No symbols provided for batch close")
-        self._require_manual_book_control(symbols)
+        if not bypass_autotrade_check:
+            self._require_manual_book_control(symbols)
         self._require_live_execution()
         service = AlpacaService(self._base_config())
         results = service.close_batch_positions(
@@ -11917,7 +12068,11 @@ class AppState:
                 "take_profit": take_profit,
                 "reason": reason,
                 "engine": engine or self.settings.strategy_mode,
-                "strategy_mode": self.settings.strategy_mode,
+                "strategy_mode": (
+                    extra.get("strategy_mode")
+                    if isinstance(extra, dict) and extra.get("strategy_mode")
+                    else (engine if engine in ("sma", "dip", "ai", "day", "ls", "pair") else self.settings.strategy_mode)
+                ),
                 "thesis": thesis,
                 "confidence": confidence,
                 "protect": protect,
@@ -12212,10 +12367,11 @@ class AppState:
         custom_engine_id: str | None = None,
         engine_name: str | None = None,
         settings: dict[str, Any] | None = None,
+        name: str | None = None,
     ) -> list[dict[str, Any]]:
         """Start isolated auto-trade runners for one or more symbols."""
         if isinstance(symbols, str):
-            syms = [s.strip().upper() for s in symbols.replace(";", ",").split(",") if s.strip()]
+            syms = [s.strip().upper() for s in re.split(r"[,\s;]+", symbols) if s.strip()]
         else:
             syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
         runners = self.multi_trader.start_batch(
@@ -12224,16 +12380,149 @@ class AppState:
             custom_engine_id=custom_engine_id,
             engine_name=engine_name,
             settings=settings,
+            name=name,
         )
         return [r.snapshot() for r in runners]
 
-    def stop_multi_auto_trade(self, symbol_or_id: str) -> bool:
-        """Stop an isolated auto-trade runner by symbol or ID."""
-        return self.multi_trader.stop_runner(symbol_or_id)
+    def _main_loop_runner_snapshot(self, include_stopped: bool = False) -> dict[str, Any] | None:
+        """Construct a synthetic runner snapshot for the active or stopped main strategy loop."""
+        with self.lock:
+            is_running = bool(self.loop_running)
+            if not is_running:
+                if not include_stopped:
+                    return None
+                if getattr(self, "_dismissed_main_loop", False):
+                    return None
+                if (
+                    getattr(self, "loop_started_at", None) is None
+                    and not getattr(self, "result_history", None)
+                    and not getattr(self, "main_loop_name", None)
+                ):
+                    return None
 
-    def stop_all_multi_auto_trades(self) -> int:
-        """Stop all isolated auto-trade runners."""
-        return self.multi_trader.stop_all()
+            primary_sym = (getattr(self.settings, "symbol", "") or "").strip().upper()
+            loop_syms = sorted(list(self._loop_symbols()))
+            if primary_sym and primary_sym in loop_syms:
+                main_sym = primary_sym
+            elif loop_syms:
+                main_sym = loop_syms[0]
+            else:
+                main_sym = primary_sym or "AAPL"
+            strat_mode = getattr(self.settings, "strategy_mode", "sma")
+            started = getattr(self, "loop_started_at", None)
+            uptime = max(0.0, time.time() - started) if (started is not None and is_running) else None
+            last_res = getattr(self, "last_result", None)
+            sig = getattr(last_res, "signal", None) if last_res else None
+            px = getattr(last_res, "price", None) if last_res else None
+            reason = getattr(last_res, "reason", None) if last_res else None
+            if reason == "no symbols":
+                reason = "Cycle stopped" if not is_running else "Waiting for next cycle"
+            hist = getattr(self, "result_history", []) or []
+            trades_count = len([
+                h for h in hist
+                if (hasattr(h, "order_id") and getattr(h, "order_id"))
+                or (isinstance(h, dict) and h.get("order_id"))
+            ])
+
+            main_name = getattr(self, "main_loop_name", None)
+            if not main_name:
+                from bot.multi_trader import generate_auto_trade_name
+                loop_settings = asdict(self.settings) if hasattr(self, "settings") and hasattr(self.settings, "__dataclass_fields__") else dict(getattr(self, "settings", {}) or {})
+                main_name = generate_auto_trade_name(
+                    symbols=loop_syms or [main_sym],
+                    strategy_mode=strat_mode,
+                    settings=loop_settings,
+                    engine_name=f"Main Loop ({strat_mode.upper()})",
+                    timeframe=getattr(self.settings, "bar_timeframe", "15Min"),
+                )
+
+            return {
+                "id": "main-loop",
+                "name": main_name,
+                "symbols": loop_syms or [main_sym],
+                "symbol": main_sym,
+                "symbols_count": len(loop_syms or [main_sym]),
+                "strategy_mode": strat_mode,
+                "engine_name": f"Main Loop ({strat_mode.upper()})",
+                "status": "running" if is_running else "stopped",
+                "is_running": is_running,
+                "desired_running": is_running,
+                "is_main_loop": True,
+                "created_at": started or time.time(),
+                "started_at": started,
+                "uptime_seconds": uptime,
+                "poll_seconds": getattr(self.settings, "poll_seconds", 30),
+                "timeframe": getattr(self.settings, "bar_timeframe", "15Min"),
+                "cycles_count": len(hist),
+                "trades_count": trades_count,
+                "last_signal": sig,
+                "last_price": px,
+                "last_reason": reason,
+                "symbols_data": {
+                    s: {
+                        "symbol": s,
+                        "signal": sig if s == main_sym else "HOLD",
+                        "price": px if s == main_sym else None,
+                        "reason": reason if s == main_sym else None,
+                    }
+                    for s in (loop_syms or [main_sym])
+                },
+                "settings": asdict(self.settings) if hasattr(self, "settings") and hasattr(self.settings, "__dataclass_fields__") else dict(getattr(self, "settings", {}) or {}),
+            }
+
+    def _get_active_auto_trades_with_loop(self) -> list[dict[str, Any]]:
+        runners = self.multi_trader.list_active() if hasattr(self, "multi_trader") else []
+        main_snap = self._main_loop_runner_snapshot(include_stopped=False)
+        if main_snap:
+            if not any(r.get("id") == main_snap["id"] for r in runners):
+                runners = [main_snap] + runners
+        return runners
+
+    def _get_all_auto_trades_with_loop(self) -> list[dict[str, Any]]:
+        runners = self.multi_trader.list_runners(active_only=False) if hasattr(self, "multi_trader") else []
+        main_snap = self._main_loop_runner_snapshot(include_stopped=True)
+        if main_snap:
+            if not any(r.get("id") == main_snap["id"] for r in runners):
+                runners = [main_snap] + runners
+        return runners
+
+    def rename_auto_trade(self, symbol_or_id: str, new_name: str) -> bool:
+        """Rename an auto-trade runner or the main strategy loop."""
+        target = str(symbol_or_id or "").strip()
+        target_lower = target.lower()
+        if target_lower in ("main-loop", "main_loop", "loop") or (self.loop_running and self._is_symbol_in_loop(symbol_or_id)):
+            cleaned = str(new_name or "").strip()
+            with self.lock:
+                self.main_loop_name = cleaned or None
+            self._save_auto_trade_state()
+            return True
+
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            return self.multi_trader.rename_runner(symbol_or_id, new_name)
+        return False
+
+    def stop_multi_auto_trade(self, symbol_or_id: str, close_positions: bool = False) -> bool:
+        """Stop an isolated auto-trade runner by symbol or ID, optionally closing its open position."""
+        stopped = self.multi_trader.stop_runner(symbol_or_id, close_position=close_positions)
+        if not stopped and self.loop_running:
+            target = str(symbol_or_id or "").strip().lower()
+            if target in ("main-loop", "main_loop", "loop") or self._is_symbol_in_loop(symbol_or_id):
+                self.stop_loop(close_positions=close_positions)
+                return True
+        return stopped
+
+    def stop_all_multi_auto_trades(self, close_positions: bool = False) -> int:
+        """Stop every active Auto-Trade loop, optionally closing its positions.
+
+        The Auto-Trade and Positions pages display the primary strategy loop
+        alongside isolated runners under one "Stop All Auto-Trades" control.
+        Keep that control truthful by stopping the displayed main loop too.
+        """
+        stopped_count = self.multi_trader.stop_all(close_positions=close_positions)
+        if self.loop_running or (self._thread and self._thread.is_alive()):
+            self.stop_loop(close_positions=close_positions)
+            stopped_count += 1
+        return stopped_count
 
     def list_multi_auto_trades(self, active_only: bool = False) -> list[dict[str, Any]]:
         """List snapshots of multi auto-trade runners."""
@@ -12241,10 +12530,39 @@ class AppState:
 
     def remove_multi_auto_trade(self, symbol_or_id: str) -> bool:
         """Remove a stopped runner from list/history."""
+        target = str(symbol_or_id or "").strip().lower()
+        if target in ("main-loop", "main_loop", "loop"):
+            with self.lock:
+                self.loop_started_at = None
+                self.main_loop_name = None
+                self._dismissed_main_loop = True
+            return True
         return self.multi_trader.remove_runner(symbol_or_id)
+
+    def clear_stopped_multi_auto_trades(self) -> int:
+        """Remove all stopped runners and clear history."""
+        count = 0
+        if hasattr(self, "multi_trader") and self.multi_trader:
+            count += self.multi_trader.clear_stopped_runners()
+        if not self.loop_running and (self.loop_started_at is not None or getattr(self, "main_loop_name", None)):
+            with self.lock:
+                self.loop_started_at = None
+                self.main_loop_name = None
+                self._dismissed_main_loop = True
+            count += 1
+        return count
 
     def restart_multi_auto_trade(self, symbol_or_id: str) -> dict[str, Any]:
         """Restart a stopped runner with its saved settings."""
+        target = str(symbol_or_id or "").strip().lower()
+        if target in ("main-loop", "main_loop", "loop"):
+            with self.lock:
+                self._dismissed_main_loop = False
+            self.start_loop()
+            snap = self._main_loop_runner_snapshot(include_stopped=True)
+            if snap:
+                return snap
+            return {"id": "main-loop", "symbol": getattr(self.settings, "symbol", "AAPL"), "status": "running", "is_running": True}
         runner = self.multi_trader.restart_runner(symbol_or_id)
         return runner.snapshot()
 

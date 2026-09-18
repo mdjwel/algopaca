@@ -289,18 +289,18 @@ def evaluate_ai_signal(
         return Signal.HOLD, 0.0, f"{sym} is strictly excluded from the AI Gold & Silver Macro playbook"
 
     close = float(row["close"])
-    sma10 = float(row["sma10"]) if not np.isnan(row["sma10"]) else close
-    sma20 = float(row["sma20"]) if not np.isnan(row["sma20"]) else close
-    sma50 = float(row["sma50"]) if not np.isnan(row["sma50"]) else close
-    sma200 = float(row["sma200"]) if not np.isnan(row["sma200"]) else close
-    rsi = float(row["rsi14"]) if not np.isnan(row["rsi14"]) else 50.0
-    adx = float(row["adx14"]) if not np.isnan(row["adx14"]) else 20.0
-    atr_pct = float(row["atr_pct"]) if not np.isnan(row["atr_pct"]) else 2.0
-    dist_sma50 = float(row["dist_sma50_atr"]) if not np.isnan(row["dist_sma50_atr"]) else 0.0
-    macd_hist = float(row["macd_hist"]) if not np.isnan(row["macd_hist"]) else 0.0
-    prev_hist = float(prev_row["macd_hist"]) if prev_row is not None and not np.isnan(prev_row["macd_hist"]) else macd_hist
-    vol_ratio = float(row["vol_ratio"]) if not np.isnan(row["vol_ratio"]) else 1.0
-    pct_b = float(row["bb_pct_b"]) if not np.isnan(row["bb_pct_b"]) else 0.5
+    sma10 = float(row["sma10"]) if "sma10" in row and not np.isnan(row["sma10"]) else close
+    sma20 = float(row["sma20"]) if "sma20" in row and not np.isnan(row["sma20"]) else close
+    sma50 = float(row["sma50"]) if "sma50" in row and not np.isnan(row["sma50"]) else close
+    sma200 = float(row["sma200"]) if "sma200" in row and not np.isnan(row["sma200"]) else close
+    rsi = float(row["rsi14"]) if "rsi14" in row and not np.isnan(row["rsi14"]) else 50.0
+    adx = float(row["adx14"]) if "adx14" in row and not np.isnan(row["adx14"]) else 20.0
+    atr_pct = float(row["atr_pct"]) if "atr_pct" in row and not np.isnan(row["atr_pct"]) else 2.0
+    dist_sma50 = float(row["dist_sma50_atr"]) if "dist_sma50_atr" in row and not np.isnan(row["dist_sma50_atr"]) else 0.0
+    macd_hist = float(row["macd_hist"]) if "macd_hist" in row and not np.isnan(row["macd_hist"]) else 0.0
+    prev_hist = float(prev_row["macd_hist"]) if prev_row is not None and "macd_hist" in prev_row and not np.isnan(prev_row["macd_hist"]) else macd_hist
+    vol_ratio = float(row["vol_ratio"]) if "vol_ratio" in row and not np.isnan(row["vol_ratio"]) else 1.0
+    pct_b = float(row["bb_pct_b"]) if "bb_pct_b" in row and not np.isnan(row["bb_pct_b"]) else 0.5
 
     # 1. Hard global safety gates
     if atr_pct > 6.5:
@@ -382,6 +382,10 @@ def evaluate_ai_signal(
         yield_trend = str(row.get("yield_trend") or "neutral")
         dollar_trend = str(row.get("dollar_trend") or "neutral")
         dollar_mixed = bool(row.get("dollar_mixed", False) or dollar_trend == "neutral")
+        gold_dollar_divergence = bool(row.get("gold_dollar_divergence", False))
+        three_conf_state = str(row.get("three_confirmation_state") or "")
+        conf_count = int(row.get("confirmations_count", 0)) if "confirmations_count" in row and not pd.isna(row["confirmations_count"]) else 0
+        oil_trend = str(row.get("oil_trend") or "neutral")
 
         if getattr(params, "metals_dollar_index_only", False):
             dollar_score_val = float(row["dollar_score"]) if "dollar_score" in row and not pd.isna(row["dollar_score"]) else (macro_score if macro_score is not None else 0.0)
@@ -409,6 +413,8 @@ def evaluate_ai_signal(
 
         # 1. Inverse ETFs (e.g. GDXD, GLL, ZSL): express bear view by BUYING long
         if is_inverse:
+            if gold_dollar_divergence:
+                return Signal.HOLD, 0.30, f"Gold/Silver Macro: Inverse ETF {sym} entry blocked by Bullish Decoupling Divergence (Case C)"
             dt = getattr(row, "name", None)
             if dt is not None and hasattr(dt, "hour"):
                 try:
@@ -483,14 +489,22 @@ def evaluate_ai_signal(
             conf = 0.72 + (0.06 if close > sma50 else 0.0) + (0.04 if adx >= 20.0 else 0.0) + (0.03 if close >= bar_open else 0.0)
             macro_str = f", macro={macro_score:+.2f}" if macro_score is not None else ""
             thesis = f"Gold/Silver Macro: Pullback bounce in bull regime (RSI={rsi:.1f}, above SMA{'200' if has_sma200 else '50'}{macro_str})"
+            if three_conf_state == "all_three_aligned":
+                conf = min(0.95, conf + 0.05)
+                thesis += " [All 3 Macro Confirmations Aligned]"
+            elif oil_trend == "cooling_inflation":
+                conf = min(0.95, conf + 0.03)
+                thesis += " [Oil Inflation Cooling]"
             return Signal.BUY, min(max(conf, 0.70), 0.95), thesis
 
         # 5. Bearish / Short Gate:
         # Rule 3:
         # - Price < 200 SMA and macro score <= -0.5
         # - Rising Treasury yields (yield_trend == "rising_yields")
-        # - Strict prohibition: Dollar data Neutral or Mixed -> NO short trade!
+        # - Strict prohibition: Dollar data Neutral or Mixed, OR Bullish Decoupling Divergence -> NO short trade!
         if allow_short:
+            if gold_dollar_divergence:
+                return Signal.HOLD, 0.30, "Shorting strictly prohibited: Bullish Decoupling Divergence (Case C: Gold holding bullish structure against rising USD)"
             if dollar_mixed or dollar_trend == "neutral":
                 return Signal.HOLD, 0.30, "Shorting strictly prohibited: US Dollar data is mixed or neutral"
 

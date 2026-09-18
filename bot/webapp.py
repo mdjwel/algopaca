@@ -15,6 +15,7 @@ from typing import Any, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from bot.alpaca_errors import humanize_alpaca_error
@@ -37,6 +38,8 @@ STATE = AppState()
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+TEMPLATES_DIR = WEB_DIR / "templates"
+TEMPLATES = Jinja2Templates(directory=[str(TEMPLATES_DIR), str(WEB_DIR)])
 
 
 class FallbackStaticFiles(StaticFiles):
@@ -349,8 +352,9 @@ class CancelReinvestIn(BaseModel):
 
 class MultiTradeStartIn(BaseModel):
     # Empty means "let the custom engine's own base strategy decide"; a runner
-    # with no engine falls back to SMA.
-    symbols: list[str] | str
+    # with no engine falls back to SMA. Can also be omitted if basket_id is specified.
+    symbols: Optional[list[str] | str] = None
+    name: Optional[str] = None
     strategy_mode: str = ""
     custom_engine_id: Optional[str] = None
     engine_name: Optional[str] = None
@@ -361,11 +365,30 @@ class MultiTradeStartIn(BaseModel):
     trade_notional: Optional[float] = None
     size_mode: Optional[str] = None
     stop_loss_pct: Optional[float] = None
+    max_loss_limit: Optional[float] = None
+    max_notional_cap: Optional[float] = None
+    session_hours: Optional[str] = None
+    basket_id: Optional[str] = None
+
+
+class MultiTradeRenameIn(BaseModel):
+    id: Optional[str] = None
+    symbol: Optional[str] = None
+    name: str = Field(..., max_length=100)
 
 
 class MultiTradeStopIn(BaseModel):
     symbol: Optional[str] = None
     id: Optional[str] = None
+    close_positions: bool = False
+
+
+class MultiTradeStopAllIn(BaseModel):
+    close_positions: bool = False
+
+
+class LoopStopIn(BaseModel):
+    close_positions: bool = False
 
 
 class ManualOrderIn(BaseModel):
@@ -854,27 +877,49 @@ PAGE_FILES = {
 }
 
 
-def _page_response(name: str) -> FileResponse:
-    filename = PAGE_FILES.get(name)
+def _page_response(
+    request_or_name: Any,
+    name: Optional[str] = None,
+    user: Optional[dict] = None,
+) -> Response:
+    if isinstance(request_or_name, str):
+        page_name = request_or_name
+        req = None
+    else:
+        req = request_or_name
+        page_name = name or ""
+
+    filename = PAGE_FILES.get(page_name)
     if not filename:
         raise HTTPException(status_code=404, detail="Page not found")
     path = WEB_DIR / filename
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Page not found")
+
+    if req is not None:
+        try:
+            return TEMPLATES.TemplateResponse(
+                request=req,
+                name=filename,
+                context={"request": req, "page": page_name, "user": user},
+            )
+        except Exception as exc:
+            log.warning("Failed to render template %s, falling back to FileResponse: %s", filename, exc)
+
     return FileResponse(path)
 
 
 def _protected_page(request: Request, name: str) -> Response:
     if AUTH_STORE.needs_setup():
         if name in ("setup-wizard", "wizard"):
-            return _page_response("setup-wizard")
+            return _page_response(request, "setup-wizard")
         return RedirectResponse(url="/setup-wizard", status_code=302)
     user = _get_current_user(request)
     if not user:
         from urllib.parse import quote
         next_path = quote(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
         return RedirectResponse(url=f"/login?next={next_path}", status_code=302)
-    return _page_response(name)
+    return _page_response(request, name, user=user)
 
 
 @app.get("/")
@@ -897,7 +942,7 @@ def page_login(request: Request) -> Response:
         if next_url and next_url.startswith("/") and not next_url.startswith("//") and not next_url.startswith("/login"):
             return RedirectResponse(url=next_url, status_code=302)
         return RedirectResponse(url="/auto-trade", status_code=302)
-    return _page_response("login")
+    return _page_response(request, "login")
 
 
 @app.get("/signup")
@@ -910,12 +955,12 @@ def page_signup(request: Request) -> Response:
         if next_url and next_url.startswith("/") and not next_url.startswith("//") and not next_url.startswith("/signup"):
             return RedirectResponse(url=next_url, status_code=302)
         return RedirectResponse(url="/auto-trade", status_code=302)
-    return _page_response("signup")
+    return _page_response(request, "signup")
 
 
 @app.get("/reset-password")
 def page_reset_password(request: Request) -> Response:
-    return _page_response("reset-password")
+    return _page_response(request, "reset-password")
 
 
 @app.get("/auto-trade")
@@ -990,7 +1035,7 @@ def page_admin(request: Request) -> Response:
             status_code=403,
             detail="Access denied. Administrator or Owner access required.",
         )
-    return _page_response("admin")
+    return _page_response(request, "admin", user=user)
 
 
 
@@ -1670,8 +1715,12 @@ def save_keys(body: ApiKeysIn, user: dict = Depends(require_auth)) -> dict:
                 save_to_env=body.save_to_env,
             )
         else:
-            status = state.snapshot()["ai_key_status"]
-        return {"ok": True, "ai_key_status": status, "state": state.snapshot()}
+            status = state.configuration_snapshot()["ai_key_status"]
+        return {
+            "ok": True,
+            "ai_key_status": status,
+            "state": state.configuration_snapshot(),
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1693,11 +1742,12 @@ def save_alpaca_keys(body: AlpacaKeysIn, user: dict = Depends(require_auth)) -> 
             env = str(body.environment).strip().lower()
             slot = status.get("paper_keys" if env == "paper" else "live_keys") or {}
             ok = bool(slot.get("set")) and not status.get("account_error")
+        response_state = state.configuration_snapshot()
         return {
             "ok": ok,
             "alpaca_key_status": status,
-            "trading_mode": state.snapshot().get("trading_mode"),
-            "state": state.snapshot(),
+            "trading_mode": response_state.get("trading_mode"),
+            "state": response_state,
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2030,6 +2080,9 @@ class BacktestCompareIn(BaseModel):
 def backtest(body: BacktestIn, user: dict = Depends(require_auth)) -> dict:
     state = get_user_state(user["id"])
     try:
+        # Missing setup is an immediate form error, not a request that waits
+        # for a historical-data timeout.
+        state.require_backtest_market_data_credentials()
         result = state.run_strategy_backtest(**body.model_dump())
         entry = state.save_backtest_result(result)
         return {
@@ -2381,9 +2434,12 @@ def loop_start(
 
 
 @app.post("/api/loop/stop")
-def loop_stop(user: dict = Depends(require_auth)) -> dict:
+def loop_stop(
+    body: Optional[LoopStopIn] = None, user: dict = Depends(require_auth)
+) -> dict:
     state = get_user_state(user["id"])
-    state.stop_loop()
+    close_positions = bool(body and body.close_positions)
+    state.stop_loop(close_positions=close_positions)
     return {"ok": True, "state": state.snapshot()}
 
 
@@ -2494,12 +2550,36 @@ def get_multi_auto_trade_status(user: dict = Depends(require_auth)) -> dict:
     }
 
 
+@app.get("/api/auto-trade/baskets")
+def get_auto_trade_baskets(user: dict = Depends(require_auth)) -> dict:
+    """Return predefined curated ticker baskets for multi auto-trade."""
+    state = get_user_state(user["id"])
+    return {
+        "ok": True,
+        "baskets": state.multi_trader.get_baskets() if hasattr(state, "multi_trader") else [],
+    }
+
+
 @app.post("/api/auto-trade/multi/start")
 def start_multi_auto_trade(
     body: MultiTradeStartIn, user: dict = Depends(require_auth)
 ) -> dict:
     """Start isolated auto-trade runner(s) for one or multiple tickers."""
     state = get_user_state(user["id"])
+
+    target_symbols = body.symbols
+    strategy_mode = body.strategy_mode or ""
+    if body.basket_id and hasattr(state, "multi_trader"):
+        basket = state.multi_trader.get_basket(body.basket_id)
+        if basket:
+            if not target_symbols:
+                target_symbols = basket.get("symbols", [])
+            if not strategy_mode:
+                strategy_mode = basket.get("default_strategy", "sma")
+
+    if not target_symbols:
+        raise HTTPException(status_code=400, detail="Must provide one or more symbols or a valid basket.")
+
     settings = dict(body.settings or {})
     if body.bar_timeframe:
         settings["bar_timeframe"] = body.bar_timeframe
@@ -2513,14 +2593,21 @@ def start_multi_auto_trade(
         settings["size_mode"] = body.size_mode
     if body.stop_loss_pct is not None:
         settings["stop_loss_pct"] = body.stop_loss_pct
+    if body.max_loss_limit is not None:
+        settings["max_loss_limit"] = body.max_loss_limit
+    if body.max_notional_cap is not None:
+        settings["max_notional_cap"] = body.max_notional_cap
+    if body.session_hours:
+        settings["session_hours"] = body.session_hours
 
     try:
         started = state.start_multi_auto_trade(
-            symbols=body.symbols,
-            strategy_mode=body.strategy_mode,
+            symbols=target_symbols,
+            strategy_mode=strategy_mode,
             custom_engine_id=body.custom_engine_id,
             engine_name=body.engine_name,
             settings=settings,
+            name=body.name,
         )
         return {
             "ok": True,
@@ -2534,6 +2621,28 @@ def start_multi_auto_trade(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/auto-trade/multi/rename")
+@app.post("/api/auto-trade/rename")
+def rename_auto_trade(
+    body: MultiTradeRenameIn, user: dict = Depends(require_auth)
+) -> dict:
+    """Rename an isolated auto-trade runner or the main strategy loop."""
+    state = get_user_state(user["id"])
+    target = (body.id or body.symbol or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Must provide symbol or id to rename.")
+    new_name = str(body.name or "").strip()
+    renamed = state.rename_auto_trade(target, new_name)
+    if not renamed:
+        raise HTTPException(status_code=404, detail=f"Auto-trade '{target}' not found to rename.")
+    return {
+        "ok": True,
+        "target": target,
+        "name": new_name,
+        "state": state.get_status(),
+    }
+
+
 @app.post("/api/auto-trade/multi/stop")
 def stop_multi_auto_trade(
     body: MultiTradeStopIn, user: dict = Depends(require_auth)
@@ -2543,7 +2652,7 @@ def stop_multi_auto_trade(
     target = (body.id or body.symbol or "").strip()
     if not target:
         raise HTTPException(status_code=400, detail="Must provide symbol or id to stop.")
-    stopped = state.stop_multi_auto_trade(target)
+    stopped = state.stop_multi_auto_trade(target, close_positions=body.close_positions)
     return {
         "ok": True,
         "stopped": stopped,
@@ -2554,13 +2663,17 @@ def stop_multi_auto_trade(
 
 
 @app.post("/api/auto-trade/multi/stop-all")
-def stop_all_multi_auto_trades(user: dict = Depends(require_auth)) -> dict:
+def stop_all_multi_auto_trades(
+    body: Optional[MultiTradeStopAllIn] = None, user: dict = Depends(require_auth)
+) -> dict:
     """Stop all currently active auto-trade runners."""
     state = get_user_state(user["id"])
-    count = state.stop_all_multi_auto_trades()
+    close_positions = bool(body and body.close_positions)
+    count = state.stop_all_multi_auto_trades(close_positions=close_positions)
     return {
         "ok": True,
         "stopped_count": count,
+        "loop_running": state.loop_state()["loop_running"],
         "active_runners": state.multi_trader.list_active(),
         "active_symbols": state.multi_trader.active_symbols_map(),
     }
@@ -2580,6 +2693,21 @@ def remove_multi_auto_trade(
         "ok": True,
         "removed": removed,
         "target": target,
+        "active_runners": state.multi_trader.list_active(),
+        "active_symbols": state.multi_trader.active_symbols_map(),
+    }
+
+
+@app.post("/api/auto-trade/multi/clear-stopped")
+def clear_stopped_multi_auto_trades(
+    user: dict = Depends(require_auth)
+) -> dict:
+    """Clear all stopped runners and history."""
+    state = get_user_state(user["id"])
+    cleared_count = state.clear_stopped_multi_auto_trades()
+    return {
+        "ok": True,
+        "cleared_count": cleared_count,
         "active_runners": state.multi_trader.list_active(),
         "active_symbols": state.multi_trader.active_symbols_map(),
     }
